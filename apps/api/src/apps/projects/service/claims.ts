@@ -206,7 +206,12 @@ async function sourcesOf(
   // Left off: the tasks of lines at zero, on this project, that no billed line claims.
   for (const l of lines) {
     if (l.billMinutes > 0 || l.otherProjectId) continue
-    for (const [t, m] of tasksOf(l)) add(leftOff, task(l, t, m))
+    for (const [t, m] of tasksOf(l)) {
+      const s = task(l, t, m)
+      // On another line at some minutes of its own: these are left off all the same.
+      if ((m ?? 0) > 0 && billed.some((b) => b.kind === "task" && b.ref === t)) leftOff.push(s)
+      else add(leftOff, s)
+    }
   }
   return { billed, leftOff }
 }

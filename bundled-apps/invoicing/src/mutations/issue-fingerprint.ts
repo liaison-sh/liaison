@@ -25,7 +25,7 @@ import {
 } from "./issue-handover"
 import { computeLineFinancials, counterpartyFromRow } from "./lines"
 import { checkDraftBuyer } from "./quote-proforma-po"
-import type { DraftRow, ErrorEnvelope, MutationsCtx } from "./shared"
+import type { DraftRow, ErrorEnvelope, MutationsCtx, PendingApprovalEnvelope } from "./shared"
 
 type DbCtx = Pick<MutationsCtx, "db">
 
@@ -256,17 +256,26 @@ export async function draftChangedSinceCard(
   }
 }
 
-/** The answer of an older card: nothing issued, and the request that asks again. */
-export function askedAgain(draft: DraftRow, approvalId: string | null): ErrorEnvelope {
-  return {
-    status: "error",
-    error: {
-      code: "draft_changed",
-      message: `${upperFirst(draftInWords(draft))} was not issued: this request was made before issue requests showed the amount, the tax country and the due terms. Nothing was numbered. ${
-        approvalId
-          ? `Its issue is asked again, showing them (approval ${approvalId}): decide that one.`
-          : "Ask for its issue again so the card shows them."
-      }`,
-    },
-  }
+/**
+ * The answer of an older card: nothing issued, and the request that asks again. The approval it ran
+ * from is done, as a run's is whose rows ask again: the new request is the one to decide.
+ */
+export function askedAgain(
+  draft: DraftRow,
+  approvalId: string | null,
+): ErrorEnvelope | PendingApprovalEnvelope {
+  const why = `${upperFirst(draftInWords(draft))} was not issued: this request was made before issue requests showed the amount, the tax country and the due terms. Nothing was numbered.`
+  return approvalId
+    ? {
+        status: "pending_approval",
+        approval_id: approvalId,
+        message: `${why} Its issue is asked again, showing them: decide that request.`,
+      }
+    : {
+        status: "error",
+        error: {
+          code: "draft_changed",
+          message: `${why} Ask for its issue again so the card shows them.`,
+        },
+      }
 }

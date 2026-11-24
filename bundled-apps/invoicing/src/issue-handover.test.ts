@@ -729,11 +729,10 @@ describe("a draft edited while its issue card waits", () => {
         draft_id: draftId,
         ...(shape === "content" ? { draft_hash: shown } : {}),
       })
-      expect(res).toMatchObject({ status: "error", error: { code: "draft_changed" } })
-      expect((res as { error: { message: string } }).error.message).toContain(
+      expect(res).toMatchObject({ status: "pending_approval", approval_id: "asked-again" })
+      expect((res as { message?: string }).message).toContain(
         "The invoice draft for Klangwerk GmbH was not issued: this request was made before",
       )
-      expect((res as { error: { message: string } }).error.message).toContain("asked-again")
       expect(sequenceTotal(h.db)).toBe(0)
       expect(issuedDocs(h.db)).toEqual([])
       expect(asked).toHaveLength(1)
@@ -752,7 +751,7 @@ describe("a draft edited while its issue card waits", () => {
     const asked = approvedCard(h)
     const { card, restaged } = withPendingCard(h, draftId)
     const res = await invoiceIssue(h.ctx, { draft_id: draftId })
-    expect((res as { error: { message: string } }).error.message).toContain(card.id)
+    expect(res).toMatchObject({ status: "pending_approval", approval_id: card.id })
     expect(asked).toEqual([])
     expect(restaged.map((r) => r.id)).toEqual([card.id])
     expect(sequenceTotal(h.db)).toBe(0)

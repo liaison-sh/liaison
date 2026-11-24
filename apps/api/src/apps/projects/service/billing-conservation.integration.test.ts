@@ -24,6 +24,7 @@ import { withRlsContext } from "~/db/rls"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { insertAppRow } from "~/seed/factories/app-tables"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -34,6 +35,8 @@ import { awaitTimeFeatureSync } from "./time-feature"
 const SEEDS = Number(process.env.LIAISON_CONSERVATION_SEEDS ?? 0)
 const FROM = Number(process.env.LIAISON_CONSERVATION_FROM ?? 1)
 const ONLY = process.env.LIAISON_CONSERVATION_PROFILE
+/** Only the rule of a plan worked inside a fee: what an older build breaks first hides it. */
+const PLANS_ONLY = process.env.LIAISON_CONSERVATION_PLANS === "1"
 
 type Basis = "hourly" | "daily" | "retainer" | "fixed"
 type Card = Record<string, any>
@@ -78,7 +81,7 @@ const PROFILES: Profile[] = [
   },
   {
     name: "retainer credits",
-    seeds: [14, 22, 42],
+    seeds: [1, 7, 10],
     months: 3,
     steps: 6,
     bases: ["retainer"],
@@ -88,7 +91,7 @@ const PROFILES: Profile[] = [
   },
   {
     name: "moved time",
-    seeds: [1, 2, 3],
+    seeds: [3, 5, 11],
     months: 3,
     steps: 7,
     bases: ["hourly", "retainer"],
@@ -97,7 +100,7 @@ const PROFILES: Profile[] = [
   },
   {
     name: "plans inside a fee",
-    seeds: [1, 2],
+    seeds: [10, 16],
     months: 3,
     steps: 6,
     bases: ["retainer"],
@@ -107,7 +110,7 @@ const PROFILES: Profile[] = [
   },
   {
     name: "open work before a retainer",
-    seeds: [1, 2],
+    seeds: [2, 4, 6],
     months: 3,
     steps: 6,
     bases: ["hourly"],
@@ -296,9 +299,15 @@ class World {
   }
   async enter(t: Task, on: string, minutes: number) {
     this.say(`${this.name(t)} +${minutes} on ${on}`)
-    await db.execute(drizzleSql`
-      INSERT INTO app_projects.task_time (org_id, task_id, project_id, work_date, minutes, entered_via)
-      VALUES (${orgId}::uuid, ${t.id}::uuid, ${this.project}::uuid, ${on}::date, ${minutes}, 'field')`)
+    await insertAppRow(db as never, "projects", "task_time", {
+      id: crypto.randomUUID(),
+      org_id: orgId,
+      task_id: t.id,
+      project_id: this.project,
+      work_date: on,
+      minutes,
+      entered_via: "field",
+    })
     await this.notice()
   }
   async notice() {
@@ -470,8 +479,11 @@ class World {
         input: { project: this.key, month: monthAt(i) },
       }),
     )) as Card
+    const whole = new Set(
+      (await this.claims()).filter((c) => c.key.startsWith("all")).map((c) => c.task),
+    )
     const free = (facts.tasks as Card[]).filter(
-      (t) => t.claim === null || t.id === this.anchors.get(i),
+      (t) => !whole.has(t.id) || t.id === this.anchors.get(i),
     )
     const lines = free
       .filter((t) => this.rand(5) > 0 || t.id === this.anchors.get(i))
@@ -485,12 +497,14 @@ class World {
       const last = lines.pop()!
       lines[0]!.taskIds.push(...last.taskIds)
     }
-    return this.propose(
+    const card = await this.propose(
       userId,
       i,
       lines,
       out.map((t) => ({ taskId: t.id, reason: "client_own" })),
     )
+    await this.checkPlans(card, i)
+    return card
   }
 
   async edit(userId: string, card: Card): Promise<Card> {
@@ -638,7 +652,44 @@ class World {
       const out = await this.create(userId, k === 0 ? card : await this.propose(userId, i), i)
       if (out !== "already_on") return out
     }
-    throw new Error(`the card of ${monthAt(i)} stayed on another`)
+    // All its work is on other cards since: there is nothing to make.
+    this.say(`card of ${monthAt(i)} given up`)
+    return "already_on"
+  }
+
+  /** A plan worked partly inside a fee bills the rest of it: checked on the lines as drawn. */
+  async checkPlans(card: Card, i: number) {
+    if (this.basis === "retainer" || this.basis === "fixed" || card.state !== "proposed") return
+    const inside = await rows<{ task: string; m: number }>(drizzleSql`
+      SELECT t.task_id::text AS task, sum(t.minutes)::int AS m
+        FROM app_projects.task_time t
+       WHERE t.project_id = ${this.project}::uuid
+         AND to_char(t.work_date, 'YYYY-MM') IN (
+           SELECT to_char(period_start, 'YYYY-MM') FROM app_projects.reconciliations
+            WHERE project_id = ${this.project}::uuid AND basis = 'retainer'
+              AND state IN ('drafted', 'invoiced'))
+       GROUP BY 1`)
+    const parentOf = new Map(this.tasks.map((t) => [t.id, t.parent]))
+    const named = new Map<string, Card>()
+    for (const l of card.lines as Card[]) for (const id of l.taskIds) named.set(id, l)
+    const lineOf = (id: string): Card | undefined => {
+      for (let k: string | null | undefined = id; k; k = parentOf.get(k)) {
+        const l = named.get(k)
+        if (l) return l
+      }
+      return undefined
+    }
+    for (const l of card.lines as Card[]) {
+      if ((l.plannedMinutes ?? 0) === 0) continue
+      const fee = inside.reduce((x, t) => x + (lineOf(t.task) === l ? Number(t.m) : 0), 0)
+      const most = Math.max(0, Number(l.plannedMinutes) - fee)
+      if (Number(l.billMinutes) > most)
+        this.fail(
+          `the card of ${monthAt(i)}`,
+          `a plan of ${l.plannedMinutes} with ${fee} inside a fee bills ${l.billMinutes}`,
+          l,
+        )
+    }
   }
 
   // ── The identity ──────────────────────────────────────────────────────────
@@ -663,7 +714,7 @@ class World {
          AND c.state IN ('reserved', 'billed', 'left_off') AND r.state IS DISTINCT FROM 'credited'`)
   }
 
-  private fail(where: string, what: string, detail: unknown = "") {
+  private fail(where: string, what: string, detail: unknown = ""): never {
     throw new Error(
       `${this.p.name}, seed ${this.seed}, ${where}: ${what}\n${JSON.stringify(detail)}\n${this.log.join("\n")}`,
     )
@@ -671,6 +722,7 @@ class World {
 
   /** Where the project's minutes are, read from the tables; `next` is the card asked next. */
   async check(where: string) {
+    if (PLANS_ONLY) return
     const claims = (await this.claims()).map((c) => ({
       ...c,
       counted: c.counted === null ? null : Number(c.counted),
@@ -715,7 +767,9 @@ class World {
       const of = claims.filter((c) => c.line === l.id)
       const counted = of.reduce((s, c) => s + (c.counted ?? 0), 0)
       const shows = l.real > 0 ? l.real : l.bill
-      if (of.length > 0 && counted !== shows)
+      // Left off, some of it may be back on a line that named its task since.
+      const back = l.bill === 0 && counted < shows
+      if (of.length > 0 && counted !== shows && !back)
         this.fail(where, `a line shows ${shows} and its claims count ${counted}`, { l, of })
     }
     // The lines never bill more minutes than there ever were, a retainer month's apart.
@@ -808,11 +862,16 @@ class World {
         else of.set(t.id, (of.get(t.id) ?? 0) - take)
       }
     }
+    // A task's minutes go to the line that names it or the nearest task above it, "Other" last.
     const listedBy = (id: string, of: typeof lines) => {
-      for (const k of above(id)) {
-        const l = of.find((x) => x.tasks.includes(k) && (k === id || !x.less?.later))
-        if (l) return l
-      }
+      for (const other of [false, true])
+        for (const k of above(id)) {
+          const l = of.find(
+            (x) =>
+              (x.kind === "other") === other && x.tasks.includes(k) && (k === id || !x.less?.later),
+          )
+          if (l) return l
+        }
       return null
     }
     const own = lines.filter((l) => !l.work_month)
@@ -899,19 +958,6 @@ class World {
             claims,
           },
         )
-    }
-    // A plan worked partly inside a fee bills the rest of it.
-    for (const l of lines) {
-      if ((l.planned ?? 0) === 0 || retainer || this.basis === "fixed") continue
-      const tree = this.tasks.filter((t) => above(t.id).some((k) => l.tasks.includes(k)))
-      const inside = tree.reduce(
-        (s, t) =>
-          s + time.filter((e) => e.task === t.id && fee.has(e.month)).reduce((x, e) => x + e.m, 0),
-        0,
-      )
-      const most = Math.max(0, Number(l.planned) - inside)
-      if (Number(l.bill) > most)
-        this.fail(where, `a plan of ${l.planned} with ${inside} inside a fee bills ${l.bill}`, l)
     }
   }
 

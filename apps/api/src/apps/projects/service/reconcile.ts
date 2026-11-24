@@ -365,7 +365,7 @@ async function lateWorkOf(tx: Tx, orgId: string, c: Omit<Context, "late">): Prom
     const byTime = new Set(
       [...ledger.rest.byTime].filter((id) => (ledger.billedTo.get(id) ?? "") < c.period.from),
     )
-    return { closed, closedElsewhere: [], months, after, byTime, outside: closedInFee(c) }
+    return { closed, closedElsewhere: [], months, after, byTime, outside: closedInFee(c, closed) }
   }
   return {
     closed: [],
@@ -379,16 +379,27 @@ async function lateWorkOf(tx: Tx, orgId: string, c: Omit<Context, "late">): Prom
 
 /**
  * The open minutes of tasks closed inside a retainer month, entered for days outside these months:
- * the task is the retainer's, so no card by the day or the hour lists it.
+ * the task is the retainer's, so no card by the day or the hour lists it. Work under a task this
+ * card lists is on its line.
  */
-function closedInFee(c: Omit<Context, "late">): Map<string, number> {
+function closedInFee(c: Omit<Context, "late">, closed: readonly string[]): Map<string, number> {
   const out = new Map<string, number>()
+  const listed = new Set([...c.inPeriod.map((r) => r.id), ...closed])
+  const parentOf = new Map(c.live.map((t) => [t.id, t.parentId]))
+  const under = (id: string) => {
+    const seen = new Set<string>()
+    for (let p = parentOf.get(id); p && !seen.has(p); p = parentOf.get(p)) {
+      if (listed.has(p)) return true
+      seen.add(p)
+    }
+    return false
+  }
   for (const r of c.rows) {
     if (r.completed_on === null || r.completed_on >= c.period.from) continue
     if (!inRetainerMonth(c.cards, r.completed_on) || c.ledger.rest.touched.has(r.id)) continue
     if (c.ledger.inPrice.has(r.id) || c.cards.some((b) => b.excluded.has(r.id))) continue
     const open = c.ledger.rest.open.get(r.id) ?? 0
-    if (open > 0) out.set(r.id, open)
+    if (open > 0 && !under(r.id)) out.set(r.id, open)
   }
   return out
 }

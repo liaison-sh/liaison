@@ -6770,7 +6770,7 @@ export async function agentMailReplyPreflight(
 const COMPOSE_ACCOUNT_REQUIRED =
   "accountId is required: call mail listAccounts and pass the id of the mailbox to send FROM (the user's own mailbox when they write as themselves, the shared org mailbox only for mail the org sends)."
 const COMPOSE_ACCOUNT_NOT_FOUND =
-  "No mailbox matches that accountId: call mail listAccounts and pass a real account id. Never invent one."
+  "No mailbox this person can use matches that accountId (the organization may have others): call mail listAccounts and pass a real account id. Never invent one."
 
 /**
  * Why no mailbox was found, when the caller may read none: a run whose scopes lack

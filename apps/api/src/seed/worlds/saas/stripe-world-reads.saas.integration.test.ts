@@ -41,6 +41,7 @@ import {
 } from "~/modules/demo/worlds/saas/payments/overlay"
 import { seedContext } from "~/seed/context"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
+import { grantRoleDimension } from "~/seed/factories/people/role-grants"
 import { type SeedDemoWorldResult, seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
 import {
   buildAttention,
@@ -998,6 +999,20 @@ describe("the seeded refund card, decided", () => {
     )
     if (!routine) throw new Error("the Failed payments routine was not seeded")
     const ownerUserId = routine.owner as string
+    // A mailbox to send from: an admin lets finance use the shared one, which the world does not.
+    const [mailbox] = await rows(
+      world.orgId,
+      sql`SELECT id::text AS id FROM app_mail.accounts
+           WHERE org_id = ${world.orgId} AND owner_type = 'org' ORDER BY created_at LIMIT 1`,
+    )
+    await grantRoleDimension(
+      world.orgId,
+      world.org.adminUserId,
+      "mail:inbox",
+      [["finance", [mailbox?.id as string]]],
+      "failed-payments-test",
+      () => {},
+    )
     const dimensionGrants = await resolveRoutineOwnerDimensionGrants(world.orgId, ownerUserId)
     const tried: unknown[] = []
     let staged: string | undefined

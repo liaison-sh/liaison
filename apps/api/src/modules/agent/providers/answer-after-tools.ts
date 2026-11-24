@@ -137,7 +137,7 @@ export function closesReply(toolName: string): boolean {
 /** A text this long that ends as an answer does is a whole answer, not a note before one. */
 const WHOLE_ANSWER_MIN_CHARS = 160
 /** What may stand after the last word of a sentence: emphasis, quotes, brackets, a sign. */
-const AFTER_SENTENCE = /[\s*_~`"'»”’)\]\p{Extended_Pictographic}\u{FE0F}\u{200D}]+$/u
+const AFTER_SENTENCE = /(?:[\s*_~`"'»”’)\]]|\p{Extended_Pictographic}|\u{FE0F}|\u{200D})+$/u
 const LIST_OR_TABLE_LINE = /^\s*(?:[-*+]\s|\d+[.)]\s|\|)/
 
 /** Ends on a sentence, a list, a table or a code block: never on a heading or an introduction. */
@@ -207,9 +207,7 @@ function answeredBeforeClosing(params: CallOptions): boolean {
     if (message?.role === "tool") continue
     if (message?.role !== "assistant") break
     const parts = Array.isArray(message.content) ? (message.content as PromptPart[]) : []
-    const gathers = parts.some(
-      (p) => p.type === "tool-call" && !closesReply(String(p.toolName)),
-    )
+    const gathers = parts.some((p) => p.type === "tool-call" && !closesReply(String(p.toolName)))
     if (gathers) break
     if (typeof message.content === "string" && message.content.trim().length > 0) wrote = true
     if (

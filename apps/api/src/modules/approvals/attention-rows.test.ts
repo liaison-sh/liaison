@@ -247,16 +247,33 @@ describe("a reminder of a waiting request", () => {
 describe("a feed full of reminders nothing is left of", () => {
   let reader = ""
 
+  /** Many unread notifications, each saying only what makes it its own. */
+  async function rows(count: number, own: (n: number) => Record<string, unknown>) {
+    for (let n = 1; n <= count; n++) {
+      await sql.unsafe(
+        insertSql("kernel.attention_events", {
+          org_id: ORG,
+          app: "kernel",
+          entity_type: "agent_notification",
+          kind: "agent_notification",
+          summary: "Row",
+          actor_type: "system",
+          digest_eligible_at: { raw: "now()" },
+          ...own(n),
+        } as Parameters<typeof insertSql>[1]),
+      )
+    }
+  }
+
   async function dead(count: number, spec: Spec): Promise<void> {
     const r = await request({ ...spec, notify: [reader] })
-    await sql`
-      INSERT INTO kernel.attention_events
-        (org_id, user_id, app, entity_type, entity_id, kind, urgency, summary, actor_type,
-         occurred_at, digest_eligible_at, metadata)
-      SELECT ${ORG}::uuid, ${reader}::uuid, 'kernel', 'agent_notification', gen_random_uuid()::text,
-             'agent_notification', 50, 'Waiting', 'system', now() - INTERVAL '2 days', now(),
-             jsonb_build_object('routedReminder', jsonb_build_object('approvalId', ${r.id}::text, 'hours', 24))
-        FROM generate_series(1, ${count})`
+    await rows(count, (n) => ({
+      user_id: reader,
+      entity_id: randomUUID(),
+      urgency: 50,
+      occurred_at: { raw: `now() - INTERVAL '2 days' - INTERVAL '${n} minutes'` },
+      metadata: JSON.stringify({ routedReminder: { approvalId: r.id, hours: 24 } }),
+    }))
   }
 
   it("hides no live row: the limit counts what the person sees", async () => {
@@ -290,13 +307,12 @@ describe("a feed full of reminders nothing is left of", () => {
 
   it("still lists at most its limit, the most urgent and the oldest first", async () => {
     const many = (await minimal.person(ORG, { name: "Fixture many" })).id
-    await sql`
-      INSERT INTO kernel.attention_events
-        (org_id, user_id, app, entity_type, entity_id, kind, urgency, summary, actor_type,
-         occurred_at, digest_eligible_at)
-      SELECT ${ORG}::uuid, ${many}::uuid, 'kernel', 'agent_notification', 'n' || g,
-             'agent_notification', 40, 'Row', 'agent', now() - make_interval(mins => g), now()
-        FROM generate_series(1, 230) g`
+    await rows(230, (n) => ({
+      user_id: many,
+      entity_id: `n${n}`,
+      urgency: 40,
+      occurred_at: { raw: `now() - INTERVAL '${n} minutes'` },
+    }))
     const r = await request({ notify: [many] })
     await reminder(r.id, many)
     await minimal.grantScope(many, "projects:approve")

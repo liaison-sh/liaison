@@ -332,7 +332,10 @@ describe("a whole answer closed by its next steps is the end of the turn", () =>
       "\n\n## What I can do next",
       " I will now lay out the options",
     ]) {
-      const { result } = run([textThenCallStep(ANSWER + end, SUGGEST), textStep("The options are ...")])
+      const { result } = run([
+        textThenCallStep(ANSWER + end, SUGGEST),
+        textStep("The options are ..."),
+      ])
       expect(await allText(result)).toBe(`${ANSWER}${end}The options are ...`)
     }
   })
@@ -340,7 +343,7 @@ describe("a whole answer closed by its next steps is the end of the turn", () =>
   it("ends on a sentence in bold or quotes, a list, a table, or a sentence of another script", async () => {
     for (const end of [
       " **Tell me which.**",
-      " She wrote \"send it.\"",
+      ' She wrote "send it."',
       "\n\n- Open the project\n- Ask an admin",
       "\n\n1. Open the project\n2. Ask an admin",
       "\n\n| Month | Hours |\n|---|---|\n| March | 44 |",
@@ -360,11 +363,9 @@ describe("a whole answer closed by its next steps is the end of the turn", () =>
   })
 
   it("never ends a run that owes a structured result", async () => {
-    const { model, result } = run(
-      [textThenCallStep(ANSWER, SUGGEST), textStep("Filed.")],
-      [],
-      { finalize: tool({ description: "result", inputSchema: z.object({}) }) },
-    )
+    const { model, result } = run([textThenCallStep(ANSWER, SUGGEST), textStep("Filed.")], [], {
+      finalize: tool({ description: "result", inputSchema: z.object({}) }),
+    })
     expect(await allText(result)).toBe(`${ANSWER}Filed.`)
     expect(model.doStreamCalls.length).toBe(2)
   })

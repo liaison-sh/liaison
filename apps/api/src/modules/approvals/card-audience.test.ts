@@ -44,6 +44,26 @@ const person = async (scopes: string[]): Promise<UserContext> => {
   return { actorType: "user", userId: id, orgId: w.orgId, scopes, dimensionGrants: {} }
 }
 
+/** A request both people may decide, waiting for more than a day. */
+const requestRow = (id: string, tool: string, params: unknown, summary: unknown) => ({
+  id,
+  org_id: w.orgId,
+  handle: `request-${id.slice(0, 8)}`,
+  thread_id: threadId,
+  originating_thread_id: threadId,
+  tool_name: tool,
+  tool_params: JSON.stringify(params),
+  current_payload: JSON.stringify(params),
+  approve_scope: "invoicing:approve",
+  expires_at: { raw: "now() + INTERVAL '3 days'" },
+  created_at: { raw: "now() - INTERVAL '25 hours'" },
+  notify_user_ids: `{${decider.userId},${reader.userId}}`,
+  requested_by: w.userId,
+  status: "pending",
+  summary: JSON.stringify(summary),
+  metadata: JSON.stringify({ originRoutineId: randomUUID() }),
+})
+
 beforeAll(async () => {
   await acquireTestLock()
   const orgId = (await createTestOrg()).id
@@ -75,8 +95,7 @@ beforeAll(async () => {
       TOOL,
     ),
   )
-  const thread = await minimal.thread(w.orgId, w.userId, { title: "Audience fixtures" })
-  threadId = thread
+  threadId = await minimal.thread(w.orgId, w.userId, { title: "Audience fixtures" })
   step = await withRlsContext({ ...w.actor, scopes: ["*"] }, (tx) =>
     generateApprovalSummary(
       w.orgId,
@@ -90,23 +109,8 @@ beforeAll(async () => {
   request = randomUUID()
   await sql.unsafe(
     insertSql("kernel.approval_requests", {
-      id: request,
-      org_id: w.orgId,
-      handle: `request-${request.slice(0, 8)}`,
-      thread_id: thread,
-      originating_thread_id: thread,
-      tool_name: TOOL,
-      tool_params: JSON.stringify(params),
-      current_payload: JSON.stringify(params),
-      approve_scope: "invoicing:approve",
-      expires_at: { raw: "now() + INTERVAL '3 days'" },
-      created_at: { raw: "now() - INTERVAL '25 hours'" },
-      notify_user_ids: `{${decider.userId},${reader.userId}}`,
+      ...requestRow(request, TOOL, params, summary),
       route_person_id: reader.userId,
-      requested_by: w.userId,
-      status: "pending",
-      summary: JSON.stringify(summary),
-      metadata: JSON.stringify({ originRoutineId: randomUUID() }),
     }),
   )
 }, 120_000)
@@ -163,18 +167,17 @@ describe("a record of another app, on a request two people may decide", () => {
 
   it("is named by the last step of a sequence only to who may read it", async () => {
     const bundle = randomUUID()
-    await sql`
-      INSERT INTO kernel.approval_requests
-        (id, org_id, handle, thread_id, originating_thread_id, tool_name, tool_params,
-         current_payload, approve_scope, expires_at, notify_user_ids, requested_by, status, summary,
-         bundle_id, bundle_position, depends_on_id)
-      SELECT CASE WHEN step = 0 THEN ${bundle}::uuid ELSE gen_random_uuid() END, org_id,
-             'step-' || step || handle, thread_id, originating_thread_id, 'projects:archive',
-             tool_params, current_payload, approve_scope, expires_at, notify_user_ids, requested_by,
-             'pending', ${JSON.stringify(step)}::text::jsonb, ${bundle}::uuid, step,
-             CASE WHEN step = 1 THEN ${bundle}::uuid END
-        FROM kernel.approval_requests, generate_series(0, 1) step
-       WHERE id = ${request}::uuid ORDER BY step`
+    const last = randomUUID()
+    for (const [position, id] of [bundle, last].entries()) {
+      await sql.unsafe(
+        insertSql("kernel.approval_requests", {
+          ...requestRow(id, "projects:archive", { id: taskId }, step),
+          bundle_id: bundle,
+          bundle_position: position,
+          depends_on_id: position === 0 ? null : bundle,
+        }),
+      )
+    }
     const title = async (who: UserContext) =>
       withRlsContext(who, async (tx) => {
         const home = await computeApprovalAttentionItems(tx, w.orgId, who.userId)

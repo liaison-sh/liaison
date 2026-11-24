@@ -34,6 +34,7 @@ import { issueCode, issueProof, pausedUntil, takeCodeSend } from "./codes"
 import {
   type ActionRow,
   cleanTyped,
+  copyStateFromSend,
   deadFrameBody,
   decideClientAction,
   findByTokenHash,
@@ -264,10 +265,14 @@ clientActionPublicRoutes.post(
       // A signer's last page says where their copy stands: their own entry only.
       if (frameOf(row, ctx.match.via) !== "signed") return dead.res
       const signedView = env.LIAISON_DEMO_MODE ? "down" : await viewOf(row)
+      const said = signedView === "down" ? undefined : signedView.copyStates?.[row.id]
       return caJson(200, {
         ...deadFrameBody(row, "signed"),
         copy:
-          signedView === "down" ? "on_its_way" : (signedView.copyStates?.[row.id] ?? "on_its_way"),
+          said ??
+          (await inClientActionOrg(row, "client-action-copy-state", (tx) =>
+            copyStateFromSend(tx, row),
+          )),
         copy_to: maskEmail(row.invited_email),
       })
     }
@@ -469,6 +474,7 @@ clientActionPublicRoutes.post(
       await sendCodeMail({
         orgId: row.org_id,
         to: row.invited_email,
+        name: row.invited_name,
         mailId,
         title: view.title,
         kind: row.kind,

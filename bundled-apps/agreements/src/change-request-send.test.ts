@@ -375,6 +375,193 @@ describe("change_request_send", () => {
     expect(ctx.calls.emitted).not.toContain("agreement:sent")
   })
 
+  /** Approved, with what the card's check pinned. */
+  async function send(
+    ctx: ReturnType<typeof ctxFor>,
+    db: Db,
+    p: ReturnType<typeof params>,
+  ): Promise<{ status: string; error?: { code: string; message: string }; change_request?: Row }> {
+    const pre = (await changeRequestSendPreflight(ctxFor(db), p)) as {
+      pinnedParams?: Record<string, unknown>
+      error?: { code: string; message: string }
+    }
+    if (!pre.pinnedParams) return { status: "error", error: pre.error }
+    return (await changeRequestSend(ctx, { ...p, ...pre.pinnedParams })) as Awaited<
+      ReturnType<typeof send>
+    >
+  }
+  /** The kernel lists one open link on these versions. */
+  function linked(ctx: ReturnType<typeof ctxFor>, versions: () => string[]) {
+    ctx.client_actions_record = async (p) =>
+      "target_id" in p
+        ? {
+            status: "ok",
+            links: versions().includes(p.target_id)
+              ? [
+                  {
+                    id: "ca-1",
+                    invited_name: "Pauline Marlin",
+                    sign_order: null,
+                    state: "open",
+                    send_size: 1,
+                  },
+                ]
+              : [],
+          }
+        : { status: "ok" }
+    return ctx
+  }
+  const killed = (ctx: ReturnType<typeof ctxFor>, at: "mint" | "reply") => {
+    const die = async () => {
+      throw new Error("the run was killed")
+    }
+    if (at === "mint") ctx.client_actions_mint = die
+    else ctx.executeTool = die as never
+    return ctx
+  }
+
+  it("a run killed before its link, asked again, takes up the change request it wrote", async () => {
+    const { db, parentId, versionId } = await world()
+    const p = params(parentId, versionId)
+    await send(killed(ctxFor(db, { approved: true }), "mint"), db, p).catch(() => {})
+    expect(changeRequests(db).map((r) => r.status)).toEqual(["draft"])
+    const ctx = ctxFor(db, { approved: true })
+    const out = await send(ctx, db, p)
+    expect(out.status).toBe("ok")
+    expect(changeRequests(db).map((r) => [r.number, r.status])).toEqual([["CR-1", "sent"]])
+    expect((db.tables.get("agreement_versions") ?? []).filter((v) => v.sha256)).toHaveLength(2)
+    expect(ctx.calls.replies).toHaveLength(1)
+    // And once it is out, the same mail is not answered by another.
+    const again = await send(ctxFor(db, { approved: true }), db, p)
+    expect(again.error?.code).toBe("CHANGE_REQUEST_ALREADY_SENT")
+    expect(again.error?.message).toContain("CR-1")
+    expect(changeRequests(db)).toHaveLength(1)
+  })
+
+  it("asked again with other terms, the one it wrote is set aside, and only the new one is sent", async () => {
+    for (const other of [
+      { hours_minutes: 1200 },
+      { rate_minor: "12000" },
+      { title: "Two-factor sign-in" },
+      { work: ["Something else"] },
+    ]) {
+      const { db, parentId, versionId } = await world()
+      await send(
+        killed(ctxFor(db, { approved: true }), "mint"),
+        db,
+        params(parentId, versionId),
+      ).catch(() => {})
+      const ctx = ctxFor(db, { approved: true })
+      const out = await send(ctx, db, params(parentId, versionId, other))
+      expect(out.status).toBe("ok")
+      expect(changeRequests(db).map((r) => [r.number, r.status])).toEqual([
+        ["CR-1", "voided"],
+        ["CR-2", "sent"],
+      ])
+      expect(ctx.calls.revokes).toEqual([expect.objectContaining({ reason: "sender_voided" })])
+      expect(ctx.calls.replies).toHaveLength(1)
+    }
+  })
+
+  it("a run killed after its link is named, and nothing is sent again, by this mail or another", async () => {
+    const { db, parentId, versionId } = await world()
+    const p = params(parentId, versionId)
+    await send(killed(ctxFor(db, { approved: true }), "reply"), db, p).catch(() => {})
+    const versions = () =>
+      (db.tables.get("agreement_versions") ?? [])
+        .filter((v) => v.agreement_id === changeRequests(db)[0]?.id)
+        .map((v) => v.id)
+    for (const over of [{}, { hours_minutes: 1200 }, { mail_message_id: "mail-2" }]) {
+      const pre = (await changeRequestSendPreflight(linked(ctxFor(db), versions), {
+        ...p,
+        ...over,
+      })) as { error: { code: string; message: string } }
+      expect(pre.error.code).toBe("CHANGE_REQUEST_ALREADY_SENT")
+      expect(pre.error.message).toContain("CR-1")
+      expect(pre.error.message).toContain("whether its reply left is not known")
+    }
+    expect(changeRequests(db)).toHaveLength(1)
+  })
+
+  it("a link the killed run made while this one asked is never mailed or answered twice", async () => {
+    const { db, parentId, versionId } = await world()
+    const p = params(parentId, versionId)
+    await send(killed(ctxFor(db, { approved: true }), "mint"), db, p).catch(() => {})
+    const ctx = ctxFor(db, {
+      approved: true,
+      mint: {
+        status: "ok",
+        already_sent: true,
+        group_id: "g",
+        actions: [{ id: "ca-1", status: "open" }],
+      },
+    })
+    const out = await send(ctx, db, p)
+    expect(out.error?.code).toBe("CHANGE_REQUEST_ALREADY_SENT")
+    expect(ctx.calls.replies).toEqual([])
+    expect(ctx.calls.revokes).toEqual([])
+    expect(changeRequests(db).map((r) => r.status)).toEqual(["draft"])
+  })
+
+  it("set aside while its own run still worked, it sends no reply and its link is withdrawn", async () => {
+    const { db, parentId, versionId } = await world()
+    const ctx = ctxFor(db, { approved: true })
+    ctx.client_actions_mint = async () => {
+      await db.update("agreements", String(changeRequests(db)[0]?.id), { status: "voided" })
+      return { status: "ok", group_id: "g", actions: [{ id: "ca-1", status: "open" }] }
+    }
+    const out = await send(ctx, db, params(parentId, versionId))
+    expect(out.error?.code).toBe("CHANGE_REQUEST_CLOSED")
+    expect(ctx.calls.replies).toEqual([])
+    expect(ctx.calls.revokes).toHaveLength(1)
+  })
+
+  it("two runs at the same moment: the one whose key is taken sends nothing", async () => {
+    const { db, parentId, versionId } = await world()
+    const ctx = ctxFor(db, { approved: true })
+    const p = params(parentId, versionId)
+    const pre = (await changeRequestSendPreflight(ctxFor(db), p)) as {
+      pinnedParams: Record<string, unknown>
+    }
+    const batch = db.batch.bind(db)
+    ctx.db = {
+      ...db,
+      batch: async (spec: Parameters<typeof batch>[0]) => {
+        await batch(spec)
+        throw new Error("duplicate key value violates unique constraint")
+      },
+    } as never
+    const out = (await changeRequestSend(ctx, { ...p, ...pre.pinnedParams })) as {
+      error: { code: string }
+    }
+    expect(out.error.code).toBe("CHANGE_REQUEST_ALREADY_SENT")
+    expect(ctx.calls.mints).toEqual([])
+    expect(ctx.calls.replies).toEqual([])
+  })
+
+  it("a change request declined or voided leaves its mail free for another", async () => {
+    for (const status of ["declined", "voided"]) {
+      const { db, parentId, versionId } = await world()
+      const p = params(parentId, versionId)
+      expect((await send(ctxFor(db, { approved: true }), db, p)).status).toBe("ok")
+      await db.update("agreements", String(changeRequests(db)[0]?.id), { status })
+      expect((await send(ctxFor(db, { approved: true }), db, p)).status).toBe("ok")
+      expect(changeRequests(db).map((r) => r.status)).toEqual([status, "sent"])
+    }
+  })
+
+  it("a reply that fails after the job marked it sent leaves it a draft again", async () => {
+    const { db, parentId, versionId } = await world()
+    const ctx = ctxFor(db, { approved: true })
+    ctx.executeTool = (async () => {
+      await db.update("agreements", String(changeRequests(db)[0]?.id), { status: "sent" })
+      return { status: "error", error: { code: "NO_MAILBOX", message: "No mailbox." } }
+    }) as never
+    const out = await send(ctx, db, params(parentId, versionId))
+    expect(out.error?.code).toBe("NO_MAILBOX")
+    expect(changeRequests(db).map((r) => r.status)).toEqual(["draft"])
+  })
+
   it("an approved call that no longer matches its card's check sends nothing", async () => {
     const { db, parentId, versionId } = await world()
     const ctx = ctxFor(db, { approved: true })
@@ -416,6 +603,41 @@ describe("change_request_send", () => {
 })
 
 describe("the send card", () => {
+  it("the send card names its document and version, and says when two signers share an address", async () => {
+    const card = await summarizeAgreementSend({
+      version_id: "v",
+      sha256: SHA,
+      signers: [
+        { email: "couple@example.org", name: "Anne" },
+        { email: "Couple@example.org", name: "Jean" },
+      ],
+      document: { number: "AG-2027-011", title: "Mutual NDA", version: 2 },
+    })
+    expect(card.title).toBe('Send AG-2027-011 "Mutual NDA", version 2 to 2 signers')
+    expect(card.lines[0]).toBe('Document: AG-2027-011 "Mutual NDA", version 2')
+    expect(card.lines.join("\n")).toContain("Two signers share couple@example.org")
+    const bare = await summarizeAgreementSend({ sha256: SHA, signers: [{ email: "a@b.example" }] })
+    expect(bare.title).toBe("Send a frozen agreement version to 1 signer")
+    expect(bare.lines.join("\n")).not.toContain("share")
+  })
+
+  it("the card that puts another signer in a withdrawn one's place says who is replaced", async () => {
+    const card = await summarizeAgreementSend({
+      version_id: "v",
+      sha256: SHA,
+      signers: [{ email: "pat@example.org", name: "Pat Proxy" }],
+      replaces: "ca-1",
+      replaced: { name: "Anne Morel", email: "anne@maison-morel.example" },
+      document: { number: "AG-2027-011", title: "Mutual NDA", version: 2 },
+    })
+    expect(card.title).toBe(
+      'Put another signer in place of Anne Morel on AG-2027-011 "Mutual NDA", version 2',
+    )
+    const lines = card.lines.join("\n")
+    expect(lines).toContain("In place of: Anne Morel <anne@maison-morel.example>, withdrawn")
+    expect(lines).toContain("Signer 1: Pat Proxy <pat@example.org>")
+  })
+
   it("a signer named by contact only reads as their address, never as a contact", async () => {
     const card = await summarizeAgreementSend({
       signers: [{ contact_id: "c-1" }],

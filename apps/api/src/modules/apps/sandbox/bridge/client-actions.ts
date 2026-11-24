@@ -9,14 +9,22 @@
  *    `clientActionTargets`, and only while the handler runs under a person's
  *    decision on one of the app's own gated, never auto-approved tools (an
  *    approval, or that person's own click). Under "one after the other" only the
- *    first signer gets a link; the others wait with no token and no mail.
+ *    first signer gets a link; the others wait with no token and no mail. All of
+ *    its signers or none; the same send again answers `already_sent` with the
+ *    links it made, and mails nobody. The app hears of the links it made by
+ *    `kernel/client_action:links_made`, even when this run was cut off.
+ *  - `client_actions_mint({ remind })`: a fresh link by mail for each named open
+ *    one; a signer mailed again minutes ago is answered in `recently_mailed`.
  *  - `client_actions_mint({ next_turn_after })`: the next waiting signer of an
  *    already approved send, once every signer before them signed. No approval
  *    of its own: the send was approved, and the kernel checks the order.
+ *  - `client_actions_mint({ replace_signer })`: another person in the place and turn of one
+ *    withdrawn signer of a send that stands; refuses anyone who already holds a link of it.
  *  - `client_actions_record({ id })`: what a decided action recorded (read-only).
  *  - `client_actions_revoke({ target_type, target_id, reason })`: every open
  *    action of one target, in one transaction. "replaced" needs no decision (a
- *    newer version kills the old links); any other reason does, like a send.
+ *    newer version kills the old links), nor does "sender_voided" from the app's own
+ *    event handler (a link written beside the void); any other reason does, like a send.
  *  - `client_actions_signed_copy({ target_type, target_id, create, archive_ids, readers_only })`:
  *    the Knowledge copy of a signed target, written and read back as the member who
  *    sent it for signature (modules/client-actions/signed-copy.ts). Only for a
@@ -33,6 +41,7 @@
  * message crosses the sandbox boundary.
  */
 
+import { rootLogger } from "~/lib/logger"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import {
   ClientActionError,
@@ -40,19 +49,24 @@ import {
   EXPIRY_DAYS,
   listTargetClientActions,
   type MintResult,
-  mintClientAction,
+  mintClientActionSend,
   newLinkAfter,
   openNextSignerTurn,
+  type RemindedLink,
   readClientActionRecord,
   remindClientActions,
-  revokeClientAction,
   revokeTargetClientActions,
+  type SendAction,
   signerAddresses,
+  signInPlaceOf,
 } from "~/modules/client-actions/mint"
+import type { MailDecision } from "~/modules/client-actions/owed-mail"
 import { signingUnavailable } from "~/modules/client-actions/signing-state"
 import { type ClientActionKind, declaredTarget } from "~/modules/client-actions/targets"
 import { describeStop, evaluateSendGuard, isPinnedSendGuard } from "~/modules/mail/send-guard"
 import { hasScope } from "~/modules/permissions/permissions"
+
+const log = rootLogger.child({ module: "client-actions-bridge" })
 
 /** The most signers one send may carry. */
 export const MAX_SIGNERS_PER_SEND = 40
@@ -92,7 +106,7 @@ interface SendParams {
   send_guard?: unknown
 }
 
-function actionOut(r: MintResult, signOrder: number | null) {
+function actionOut(r: MintResult | SendAction, signOrder: number | null) {
   return {
     id: r.id,
     status: r.status,
@@ -177,6 +191,13 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
     return required.length > 0 && required.every((s) => hasScope(s, own))
   }
 
+  /**
+   * The app's own event handler: a link made beside a void is withdrawn with the void's own reason.
+   * The handler could withdraw it as replaced already; no tool, job or agent run is one.
+   */
+  const ownEventHandler = (): boolean =>
+    bridgeOptions?.jobsAttributedToSystem === true && !approvalContext && !bridgeRoutineId
+
   const actorUserId = (): string | null => (UUID.test(userId) ? userId : null)
 
   /**
@@ -199,6 +220,12 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
       approved: approvalContext !== undefined && approvalContext !== null,
       named,
     })
+
+  /** What a decided mail goes on, for one that leaves later (client-actions/owed-mail.ts). */
+  const mailDecision = (guard: unknown): MailDecision => ({
+    guard: isPinnedSendGuard(guard) ? guard : null,
+    approvalId: approvalContext?.approvalRequestId ?? null,
+  })
 
   /** A pinned check must name every signer's address and still clear, or no link is made. */
   async function guardStops(
@@ -257,12 +284,16 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
       orgId,
       targetApp: appName,
       ids,
+      mailDecision: mailDecision(guard),
       ...(guard !== undefined ? { check: (emails: string[]) => guardHolds(guard, emails) } : {}),
     })
-    if (!Array.isArray(reminded)) return refuse(reminded.stopped.code, reminded.stopped.message)
+    if ("stopped" in reminded) return refuse(reminded.stopped.code, reminded.stopped.message)
+    const named = (links: RemindedLink[]) =>
+      links.map((r) => ({ id: r.id, invited_name: r.invitedName }))
     return JSON.stringify({
       status: "ok",
-      reminded: reminded.map((r) => ({ id: r.id, invited_name: r.invitedName })),
+      reminded: named(reminded.reminded),
+      recently_mailed: named(reminded.recentlyMailed),
     })
   }
 
@@ -307,6 +338,62 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
     }
   }
 
+  /** Another person in the place of a withdrawn signer of a send that stands (signInPlaceOf). */
+  async function replaceSigner(p: {
+    after?: string
+    signer?: SendSigner
+    company_id?: string | null
+    expires_in_days?: number
+    message?: string | null
+    send_guard?: unknown
+  }): Promise<string> {
+    if (typeof p.after !== "string" || !UUID.test(p.after) || !p.signer)
+      return refuse(
+        "INVALID_INPUT",
+        "replace_signer takes the withdrawn client action's id (after) and the signer.",
+      )
+    const days = p.expires_in_days ?? 14
+    if (!(EXPIRY_DAYS as readonly number[]).includes(days))
+      return refuse("INVALID_EXPIRY", "A link lasts 7, 14 or 30 days. Nothing was sent.")
+    if (!(await personDecided()))
+      return refuse(
+        "MINT_NEEDS_A_PERSON",
+        "A signer is replaced only inside a person's decision on this app's send. Nothing was sent.",
+      )
+    if (p.send_guard !== undefined) {
+      const stop = await guardStops(p.send_guard, [p.signer])
+      if (stop) return refuse(stop.code, stop.message)
+    }
+    try {
+      const r = await signInPlaceOf({
+        orgId,
+        targetApp: appName,
+        afterActionId: p.after,
+        signer: {
+          contactId: p.signer.contact_id ?? null,
+          email: p.signer.email ?? null,
+          name: p.signer.name ?? null,
+        },
+        companyId: p.company_id ?? null,
+        message: p.message ?? null,
+        expiresInDays: days as (typeof EXPIRY_DAYS)[number],
+        createdByUserId: actorUserId(),
+        createdByAgentId: bridgeActingAgentId ?? null,
+        approvedByUserId: await decidingPerson(),
+        mailDecision: mailDecision(p.send_guard),
+      })
+      return JSON.stringify({
+        status: "ok",
+        replaced_id: r.replacedId,
+        action: actionOut(r, null),
+      })
+    } catch (err) {
+      if (err instanceof ClientActionError)
+        return refuse(err.code, `${err.message}. Nothing was sent.`)
+      throw err
+    }
+  }
+
   async function mintSend(p: SendParams): Promise<string> {
     const target = declaredTarget(orgId, appName, p.target_type)
     if (!target)
@@ -338,48 +425,51 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
       const stop = await guardStops(p.send_guard, signers)
       if (stop) return refuse(stop.code, stop.message)
     }
-    const sequential = p.order === "sequential"
-    const groupId = crypto.randomUUID()
-    const approvedBy = await decidingPerson()
-    const made: Array<ReturnType<typeof actionOut>> = []
     try {
-      for (const [i, s] of signers.entries()) {
-        const signOrder = sequential ? i + 1 : null
-        const r = await mintClientAction({
-          orgId,
-          kind: p.kind,
-          targetApp: appName,
-          targetType: p.target_type,
-          targetId: p.target_id,
-          targetSha256: p.sha256,
+      const sent = await mintClientActionSend({
+        orgId,
+        kind: p.kind,
+        targetApp: appName,
+        targetType: p.target_type,
+        targetId: p.target_id,
+        targetSha256: p.sha256,
+        companyId: p.company_id ?? null,
+        expiresInDays: p.expires_in_days as (typeof EXPIRY_DAYS)[number],
+        sequential: p.order === "sequential",
+        signers: signers.map((s) => ({
           contactId: s.contact_id ?? null,
-          companyId: p.company_id ?? null,
-          invitedEmail: s.email ?? null,
-          invitedName: s.name ?? null,
-          expiresInDays: p.expires_in_days as (typeof EXPIRY_DAYS)[number],
-          signOrder,
-          groupId,
-          waitingTurn: sequential && i > 0,
-          visibleTo: p.visible_to ?? null,
-          requiredPhrase: p.required_phrase ?? null,
-          message: p.message ?? null,
-          createdByUserId: actorUserId(),
-          createdByAgentId: bridgeActingAgentId ?? null,
-          approvedByUserId: approvedBy,
-        })
-        made.push(actionOut(r, signOrder))
-      }
+          email: s.email ?? null,
+          name: s.name ?? null,
+        })),
+        visibleTo: p.visible_to ?? null,
+        requiredPhrase: p.required_phrase ?? null,
+        message: p.message ?? null,
+        createdByUserId: actorUserId(),
+        createdByAgentId: bridgeActingAgentId ?? null,
+        approvedByUserId: await decidingPerson(),
+        mailDecision: mailDecision(p.send_guard),
+      })
+      return JSON.stringify({
+        status: "ok",
+        group_id: sent.groupId,
+        ...(sent.alreadySent ? { already_sent: true } : {}),
+        actions: sent.actions.map((a) => ({ ...actionOut(a, a.signOrder), mail: a.mail })),
+      })
     } catch (err) {
-      // A send is all of its signers or none: what was made before the failure is withdrawn.
-      for (const m of made) {
-        if (m.deduped) continue
-        await revokeClientAction({ orgId, id: m.id, reason: "withdrawn", byUserId: actorUserId() })
-      }
       if (err instanceof ClientActionError)
         return refuse(err.code, `${err.message}. Nothing was sent.`)
-      throw err
+      // All of its links or none were written: a second send makes only what is missing.
+      // The driver's error alone: the query error around it carries the signers' addresses.
+      const cause = err instanceof Error && err.cause ? err.cause : err
+      log.error(
+        { err: cause, orgId, app: appName, targetId: p.target_id },
+        "a send's links were not made",
+      )
+      return refuse(
+        "SEND_NOT_CONFIRMED",
+        "The links could not be written. Send it again: nobody is asked twice.",
+      )
     }
-    return JSON.stringify({ status: "ok", group_id: groupId, actions: made })
   }
 
   return {
@@ -389,10 +479,12 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         next_turn_after?: string
         remind?: { ids?: unknown; send_guard?: unknown }
         new_link?: { after?: string; email?: string | null; expires_in_days?: number }
+        replace_signer?: Parameters<typeof replaceSigner>[0]
       }
       if (p.send) return mintSend(p.send)
       if (p.remind) return remind(p.remind)
       if (p.new_link) return newLink(p.new_link)
+      if (p.replace_signer) return replaceSigner(p.replace_signer)
       if (typeof p.next_turn_after === "string" && UUID.test(p.next_turn_after)) {
         try {
           const out = await openNextSignerTurn({
@@ -412,7 +504,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
       }
       return refuse(
         "INVALID_INPUT",
-        "client_actions_mint takes { send }, { next_turn_after }, { remind } or { new_link }.",
+        "client_actions_mint takes { send }, { next_turn_after }, { remind }, { new_link } or { replace_signer }.",
       )
     },
 
@@ -450,6 +542,8 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
             replaced: l.replaced,
             revoke_reason: l.revokeReason,
             signer_user_id: l.signerUserId,
+            send_size: l.sendSize,
+            mail: l.mail,
           })),
         })
       }
@@ -519,7 +613,8 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         )
       if (typeof p.target_id !== "string" || !UUID.test(p.target_id))
         return refuse("INVALID_INPUT", "client_actions_revoke takes a target_id.")
-      if (reason !== "replaced" && !(await personDecided()))
+      const beside = reason === "sender_voided" && ownEventHandler()
+      if (reason !== "replaced" && !beside && !(await personDecided()))
         return refuse(
           "REVOKE_NEEDS_A_PERSON",
           "Links are withdrawn only inside a person's decision on this app's tool. Nothing was withdrawn.",

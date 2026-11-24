@@ -20,6 +20,7 @@
       "eyebrow": "{{org}}",
       "heading": "{{code}}",
       "body": "You are about to {{verb}} \"{{title}}\". Enter this code on the page to continue. It works for 10 minutes.",
+      "for": "This code is for {{name}} only.",
       "safety": "Nobody from {{org}} will ask you for this code. Do not reply to this email.",
       "footer": "If you did not ask for a code, you can ignore this email."
     },
@@ -277,7 +278,8 @@
       "waiting_for_others": "Your copy waits for the other signers. When everyone has signed, the signed PDF and its proof of signature go to {{email}}.",
       "on_its_way": "Everyone has signed. The signed PDF and its proof of signature are on their way to {{email}}. Keep that email: it is your own proof, separate from {{org}}'s systems.",
       "sent": "The signed PDF and its proof of signature were sent to {{email}}. Keep that email: it is your own proof, separate from {{org}}'s systems.",
-      "not_sent": "Your copy could not be sent to {{email}}. {{org}} has been told."
+      "not_sent": "Your copy could not be sent to {{email}}. {{org}} has been told.",
+      "not_completed": "You signed, but not everyone did: the document was declined or withdrawn, so nothing is agreed and there is no signed copy. {{org}} can send it again."
     }
   }
 }

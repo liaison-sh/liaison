@@ -22,6 +22,7 @@ import { isManagedEdition } from "~/lib/edition"
 import { appsLogger as log } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { describeDbError } from "~/lib/transient-db-error"
+import { templateRunReadGaps } from "~/modules/agent/routines/routine-run-reads"
 import { derivedSinkReadScope } from "~/modules/agent/scopes/taint-read-scopes"
 import { normalizeReconcileOutcome } from "~/modules/approvals/reconcile-outcome"
 import {
@@ -3777,6 +3778,14 @@ async function registerSingleApp(
             ...(t.flow ? { flow: t.flow } : {}),
             ...(t.eventFilter ? { eventFilter: t.eventFilter } : {}),
           })
+          // Never a refusal: the app installs, and whoever reads the log sees why its routine
+          // will stage nothing.
+          const gaps = templateRunReadGaps(t)
+          if (gaps.length > 0)
+            log.warn(
+              { app: desc.name, routine: key, gaps },
+              "a routine template names tools whose reads it does not carry",
+            )
         }
       }
       if (desc.skills) {

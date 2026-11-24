@@ -440,6 +440,26 @@ describe("an app's send through the bridge", () => {
             JSON.parse(r) as { status: string; error?: { code: string }; revoked_ids?: string[] },
         )
     expect((await revoke(false, "sender_voided")).error?.code).toBe("REVOKE_NEEDS_A_PERSON")
+    // The app's own event handler closes a link made beside a void; it withdraws for no other reason,
+    // and neither a job nor a tool run is one.
+    const asRun = async (bridgeOptions: object, reason: string) =>
+      JSON.parse(
+        await createClientActionsMethods({
+          appName: kit.targetApp,
+          orgId: kit.w.orgId,
+          userId: kit.w.admin.userId,
+          actorType: "system",
+          bridgeOptions,
+        } as unknown as BridgeContext).client_actions_revoke(
+          JSON.stringify({ target_type: kit.targetType, target_id: crypto.randomUUID(), reason }),
+        ),
+      ) as { status: string; error?: { code: string } }
+    const handler = { jobsAttributedToSystem: true }
+    expect((await asRun(handler, "sender_voided")).status).toBe("ok")
+    for (const reason of ["withdrawn", "access_ended", "person_removed"])
+      expect((await asRun(handler, reason)).error?.code).toBe("REVOKE_NEEDS_A_PERSON")
+    for (const run of [{ currentJob: { name: "j" } }, { origin: "human-ui" }])
+      expect((await asRun(run, "sender_voided")).error?.code).toBe("REVOKE_NEEDS_A_PERSON")
     const replaced = await revoke(false, "replaced")
     expect(replaced.revoked_ids).toHaveLength(2)
     const left = await sql`

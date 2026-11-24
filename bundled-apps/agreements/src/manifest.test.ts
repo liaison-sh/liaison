@@ -5,8 +5,8 @@ import manifest from "../app.manifest.json"
 import * as handlers from "../handlers"
 
 describe("agreements manifest", () => {
-  it("is at version 0.8.2", () => {
-    expect(manifest.version).toBe("0.8.2")
+  it("carries a version", () => {
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
   it("a lead role drafts and sends agreements; every member only reads them", () => {

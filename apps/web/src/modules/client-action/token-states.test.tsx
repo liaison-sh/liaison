@@ -138,6 +138,8 @@ describe("the twelve token states", () => {
           "Everyone has signed. The signed PDF and its proof of signature are on their way to j•••@client.example. Keep that email: it is your own proof, separate from Maison Alpha's systems.",
         sent: "The signed PDF and its proof of signature were sent to j•••@client.example. Keep that email: it is your own proof, separate from Maison Alpha's systems.",
         not_sent: "Your copy could not be sent to j•••@client.example. Maison Alpha has been told.",
+        not_completed:
+          "You signed, but not everyone did: the document was declined or withdrawn, so nothing is agreed and there is no signed copy. Maison Alpha can send it again.",
       },
       fr: {
         waiting_for_others:
@@ -147,6 +149,8 @@ describe("the twelve token states", () => {
         sent: "Le PDF signé et sa preuve de signature ont été envoyés à j•••@client.example. Gardez cet e-mail : c'est votre propre preuve, distincte des systèmes de Maison Alpha.",
         not_sent:
           "Votre copie n'a pas pu être envoyée à j•••@client.example. Maison Alpha a été informé.",
+        not_completed:
+          "Vous avez signé, mais pas tout le monde : le document a été refusé ou retiré, donc rien n'est convenu et il n'y a pas de copie signée. Maison Alpha peut l'envoyer de nouveau.",
       },
     }
     for (const lang of ["en", "fr"] as const) {

@@ -51,6 +51,9 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/modules/client-actions/mint.ts#replacedSql": {
     alias: `a table alias each caller passes as a literal ("g", "l", "a"); ${IDENT_FROM_CODE}`,
   },
+  "apps/api/src/modules/client-actions/mint.ts#mailFailedSql": {
+    alias: `a table alias each caller passes as a literal ("g", "l", "a"); ${IDENT_FROM_CODE}`,
+  },
   "apps/api/src/modules/cloud/storage-estimate.ts#measureSource": {
     "relOf(s)": "schemaRef of a table in the module's literal SOURCES list",
     's.columns.map((c) => `COALESCE(pg_column_size("${c}"), 0)`).join(" + ")':

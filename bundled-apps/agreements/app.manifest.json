@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.8.2",
+  "version": "0.8.5",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -281,6 +281,8 @@
           "required": false,
           "description": "The project's whole timebox in minutes, as last set from this agreement (its proposal, then each accepted change request)."
         },
+        "send_told_version_id": "uuid?",
+        "send_key": "text?",
         "effects_claim": "uuid?",
         "effects_claimed_at": "date?",
         "effects_task_id": "uuid?",
@@ -311,6 +313,16 @@
           "required": false,
           "description": "Text read from an imported PDF, kept as unverified: never the signed text."
         }
+      },
+      "constraints": {
+        "unique": [
+          {
+            "columns": [
+              "send_key"
+            ],
+            "where": "send_key IS NOT NULL AND status <> 'declined' AND status <> 'voided' AND status <> 'expired' AND status <> 'withdrawn'"
+          }
+        ]
       }
     },
     "agreement_shares": {
@@ -492,6 +504,10 @@
             "signed"
           ],
           "default": "frozen"
+        },
+        "answers_recorded": {
+          "type": "json",
+          "required": false
         },
         "change_note": "text?",
         "knowledge_document_id": "uuid?",
@@ -1830,6 +1846,7 @@
         "agreements:agreements:write"
       ],
       "handler": "agreementSendHandler",
+      "timeoutMs": 25000,
       "summarizer": "summarizeAgreementSend",
       "gated": true,
       "noAutoApprove": true,
@@ -1900,6 +1917,10 @@
             "type": "string",
             "maxLength": 200
           },
+          "replaces": {
+            "type": "string",
+            "description": "Only on a version already sent: the client_action_id of a withdrawn signer. The one signer named here signs in their place, in the same turn."
+          },
           "sendGuard": {
             "type": "object",
             "additionalProperties": true,
@@ -1907,6 +1928,16 @@
           },
           "guardKey": {
             "type": "string",
+            "description": "Set by the server; leave it out."
+          },
+          "document": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Set by the server; leave it out."
+          },
+          "replaced": {
+            "type": "object",
+            "additionalProperties": true,
             "description": "Set by the server; leave it out."
           }
         },
@@ -1919,7 +1950,9 @@
       "preflight": "agreementSendPreflightHandler",
       "pinnedParams": [
         "sendGuard",
-        "guardKey"
+        "guardKey",
+        "document",
+        "replaced"
       ],
       "approvalDedupeKeyParam": "guardKey"
     },
@@ -1940,6 +1973,7 @@
         "agreements:agreements:write"
       ],
       "handler": "changeRequestSendHandler",
+      "timeoutMs": 25000,
       "summarizer": "summarizeChangeRequestSend",
       "gated": true,
       "noAutoApprove": true,
@@ -2089,6 +2123,7 @@
         "agreements:agreements:write"
       ],
       "handler": "agreementReminderSendHandler",
+      "timeoutMs": 25000,
       "summarizer": "summarizeAgreementReminderSend",
       "preflight": "agreementReminderSendPreflightHandler",
       "gated": true,
@@ -2341,6 +2376,9 @@
   "events": {
     "subscribes": {
       "kernel/client_action:decided": "onClientActionDecidedHandler",
+      "agreement:voided": "onAgreementClosedHandler",
+      "agreement:updated": "onAgreementClosedHandler",
+      "kernel/client_action:links_made": "onLinksMadeHandler",
       "kernel/portal_user:access_ended": "onPortalAccessEndedHandler",
       "kernel/routine:create": "onRoutineCreatedHandler"
     },
@@ -2357,6 +2395,7 @@
       "agreement:knowledge_copy_not_made",
       "agreement:links_withdrawn",
       "agreement:renewal_not_rolled",
+      "agreement:send_unfinished",
       "evidence:mismatch",
       "evidence:timestamp_overdue",
       "evidence:copy_failed",
@@ -2375,6 +2414,7 @@
           "where": {
             "status": {
               "in": [
+                "draft",
                 "sent",
                 "partly_signed"
               ]
@@ -2604,6 +2644,16 @@
         "resolveWhen": {
           "field": "resolved",
           "equals": true
+        }
+      },
+      {
+        "event": "agreement:send_unfinished",
+        "kind": "agreements:agreement.send_unfinished",
+        "urgency": 70,
+        "summary": "{{data.number}}: {{data.why}}",
+        "recipients": {
+          "kind": "participants",
+          "path": "data.personIds"
         }
       },
       {

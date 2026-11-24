@@ -156,6 +156,7 @@ describe("a client action's link mail in a demo workspace", () => {
       to: "pauline@client.example",
       title: "Change request",
       kind: "accept" as const,
+      name: "Pauline Client",
       code: "123456",
       orgName: "Demo",
     }

@@ -705,10 +705,14 @@ export async function sendCopies(ctx: SealCtx, packageId: string) {
 /**
  * Where a signer's copy stands, for the token page's last frame:
  * `waiting_for_others` (not every signer signed), `on_its_way` (sealed, the
- * mail not sent yet or being retried), `sent`, or `not_sent` (three sends
- * failed; the sender was told).
+ * mail not sent yet or being retried), `sent`, `not_sent` (three sends
+ * failed; the sender was told), or `not_completed` (declined, voided, ended or
+ * replaced before everyone signed: no copy will come).
  */
-export type CopyState = "waiting_for_others" | "on_its_way" | "sent" | "not_sent"
+export type CopyState = "waiting_for_others" | "on_its_way" | "sent" | "not_sent" | "not_completed"
+
+/** An agreement no signature completes any more. */
+const CLOSED_UNSIGNED = ["declined", "voided", "expired", "withdrawn"]
 
 export async function copyStateOf(
   ctx: AgreementsCtx,
@@ -718,7 +722,12 @@ export async function copyStateOf(
   const pkg = await packageOf(ctx, versionId)
   if (!pkg) {
     const version = (await ctx.db.findOne("agreement_versions", versionId)) as Version | null
-    return version?.status === "signed" ? "on_its_way" : "waiting_for_others"
+    if (version?.status === "signed") return "on_its_way"
+    if (version?.status === "superseded") return "not_completed"
+    const a = version
+      ? ((await ctx.db.findOne("agreements", version.agreement_id)) as { status?: string } | null)
+      : null
+    return CLOSED_UNSIGNED.includes(a?.status ?? "") ? "not_completed" : "waiting_for_others"
   }
   const rows = (await ctx.db.findMany("copy_mails", {
     where: { package_id: pkg.id, client_action_id: clientActionId, kind: "signer" },

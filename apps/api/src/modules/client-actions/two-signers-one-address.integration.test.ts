@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // Two signers who share one address keep their own request, link and code: the
-// dedupe key is target, contact and address together, and one code never opens
-// the other row.
+// dedupe key is target, contact and address together (without a contact, the
+// address and the name), and one code never opens the other row.
 import { describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { insertSql } from "~/seed/factories/org/test-rows"
@@ -92,5 +92,52 @@ describe("two signers, one address", () => {
     const rows = await sql`
       SELECT contact_id FROM ${k("client_actions")} WHERE target_id = ${targetId} ORDER BY created_at`
     expect(rows.map((r) => r.contact_id)).toEqual([kit.w.clientA.contactId, partner.contactId])
+  })
+
+  it("two people named without a contact at one address each have their own link, and the mail says whose it is", async () => {
+    const targetId = crypto.randomUUID()
+    const email = `couple-${targetId.slice(0, 8)}@signers.example`
+    const of = (name: string) => ({ ...kit.w.clientA, email, name })
+    const opts = (invitedName: string) => ({ targetId, contactId: null, invitedName })
+    const anne = await mintTo(kit, of("Anne Couple"), opts("Anne Couple"))
+    const jean = await mintTo(kit, of("Jean Couple"), opts("Jean Couple"))
+    expect(jean.id).not.toBe(anne.id)
+    expect(jean.result.deduped).toBe(false)
+    expect(anne.mail.text).toContain(`This link is for Anne Couple (${email}) only.`)
+    expect(jean.mail.text).toContain(`This link is for Jean Couple (${email}) only.`)
+    const same = await mintClientAction({
+      orgId: kit.w.orgId,
+      kind: "sign",
+      targetApp: kit.targetApp,
+      targetType: kit.targetType,
+      targetId,
+      invitedEmail: email,
+      invitedName: "jean couple",
+      expiresInDays: 7,
+      createdByUserId: kit.w.admin.userId,
+    })
+    expect(same).toMatchObject({ id: jean.id, deduped: true, mailQueued: false })
+    const ip = nextIp()
+    const codeA = await codeFor(kit, anne.token, ip, email)
+    await codeFor(kit, jean.token, ip, email)
+    // Two mails alike in one box: each says whose code it is.
+    const codeMails = kit.capture.sent.filter(
+      (m) => m.template === "client-action.code" && m.to === email,
+    )
+    expect(codeMails.map((m) => m.text?.includes("Anne Couple"))).toEqual([true, false])
+    expect(codeMails.map((m) => m.text?.includes("Jean Couple"))).toEqual([false, true])
+    const onJean = await call(
+      "verify",
+      { t: jean.token, code: codeA, name: "Jean Couple" },
+      { "x-bun-socket-ip": ip },
+    )
+    expect(onJean.status).toBe(401)
+    const onAnne = await call(
+      "verify",
+      { t: anne.token, code: codeA, name: "Anne Couple" },
+      { "x-bun-socket-ip": ip },
+    )
+    expect(onAnne.status).toBe(200)
+    expect((await actionRow(jean.id)).code_verified_at).toBeNull()
   })
 })

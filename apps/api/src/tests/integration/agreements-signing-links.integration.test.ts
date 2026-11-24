@@ -25,6 +25,7 @@ import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { registerTranslatorConsumer } from "~/modules/attention/translator"
+import { revokeClientAction } from "~/modules/client-actions/mint"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 import {
@@ -331,5 +332,80 @@ describe("new links and the signers of a send", () => {
     expect(capture.sent.slice(before).filter((m) => m.template === "client-action.link")).toEqual(
       [],
     )
+  }, 120_000)
+
+  it("another person signs in a withdrawn signer's place, in their turn, and both signatures seal the same version", async () => {
+    const { agreementId, versionId, sha256 } = await preparedAgreement("Signed by a proxy")
+    const before = capture.sent.length
+    const sent = await asPerson(w.admin.userId, "agreement_send", {
+      version_id: versionId,
+      sha256,
+      order: "sequential",
+      expires_in_days: 7,
+      signers: [{ contact_id: w.clientA.contactId }, { contact_id: w.clientA2.contactId }],
+    })
+    const first = ((sent.data?.client_actions ?? []) as Array<{ id: string }>)[0]?.id ?? ""
+    await mailTo(w.clientA.email, "client-action.link", before)
+    await revokeClientAction({
+      orgId: w.orgId,
+      id: first,
+      reason: "withdrawn",
+      byUserId: w.admin.userId,
+    })
+    const pat = { email: `pat-${versionId.slice(0, 8)}@proxy.example`, name: "Pat Proxy" }
+    const proxy = (signer: object) =>
+      asPerson(w.admin.userId, "agreement_send", {
+        version_id: versionId,
+        sha256,
+        expires_in_days: 7,
+        signers: [signer],
+        replaces: first,
+      })
+    // Without naming who is replaced it is still refused, and the holder of a link too.
+    const unnamed = await asPerson(w.admin.userId, "agreement_send", {
+      version_id: versionId,
+      sha256,
+      signers: [pat],
+    })
+    expect(JSON.stringify(unnamed)).toContain("ALREADY_SENT")
+    expect(JSON.stringify(await proxy({ contact_id: w.clientA2.contactId }))).toContain(
+      "HOLDS_A_LINK",
+    )
+    const at = capture.sent.length
+    const placed = await proxy(pat)
+    expect(placed.error).toBeUndefined()
+    expect(placed.data?.status).toBe("ok")
+    const tokenP = tokenOf(await mailTo(pat.email, "client-action.link", at))
+    const turnAt = capture.sent.length
+    await signAs(tokenP, pat, "198.51.100.89")
+    const tokenB = tokenOf(await mailTo(w.clientA2.email, "client-action.link", turnAt))
+    await signAs(tokenB, w.clientA2, "198.51.100.90")
+    expect(await statusOf(agreementId, versionId)).toEqual({
+      agreement: "signed",
+      version: "signed",
+      sealed: true,
+    })
+    const events = (await sql`
+      SELECT invited_email, typed_name, signer_order, document_sha256
+        FROM ${app("signature_events")} WHERE version_id = ${versionId}
+       ORDER BY signer_order`) as unknown as Array<Record<string, unknown>>
+    expect(events.map((e) => ({ ...e }))).toEqual([
+      {
+        invited_email: pat.email,
+        typed_name: "Pat Proxy",
+        signer_order: 1,
+        document_sha256: sha256,
+      },
+      {
+        invited_email: w.clientA2.email,
+        typed_name: w.clientA2.name,
+        signer_order: 2,
+        document_sha256: sha256,
+      },
+    ])
+    const [trail] = (await sql`
+      SELECT revoke_reason, decided_at FROM ${kernel("client_actions")}
+       WHERE id = ${first}`) as unknown as Array<Record<string, unknown>>
+    expect({ ...trail }).toEqual({ revoke_reason: "withdrawn", decided_at: null })
   }, 120_000)
 })

@@ -8,6 +8,8 @@ export interface DbClient {
       orderBy?: Record<string, "asc" | "desc">
       limit?: number
       offset?: number
+      /** Only these fields of each row (a declared field, or a base one); all of them without it. */
+      select?: string[]
     },
   ): Promise<unknown[]>
   findOne(entity: string, id: string): Promise<unknown | null>

@@ -8,8 +8,13 @@
 // client who wrote after the card stops it: nothing is sent), and the reply leaves from the
 // person's mailbox under the same check. A reply that fails revokes the link, and the change
 // request stays a draft. Nothing is marked started.
+//
+// One change request answers one mail: its key (`send_key`: the parent and the mail) is unique
+// among those not closed. A run killed half way and asked again finds the one it wrote: without
+// links it is taken up again (or set aside, when the card says something else), with links it is
+// named and nothing is sent again. So a kill and a retry never leave two that can be accepted.
 
-import type { DbBatchOp } from "@liaison/app-sdk"
+import type { DbBatchOp, DbBatchSpec } from "@liaison/app-sdk"
 import { accessOps, currentShares, emitAccessChanged, type OrgAccess } from "./access"
 import { agreementPrepare } from "./agreements"
 import { CHANGE_REQUEST, changeRequestPrice } from "./change-requests"
@@ -23,7 +28,8 @@ import {
   refusal,
 } from "./ctx"
 import { agreementPassageGet } from "./passage"
-import { resolveSigners, TARGET_TYPE } from "./send"
+import { canonical, interruptedSend, latestOf, resolveSigners, TARGET_TYPE } from "./send"
+import { backToDraft, markSent } from "./sent-state"
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const LINK_DAYS = 14
@@ -214,6 +220,8 @@ async function readyToSend(
       "NO_CLIENT_CONTACT",
       `${parent.number} names no client contact to approve the change request. Nothing was sent.`,
     )
+  const open = await alreadyOpen(ctx, parent, changeRequestGuardKey(p))
+  if (open) return open
   const r = await resolveSigners(ctx, [{ contact_id: parent.contact_id }])
   if (isError(r)) return r
   const client = r.signers[0] as { contact_id: string | null; email: string; name: string }
@@ -236,6 +244,57 @@ async function readyToSend(
     rate,
     client,
   }
+}
+
+interface ChangeRequestRow {
+  id: string
+  number: string
+  kind: string
+  status: string
+  title: string
+  parent_agreement_id?: string | null
+}
+
+/** A change request no client can accept any more: its mail may be answered by another. */
+const CLOSED = ["declined", "voided", "expired", "withdrawn"]
+
+/** The change request that answers this mail, unless it is closed. */
+async function answering(ctx: AgreementsCtx, key: string): Promise<ChangeRequestRow | null> {
+  const rows = (await ctx.db.findMany("agreements", {
+    where: { send_key: key },
+    limit: 50,
+  })) as ChangeRequestRow[]
+  return rows.find((r) => !CLOSED.includes(r.status)) ?? null
+}
+
+/** Refuses while a change request of the parent already answers this mail, or is half sent. */
+async function alreadyOpen(
+  ctx: AgreementsCtx,
+  parent: Parent,
+  key: string,
+): Promise<ErrorEnvelope | null> {
+  const same = await answering(ctx, key)
+  if (same && same.status !== "draft")
+    return refusal(
+      "CHANGE_REQUEST_ALREADY_SENT",
+      `${same.number} on ${parent.number} already answers this mail (${same.status}). Nothing was sent again. Next: void it before another one answers the same mail.`,
+    )
+  const drafts = (await ctx.db.findMany("agreements", {
+    where: { parent_agreement_id: parent.id, kind: CHANGE_REQUEST, status: "draft" },
+    limit: 100,
+  })) as ChangeRequestRow[]
+  for (const d of drafts) {
+    const cut = await interruptedSend(ctx, d)
+    if (cut) return halfSent(parent, d, cut.links.map((l) => l.invited_name).join(", "))
+  }
+  return null
+}
+
+function halfSent(parent: Parent, cr: { number: string }, names: string): ErrorEnvelope {
+  return refusal(
+    "CHANGE_REQUEST_ALREADY_SENT",
+    `${cr.number} on ${parent.number} has an approval link out to ${names}, from a send that did not finish: whether its reply left is not known. Nothing was sent again. Look at the conversation and answer the mail there if the reply is missing; void ${cr.number} to start over.`,
+  )
 }
 
 /** The send's key: the parent and the client's mail it answers. */
@@ -303,6 +362,8 @@ interface MintAnswer {
   status: string
   error?: { code: string; message: string }
   group_id?: string
+  /** The same send had made this link before: nothing was made or mailed now. */
+  already_sent?: boolean
   actions?: Array<{ id: string; status: string }>
 }
 
@@ -333,6 +394,52 @@ function sourceOf(ready: Ready, p: ChangeRequestSendParams) {
     },
     data: {},
   }
+}
+
+/**
+ * The draft a killed run of this send left: taken up again when it says what the card says, set
+ * aside (voided, its links withdrawn) when it says something else.
+ */
+async function takeUp(
+  ctx: AgreementsCtx,
+  cr: ChangeRequestRow,
+  ready: Ready,
+  p: ChangeRequestSendParams,
+): Promise<ChangeRequestRow | null> {
+  const [draft] = (await ctx.db.findMany("agreement_drafts", {
+    where: { agreement_id: cr.id },
+    limit: 1,
+  })) as Array<{ source?: unknown }>
+  // Its text holds the title, the work, the hours, the rate, the price and the passage.
+  if (canonical(draft?.source) === canonical(sourceOf(ready, p))) return cr
+  await ctx.db.update("agreements", cr.id, {
+    status: "voided",
+    void_reason: "Its send stopped half way and was asked again with other terms.",
+  })
+  const v = await latestOf(ctx, cr.id)
+  if (v)
+    await ctx.client_actions_revoke?.({
+      target_type: TARGET_TYPE,
+      target_id: v.id,
+      reason: "sender_voided",
+    })
+  return null
+}
+
+/** Its frozen version, frozen now when the run that wrote it did not get there. */
+async function frozenVersion(
+  ctx: AgreementsCtx,
+  crId: string,
+): Promise<{
+  status: string
+  version_id?: string | null
+  sha256?: string | null
+  error?: { code: string; message: string }
+}> {
+  const v = await latestOf(ctx, crId)
+  if (v?.status === "frozen" && v.sha256)
+    return { status: "ok", version_id: v.id, sha256: v.sha256 }
+  return (await agreementPrepare(ctx, { id: crId })) as Awaited<ReturnType<typeof frozenVersion>>
 }
 
 /** `change_request_send`: an agent's call parks one card; the person's approval sends both. */
@@ -408,64 +515,83 @@ export async function changeRequestSend(ctx: AgreementsCtx, p: ChangeRequestSend
       "ACCESS_LIST_EMPTY",
       `${ready.parent.number} is closed to the organization with nobody on its list. Nothing was sent.`,
     )
-  const created = await ctx.db.batch({
-    sequence: {
-      key: `agreements:CR:${ready.parent.id}`,
-      format: { prefix: "CR-", pad: 1 },
-      unique: {
-        entity: "agreements",
-        field: "number",
-        where: { parent_agreement_id: ready.parent.id },
-      },
-    },
-    ops: [
-      {
-        insert: "agreements",
-        as: "agreement",
-        data: {
-          number: { $seq: "formatted" },
-          kind: CHANGE_REQUEST,
-          status: "draft",
-          title: p.title.trim(),
-          parent_agreement_id: ready.parent.id,
-          company_id: ready.parent.company_id ?? null,
-          contact_id: ready.parent.contact_id ?? null,
-          project_id: ready.parent.project_id ?? null,
-          language: ready.parent.language ?? "en",
-          fit_tag: "commercial",
-          pricing_mode: "fixed",
-          price_minor: ready.price.toString(),
-          currency: ready.parent.currency ?? null,
-          hours_minutes: p.hours_minutes,
-          rate_minor: ready.rate.toString(),
-          org_access: parentList.length > 0 ? "editor" : parentAccess,
-          created_by_user_id: user,
-          created_by_agent_id: null,
+  const key = changeRequestGuardKey(p)
+  const before = await answering(ctx, key)
+  let cr = before ? await takeUp(ctx, before, ready, p) : null
+  if (!cr) {
+    const spec: DbBatchSpec = {
+      sequence: {
+        key: `agreements:CR:${ready.parent.id}`,
+        format: { prefix: "CR-", pad: 1 },
+        unique: {
+          entity: "agreements",
+          field: "number",
+          where: { parent_agreement_id: ready.parent.id },
         },
       },
-      {
-        insert: "agreement_drafts",
-        data: {
-          agreement_id: { $ref: "agreement" },
-          source: sourceOf(ready, p),
-          upload_file_id: null,
-          lock_version: 1,
-          next_number: 1,
-          updated_by_user_id: user,
-          updated_by_agent_id: null,
+      ops: [
+        {
+          insert: "agreements",
+          as: "agreement",
+          data: {
+            number: { $seq: "formatted" },
+            kind: CHANGE_REQUEST,
+            status: "draft",
+            title: p.title.trim(),
+            parent_agreement_id: ready.parent.id,
+            send_key: key,
+            company_id: ready.parent.company_id ?? null,
+            contact_id: ready.parent.contact_id ?? null,
+            project_id: ready.parent.project_id ?? null,
+            language: ready.parent.language ?? "en",
+            fit_tag: "commercial",
+            pricing_mode: "fixed",
+            price_minor: ready.price.toString(),
+            currency: ready.parent.currency ?? null,
+            hours_minutes: p.hours_minutes,
+            rate_minor: ready.rate.toString(),
+            org_access: parentList.length > 0 ? "editor" : parentAccess,
+            created_by_user_id: user,
+            created_by_agent_id: null,
+          },
         },
-      },
-      ...access,
-    ],
-  })
-  const crId = String(created.rows.agreement?.id ?? "")
-  const number = created.sequence?.formatted ?? "CR"
-  const frozen = (await agreementPrepare(ctx, { id: crId })) as {
-    status: string
-    version_id?: string | null
-    sha256?: string | null
-    error?: { code: string; message: string }
+        {
+          insert: "agreement_drafts",
+          data: {
+            agreement_id: { $ref: "agreement" },
+            source: sourceOf(ready, p),
+            upload_file_id: null,
+            lock_version: 1,
+            next_number: 1,
+            updated_by_user_id: user,
+            updated_by_agent_id: null,
+          },
+        },
+        ...access,
+      ],
+    }
+    try {
+      const created = await ctx.db.batch(spec)
+      cr = {
+        id: String(created.rows.agreement?.id ?? ""),
+        number: created.sequence?.formatted ?? "CR",
+        kind: CHANGE_REQUEST,
+        status: "draft",
+        title: p.title.trim(),
+      }
+    } catch (err) {
+      // The same send, at the same moment, wrote it first (its key is unique): it sends, not this.
+      const first = await answering(ctx, key)
+      if (!first) throw err
+      return refusal(
+        "CHANGE_REQUEST_ALREADY_SENT",
+        `${first.number} on ${ready.parent.number} is being sent in answer to this mail. Nothing was sent again.`,
+      )
+    }
   }
+  const crId = cr.id
+  const number = cr.number
+  const frozen = await frozenVersion(ctx, crId)
   if (frozen.status !== "ok" || !frozen.version_id || !frozen.sha256)
     return refusal(
       frozen.error?.code ?? "FREEZE_FAILED",
@@ -500,6 +626,21 @@ export async function changeRequestSend(ctx: AgreementsCtx, p: ChangeRequestSend
       `Neither the reply nor ${number} was sent: ${(out.error?.message ?? "no link was made").replace(/\.+\s*$/, "")}. ${number} stays a draft.`,
     )
 
+  if (out.already_sent) return halfSent(ready.parent, cr, ready.client.name)
+  // Asked again with other terms while this ran: that one was set aside, its link with it.
+  const still = (await ctx.db.findOne("agreements", crId)) as ChangeRequestRow | null
+  if (still && CLOSED.includes(still.status)) {
+    await ctx.client_actions_revoke({
+      target_type: TARGET_TYPE,
+      target_id: frozen.version_id,
+      reason: "sender_voided",
+    })
+    return refusal(
+      "CHANGE_REQUEST_CLOSED",
+      `${number} on ${ready.parent.number} is ${still.status}: it was asked again with other terms while this was being sent. Its link was withdrawn and no reply was sent.`,
+    )
+  }
+
   // 3. The reply, from the person's mailbox, under the same check.
   const reply = await ctx.executeTool("mail:reply", {
     conversationId: p.reply.conversation_id,
@@ -516,6 +657,13 @@ export async function changeRequestSend(ctx: AgreementsCtx, p: ChangeRequestSend
       target_id: frozen.version_id,
       reason: "withdrawn",
     })
+    await backToDraft(ctx, {
+      id: crId,
+      number,
+      kind: CHANGE_REQUEST,
+      status: "sent",
+      parent_agreement_id: ready.parent.id,
+    })
     const why =
       reply?.status === "error"
         ? `${reply.error.code}: ${reply.error.message}`
@@ -527,13 +675,17 @@ export async function changeRequestSend(ctx: AgreementsCtx, p: ChangeRequestSend
       `The reply to ${ready.client.name} was not sent (${why}), so the approval link of ${number} was withdrawn. ${number} stays a draft; nothing reached the client.`,
     )
   }
-  await ctx.db.update("agreements", crId, { status: "sent" })
-  await ctx.emit?.({
-    entity: "agreement",
-    action: "sent",
-    entityId: crId,
-    data: { number, version: 1 },
-  })
+  await markSent(
+    ctx,
+    {
+      id: crId,
+      number,
+      kind: CHANGE_REQUEST,
+      status: "draft",
+      parent_agreement_id: ready.parent.id,
+    },
+    { id: frozen.version_id, number: 1 },
+  )
   return {
     status: "ok",
     change_request: {

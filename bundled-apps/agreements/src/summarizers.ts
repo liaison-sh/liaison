@@ -33,22 +33,63 @@ function pinnedAddresses(params: Record<string, unknown>): unknown[] {
   return Array.isArray(a) ? a : []
 }
 
+/** The document the preflight pinned, as a card names it, or null for a call without one. */
+function pinnedDocument(params: Record<string, unknown>): string | null {
+  const d = params.document as { number?: unknown; title?: unknown; version?: unknown } | undefined
+  if (typeof d?.number !== "string" || !d.number) return null
+  const title = typeof d.title === "string" && d.title ? ` "${d.title}"` : ""
+  return `${d.number}${title}${typeof d.version === "number" ? `, version ${d.version}` : ""}`
+}
+
+/** Each address more than one of these signers signs at. */
+function sharedAddresses(signers: unknown[], pinned: unknown[]): string[] {
+  const all = signers
+    .map((s, i) => (s as { email?: unknown } | null)?.email ?? pinned[i])
+    .filter((e): e is string => typeof e === "string" && e !== "")
+    .map((e) => e.trim().toLowerCase())
+  return [...new Set(all.filter((e, i) => all.indexOf(e) !== i))]
+}
+
 export function summarizeAgreementSend(params: Record<string, unknown>): Promise<Card> {
   const signers = Array.isArray(params.signers) ? params.signers : []
   const order = params.order === "any" ? "in any order" : "one after the other"
-  const mode = params.mode === "accept" ? "an acceptance" : "a simple electronic signature"
+  const document = pinnedDocument(params)
+  const who = `${signers.length} signer${signers.length === 1 ? "" : "s"}`
+  // One person in a withdrawn signer's place, on the version already sent.
+  const inPlace = typeof params.replaces === "string"
+  const was = (params.replaced ?? {}) as {
+    name?: unknown
+    email?: unknown
+    mode?: unknown
+    phrase?: unknown
+  }
+  const wasName = typeof was.name === "string" && was.name ? was.name : "a withdrawn signer"
+  const wasEmail = typeof was.email === "string" && was.email ? ` <${was.email}>` : ""
+  // That place asks what it asked: the kernel takes neither from the call.
+  const asked = inPlace ? was : { mode: params.mode, phrase: params.required_phrase }
+  const mode = asked.mode === "accept" ? "an acceptance" : "a simple electronic signature"
   const lines = [
+    ...(document ? [`Document: ${document}`] : []),
     `Fingerprint: ${String(params.sha256 ?? "")}`,
-    `Asks: ${mode}, ${order}`,
+    inPlace
+      ? `In place of: ${wasName}${wasEmail}, withdrawn. Same version, same turn; signatures already given stand. Asks: ${mode}`
+      : `Asks: ${mode}, ${order}`,
     ...signers.map((x, i) => signerLine(x, i, pinnedAddresses(params))),
+    ...sharedAddresses(signers, pinnedAddresses(params)).map(
+      (a) => `Two signers share ${a}: each signs on their own link, with their own name and code`,
+    ),
     `Links last ${String(params.expires_in_days ?? 14)} days`,
   ]
-  if (typeof params.required_phrase === "string" && params.required_phrase)
-    lines.push(`Each signer types: "${params.required_phrase}"`)
+  if (typeof asked.phrase === "string" && asked.phrase)
+    lines.push(`Each signer types: "${asked.phrase}"`)
   if (typeof params.message === "string" && params.message) lines.push(`Message: ${params.message}`)
   return done({
     kind: "agreement_send",
-    title: `Send a frozen agreement version to ${signers.length} signer(s)`,
+    title: inPlace
+      ? `Put another signer in place of ${wasName}${document ? ` on ${document}` : ""}`
+      : document
+        ? `Send ${document} to ${who}`
+        : `Send a frozen agreement version to ${who}`,
     subtitle: "Nothing is sent if the version changed since this card",
     lines,
   })

@@ -48,6 +48,7 @@ export async function sendPortalActionCode(input: {
     await sendCodeMail({
       orgId: row.org_id,
       to: row.invited_email,
+      name: row.invited_name,
       mailId,
       title: view.title,
       kind: row.kind,

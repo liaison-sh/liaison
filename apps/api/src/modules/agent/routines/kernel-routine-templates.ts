@@ -171,6 +171,8 @@ export function registerKernelRoutineTemplates(orgId: string): void {
       "projects:tasks:write",
       "mail:conversations:read",
       "mail:conversations:write",
+      // mail__compose reads the mailbox it sends from (routine-run-reads.ts).
+      "mail:accounts:read",
     ],
     followUp: true,
     enabledByDefault: false,

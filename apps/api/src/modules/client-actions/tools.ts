@@ -228,6 +228,7 @@ export async function handleClientActionCreate(
       message: params.message ?? null,
       createdByUserId: ctx.userId,
       createdByAgentId: ctx.actingAgentId ?? null,
+      mailDecision: { guard: isPinnedSendGuard(params.sendGuard) ? params.sendGuard : null },
     })
     const until = r.expiresAt.toISOString().slice(0, 10)
     const happened = r.deduped

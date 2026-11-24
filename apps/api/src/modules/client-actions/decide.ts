@@ -19,10 +19,11 @@ import { type PortalCaller, portalActionSight } from "~/modules/portal/decide-ga
 import { attemptCode, wordsFor } from "./code-attempt"
 import { restoreProof, spendProof } from "./codes"
 import { writeClientActionEvent } from "./events"
+import { clientActionHearers } from "./hearers"
 import { maskEmail } from "./mail"
-import { SYSTEM_ACTOR_ID } from "./mint"
+import { replacedSql, SYSTEM_ACTOR_ID } from "./mint"
 import { type ClientActionState, clientActionState } from "./state"
-import { type ClientActionKind, type ClientActionView, viewTarget } from "./targets"
+import { type ClientActionKind, type ClientActionView, type CopyState, viewTarget } from "./targets"
 
 const K = () => sql.raw(schemaRef("kernel"))
 
@@ -64,13 +65,15 @@ export interface ActionRow {
   now: Date
 }
 
+// A sender who left is not someone to write to: the page and its mails name the organization.
 export const ROW_COLUMNS = sql`
   a.id, a.org_id, o.name AS org_name, a.kind, a.target_app, a.target_type, a.target_id,
   a.target_sha256, a.target_blocks_sha256, a.company_id, a.signer_user_id, a.invited_email, a.invited_name, a.expires_at,
   a.first_opened_at, a.document_shown_at, a.code_wrong_total, a.code_locked_at, a.code_verified_at,
   a.decided_at, a.decision, a.revoked_at, a.revoke_reason, a.required_phrase, a.visible_to::text[] AS visible_to,
   a.created_by_user_id,
-  u.name AS sender_name, u.email AS sender_email, u.locale AS sender_locale,
+  CASE WHEN u.status = 'active' THEN u.name END AS sender_name,
+  CASE WHEN u.status = 'active' THEN u.email END AS sender_email, u.locale AS sender_locale,
   (a.token_hash IS NOT NULL) AS has_token,
   (c.id IS NOT NULL AND (c.closed_at IS NOT NULL OR c.portal_ended_at IS NOT NULL)) AS company_ended,
   now() AS now`
@@ -227,6 +230,28 @@ export async function viewOf(row: ActionRow): Promise<ClientActionView | "down">
   })
 }
 
+/**
+ * Where a signer's copy stands when the document's app does not say, from the send alone: on its
+ * way only once every signer of it has answered yes.
+ */
+export async function copyStateFromSend(
+  tx: Pick<PrivilegedDb, "execute">,
+  row: ActionRow,
+): Promise<CopyState> {
+  const [send] = extractRows<{ closed: boolean; all_signed: boolean }>(
+    await tx.execute(sql`
+        SELECT bool_or(coalesce(g.decision = 'declined', false)
+                       OR coalesce(g.revoke_reason IN ('sender_voided', 'replaced'), false)) AS closed,
+               bool_and(g.decision IS NOT NULL) AS all_signed
+          FROM ${K()}.client_actions a
+          JOIN ${K()}.client_actions g ON g.org_id = a.org_id AND g.group_id = a.group_id
+         WHERE a.id = ${row.id} AND a.org_id = ${row.org_id} AND NOT ${replacedSql("g")}
+      `),
+  )
+  if (send?.closed) return "not_completed"
+  return send?.all_signed ? "on_its_way" : "waiting_for_others"
+}
+
 const DECISION_OF: Record<ClientActionKind, "signed" | "accepted" | "approved"> = {
   sign: "signed",
   accept: "accepted",
@@ -305,8 +330,6 @@ function typedRefusal(
   return null
 }
 
-const normalEmail = (e: string | null | undefined) => (e ?? "").trim().toLowerCase()
-
 /** A portal decision is older than this since the person's sign-in: it asks the code. */
 export const PORTAL_FRESH_SIGN_IN_MS = 12 * 60 * 60 * 1000
 
@@ -316,8 +339,8 @@ type PortalGate =
 
 /**
  * Who may decide on the portal, asked as the portal person: the action is one their
- * company's open share shows them (portal.client_actions), and the address they signed
- * in with is the one it was sent to. A colleague is told who it waits on.
+ * company's open share shows them (portal.client_actions), and it was sent to them: the
+ * address they signed in with, and their name when that address has two signers. A colleague is told who it waits on.
  */
 export async function portalDecideGate(
   portal: PortalCaller,
@@ -330,7 +353,7 @@ export async function portalDecideGate(
     if (sight.why === "unavailable") return { ok: false, status: 503, body: { state: "down" } }
     return NOT_FOUND
   }
-  if (normalEmail(sight.myEmail) !== normalEmail(sight.invitedEmail)) {
+  if (!sight.mine) {
     return {
       ok: false,
       status: 403,
@@ -394,7 +417,7 @@ export async function queueDecidedEvent(
       companyId: row.company_id,
       title: d.title,
       invitedName: row.invited_name,
-      senderUserIds: row.created_by_user_id ? [row.created_by_user_id] : [],
+      senderUserIds: await clientActionHearers(tx, row.org_id, row.id),
       // A restricted document's decision reaches its list only, the manager included.
       ...(row.visible_to ? { visibleTo: row.visible_to } : {}),
     },
@@ -492,8 +515,7 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
          WHERE org_id = ${orgId} AND company_id = ${row.company_id} AND closed_at IS NULL
          FOR SHARE`)
       const again = await portalActionSight(input.portal, actionId)
-      if (!again.seen || normalEmail(again.myEmail) !== normalEmail(again.invitedEmail))
-        return NOT_FOUND
+      if (!again.seen || !again.mine) return NOT_FOUND
     }
     const frame = frameOf(row, "current")
     if (frame !== "open")

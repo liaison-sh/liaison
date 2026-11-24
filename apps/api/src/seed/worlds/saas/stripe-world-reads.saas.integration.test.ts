@@ -19,7 +19,17 @@ import type { UserContext } from "~/db/rls"
 import { messages, routines } from "~/db/schema/kernel"
 import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
 import { JobsTestAccess } from "~/infra/jobs/jobs"
+import { resolveRoutineOwnerDimensionGrants } from "~/infra/jobs/kernel-jobs"
 import { MORNING_BRIEF_TEMPLATE_KEY } from "~/modules/agent/routines/kernel-routine-templates"
+import { runRoutineTick } from "~/modules/agent/routines/routine-worker"
+import { resolveTurnScope } from "~/modules/agent/runtime/agent-service"
+import {
+  currentRunContext,
+  inheritedRunFields,
+  type RunContext,
+  runContextStore,
+} from "~/modules/agent/runtime/run-context"
+import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { decideApproval } from "~/modules/approvals/decide"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
@@ -31,6 +41,7 @@ import {
 } from "~/modules/demo/worlds/saas/payments/overlay"
 import { seedContext } from "~/seed/context"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
+import { grantRoleDimension } from "~/seed/factories/people/role-grants"
 import { type SeedDemoWorldResult, seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
 import {
   buildAttention,
@@ -978,4 +989,143 @@ describe("the seeded refund card, decided", () => {
       await forgetDemoPaymentsOutside(world.orgId)
     }
   }, 120_000)
+
+  // Last: it stages a card, and the reads above count the seeded ones.
+  it("the Failed payments routine's tick finds a failed payment, a mailbox to send from, and stages a reminder", async () => {
+    const [routine] = await rows(
+      world.orgId,
+      sql`SELECT id::text AS id, scopes, owner_user_id::text AS owner FROM kernel.routines
+           WHERE org_id = ${world.orgId} AND name = 'Failed payments'`,
+    )
+    if (!routine) throw new Error("the Failed payments routine was not seeded")
+    const ownerUserId = routine.owner as string
+    // A mailbox to send from: an admin lets finance use the shared one, which the world does not.
+    const [mailbox] = await rows(
+      world.orgId,
+      sql`SELECT id::text AS id FROM app_mail.accounts
+           WHERE org_id = ${world.orgId} AND owner_type = 'org' ORDER BY created_at LIMIT 1`,
+    )
+    await grantRoleDimension(
+      world.orgId,
+      world.org.adminUserId,
+      "mail:inbox",
+      [["finance", [mailbox?.id as string]]],
+      "failed-payments-test",
+      () => {},
+    )
+    const dimensionGrants = await resolveRoutineOwnerDimensionGrants(world.orgId, ownerUserId)
+    const tried: unknown[] = []
+    let staged: string | undefined
+    let withoutTheRead: string | undefined
+    const result = await runRoutineTick({
+      orgId: world.orgId,
+      routineId: routine.id as string,
+      scheduledAt: new Date().toISOString(),
+      checkCredits: async () => null,
+      // The turn does what the template's text says, with what a tick runs with: the routine's
+      // scopes bounded by its owner's and its agent's, and the owner's dimension grants.
+      agentInvoker: async (input) => {
+        // The turn's own frame, as agent-service.ts builds it for a tick.
+        const tick = currentRunContext()
+        const frame: RunContext = {
+          runId: crypto.randomUUID(),
+          parentRunId: null,
+          rootRunId: crypto.randomUUID(),
+          nestingDepth: 0,
+          background: true,
+          humanTurn: false,
+          turnScopeAccumulator: createTurnScopeAccumulator({ orgId: world.orgId }),
+          routineId: tick?.routineId,
+          ...(tick?.routineFollowUp ? { routineFollowUp: true } : {}),
+          ...inheritedRunFields(tick),
+        }
+        const scopesOf = async (held: string[]) => {
+          const turn = await withPrivilegedDb(world.orgId, "failed-payments-turn", (tx) =>
+            resolveTurnScope(
+              tx,
+              world.orgId,
+              input.threadId,
+              { userId: ownerUserId, scopes: held },
+              routine.id as string,
+            ),
+          )
+          return turn ? turn.effectiveScope : held
+        }
+        const call = async (scopes: string[], toolName: string, params: Record<string, unknown>) =>
+          (await runContextStore
+            .run(frame, () =>
+              executeTool({
+                toolName,
+                orgId: world.orgId,
+                actor: {
+                  actorType: "user",
+                  userId: ownerUserId,
+                  orgId: world.orgId,
+                  scopes,
+                  dimensionGrants,
+                },
+                params,
+                threadId: input.threadId,
+                origin: "in-app-agent",
+              } as never),
+            )
+            .catch((e: { code?: string; message?: string }) => ({
+              error: { code: e.code ?? "", message: e.message ?? "" },
+            }))) as {
+            data?: any
+            error?: { code: string; message: string }
+            blocked?: { reason: string; approvalRequestId?: string }
+          }
+        const scopes = await scopesOf(input.scopes)
+        const failed = await call(scopes, "stripe:payments_search", { status: "failed", limit: 50 })
+        const box = await call(scopes, "mail:listAccounts", {})
+        const accountId = box.data?.accounts?.[0]?.id as string | undefined
+        const draft = (held: string[], invoiceId: string, to: string) =>
+          call(held, "mail:compose", {
+            accountId,
+            to: [to],
+            subject: "Your payment did not go through",
+            textBody:
+              "Your last payment did not go through. You can update your card from your account.",
+            followUp: {
+              refs: [{ kind: "stripe:invoice", id: invoiceId }],
+              classification: "service",
+            },
+          })
+        for (const payment of (failed.data?.items ?? []) as Array<{
+          customerId: string | null
+          invoiceId: string | null
+        }>) {
+          if (!payment.invoiceId || !payment.customerId) continue
+          const customer = await call(scopes, "stripe:customers_get", { id: payment.customerId })
+          const to = (customer.data?.customer?.email ?? customer.data?.email) as string | undefined
+          if (!to) continue
+          // The same draft without the read is refused, and the refusal names the access.
+          const without = await draft(
+            await scopesOf(input.scopes.filter((s) => s !== "mail:accounts:read")),
+            payment.invoiceId,
+            to,
+          )
+          withoutTheRead = without.error?.code
+          // A payment Stripe still retries, or that has a reminder waiting, stages none.
+          const out = await draft(scopes, payment.invoiceId, to)
+          tried.push({ accountId, out })
+          if (out.blocked?.reason !== "gated") continue
+          staged = out.blocked.approvalRequestId
+          break
+        }
+        return { turnsAdded: 1 }
+      },
+    })
+    if (!staged)
+      throw new Error(
+        `no reminder staged: ${JSON.stringify({ result, tried, run: await rows(world.orgId, sql`SELECT status, error FROM kernel.routine_runs WHERE org_id = ${world.orgId}`) }).slice(0, 2000)}`,
+      )
+    expect(withoutTheRead).toBe("MISSING_SCOPE")
+    const [card] = await rows(
+      world.orgId,
+      sql`SELECT tool_name, status FROM kernel.approval_requests WHERE id = ${staged}`,
+    )
+    expect(card).toEqual({ tool_name: "mail:compose", status: "pending" })
+  })
 })

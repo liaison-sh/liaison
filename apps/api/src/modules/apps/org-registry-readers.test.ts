@@ -147,6 +147,7 @@ const READERS: Record<string, string> = {
     "send check: reached from the mail bridge (tool call) or the approval list and cascade (request)",
   "modules/users/away.ts":
     "away days: reached from set_away (tool call) and the preferences and Home routes (request)",
+  "modules/client-actions/targets.ts": ENSURES,
   "modules/client-actions/tools.ts":
     "client action tools: registered with the kernel tools at the org's setup (awaitOrgApps)",
   "modules/portal/tools.ts":

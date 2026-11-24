@@ -293,6 +293,39 @@ describe("portal doors: the portal decide", () => {
     expect(capture.sent.length).toBe(before)
   })
 
+  it("one address, two signers: the person signed in gets a code and decides for their own only", async () => {
+    await signedInAgo(w.clientA, "5 minutes")
+    const { id, target } = await sharedAction("sign")
+    const spouse = await insertClientAction(w, {
+      company_id: w.companyA,
+      target_id: target,
+      target_app: TARGET_APP,
+      target_type: TARGET_TYPE,
+      invited_email: w.clientA.email,
+      invited_name: "Someone Else",
+      created_by_user_id: w.admin.userId,
+    })
+    const before = capture.sent.length
+    const refused = await portalPost(`/actions/${spouse}/code`, {})
+    expect(refused.status).toBe(403)
+    expect(await refused.json()).toMatchObject({ waiting_on: "Someone Else" })
+    expect((await portalPost(`/actions/${spouse}/decide`, { decision: "decline" })).status).toBe(
+      403,
+    )
+    expect(capture.sent.length).toBe(before)
+    expect((await row(spouse)).decided_at).toBeNull()
+    const code = await codeFor(id)
+    const ok = await portalPost(`/actions/${id}/decide`, {
+      decision: "sign",
+      typed_name: w.clientA.name,
+      code,
+    })
+    expect(ok.status).toBe(200)
+    // Alone at the address, a link under another spelling of their name is still theirs.
+    const { id: alone } = await sharedAction("approve", { ...w.clientA, name: "A. Client" })
+    expect((await portalPost(`/actions/${alone}/code`, {})).status).toBe(202)
+  })
+
   it("a typo in the name is refused before the code is spent", async () => {
     await signedInAgo(w.clientA, "5 minutes")
     const { id } = await sharedAction("sign")

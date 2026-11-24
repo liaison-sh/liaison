@@ -1,0 +1,5 @@
+{
+  "reviewedOrigins": {
+    "apps/api/src/modules/client-actions/unsent-links.ts#mailUnsentLinks": "the job that mails links whose server stopped before their mail (registered by the leader, kernel-jobs.ts): each org id is read from the kernel.client_actions row of the link itself, through sweepSkippingMoving, and mailUnsentLink reads, checks and mails that link only by its id and that org"
+  }
+}

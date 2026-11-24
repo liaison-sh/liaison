@@ -132,6 +132,7 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   // One tick per (app, job) manifest schedule, fanned out over orgs (fanout.ts).
   "app-cron-fanout": { queueClass: "cron" },
   "agent-side-thread-reaper": { queueClass: "cron" },
+  "client-action-unsent-links": { queueClass: "cron" },
   "routine-event-reconcile": { queueClass: "cron" },
   // The previous release's webhook retries; drained into the inbox.
   "retry-webhook": { queueClass: "cron" },

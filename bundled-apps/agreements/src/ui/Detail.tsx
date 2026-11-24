@@ -424,9 +424,13 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
 
                   <Show when={a().status === "declined"}>
                     <Note testid="agreement-state-declined" title={tr("A signer declined")}>
-                      {tr(
-                        "Nothing was signed. You can send a new version, or a new link if it was not them.",
-                      )}
+                      {d().signing_links.some((l) => l.state === "decided")
+                        ? tr(
+                            "Some signers had signed. Their signatures stay recorded on this version, but nothing is agreed. You can send a new version, or a new link if it was not them.",
+                          )
+                        : tr(
+                            "Nothing was signed. You can send a new version, or a new link if it was not them.",
+                          )}
                     </Note>
                   </Show>
                   <Show when={copyDiffers()}>

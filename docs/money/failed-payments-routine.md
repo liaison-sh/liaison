@@ -18,7 +18,7 @@ For each failed Stripe payment that Stripe no longer retries and that has no rem
 - mentions the customer's open tickets;
 - skips payments Stripe still retries. Those are one quiet line on Stripe Home, "Nothing to do yet".
 
-The routine can read customers, invoices and payments in Stripe, read tickets, and write mail conversations. It cannot refund, cancel or change anything in Stripe.
+The routine can read customers, invoices and payments in Stripe, read tickets, read mailboxes and write mail conversations. Its owner needs a mailbox to send from: their own, or a shared one their role may use. It cannot refund, cancel or change anything in Stripe.
 
 ## Before a reminder is sent
 

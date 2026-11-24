@@ -163,6 +163,8 @@ export const FR: Record<string, string> = {
   Number: "Numéro",
   "Numbers, cross-references and page numbers are computed when it is drawn. Nobody types them.":
     "Les numéros, les renvois et les numéros de page sont calculés à la génération. Personne ne les saisit.",
+  "Some signers had signed. Their signatures stay recorded on this version, but nothing is agreed. You can send a new version, or a new link if it was not them.":
+    "Certains avaient signé. Leurs signatures restent enregistrées sur cette version, mais rien n'est convenu. Vous pouvez envoyer une nouvelle version, ou un nouveau lien si ce n'était pas cette personne.",
   "One signature does not make an agreement. Send a new link, or leave it closed.":
     "Une seule signature ne fait pas un contrat. Envoyez un nouveau lien, ou laissez-le clos.",
   "Only the people on its list": "Seulement les personnes de sa liste",

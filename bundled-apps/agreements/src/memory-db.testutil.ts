@@ -37,10 +37,30 @@ export function memoryDb(): DbClient & { tables: Map<string, Row[]> } {
   }
   const db = {
     tables,
-    async findMany(entity: string, opts?: { where?: Record<string, unknown>; limit?: number }) {
-      return t(entity)
-        .filter((r) => matches(r, opts?.where))
-        .map((r) => ({ ...r }))
+    async findMany(
+      entity: string,
+      opts?: {
+        where?: Record<string, unknown>
+        orderBy?: Record<string, "asc" | "desc">
+        limit?: number
+        select?: string[]
+      },
+    ) {
+      // A read makes no table, so a test can compare the tables a call left.
+      const rows = (tables.get(entity) ?? []).filter((r) => matches(r, opts?.where))
+      const [by, dir] = Object.entries(opts?.orderBy ?? {})[0] ?? []
+      if (by)
+        rows.sort((a, b) => {
+          const [x, y] = [a[by] as number | string, b[by] as number | string]
+          return (x < y ? -1 : x > y ? 1 : 0) * (dir === "desc" ? -1 : 1)
+        })
+      return rows
+        .slice(0, opts?.limit ?? rows.length)
+        .map((r) =>
+          opts?.select
+            ? ({ ...Object.fromEntries(opts.select.map((k) => [k, r[k]])), id: r.id } as Row)
+            : { ...r },
+        )
     },
     async findOne(entity: string, id: string) {
       return t(entity).find((r) => r.id === id) ?? null

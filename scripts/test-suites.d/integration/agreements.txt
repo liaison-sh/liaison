@@ -4,6 +4,7 @@ src/tests/integration/agreements-sandbox.integration.test.ts
 src/tests/integration/agreements-decided.integration.test.ts
 src/tests/integration/agreements-immutability.integration.test.ts
 src/tests/integration/agreements-upload.integration.test.ts
+src/tests/integration/agreements-send-interrupted.integration.test.ts
 src/tests/integration/agreements-signing-links.integration.test.ts
 src/tests/integration/agreements-sow-knowledge.integration.test.ts
 src/tests/integration/agreements-sow-decided.integration.test.ts

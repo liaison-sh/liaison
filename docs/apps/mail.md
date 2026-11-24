@@ -213,7 +213,7 @@ The link opens a page that asks once and records the opt-out with one button. Op
 
 | Scope | What it allows |
 |---|---|
-| `mail:accounts:read` | List connected mailboxes and their sync status |
+| `mail:accounts:read` | List connected mailboxes and their sync status. Composing, replying and forwarding read the mailbox they send from: an agent or a routine without it is told that the access is missing, whatever mailboxes are connected |
 | `mail:accounts:write` | Disconnect a mailbox |
 | `mail:accounts:admin` | Turn mailbox types on or off, connect organization-owned mailboxes |
 | `mail:conversations:read` | Search, read and export conversations |

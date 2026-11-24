@@ -243,6 +243,50 @@ describe("inviting a client", () => {
     expect(capture.sent).toEqual([])
   })
 
+  it("one address, two signers: ending one person's access leaves the other's link open", async () => {
+    const email = `shared-${w.orgId.slice(0, 8)}@doors.example.com`
+    const person = await asAdmin((tx) =>
+      invitePortalPerson({
+        orgId: w.orgId,
+        actorId: w.admin.userId,
+        db: tx,
+        companyId: w.companyA,
+        email,
+        name: "Anne Shared",
+      }),
+    )
+    const target = crypto.randomUUID()
+    const link = (invited_name: string, target_id = target) =>
+      insertClientAction(w, {
+        company_id: w.companyA,
+        target_id,
+        invited_email: email,
+        invited_name,
+      })
+    const anne = await link("Anne Shared")
+    const jean = await link("Jean Shared")
+    // Alone on another document, under another spelling: hers.
+    const alone = await link("A. Shared", crypto.randomUUID())
+    await asAdmin((tx) =>
+      removePortalPerson({
+        orgId: w.orgId,
+        actorId: w.admin.userId,
+        db: tx,
+        userId: person.userId,
+      }),
+    )
+    const rows = (await sql.unsafe(
+      `SELECT id, revoke_reason FROM kernel.client_actions WHERE id = ANY($1)`,
+      [[anne, jean, alone]],
+    )) as unknown as Array<{ id: string; revoke_reason: string | null }>
+    const reason = (id: string) => rows.find((r) => r.id === id)?.revoke_reason ?? null
+    expect([reason(anne), reason(jean), reason(alone)]).toEqual([
+      "access_ended",
+      null,
+      "access_ended",
+    ])
+  })
+
   it("NT-29 moving a person to another company: removed from the first, invited to the second, old sessions end and nothing carries over", async () => {
     const email = `mover-${w.orgId.slice(0, 8)}@doors.example.com`
     const invite = (companyId: string) =>

@@ -8,18 +8,23 @@
 // the same reminder again mails nobody twice. A link whose mail never started (the server
 // stopped after the commit) is mailed once, later; a failed mail is told as such; two people at
 // one address are two signers.
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import postgres from "postgres"
 import { sql } from "~/db"
+import { hashToken } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { createClientActionsMethods } from "~/modules/apps/sandbox/bridge/client-actions"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
-import { remindClientActions, revokeClientAction } from "~/modules/client-actions/mint"
+import {
+  remailClientAction,
+  remindClientActions,
+  revokeClientAction,
+} from "~/modules/client-actions/mint"
 import { ClientActionTargetsTestAccess } from "~/modules/client-actions/targets"
 import { mailUnsentLinks } from "~/modules/client-actions/unsent-links"
 import { superuserUrlForTestDb } from "~/tests/route-test-setup"
-import { k, useClientActionWorld } from "../../../test-support/client-actions-kit"
+import { k, tokenOf, useClientActionWorld } from "../../../test-support/client-actions-kit"
 
 const kit = useClientActionWorld("sendmany", "agreement_version")
 const SEND_TOOL = "send_for_signature"
@@ -40,8 +45,12 @@ beforeAll(() => {
     noAutoApprove: true,
     requiredScopes: [`${kit.targetApp}:docs:write`],
   } as never)
-  ClientActionTargetsTestAccess.set(kit.targetApp, kit.targetType, ["sign"], async () => {
+})
+
+beforeEach(() => {
+  ClientActionTargetsTestAccess.set(kit.targetApp, kit.targetType, ["sign", "accept"], async () => {
     views += 1
+    if (kit.viewDelayMs > 0) await new Promise((r) => setTimeout(r, kit.viewDelayMs))
     return kit.viewAnswers ? kit.view : null
   })
 })
@@ -411,6 +420,29 @@ describe("links whose server stopped before their mails", () => {
     expect(linkMails(targetId)).toBe(3)
   })
 
+  it("a link the job took meanwhile is not mailed by the run that made it, and the mailed one opens", async () => {
+    const targetId = crypto.randomUUID()
+    // The first five mails wait to start; the sixth is still in the run's queue.
+    await triggerOnClaim(
+      targetId,
+      "IF NEW.invited_name <> 'Signer 6' THEN PERFORM pg_sleep(1); END IF;",
+    )
+    const out = await mint(sendOf(targetId, 6))
+    const sixth = out.actions?.[5]?.id ?? ""
+    await age(targetId, 6)
+    // The job gave it a fresh token and is still reading the document when the run gets to it.
+    kit.viewDelayMs = 2_500
+    const taken = remailClientAction(kit.w.orgId, sixth, { onlyUnsent: true })
+    expect(await taken).toBe(true)
+    expect(await mailsSettle(targetId, 6)).toBe(6)
+    const mails = kit.capture.sent.filter(
+      (m) => m.to === `s6-${targetId.slice(0, 8)}@signers.example`,
+    )
+    expect(mails).toHaveLength(1)
+    const [row] = (await rowsOf(targetId)).filter((r) => r.id === sixth)
+    expect(hashToken(tokenOf(mails[0] as (typeof mails)[number]))).toBe(String(row?.token_hash))
+  })
+
   it("withdrawn, answered or long past, they are not mailed", async () => {
     const { targetId, out } = await stoppedBeforeMails(3)
     await sql`UPDATE ${k("client_actions")} SET revoked_at = now(), revoke_reason = 'withdrawn'
@@ -513,12 +545,6 @@ describe("who the signers are", () => {
 
   it("the same signers asked to accept instead of sign are another send", async () => {
     const targetId = crypto.randomUUID()
-    ClientActionTargetsTestAccess.set(
-      kit.targetApp,
-      kit.targetType,
-      ["sign", "accept"],
-      async () => kit.view,
-    )
     await mint(sendOf(targetId, 2))
     const out = await mint(sendOf(targetId, 2, { kind: "accept" }))
     expect(out.error?.code).toBe("ALREADY_SENT")
@@ -526,18 +552,26 @@ describe("who the signers are", () => {
   })
 
   it("a signer moved to a corrected address counts there, not at the address replaced", async () => {
-    const targetId = crypto.randomUUID()
-    const out = await mint(sendOf(targetId, 2))
-    await mailsSettle(targetId, 2)
-    const fixed = `fixed-${targetId.slice(0, 8)}@signers.example`
-    const moved = await mint({ new_link: { after: out.actions?.[0]?.id, email: fixed } })
-    expect(moved.status).toBe("ok")
-    const [, second] = signersOf(targetId, 2)
-    const again = await mint(
-      sendOf(targetId, 2, { signers: [{ email: fixed, name: "Signer 1" }, second] }),
-    )
-    expect(again).toMatchObject({ status: "ok", already_sent: true })
-    expect((await mint(sendOf(targetId, 2))).error?.code).toBe("ALREADY_SENT")
+    // Their first link still open, or declined without the code: it is replaced either way.
+    for (const declined of [false, true]) {
+      const targetId = crypto.randomUUID()
+      const out = await mint(sendOf(targetId, 2))
+      await mailsSettle(targetId, 2)
+      const first = out.actions?.[0]?.id ?? ""
+      if (declined)
+        await sql`UPDATE ${k("client_actions")} SET decided_at = now(), decision = 'declined'
+                   WHERE id = ${first}`
+      const fixed = `fixed-${targetId.slice(0, 8)}@signers.example`
+      const moved = await mint({ new_link: { after: first, email: fixed } })
+      expect(moved.status).toBe("ok")
+      const [, second] = signersOf(targetId, 2)
+      const again = await mint(
+        sendOf(targetId, 2, { signers: [{ email: fixed, name: "Signer 1" }, second] }),
+      )
+      expect(again).toMatchObject({ status: "ok", already_sent: true })
+      expect(again.actions).toHaveLength(2)
+      expect((await mint(sendOf(targetId, 2))).error?.code).toBe("ALREADY_SENT")
+    }
   })
 
   it("a restricted document's send names its readers in the word the app hears", async () => {
@@ -705,6 +739,17 @@ describe("another person in a withdrawn signer's place", () => {
     await withdraw(second)
     const [signed] = signersOf(targetId, 1)
     expect((await place(second, signed as object)).status).toBe("ok")
+  })
+
+  it("a place whose link ended is asked again on that link, not on the one it replaced", async () => {
+    const targetId = crypto.randomUUID()
+    const out = await mint(sendOf(targetId, 1))
+    const first = out.actions?.[0]?.id ?? ""
+    await withdraw(first)
+    const placed = (await place(first, proxyOf(targetId))).action?.id ?? ""
+    await withdraw(placed)
+    expect((await place(first, proxyOf(targetId))).error?.code).toBe("ALREADY_REPLACED")
+    expect((await mint({ new_link: { after: placed } })).status).toBe("ok")
   })
 
   it("two proxies at the same moment: one takes the place", async () => {

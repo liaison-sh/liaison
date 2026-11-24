@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.38.6",
+  "version": "0.38.7",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -5171,7 +5171,7 @@
           },
           "to": {
             "type": "string",
-            "description": "Override recipient email; defaults to the counterparty contact's email."
+            "description": "Defaults to the counterparty contact's email."
           },
           "subject": {
             "type": "string"
@@ -5181,7 +5181,7 @@
           },
           "annex_set": {
             "type": "string",
-            "description": "Set by the app: the files the approval card listed. Leave it out."
+            "description": "Set by the app; leave it out."
           }
         },
         "required": [

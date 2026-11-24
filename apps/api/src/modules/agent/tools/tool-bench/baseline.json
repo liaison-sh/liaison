@@ -810,7 +810,7 @@
     },
     "invoicing__documents_send_to_customer": {
       "desc": 496,
-      "schema": 64
+      "schema": 77
     },
     "invoicing__documents_update": {
       "desc": 330,

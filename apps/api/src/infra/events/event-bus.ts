@@ -754,6 +754,9 @@ export const KERNEL_DECLARED_EMITS: ReadonlySet<string> = new Set([
   "client_action:requested",
   "client_action:code_locked",
   "client_action:decided",
+  // A send's links exist (modules/client-actions/mint.ts mintClientActionSend), in the
+  // transaction that made them: the target's app marks its record sent.
+  "client_action:links_made",
   "client_action:send_failed",
   "client_action:staff_turn",
   // Pending requests about a record withdrawn when its list closed on the asker

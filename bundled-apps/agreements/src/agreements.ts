@@ -34,7 +34,8 @@ import {
   refusal,
   todayOf,
 } from "./ctx"
-import { linksOf, rescannedState } from "./send"
+import { answerBeingRecorded, interruptedSend, linksOf, rescannedState } from "./send"
+import { markSent } from "./sent-state"
 
 export interface AgreementRow {
   id: string
@@ -290,9 +291,12 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
   const draft = await loadDraft(ctx, row.id)
   const me = await callerUserId(ctx)
   const shares = await currentShares(ctx, row.id)
-  // The links of the version that went out: the latest one, once the agreement left draft.
+  // The links of the version that went out: the latest one, once the agreement left draft (or
+  // its send was cut off before it did).
   const latest = versions[versions.length - 1]
-  const links = latest && row.status !== "draft" ? await linksOf(ctx, latest.id) : []
+  const cut = await interruptedSend(ctx, row)
+  const links =
+    latest && row.status !== "draft" ? await linksOf(ctx, latest.id) : (cut?.links ?? [])
   return {
     status: "ok",
     agreement: {
@@ -348,7 +352,7 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       ...(l.state === "declined" && !l.code_verified ? { code_verified: false } : {}),
     })),
     message:
-      `Agreement ${row.number} "${row.title}" is ${row.status}${versions.length ? `, ${versions.length} version(s)` : ", no version yet"}. ${row.claimed_by_user_id ? ` An admin added themselves to its list on ${String(row.claimed_at ?? "").slice(0, 10)}, after every person on it had been deactivated for 7 days.` : ""} ${row.status === "draft" ? "Check it with agreement_prepare." : ""}`
+      `Agreement ${row.number} "${row.title}" is ${row.status}${versions.length ? `, ${versions.length} version(s)` : ", no version yet"}. ${row.claimed_by_user_id ? ` An admin added themselves to its list on ${String(row.claimed_at ?? "").slice(0, 10)}, after every person on it had been deactivated for 7 days.` : ""} ${cut ? `Version ${cut.version.number} was sent to ${cut.links.length} signer(s) and its links stand: it reads as sent in a few minutes.` : row.status === "draft" ? "Check it with agreement_prepare." : ""}`
         .replace(/\s+/g, " ")
         .trim(),
   }
@@ -633,6 +637,17 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
       "INVALID_FILE",
       "file_id is the id files_upload_confirm returned for the uploaded PDF. Nothing was changed.",
     )
+  if (row.status === "draft" && (p.source !== undefined || p.file_id !== undefined)) {
+    // A draft whose send was cut off is out for signature: a save replaces it like any sent
+    // version, and waits while an answer to it is not recorded yet.
+    const cut = await interruptedSend(ctx, row)
+    if (cut) {
+      const recording = await answerBeingRecorded(ctx, row, cut)
+      if (recording) return recording
+      await markSent(ctx, row, cut.version)
+      row = { ...row, status: "sent" }
+    }
+  }
   if (SENT.includes(row.status) && (p.source !== undefined || p.file_id !== undefined)) {
     // Saving over a sent version: its open links die (`replaced`), its signatures stay on it,
     // and the next freeze makes a new version.
@@ -869,6 +884,12 @@ export async function agreementPriceSet(
       "NOT_A_DRAFT",
       `Agreement ${row.number} is ${row.status}: its price no longer changes. Nothing was changed.`,
     )
+  const out = await interruptedSend(ctx, row)
+  if (out)
+    return refusal(
+      "NOT_A_DRAFT",
+      `Agreement ${row.number} version ${out.version.number} was sent: its price no longer changes. Nothing was changed.`,
+    )
   if (typeof p.price_minor !== "string" || !/^[0-9]{1,18}$/.test(p.price_minor))
     return refusal(
       "INVALID_PRICE",
@@ -917,6 +938,12 @@ async function prepareReading(
     return refusal(
       "NOT_A_DRAFT",
       `Agreement ${row.number} is ${row.status}: only a draft is prepared. Nothing was frozen.`,
+    )
+  const out = await interruptedSend(ctx, row)
+  if (out)
+    return refusal(
+      "NOT_A_DRAFT",
+      `Agreement ${row.number} version ${out.version.number} was sent and its signing links stand: save a change to replace it, or void it. Nothing was frozen.`,
     )
   const draft = await loadDraft(ctx, row.id)
   const checks: Check[] = prepareChecks(row, draft?.source ?? null, {

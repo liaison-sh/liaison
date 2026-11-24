@@ -6781,7 +6781,11 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       return {
         error: {
           code: "timeout",
-          message: `${opts.toolName} timed out while executing. Retry once; if it persists, the operation is genuinely slow or stuck.`,
+          // A write reaching outside (a send, a mail) was cut off here, not undone.
+          message:
+            (tool as { approvalImpact?: unknown }).approvalImpact === "external"
+              ? `${opts.toolName} timed out while executing, and what it started may have gone through. Look at the record before trying again.`
+              : `${opts.toolName} timed out while executing. Retry once; if it persists, the operation is genuinely slow or stuck.`,
           retryable: true,
           status: 504,
         },

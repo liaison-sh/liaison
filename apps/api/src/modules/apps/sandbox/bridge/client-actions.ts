@@ -9,7 +9,12 @@
  *    `clientActionTargets`, and only while the handler runs under a person's
  *    decision on one of the app's own gated, never auto-approved tools (an
  *    approval, or that person's own click). Under "one after the other" only the
- *    first signer gets a link; the others wait with no token and no mail.
+ *    first signer gets a link; the others wait with no token and no mail. All of
+ *    its signers or none; the same send again answers `already_sent` with the
+ *    links it made, and mails nobody. The app hears of the links it made by
+ *    `kernel/client_action:links_made`, even when this run was cut off.
+ *  - `client_actions_mint({ remind })`: a fresh link by mail for each named open
+ *    one; a signer mailed again minutes ago is answered in `recently_mailed`.
  *  - `client_actions_mint({ next_turn_after })`: the next waiting signer of an
  *    already approved send, once every signer before them signed. No approval
  *    of its own: the send was approved, and the kernel checks the order.
@@ -33,6 +38,7 @@
  * message crosses the sandbox boundary.
  */
 
+import { rootLogger } from "~/lib/logger"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import {
   ClientActionError,
@@ -40,19 +46,22 @@ import {
   EXPIRY_DAYS,
   listTargetClientActions,
   type MintResult,
-  mintClientAction,
+  mintClientActionSend,
   newLinkAfter,
   openNextSignerTurn,
+  type RemindedLink,
   readClientActionRecord,
   remindClientActions,
-  revokeClientAction,
   revokeTargetClientActions,
+  type SendAction,
   signerAddresses,
 } from "~/modules/client-actions/mint"
 import { signingUnavailable } from "~/modules/client-actions/signing-state"
 import { type ClientActionKind, declaredTarget } from "~/modules/client-actions/targets"
 import { describeStop, evaluateSendGuard, isPinnedSendGuard } from "~/modules/mail/send-guard"
 import { hasScope } from "~/modules/permissions/permissions"
+
+const log = rootLogger.child({ module: "client-actions-bridge" })
 
 /** The most signers one send may carry. */
 export const MAX_SIGNERS_PER_SEND = 40
@@ -92,7 +101,7 @@ interface SendParams {
   send_guard?: unknown
 }
 
-function actionOut(r: MintResult, signOrder: number | null) {
+function actionOut(r: MintResult | SendAction, signOrder: number | null) {
   return {
     id: r.id,
     status: r.status,
@@ -259,10 +268,13 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
       ids,
       ...(guard !== undefined ? { check: (emails: string[]) => guardHolds(guard, emails) } : {}),
     })
-    if (!Array.isArray(reminded)) return refuse(reminded.stopped.code, reminded.stopped.message)
+    if ("stopped" in reminded) return refuse(reminded.stopped.code, reminded.stopped.message)
+    const named = (links: RemindedLink[]) =>
+      links.map((r) => ({ id: r.id, invited_name: r.invitedName }))
     return JSON.stringify({
       status: "ok",
-      reminded: reminded.map((r) => ({ id: r.id, invited_name: r.invitedName })),
+      reminded: named(reminded.reminded),
+      recently_mailed: named(reminded.recentlyMailed),
     })
   }
 
@@ -338,48 +350,50 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
       const stop = await guardStops(p.send_guard, signers)
       if (stop) return refuse(stop.code, stop.message)
     }
-    const sequential = p.order === "sequential"
-    const groupId = crypto.randomUUID()
-    const approvedBy = await decidingPerson()
-    const made: Array<ReturnType<typeof actionOut>> = []
     try {
-      for (const [i, s] of signers.entries()) {
-        const signOrder = sequential ? i + 1 : null
-        const r = await mintClientAction({
-          orgId,
-          kind: p.kind,
-          targetApp: appName,
-          targetType: p.target_type,
-          targetId: p.target_id,
-          targetSha256: p.sha256,
+      const sent = await mintClientActionSend({
+        orgId,
+        kind: p.kind,
+        targetApp: appName,
+        targetType: p.target_type,
+        targetId: p.target_id,
+        targetSha256: p.sha256,
+        companyId: p.company_id ?? null,
+        expiresInDays: p.expires_in_days as (typeof EXPIRY_DAYS)[number],
+        sequential: p.order === "sequential",
+        signers: signers.map((s) => ({
           contactId: s.contact_id ?? null,
-          companyId: p.company_id ?? null,
-          invitedEmail: s.email ?? null,
-          invitedName: s.name ?? null,
-          expiresInDays: p.expires_in_days as (typeof EXPIRY_DAYS)[number],
-          signOrder,
-          groupId,
-          waitingTurn: sequential && i > 0,
-          visibleTo: p.visible_to ?? null,
-          requiredPhrase: p.required_phrase ?? null,
-          message: p.message ?? null,
-          createdByUserId: actorUserId(),
-          createdByAgentId: bridgeActingAgentId ?? null,
-          approvedByUserId: approvedBy,
-        })
-        made.push(actionOut(r, signOrder))
-      }
+          email: s.email ?? null,
+          name: s.name ?? null,
+        })),
+        visibleTo: p.visible_to ?? null,
+        requiredPhrase: p.required_phrase ?? null,
+        message: p.message ?? null,
+        createdByUserId: actorUserId(),
+        createdByAgentId: bridgeActingAgentId ?? null,
+        approvedByUserId: await decidingPerson(),
+      })
+      return JSON.stringify({
+        status: "ok",
+        group_id: sent.groupId,
+        ...(sent.alreadySent ? { already_sent: true } : {}),
+        actions: sent.actions.map((a) => actionOut(a, a.signOrder)),
+      })
     } catch (err) {
-      // A send is all of its signers or none: what was made before the failure is withdrawn.
-      for (const m of made) {
-        if (m.deduped) continue
-        await revokeClientAction({ orgId, id: m.id, reason: "withdrawn", byUserId: actorUserId() })
-      }
       if (err instanceof ClientActionError)
         return refuse(err.code, `${err.message}. Nothing was sent.`)
-      throw err
+      // All of its links or none were written: a second send makes only what is missing.
+      // The driver's error alone: the query error around it carries the signers' addresses.
+      const cause = err instanceof Error && err.cause ? err.cause : err
+      log.error(
+        { err: cause, orgId, app: appName, targetId: p.target_id },
+        "a send's links were not made",
+      )
+      return refuse(
+        "SEND_NOT_CONFIRMED",
+        "The links could not be written. Send it again: nobody is asked twice.",
+      )
     }
-    return JSON.stringify({ status: "ok", group_id: groupId, actions: made })
   }
 
   return {

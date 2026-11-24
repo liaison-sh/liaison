@@ -7,7 +7,13 @@
 // another app's record changes nothing here.
 
 import { describe, expect, it } from "bun:test"
-import { agreementCreate, agreementPrepare, agreementUpdate } from "./agreements"
+import {
+  agreementCreate,
+  agreementGet,
+  agreementPrepare,
+  agreementPriceSet,
+  agreementUpdate,
+} from "./agreements"
 import type { AgreementsCtx } from "./ctx"
 import { memoryDb, type Row } from "./memory-db.testutil"
 import {
@@ -18,9 +24,11 @@ import {
   agreementSend,
   agreementSendPreflight,
   agreementVoid,
+  agreementVoidPreflight,
   clientActionViewGet,
   decidedReconcile,
   onClientActionDecided,
+  onLinksMade,
   resolveSigners,
 } from "./send"
 
@@ -528,7 +536,7 @@ describe("a decision", () => {
   })
 
   it("a signature on an agreement that is not waiting for signatures records nothing and seals nothing", async () => {
-    for (const status of ["draft", "voided", "declined", "signed"]) {
+    for (const status of ["voided", "declined", "signed"]) {
       const db = memoryDb()
       const { id, prepared } = await frozen(db)
       await db.update("agreements", id, { status })
@@ -868,5 +876,320 @@ describe("a decision whose event was lost", () => {
     const again = (await decidedReconcile(ctx)) as { handled: number }
     expect(again.handled).toBe(0)
     expect(db.tables.get("signature_events") ?? []).toHaveLength(1)
+  })
+})
+
+describe("a send cut off before the agreement left draft", () => {
+  type Link = { id: string; state: string; replaced?: boolean }
+
+  /** The kernel lists these links on the version, and answers each one's record. */
+  function withLinks(
+    ctx: ReturnType<typeof ctxFor>,
+    links: Link[],
+    records: Record<string, unknown> = {},
+  ) {
+    ctx.client_actions_record = async (p) =>
+      "target_id" in p
+        ? {
+            status: "ok",
+            links: links.map((l) => ({
+              invited_name: l.id,
+              invited_email: `${l.id}@signers.example`,
+              sign_order: null,
+              decided_at: null,
+              code_verified: false,
+              expires_at: "2026-12-01",
+              ...l,
+            })),
+          }
+        : { status: "ok", record: records[p.id] }
+    return ctx
+  }
+  const made = (versionId: string) => ({
+    data: { id: "ca-1", target: { app: "agreements", type: "agreement_version", id: versionId } },
+  })
+  const sentOnce = (ctx: ReturnType<typeof ctxFor>) =>
+    ctx.calls.emitted.filter((e) => e === "agreement:sent").length
+
+  it("the kernel's word of its links marks it sent, once", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    const ctx = ctxFor(db)
+    expect(await onLinksMade(ctx, made(prepared.version_id))).toEqual({ status: "sent" })
+    expect(await onLinksMade(ctx, made(prepared.version_id))).toEqual({ status: "ignored" })
+    expect(rowOf(db, "agreements", id).status).toBe("sent")
+    expect(sentOnce(ctx)).toBe(1)
+  })
+
+  it("links of another app's record, of an unknown version or of a closed agreement change nothing", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    const ctx = ctxFor(db)
+    for (const target of [
+      { app: "invoicing", type: "agreement_version", id: prepared.version_id },
+      { app: "agreements", type: "milestone", id: prepared.version_id },
+      { app: "agreements", type: "agreement_version", id: C1 },
+    ])
+      expect(await onLinksMade(ctx, { data: { id: "ca-1", target } })).toEqual({
+        status: "ignored",
+      })
+    expect(rowOf(db, "agreements", id).status).toBe("draft")
+    for (const status of ["partly_signed", "signed", "voided", "declined"]) {
+      await db.update("agreements", id, { status })
+      await onLinksMade(ctx, made(prepared.version_id))
+      expect(rowOf(db, "agreements", id).status).toBe(status)
+    }
+    expect(sentOnce(ctx)).toBe(0)
+  })
+
+  it("links made on a version that is no longer the latest are withdrawn", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    await agreementPrepare(ctxFor(db), { id })
+    const ctx = ctxFor(db)
+    expect(await onLinksMade(ctx, made(prepared.version_id))).toEqual({ status: "replaced" })
+    expect(ctx.calls.revokes).toEqual([
+      { target_type: "agreement_version", target_id: prepared.version_id, reason: "replaced" },
+    ])
+    expect(rowOf(db, "agreements", id).status).toBe("draft")
+  })
+
+  it("a signature is recorded and moves the agreement on; a decline closes it", async () => {
+    for (const [decision, status, events] of [
+      ["signed", "partly_signed", 1],
+      ["declined", "declined", 0],
+    ] as const) {
+      const db = memoryDb()
+      const { id, prepared } = await frozen(db)
+      const ctx = ctxFor(db)
+      ctx.records.set("ca-1", record({ decision }))
+      await onClientActionDecided(ctx, made(prepared.version_id))
+      expect(rowOf(db, "agreements", id).status).toBe(status)
+      expect(db.tables.get("signature_events") ?? []).toHaveLength(events)
+      expect(sentOnce(ctx)).toBe(1)
+    }
+  })
+
+  it("a decision on an older version, or given for another document, stays ignored", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    const ctx = ctxFor(db)
+    ctx.records.set("ca-1", record({ target_sha256: "c".repeat(64) }))
+    const out = await onClientActionDecided(ctx, made(prepared.version_id))
+    expect(out).toEqual({ status: "ignored" })
+    ctx.records.set("ca-1", record({}))
+    await agreementPrepare(ctxFor(db), { id })
+    expect(await onClientActionDecided(ctx, made(prepared.version_id))).toEqual({
+      status: "ignored",
+    })
+    expect(rowOf(db, "agreements", id).status).toBe("draft")
+    expect(db.tables.get("signature_events") ?? []).toEqual([])
+  })
+
+  it("the reconcile job marks it sent and records the signature it was never told of", async () => {
+    const db = memoryDb()
+    const { id } = await frozen(db)
+    const rec = record({ sign_order: null })
+    const ctx = withLinks(
+      ctxFor(db),
+      [
+        { id: "ca-1", state: "decided" },
+        { id: "ca-2", state: "open" },
+      ],
+      { "ca-1": rec },
+    )
+    expect(await decidedReconcile(ctx)).toMatchObject({ resumed: 1, handled: 1 })
+    expect(rowOf(db, "agreements", id).status).toBe("partly_signed")
+    expect(db.tables.get("signature_events") ?? []).toHaveLength(1)
+    expect(await decidedReconcile(ctx)).toMatchObject({ resumed: 0, handled: 0 })
+    expect(sentOnce(ctx)).toBe(1)
+  })
+
+  it("the reconcile job leaves a draft whose links are gone, and one never sent", async () => {
+    for (const links of [
+      [],
+      [{ id: "ca-1", state: "revoked" }],
+      [{ id: "ca-1", state: "expired" }],
+      [{ id: "ca-1", state: "open", replaced: true }],
+    ]) {
+      const db = memoryDb()
+      const { id } = await frozen(db)
+      expect(await decidedReconcile(withLinks(ctxFor(db), links))).toMatchObject({ resumed: 0 })
+      expect(rowOf(db, "agreements", id).status).toBe("draft")
+    }
+  })
+
+  it("a change request being sent right now is left to its own run; a stale one is marked", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    await db.update("agreements", id, { kind: "change_request", parent_agreement_id: C1 })
+    const ctx = withLinks(ctxFor(db), [{ id: "ca-1", state: "open" }])
+    expect(await onLinksMade(ctx, made(prepared.version_id))).toEqual({ status: "ignored" })
+    expect(await decidedReconcile(ctx)).toMatchObject({ resumed: 0 })
+    await db.update("agreement_versions", prepared.version_id, {
+      frozen_at: new Date(Date.now() - 11 * 60_000).toISOString(),
+    })
+    expect(await decidedReconcile(ctx)).toMatchObject({ resumed: 1 })
+    expect(rowOf(db, "agreements", id).status).toBe("sent")
+  })
+
+  it("a void withdraws its links; a draft never sent is still nothing to void", async () => {
+    const db = memoryDb()
+    const { id } = await frozen(db)
+    const ctx = withLinks(ctxFor(db, { approved: true }), [{ id: "ca-2", state: "open" }])
+    expect(await agreementVoidPreflight(ctx, { id, reason: "Terms changed" })).toEqual({ ok: true })
+    const out = (await agreementVoid(ctx, { id, reason: "Terms changed" })) as { status: string }
+    expect(out.status).toBe("ok")
+    expect(rowOf(db, "agreements", id).status).toBe("voided")
+    const other = memoryDb()
+    const never = await frozen(other)
+    const refused = (await agreementVoid(ctxFor(other, { approved: true }), {
+      id: never.id,
+      reason: "Terms changed",
+    })) as { error: { code: string } }
+    expect(refused.error.code).toBe("NOT_SENT")
+  })
+
+  it("a save replaces it like a sent version", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    const ctx = withLinks(ctxFor(db), [{ id: "ca-2", state: "open" }])
+    const out = (await agreementUpdate(ctx, { id, source })) as { status: string }
+    expect(out.status).toBe("ok")
+    expect(rowOf(db, "agreement_versions", prepared.version_id).status).toBe("superseded")
+    expect(rowOf(db, "agreements", id).status).toBe("draft")
+    expect((ctx.calls.revokes[0] as { reason: string }).reason).toBe("replaced")
+  })
+
+  it("an answer not recorded yet holds a save and a void, and leaves every link", async () => {
+    for (const state of ["decided", "declined"]) {
+      const db = memoryDb()
+      const { id, prepared } = await frozen(db)
+      const ctx = withLinks(ctxFor(db, { approved: true }), [
+        { id: "ca-1", state },
+        { id: "ca-2", state: "open" },
+      ])
+      const saved = (await agreementUpdate(ctx, { id, source })) as { error: { code: string } }
+      expect(saved.error.code).toBe("ANSWER_BEING_RECORDED")
+      expect(rowOf(db, "agreements", id).status).toBe("sent")
+      await db.update("agreements", id, { status: "draft" })
+      const voided = (await agreementVoid(ctx, { id, reason: "Terms changed" })) as {
+        error: { code: string }
+      }
+      expect(voided.error.code).toBe("ANSWER_BEING_RECORDED")
+      expect(ctx.calls.revokes).toEqual([])
+      expect(rowOf(db, "agreement_versions", prepared.version_id).status).toBe("frozen")
+    }
+  })
+
+  it("it is neither prepared nor priced again, and a read says its links stand", async () => {
+    const db = memoryDb()
+    const { id } = await frozen(db)
+    const ctx = withLinks(ctxFor(db), [{ id: "ca-1", state: "open" }])
+    const prepared = (await agreementPrepare(ctx, { id })) as { error: { code: string } }
+    expect(prepared.error.code).toBe("NOT_A_DRAFT")
+    const priced = (await agreementPriceSet(ctx, {
+      id,
+      price_minor: "100",
+      currency: "EUR",
+    })) as { error: { code: string } }
+    expect(priced.error.code).toBe("NOT_A_DRAFT")
+    const read = (await agreementGet(ctx, { id })) as {
+      signing_links: Array<{ client_action_id: string }>
+      message: string
+    }
+    expect(read.signing_links.map((l) => l.client_action_id)).toEqual(["ca-1"])
+    expect(read.message).toContain("its links stand")
+  })
+
+  it("the same send again says what had happened, and never moves a signed agreement back", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    const ctx = ctxFor(db)
+    ctx.client_actions_mint = async () => {
+      // A signer answered between the kernel's answer and this run's own write.
+      await db.update("agreements", id, { status: "signed" })
+      return {
+        status: "ok",
+        group_id: "g",
+        already_sent: true,
+        actions: [{ id: "ca-1", status: "decided", sign_order: null, invited_name: "Paul Morel" }],
+      }
+    }
+    const out = (await agreementSend(ctx, {
+      version_id: prepared.version_id,
+      sha256: prepared.sha256,
+      signers: [{ contact_id: C1 }],
+    })) as { status: string; already_sent: boolean; message: string; agreement: { status: string } }
+    expect(out).toMatchObject({
+      status: "ok",
+      already_sent: true,
+      agreement: { status: "signed" },
+    })
+    expect(out.message).toContain("already been sent to Paul Morel")
+    expect(rowOf(db, "agreements", id).status).toBe("signed")
+    expect(sentOnce(ctx)).toBe(0)
+  })
+
+  it("other signers on a version already out are refused, and the agreement is marked sent", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    const ctx = ctxFor(db)
+    ctx.client_actions_mint = async () => ({
+      status: "error",
+      error: { code: "ALREADY_SENT", message: "The document was already sent to Anne Morel." },
+    })
+    const out = (await agreementSend(ctx, {
+      version_id: prepared.version_id,
+      sha256: prepared.sha256,
+      signers: [{ contact_id: C1 }],
+    })) as { error: { code: string; message: string } }
+    expect(out.error.code).toBe("ALREADY_SENT")
+    expect(out.error.message).toContain("Anne Morel")
+    expect(rowOf(db, "agreements", id).status).toBe("sent")
+  })
+
+  it("a send whose state could not be written says the links went out", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    const ctx = ctxFor(db)
+    ctx.db = {
+      ...db,
+      updateMany: async () => {
+        throw new Error("connection lost")
+      },
+    } as unknown as typeof ctx.db
+    const out = (await agreementSend(ctx, {
+      version_id: prepared.version_id,
+      sha256: prepared.sha256,
+      signers: [{ contact_id: C1 }],
+    })) as { status: string; message: string; agreement: { status: string } }
+    expect(out.status).toBe("ok")
+    expect(out.agreement.status).toBe("draft")
+    expect(out.message).toContain("was sent")
+    expect(out.message).toContain("its state follows")
+    expect(rowOf(db, "agreements", id).status).toBe("draft")
+    await onLinksMade(ctxFor(db), made(prepared.version_id))
+    expect(rowOf(db, "agreements", id).status).toBe("sent")
+  })
+
+  it("a reminder answers who was mailed minutes ago, and mails them nothing", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    await db.update("agreements", id, { status: "sent" })
+    const ctx = ctxFor(db)
+    ctx.records.set("ca-1", record({ target_id: prepared.version_id }))
+    ctx.client_actions_mint = async () => ({
+      status: "ok",
+      reminded: [],
+      recently_mailed: [{ id: "ca-1", invited_name: "Paul Morel" }],
+    })
+    const out = (await agreementReminderSend(ctx, { client_action_ids: ["ca-1"] })) as {
+      status: string
+      message: string
+    }
+    expect(out.status).toBe("ok")
+    expect(out.message).toContain("nothing was mailed now")
+    expect(out.message).toContain("Paul Morel got a fresh link minutes ago")
   })
 })

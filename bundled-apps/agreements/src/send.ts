@@ -19,6 +19,7 @@ import {
 import { UNFIT_TAGS } from "./checks"
 import { type AgreementsCtx, actingAgentId, bridgeAnswer, type ErrorEnvelope, refusal } from "./ctx"
 import { type CopyState, copyStateOf, eventsOf, type SealCtx, sealVersion } from "./seal"
+import { markSent, standing, stillSending } from "./sent-state"
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -33,6 +34,7 @@ interface Agreement {
   kind: string
   fit_tag?: string | null
   company_id?: string | null
+  parent_agreement_id?: string | null
   language?: string | null
   org_access?: string | null
 }
@@ -47,6 +49,7 @@ interface Version {
   page_count?: number | null
   source?: { body?: { blocks?: unknown[] } } | null
   source_text?: string | null
+  frozen_at?: string | null
   source_kind?: string | null
   pages?: Array<{ n: number; picture_file_id: string; sha256: string; text: string }> | null
   pages_sha256?: string | null
@@ -237,6 +240,11 @@ async function readyToSend(
       "VERSION_CHANGED",
       `${agreement.number} changed since this send was prepared: version ${version.number} is no longer the one to send. Read it again with agreement_get. Nothing was sent.`,
     )
+  if (WAITING.includes(agreement.status))
+    return refusal(
+      "ALREADY_SENT",
+      `${agreement.number} version ${version.number} was already sent: its signing links went out, and nothing was sent again now. agreement_get lists them. A new version is sent after a save and a freeze.`,
+    )
   if (agreement.status !== "draft")
     return refusal(
       "ALREADY_SENT",
@@ -308,6 +316,8 @@ interface MintAnswer {
   status: string
   error?: { code: string; message: string }
   group_id?: string
+  /** The same send had made these links before: nothing was made or mailed now. */
+  already_sent?: boolean
   actions?: Array<{
     id: string
     status: string
@@ -427,35 +437,131 @@ export async function agreementSend(ctx: AgreementsCtx, p: SendParams) {
       },
     }),
   )
+  const { agreement, version } = ready
+  if (out.status !== "ok" && out.error?.code === "ALREADY_SENT") {
+    // Links of an earlier send stand on this version: it went out, whatever its state said.
+    await markSent(ctx, agreement, version)
+    return refusal(
+      "ALREADY_SENT",
+      `${agreement.number} version ${version.number}: ${out.error.message} To ask other signers, void it or save a new version first.`,
+    )
+  }
+  if (out.status !== "ok" && out.error?.code === "SEND_NOT_CONFIRMED")
+    return refusal("SEND_NOT_CONFIRMED", `${agreement.number}: ${out.error.message}`)
   if (out.status !== "ok")
     return refusal(
       out.error?.code ?? "SEND_FAILED",
-      `${ready.agreement.number} was not sent: ${out.error?.message ?? "no link was made"}`,
+      `${agreement.number} was not sent: ${out.error?.message ?? "no link was made"}`,
     )
-  await ctx.db.update("agreements", ready.agreement.id, { status: "sent" })
-  await ctx.emit?.({
-    entity: "agreement",
-    action: "sent",
-    entityId: ready.agreement.id,
-    data: { number: ready.agreement.number, version: ready.version.number },
-  })
+  // The links are out from here on. Its state is written now, and again by the kernel's word
+  // of the links (`onLinksMade`) when this run is cut off or the write fails.
+  let late = false
+  try {
+    await markSent(ctx, agreement, version)
+  } catch {
+    late = true
+  }
   const actions = out.actions ?? []
   const first = actions.filter((a) => a.status === "open")
   const waiting = actions.filter((a) => a.status === "waiting_turn")
   const staff = actions.filter((a) => a.signer_is_staff && a.status === "open")
+  const client_actions = actions.map((a) => ({
+    id: a.id,
+    signer: a.invited_name,
+    sign_order: a.sign_order,
+    state: a.status,
+    signs_in_session: a.signer_is_staff,
+  }))
+  const lateNote = late ? " It still reads as a draft: its state follows in a few minutes." : ""
+  if (out.already_sent) {
+    const now = (await ctx.db.findOne("agreements", agreement.id)) as Agreement | null
+    return {
+      status: "ok",
+      already_sent: true,
+      agreement: {
+        id: agreement.id,
+        number: agreement.number,
+        status: late ? "draft" : (now?.status ?? "sent"),
+      },
+      version: { id: version.id, number: version.number },
+      client_actions,
+      message: `${agreement.number} version ${version.number} had already been sent to ${actions.map((a) => a.invited_name).join(", ")}: their links stand, and nothing was made or mailed again.${lateNote}`,
+    }
+  }
   return {
     status: "ok",
-    agreement: { id: ready.agreement.id, number: ready.agreement.number, status: "sent" },
-    version: { id: ready.version.id, number: ready.version.number },
-    client_actions: actions.map((a) => ({
-      id: a.id,
-      signer: a.invited_name,
-      sign_order: a.sign_order,
-      state: a.status,
-      signs_in_session: a.signer_is_staff,
-    })),
-    message: `${ready.agreement.number} version ${ready.version.number} was sent: ${first.map((a) => a.invited_name).join(", ")} can ${ready.mode} now${staff.length ? ` (${staff.map((a) => a.invited_name).join(", ")} in their own session, no mailed link)` : ""}${waiting.length ? `; ${waiting.map((a) => a.invited_name).join(", ")} ${waiting.length === 1 ? "gets" : "get"} a link only after the signer before them` : ""}. Nothing else was sent.`,
+    agreement: { id: agreement.id, number: agreement.number, status: late ? "draft" : "sent" },
+    version: { id: version.id, number: version.number },
+    client_actions,
+    message: `${agreement.number} version ${version.number} was sent: ${first.map((a) => a.invited_name).join(", ")} can ${ready.mode} now${staff.length ? ` (${staff.map((a) => a.invited_name).join(", ")} in their own session, no mailed link)` : ""}${waiting.length ? `; ${waiting.map((a) => a.invited_name).join(", ")} ${waiting.length === 1 ? "gets" : "get"} a link only after the signer before them` : ""}. Nothing else was sent.${lateNote}`,
   }
+}
+
+/** A draft whose latest frozen version went out: its links stand, its state was never written. */
+export interface InterruptedSend {
+  version: Version
+  links: SigningLink[]
+}
+
+/**
+ * The interrupted send of a draft, or null. Read only. A voided, declined or replaced
+ * agreement is never one, nor is a version that is no longer the latest.
+ */
+export async function interruptedSend(
+  ctx: AgreementsCtx,
+  a: { id: string; status: string },
+): Promise<InterruptedSend | null> {
+  if (a.status !== "draft") return null
+  const version = await latestOf(ctx, a.id)
+  if (version?.status !== "frozen" || !version.sha256) return null
+  const links = standing(await linksOf(ctx, version.id))
+  return links.length > 0 ? { version, links } : null
+}
+
+/**
+ * An answer an interrupted send already holds and the app has not recorded: the send is marked
+ * sent so the job records it, and what would lose it (a save, a void) waits. Only the system
+ * writes a signature, never a person's run.
+ */
+export async function answerBeingRecorded(
+  ctx: AgreementsCtx,
+  a: Agreement,
+  cut: InterruptedSend,
+): Promise<ErrorEnvelope | null> {
+  const answered = cut.links.filter((l) => l.state === "decided" || l.state === "declined")
+  if (answered.length === 0) return null
+  await markSent(ctx, a, cut.version)
+  return refusal(
+    "ANSWER_BEING_RECORDED",
+    `${a.number} version ${cut.version.number} was sent and ${answered.map((l) => l.invited_name).join(", ")} answered: the answer is being recorded. Read it again in 10 minutes, then decide. Nothing was changed.`,
+  )
+}
+
+/**
+ * `kernel/client_action:links_made`: a send's links exist, told by the transaction that made
+ * them. The agreement is marked sent when the run that asked was cut off before it could. Links
+ * made on a version replaced meanwhile are withdrawn. A change request's own run writes its
+ * state, after the reply it goes with.
+ */
+export async function onLinksMade(ctx: AgreementsCtx, event: DecidedEvent) {
+  const t = event?.data?.target
+  if (t?.app !== "agreements" || t.type !== TARGET_TYPE || !t.id) return { status: "ignored" }
+  const version = (await ctx.db.findOne("agreement_versions", t.id)) as Version | null
+  if (!version) return { status: "ignored" }
+  const a = (await ctx.db.findOne("agreements", version.agreement_id)) as Agreement | null
+  if (!a) return { status: "ignored" }
+  const latest = await latestOf(ctx, a.id)
+  if (latest?.id !== version.id || version.status === "superseded") {
+    await ctx.client_actions_revoke?.({
+      target_type: TARGET_TYPE,
+      target_id: version.id,
+      reason: "replaced",
+    })
+    return { status: "replaced" }
+  }
+  if (a.status !== "draft" || version.status !== "frozen" || a.kind === CHANGE_REQUEST)
+    return { status: "ignored" }
+  return { status: (await markSent(ctx, a, version)) ? "sent" : "ignored" }
 }
 
 interface ViewParams {
@@ -660,10 +766,21 @@ export async function onClientActionDecided(ctx: AgreementsCtx, event: DecidedEv
   if (!rec) return { status: "ignored" }
   const version = (await ctx.db.findOne("agreement_versions", d.target.id)) as Version | null
   if (!version) return { status: "ignored" }
-  const agreement = (await ctx.db.findOne("agreements", version.agreement_id)) as Agreement | null
+  let agreement = (await ctx.db.findOne("agreements", version.agreement_id)) as Agreement | null
   if (!agreement) return { status: "ignored" }
   // A link a later one replaced counts for nothing: its signer answers on the new link.
   if (rec.replaced === true) return { status: "ignored" }
+  // Someone answered a draft's link: its send went out and was cut off before its state was
+  // written. The answer counts, on the document it was given for and only while that is the
+  // latest one.
+  if (agreement.status === "draft" && version.status === "frozen") {
+    const latest = await latestOf(ctx, agreement.id)
+    if (latest?.id !== version.id || rec.target_sha256 !== version.sha256)
+      return { status: "ignored" }
+    await markSent(ctx, agreement, version)
+    agreement = (await ctx.db.findOne("agreements", version.agreement_id)) as Agreement | null
+    if (!agreement) return { status: "ignored" }
+  }
   const isChangeRequest = agreement.kind === CHANGE_REQUEST
   if (rec.decision === "declined") {
     if (agreement.status === "sent" || agreement.status === "partly_signed") {
@@ -682,7 +799,7 @@ export async function onClientActionDecided(ctx: AgreementsCtx, event: DecidedEv
   // or accepted, never approved.
   if (!decisionFits(agreement.kind, rec.decision)) return { status: "ignored" }
   // Only a version this app sent and still waits on is signed and sealed: never one of a voided,
-  // declined, draft or replaced agreement, whoever minted the link.
+  // declined or replaced agreement, whoever minted the link.
   if (!WAITING.includes(agreement.status) || version.status !== "frozen")
     return { status: "ignored" }
   await writeSignatureEvent(ctx, agreement, version, rec)
@@ -729,11 +846,13 @@ export async function onClientActionDecided(ctx: AgreementsCtx, event: DecidedEv
 }
 
 /**
- * A document waiting for signatures, or a signed one whose signed copy read differently from
- * the frozen file (nothing was sealed): voided so a person sends it again from a clean file.
+ * A document waiting for signatures (a draft whose send was cut off is one), or a signed one
+ * whose signed copy read differently from the frozen file (nothing was sealed): voided so a
+ * person sends it again from a clean file.
  */
 async function voidable(ctx: AgreementsCtx, a: Agreement): Promise<boolean> {
   if (a.status === "sent" || a.status === "partly_signed") return true
+  if (a.status === "draft") return (await interruptedSend(ctx, a)) !== null
   if (a.status !== "signed") return false
   const v = (await latestOf(ctx, a.id)) as (Version & { copy_differs_at?: string | null }) | null
   return !!v?.copy_differs_at
@@ -811,6 +930,9 @@ export async function agreementVoid(ctx: AgreementsCtx, p: { id: string; reason:
   }
   if (!ctx.client_actions_revoke)
     return refusal("LINKS_NOT_AVAILABLE", "This server cannot withdraw links. Nothing was changed.")
+  const cut = await interruptedSend(ctx, a)
+  const recording = cut ? await answerBeingRecorded(ctx, a, cut) : null
+  if (recording) return recording
   const out = bridgeAnswer<{
     status: string
     revoked_ids?: string[]
@@ -985,6 +1107,7 @@ export async function agreementReminderSend(ctx: AgreementsCtx, p: ReminderParam
   const out = bridgeAnswer<{
     status: string
     reminded?: Array<{ id: string; invited_name: string }>
+    recently_mailed?: Array<{ id: string; invited_name: string }>
     error?: { code: string; message: string }
   }>(
     await (ctx.client_actions_mint as (x: unknown) => Promise<unknown>)({
@@ -1000,14 +1123,22 @@ export async function agreementReminderSend(ctx: AgreementsCtx, p: ReminderParam
       `No reminder for ${a.number}: ${out.error?.message ?? "nothing was mailed"}`,
     )
   const names = (out.reminded ?? []).map((r) => r.invited_name)
+  const recent = (out.recently_mailed ?? []).map((r) => r.invited_name)
+  const recentNote =
+    recent.length > 0
+      ? ` ${recent.join(", ")} got a fresh link minutes ago: that link stands, and no second mail went to them.`
+      : ""
   return {
     status: "ok",
     agreement: { id: a.id, number: a.number, status: a.status },
     reminded: out.reminded ?? [],
+    ...(recent.length > 0 ? { recently_mailed: out.recently_mailed } : {}),
     message:
-      names.length === 0
-        ? `${a.number} version ${v.number}: none of these signers has an open link to remind (each answered, waits for their turn, or signs in their own session). Nothing was mailed.`
-        : `${a.number} version ${v.number}: a fresh link went to ${names.join(", ")}; the links mailed before stop working. Nothing else was sent.`,
+      names.length > 0
+        ? `${a.number} version ${v.number}: a fresh link went to ${names.join(", ")}; the links mailed before stop working.${recentNote} Nothing else was sent.`
+        : recent.length > 0
+          ? `${a.number} version ${v.number}: nothing was mailed now.${recentNote}`
+          : `${a.number} version ${v.number}: none of these signers has an open link to remind (each answered, waits for their turn, or signs in their own session). Nothing was mailed.`,
   }
 }
 
@@ -1148,12 +1279,39 @@ export async function linksOf(ctx: AgreementsCtx, versionId: string): Promise<Si
 }
 
 /**
- * Job `decided-reconcile` (every 10 minutes): a decision whose event this app never handled
+ * The drafts whose send was cut off: a frozen version with links that stand. The newest frozen
+ * versions are looked at, so a send of the last days is always among them.
+ */
+async function resumeInterruptedSends(ctx: AgreementsCtx): Promise<number> {
+  const frozen = (await ctx.db.findMany("agreement_versions", {
+    where: { status: "frozen" },
+    orderBy: { frozen_at: "desc" },
+    limit: 500,
+  })) as Version[]
+  const ids = [...new Set(frozen.map((v) => v.agreement_id))]
+  if (ids.length === 0) return 0
+  const drafts = (await ctx.db.findMany("agreements", {
+    where: { id: { in: ids }, status: "draft" },
+    limit: 500,
+  })) as Agreement[]
+  let resumed = 0
+  for (const a of drafts) {
+    const cut = await interruptedSend(ctx, a)
+    if (!cut || stillSending(a, cut.version)) continue
+    if (await markSent(ctx, a, cut.version)) resumed += 1
+  }
+  return resumed
+}
+
+/**
+ * Job `decided-reconcile` (every 10 minutes). A send cut off before its agreement left draft is
+ * marked sent. A decision whose event this app never handled
  * (a lost delivery) is handled now. For each agreement waiting for signatures, every decided
  * link of its latest version without a signature event, and a decline the agreement does not
  * show yet, goes through the same handler as the event, so nothing is written twice.
  */
 export async function decidedReconcile(ctx: AgreementsCtx) {
+  const resumed = await resumeInterruptedSends(ctx)
   const waiting = (await ctx.db.findMany("agreements", {
     where: { status: { in: WAITING } },
     limit: 500,
@@ -1208,5 +1366,5 @@ export async function decidedReconcile(ctx: AgreementsCtx) {
     await sealVersion(ctx as SealCtx, v.id)
     repaired += 1
   }
-  return { status: "ok", checked: waiting.length, handled, repaired }
+  return { status: "ok", checked: waiting.length, resumed, handled, repaired }
 }

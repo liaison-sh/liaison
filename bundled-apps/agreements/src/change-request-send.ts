@@ -24,6 +24,7 @@ import {
 } from "./ctx"
 import { agreementPassageGet } from "./passage"
 import { resolveSigners, TARGET_TYPE } from "./send"
+import { markSent } from "./sent-state"
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const LINK_DAYS = 14
@@ -527,13 +528,17 @@ export async function changeRequestSend(ctx: AgreementsCtx, p: ChangeRequestSend
       `The reply to ${ready.client.name} was not sent (${why}), so the approval link of ${number} was withdrawn. ${number} stays a draft; nothing reached the client.`,
     )
   }
-  await ctx.db.update("agreements", crId, { status: "sent" })
-  await ctx.emit?.({
-    entity: "agreement",
-    action: "sent",
-    entityId: crId,
-    data: { number, version: 1 },
-  })
+  await markSent(
+    ctx,
+    {
+      id: crId,
+      number,
+      kind: CHANGE_REQUEST,
+      status: "draft",
+      parent_agreement_id: ready.parent.id,
+    },
+    { number: 1 },
+  )
   return {
     status: "ok",
     change_request: {

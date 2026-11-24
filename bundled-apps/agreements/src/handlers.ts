@@ -43,6 +43,7 @@ import {
   clientActionViewGet,
   decidedReconcile,
   onClientActionDecided,
+  onLinksMade,
   type SendParams,
 } from "./send"
 import { agreementEvidenceGetNamed, agreementVerifyNamed } from "./stand-in"
@@ -120,6 +121,9 @@ export const clientActionViewGetHandler = (p: { targetType: string; targetId: st
   clientActionViewGet(ctx, p)
 export const onClientActionDecidedHandler = (event: unknown, ctx: Ctx) =>
   onClientActionDecided(ctx, event as Parameters<typeof onClientActionDecided>[1])
+
+export const onLinksMadeHandler = (event: unknown, ctx: Ctx) =>
+  onLinksMade(ctx, event as Parameters<typeof onLinksMade>[1])
 
 export const onPortalAccessEndedHandler = (event: unknown, ctx: Ctx) =>
   onPortalAccessEnded(ctx, event as Parameters<typeof onPortalAccessEnded>[1])

@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -1830,6 +1830,7 @@
         "agreements:agreements:write"
       ],
       "handler": "agreementSendHandler",
+      "timeoutMs": 25000,
       "summarizer": "summarizeAgreementSend",
       "gated": true,
       "noAutoApprove": true,
@@ -2089,6 +2090,7 @@
         "agreements:agreements:write"
       ],
       "handler": "agreementReminderSendHandler",
+      "timeoutMs": 25000,
       "summarizer": "summarizeAgreementReminderSend",
       "preflight": "agreementReminderSendPreflightHandler",
       "gated": true,
@@ -2341,6 +2343,7 @@
   "events": {
     "subscribes": {
       "kernel/client_action:decided": "onClientActionDecidedHandler",
+      "kernel/client_action:links_made": "onLinksMadeHandler",
       "kernel/portal_user:access_ended": "onPortalAccessEndedHandler",
       "kernel/routine:create": "onRoutineCreatedHandler"
     },
@@ -2375,6 +2378,7 @@
           "where": {
             "status": {
               "in": [
+                "draft",
                 "sent",
                 "partly_signed"
               ]

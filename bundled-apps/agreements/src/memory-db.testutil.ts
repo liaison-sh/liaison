@@ -38,7 +38,8 @@ export function memoryDb(): DbClient & { tables: Map<string, Row[]> } {
   const db = {
     tables,
     async findMany(entity: string, opts?: { where?: Record<string, unknown>; limit?: number }) {
-      return t(entity)
+      // A read makes no table, so a test can compare the tables a call left.
+      return (tables.get(entity) ?? [])
         .filter((r) => matches(r, opts?.where))
         .map((r) => ({ ...r }))
     },

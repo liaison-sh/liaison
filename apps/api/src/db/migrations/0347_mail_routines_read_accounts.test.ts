@@ -59,6 +59,8 @@ const ROUTINES: Array<{
 beforeAll(async () => {
   await sql.unsafe(`DROP SCHEMA IF EXISTS ${KERN} CASCADE`)
   await sql.unsafe(`CREATE SCHEMA ${KERN}`)
+  // The scratch tables by name: the connection sees this schema first.
+  await sql.unsafe(`SET search_path TO ${KERN}, public`)
   await sql.unsafe(`
     CREATE TABLE ${KERN}.routines (key text, org_id uuid, owner_user_id uuid, owner_agent_id uuid,
       app_name text, template_key text, source_kind text, scopes text[], edited_at timestamptz);
@@ -70,17 +72,17 @@ beforeAll(async () => {
       $$ BEGIN NEW.edited_at := now(); RETURN NEW; END $$;
     CREATE TRIGGER routines_mark_definition_edit BEFORE UPDATE ON ${KERN}.routines
       FOR EACH ROW EXECUTE FUNCTION ${KERN}.mark();
-    INSERT INTO ${KERN}.user_roles VALUES ('${BY_ROLE}', '${ORG}', '${ROLE}');
-    INSERT INTO ${KERN}.role_scope_grants VALUES ('${ROLE}', 'mail:accounts:read');
-    INSERT INTO ${KERN}.user_scope_grants VALUES ('${BY_GRANT}', '${ORG}', 'mail:*'),
+    INSERT INTO user_roles VALUES ('${BY_ROLE}', '${ORG}', '${ROLE}');
+    INSERT INTO role_scope_grants VALUES ('${ROLE}', 'mail:accounts:read');
+    INSERT INTO user_scope_grants VALUES ('${BY_GRANT}', '${ORG}', 'mail:*'),
       ('${WITHOUT}', '${ORG}', 'mail:conversations:read'),
       ('${ELSEWHERE}', '${OTHER_ORG}', 'mail:accounts:read');
-    INSERT INTO ${KERN}.agents VALUES
+    INSERT INTO agents VALUES
       ('${AGENT_WIDE}', '${ORG}', '["stripe:invoices:read", "mail:accounts:read"]'),
       ('${AGENT_NARROW}', '${ORG}', '["stripe:invoices:read", "mail:conversations:write"]')`)
   for (const r of ROUTINES)
     await sql.unsafe(
-      `INSERT INTO ${KERN}.routines (key, org_id, owner_user_id, owner_agent_id, app_name, template_key, source_kind, scopes)
+      `INSERT INTO routines (key, org_id, owner_user_id, owner_agent_id, app_name, template_key, source_kind, scopes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         r.key,

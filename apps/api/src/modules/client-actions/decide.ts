@@ -65,13 +65,15 @@ export interface ActionRow {
   now: Date
 }
 
+// A sender who left is not someone to write to: the page and its mails name the organization.
 export const ROW_COLUMNS = sql`
   a.id, a.org_id, o.name AS org_name, a.kind, a.target_app, a.target_type, a.target_id,
   a.target_sha256, a.target_blocks_sha256, a.company_id, a.signer_user_id, a.invited_email, a.invited_name, a.expires_at,
   a.first_opened_at, a.document_shown_at, a.code_wrong_total, a.code_locked_at, a.code_verified_at,
   a.decided_at, a.decision, a.revoked_at, a.revoke_reason, a.required_phrase, a.visible_to::text[] AS visible_to,
   a.created_by_user_id,
-  u.name AS sender_name, u.email AS sender_email, u.locale AS sender_locale,
+  CASE WHEN u.status = 'active' THEN u.name END AS sender_name,
+  CASE WHEN u.status = 'active' THEN u.email END AS sender_email, u.locale AS sender_locale,
   (a.token_hash IS NOT NULL) AS has_token,
   (c.id IS NOT NULL AND (c.closed_at IS NOT NULL OR c.portal_ended_at IS NOT NULL)) AS company_ended,
   now() AS now`

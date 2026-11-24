@@ -223,7 +223,8 @@ async function readSender(tx: PrivilegedDb, orgId: string, userId: string | null
     locale: string | null
   }>(
     await tx.execute(sql`
-      SELECT o.name AS org_name, u.name, u.email, u.locale
+      SELECT o.name AS org_name, u.name, u.locale,
+             CASE WHEN u.status = 'active' THEN u.email END AS email
         FROM ${K()}.organizations o
         LEFT JOIN ${K()}.users u ON u.id = ${userId} AND u.org_id = o.id AND u.user_type = 'member'
        WHERE o.id = ${orgId}

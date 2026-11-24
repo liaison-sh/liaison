@@ -145,6 +145,20 @@ describe("a sender who left the organization", () => {
     ).toEqual([])
   })
 
+  it("is not the one the page says to reply to: it names the organization", async () => {
+    kit.view = { ...kit.view, senderName: null }
+    const { token } = await mintTo(kit, kit.w.clientA, { createdByUserId: kit.w.member.userId })
+    const sender = async () =>
+      (
+        (await (await call("open", { t: token }, { "x-bun-socket-ip": nextIp() })).json()) as {
+          sender: { name: string }
+        }
+      ).sender.name
+    expect(await sender()).toBe(kit.w.member.name)
+    await setStatus(kit.w.member.userId, "deactivated")
+    expect(await sender()).toBe(kit.w.orgName)
+  })
+
   it("while they are here they alone hear it, and a question reaches the same people", async () => {
     const { id, token } = await mintTo(kit, kit.w.clientA, {
       createdByUserId: kit.w.member.userId,

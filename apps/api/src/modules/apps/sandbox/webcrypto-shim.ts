@@ -48,8 +48,9 @@ const MAX_RANDOM_BYTES = 65_536
 const MAX_INPUT_BYTES = 32 * 1024 * 1024
 
 /**
- * The host side. Bytes cross as "binary strings" (one char per byte, code
- * 0-255). The answer is a string: "1" + the value on success ("t"/"f" for a
+ * The host side. Bytes cross as lower-case hex: a string that crosses the
+ * QuickJS boundary is a C string, cut at its first NUL, so it can hold no zero
+ * byte. The answer is a string: "1" + the value on success ("t"/"f" for a
  * boolean), or "0" + error name + "\n" + message, so the host function never
  * throws into QuickJS.
  */
@@ -80,24 +81,25 @@ function hashOf(name: unknown): string {
 
 function bytesOf(value: unknown, what: string): Buffer {
   if (typeof value !== "string") throw new HostCryptoError("TypeError", `${what} is not bytes`)
-  if (value.length > MAX_INPUT_BYTES) {
+  if (value.length > 2 * MAX_INPUT_BYTES) {
     throw new HostCryptoError("QuotaExceededError", `${what} is over ${MAX_INPUT_BYTES} bytes`)
   }
-  return Buffer.from(value, "latin1")
+  // Buffer.from stops at the first character that is not hex: an answer over part of the bytes.
+  if (value.length % 2 !== 0 || !/^[0-9a-f]*$/.test(value)) {
+    throw new HostCryptoError("TypeError", `${what} is not bytes`)
+  }
+  return Buffer.from(value, "hex")
 }
 
 function hostOp(op: unknown, args: unknown[]): string {
   switch (op) {
     case "digest":
-      return createHash(hashOf(args[0]))
-        .update(bytesOf(args[1], "data"))
-        .digest()
-        .toString("latin1")
+      return createHash(hashOf(args[0])).update(bytesOf(args[1], "data")).digest().toString("hex")
     case "hmac":
       return createHmac(hashOf(args[0]), bytesOf(args[1], "key"))
         .update(bytesOf(args[2], "data"))
         .digest()
-        .toString("latin1")
+        .toString("hex")
     case "hmacVerify": {
       const expected = createHmac(hashOf(args[0]), bytesOf(args[1], "key"))
         .update(bytesOf(args[3], "data"))
@@ -113,7 +115,7 @@ function hostOp(op: unknown, args: unknown[]): string {
           `getRandomValues takes at most ${MAX_RANDOM_BYTES} bytes`,
         )
       }
-      return randomBytes(n).toString("latin1")
+      return randomBytes(n).toString("hex")
     }
     case "uuid":
       return randomUUID()
@@ -132,10 +134,11 @@ export const WEBCRYPTO_SHIM_SOURCE = `(function (host) {
   "use strict";
   if (typeof globalThis.crypto !== "undefined") return;
   var reflectApply = Reflect.apply;
-  var fromCharCode = String.fromCharCode;
   var freeze = Object.freeze;
   var defineProperty = Object.defineProperty;
   var create = Object.create;
+  var HEX = [];
+  for (var h = 0; h < 256; h++) HEX[h] = (h < 16 ? "0" : "") + h.toString(16);
   var HASHES = { "SHA-1": 1, "SHA-256": 1, "SHA-384": 1, "SHA-512": 1 };
   var MAX_RANDOM = ${MAX_RANDOM_BYTES};
   function cryptoError(name, message) {
@@ -150,7 +153,7 @@ export const WEBCRYPTO_SHIM_SOURCE = `(function (host) {
     var nl = r.indexOf("\\n");
     throw cryptoError(r.slice(1, nl), r.slice(nl + 1));
   }
-  function toBin(data, what) {
+  function toHex(data, what) {
     if (data === null || typeof data !== "object" || typeof data.length !== "number") {
       throw new TypeError(what + " must be an array of bytes (0-255): this sandbox has no typed arrays");
     }
@@ -158,21 +161,23 @@ export const WEBCRYPTO_SHIM_SOURCE = `(function (host) {
     var out = "";
     for (var i = 0; i < n; i += 4096) {
       var end = i + 4096 < n ? i + 4096 : n;
-      var chunk = [];
+      var chunk = "";
       for (var j = i; j < end; j++) {
         var b = data[j];
         if (typeof b !== "number" || b !== (b & 255)) throw new TypeError(what + "[" + j + "] is not a byte (0-255)");
-        chunk[j - i] = b;
+        chunk += HEX[b];
       }
-      out += reflectApply(fromCharCode, null, chunk);
+      out += chunk;
     }
     return out;
   }
-  function fromBin(s) {
-    var out = [];
-    for (var i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  // The code of a lower-case hex digit, 0-15.
+  function digit(code) { return code < 58 ? code - 48 : code - 87; }
+  function fillFrom(s, out) {
+    for (var i = 0; i < s.length; i += 2) out[i / 2] = digit(s.charCodeAt(i)) * 16 + digit(s.charCodeAt(i + 1));
     return out;
   }
+  function fromHex(s) { return fillFrom(s, []); }
   function nameOf(alg, what) {
     var n = typeof alg === "string" ? alg : alg !== null && typeof alg === "object" ? alg.name : undefined;
     if (typeof n !== "string") throw new TypeError(what + " has no name");
@@ -193,10 +198,10 @@ export const WEBCRYPTO_SHIM_SOURCE = `(function (host) {
   var keyBytes = new WeakMap();
   function CryptoKey() { throw new TypeError("Illegal constructor"); }
   function hmacKeyOf(key, usage) {
-    var bin = keyBytes.get(key);
-    if (bin === undefined) throw new TypeError("key is not a CryptoKey");
+    var hex = keyBytes.get(key);
+    if (hex === undefined) throw new TypeError("key is not a CryptoKey");
     if (key.usages.indexOf(usage) < 0) throw cryptoError("InvalidAccessError", "key does not allow " + usage);
-    return bin;
+    return hex;
   }
   function checkHmac(alg, key) {
     if (nameOf(alg, "algorithm") !== "HMAC") throw cryptoError("NotSupportedError", "Unsupported algorithm: " + nameOf(alg, "algorithm"));
@@ -206,14 +211,14 @@ export const WEBCRYPTO_SHIM_SOURCE = `(function (host) {
   }
   var subtle = {
     digest: settle(function (alg, data) {
-      return fromBin(call("digest", hashOf(alg, "algorithm"), toBin(data, "data")));
+      return fromHex(call("digest", hashOf(alg, "algorithm"), toHex(data, "data")));
     }),
     importKey: settle(function (format, keyData, alg, extractable, usages) {
       if (format !== "raw") throw cryptoError("NotSupportedError", "Unsupported key format: " + format);
       if (nameOf(alg, "algorithm") !== "HMAC") throw cryptoError("NotSupportedError", "Unsupported algorithm: " + nameOf(alg, "algorithm"));
       var hash = hashOf(alg.hash, "algorithm.hash");
-      var bin = toBin(keyData, "keyData");
-      if (bin.length === 0) throw cryptoError("DataError", "HMAC key is empty");
+      var hex = toHex(keyData, "keyData");
+      if (hex.length === 0) throw cryptoError("DataError", "HMAC key is empty");
       if (usages === null || typeof usages !== "object" || typeof usages.length !== "number") throw new TypeError("usages is not an array");
       var list = [];
       for (var i = 0; i < usages.length; i++) {
@@ -221,32 +226,32 @@ export const WEBCRYPTO_SHIM_SOURCE = `(function (host) {
         if (list.indexOf(usages[i]) < 0) list.push(usages[i]);
       }
       if (list.length === 0) throw cryptoError("SyntaxError", "usages is empty");
-      var length = alg.length === undefined ? bin.length * 8 : alg.length;
-      if (length !== bin.length * 8) throw cryptoError("DataError", "length does not match the key data");
+      var length = alg.length === undefined ? hex.length * 4 : alg.length;
+      if (length !== hex.length * 4) throw cryptoError("DataError", "length does not match the key data");
       var key = create(CryptoKey.prototype);
       defineProperty(key, "type", { value: "secret", enumerable: true });
       defineProperty(key, "extractable", { value: extractable === true, enumerable: true });
       defineProperty(key, "algorithm", { value: freeze({ name: "HMAC", hash: freeze({ name: hash }), length: length }), enumerable: true });
       defineProperty(key, "usages", { value: freeze(list), enumerable: true });
-      keyBytes.set(key, bin);
+      keyBytes.set(key, hex);
       return freeze(key);
     }),
     exportKey: settle(function (format, key) {
       if (format !== "raw") throw cryptoError("NotSupportedError", "Unsupported key format: " + format);
-      var bin = keyBytes.get(key);
-      if (bin === undefined) throw new TypeError("key is not a CryptoKey");
+      var hex = keyBytes.get(key);
+      if (hex === undefined) throw new TypeError("key is not a CryptoKey");
       if (key.extractable !== true) throw cryptoError("InvalidAccessError", "key is not extractable");
-      return fromBin(bin);
+      return fromHex(hex);
     }),
     sign: settle(function (alg, key, data) {
       checkHmac(alg, key);
-      var bin = hmacKeyOf(key, "sign");
-      return fromBin(call("hmac", key.algorithm.hash.name, bin, toBin(data, "data")));
+      var hex = hmacKeyOf(key, "sign");
+      return fromHex(call("hmac", key.algorithm.hash.name, hex, toHex(data, "data")));
     }),
     verify: settle(function (alg, key, signature, data) {
       checkHmac(alg, key);
-      var bin = hmacKeyOf(key, "verify");
-      return call("hmacVerify", key.algorithm.hash.name, bin, toBin(signature, "signature"), toBin(data, "data")) === "t";
+      var hex = hmacKeyOf(key, "verify");
+      return call("hmacVerify", key.algorithm.hash.name, hex, toHex(signature, "signature"), toHex(data, "data")) === "t";
     })
   };
   ["encrypt", "decrypt", "deriveBits", "deriveKey", "generateKey", "wrapKey", "unwrapKey"].forEach(function (m) {
@@ -259,9 +264,7 @@ export const WEBCRYPTO_SHIM_SOURCE = `(function (host) {
         throw new TypeError("getRandomValues takes an array: this sandbox has no typed arrays");
       }
       if (array.length > MAX_RANDOM) throw cryptoError("QuotaExceededError", "getRandomValues takes at most " + MAX_RANDOM + " entries");
-      var bin = call("random", array.length);
-      for (var i = 0; i < bin.length; i++) array[i] = bin.charCodeAt(i);
-      return array;
+      return fillFrom(call("random", array.length), array);
     },
     randomUUID: function () { return call("uuid"); }
   };

@@ -677,6 +677,8 @@ describe("the month-end run on the real kernel", () => {
     const added = await addRow(fx.runId)
     expect(added.error).toBeUndefined()
     const draftId = String(added.data?.draft_id)
+    // A person's own call cannot ask for a decision: the run's job stages the card.
+    await runJob("recurring-issue")
     const card = (await runOf(fx.issuer)).approval_request_id
     const shown = (await cardItemsOf(card)).find((i) => i.document_id === draftId)
     expect(shown?.total_minor).toBe("12000")

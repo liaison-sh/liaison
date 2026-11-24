@@ -30,6 +30,7 @@ import { readApprovalRequesters } from "~/modules/approvals/requester"
 import { type RoutedRows, readApprovalRoutes } from "~/modules/approvals/route-world"
 import { withServedSummaries } from "~/modules/approvals/served-summary"
 import { toolRegistry } from "~/modules/apps/app-registries"
+import { withViewerNames } from "~/modules/apps/approval-record-names"
 import { sendGuardProviderPill } from "~/modules/mail/send-guard"
 import { isSeededWrite } from "~/modules/notifications/seeded"
 import { isRestrictedScope } from "~/modules/permissions/restricted-scope"
@@ -622,7 +623,7 @@ export async function computeApprovalAttentionItems(
   if (headBundleIds.length > 0) {
     // Every step, in order: the outcome is the last, and a sequence's row also
     // says what happens in order (`bundleSequence`).
-    const stepRows = extractRows<BundleStepRow & { bundle_id: string; has_dep: boolean }>(
+    const steps = extractRows<BundleStepRow & { bundle_id: string; has_dep: boolean }>(
       await tx.execute(drizzleSql`
         SELECT bundle_id, tool_name, summary, current_payload,
                depends_on_id IS NOT NULL AS has_dep
@@ -636,6 +637,7 @@ export async function computeApprovalAttentionItems(
           )})
         ORDER BY bundle_id, bundle_position ASC NULLS FIRST, created_at ASC`),
     )
+    const stepRows = await withViewerNames(tx, orgId, steps)
     const byBundle = new Map<string, Array<BundleStepRow & { has_dep: boolean }>>()
     for (const s of stepRows) {
       const list = byBundle.get(s.bundle_id) ?? []

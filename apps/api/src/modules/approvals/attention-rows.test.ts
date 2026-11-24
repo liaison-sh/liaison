@@ -6,12 +6,16 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
+import type { AttentionItem } from "@liaison/shared"
 import { sql } from "~/db/connection"
 import { withRlsContext } from "~/db/rls"
+import { recordToken } from "~/modules/apps/approval-record-token"
+import { attentionSourceApp } from "~/modules/attention/attention-source-app"
 import { getEventAttentionItems } from "~/modules/attention/event-provider"
 import { processTranslationEvent } from "~/modules/attention/translator"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
+import { createTestCompany } from "~/tests/helpers/company"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -26,7 +30,8 @@ interface Spec {
   metadata?: Record<string, unknown>
   requestedBy?: string
   proposingTurnScopes?: string[]
-  title?: string
+  title?: string | number | null
+  summary?: Record<string, unknown>
 }
 
 async function request(spec: Spec = {}): Promise<{ id: string; handle: string }> {
@@ -47,7 +52,9 @@ async function request(spec: Spec = {}): Promise<{ id: string; handle: string }>
       notify_user_ids: `{${(spec.notify ?? [people.ines, people.tom]).join(",")}}`,
       requested_by: spec.requestedBy ?? people.sara,
       status: spec.status ?? "pending",
-      summary: JSON.stringify({ title: spec.title ?? "Email the November invoice" }),
+      summary: JSON.stringify(
+        spec.summary ?? { title: spec.title ?? "Email the November invoice" },
+      ),
       metadata: JSON.stringify(spec.metadata ?? {}),
       resource_owner_id: spec.owner ?? null,
       proposing_turn_scopes: spec.proposingTurnScopes
@@ -92,6 +99,14 @@ async function unread(approvalId: string): Promise<number> {
      WHERE org_id = ${ORG}::uuid AND entity_id = ${approvalId}
        AND kind = 'agent_notification' AND read_at IS NULL`
   return (row as { n: number }).n
+}
+
+/** Every unread row of one person's feed, as the feed lists them. */
+async function feedOf(userId: string, scopes = ["projects:approve"]) {
+  return withRlsContext(
+    { actorType: "user", userId, orgId: ORG, scopes, dimensionGrants: {} },
+    (tx) => getEventAttentionItems(tx, ORG, userId),
+  )
 }
 
 async function changed(id: string, status: string): Promise<void> {
@@ -176,12 +191,119 @@ describe("a reminder of a waiting request", () => {
     })
   }
 
+  it("is read by the event of its own request alone, and no other row of that request is", async () => {
+    const [ended, waits] = [await request(), await request()]
+    await reminder(ended.id, people.ines as string)
+    await reminder(waits.id, people.ines as string)
+    await sql.unsafe(
+      insertSql("kernel.attention_events", {
+        org_id: ORG,
+        user_id: people.ines as string,
+        app: "kernel",
+        entity_type: "agent_notification",
+        entity_id: ended.id,
+        kind: "note",
+        urgency: 10,
+        summary: "Another row about it",
+        actor_type: "system",
+        occurred_at: { raw: "now()" },
+        digest_eligible_at: { raw: "now()" },
+      }),
+    )
+    await changed(ended.id, "approved")
+    expect(await unread(ended.id)).toBe(0)
+    expect(await unread(waits.id)).toBe(1)
+    const [note] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.attention_events
+       WHERE entity_id = ${ended.id} AND kind = 'note' AND read_at IS NULL`
+    expect(note?.n).toBe(1)
+  })
+
+  it("says which app it is about", async () => {
+    const r = await request()
+    await reminder(r.id, people.ines as string)
+    const [row] = await rowsOf(r.id, people.ines as string)
+    expect(row?.metadata?.toolName).toBe("projects:createTask")
+    expect(attentionSourceApp(row as AttentionItem)).toBe("projects")
+  })
+
+  it("that names no request at all is left out, and the rest of the feed stays", async () => {
+    const r = await request()
+    await reminder("not-a-request", people.ines as string)
+    await reminder(r.id, people.ines as string)
+    expect(await rowsOf("not-a-request", people.ines as string)).toEqual([])
+    expect(await rowsOf(r.id, people.ines as string)).toHaveLength(1)
+  })
+
   it("is left unread by an event of a request still waiting", async () => {
     const r = await request()
     await reminder(r.id, people.ines as string)
     await changed(r.id, "pending")
     await changed(r.id, "approving")
     expect(await unread(r.id)).toBe(1)
+  })
+})
+
+describe("a feed full of reminders nothing is left of", () => {
+  let reader = ""
+
+  async function dead(count: number, spec: Spec): Promise<void> {
+    const r = await request({ ...spec, notify: [reader] })
+    await sql`
+      INSERT INTO kernel.attention_events
+        (org_id, user_id, app, entity_type, entity_id, kind, urgency, summary, actor_type,
+         occurred_at, digest_eligible_at, metadata)
+      SELECT ${ORG}::uuid, ${reader}::uuid, 'kernel', 'agent_notification', gen_random_uuid()::text,
+             'agent_notification', 50, 'Waiting', 'system', now() - INTERVAL '2 days', now(),
+             jsonb_build_object('routedReminder', jsonb_build_object('approvalId', ${r.id}::text, 'hours', 24))
+        FROM generate_series(1, ${count})`
+  }
+
+  it("hides no live row: the limit counts what the person sees", async () => {
+    reader = (await minimal.person(ORG, { name: "Fixture reader" })).id
+    await minimal.grantScope(reader, "projects:approve")
+    await dead(120, { status: "approved" })
+    await dead(120, { status: "cancelled" })
+    // Waiting, and no longer this person's: signed, and for someone else.
+    await dead(120, { metadata: { minApprovers: 2, approvedBy: [reader] } })
+    const live = await request({ notify: [reader] })
+    await reminder(live.id, reader)
+    await sql.unsafe(
+      insertSql("kernel.attention_events", {
+        org_id: ORG,
+        user_id: reader,
+        app: "kernel",
+        entity_type: "agent_notification",
+        entity_id: "a-notification",
+        kind: "agent_notification",
+        urgency: 50,
+        summary: "The report is ready",
+        actor_type: "agent",
+        occurred_at: { raw: "now()" },
+        digest_eligible_at: { raw: "now()" },
+      }),
+    )
+    expect((await feedOf(reader)).map((i) => i.entityId).sort()).toEqual(
+      [live.id, "a-notification"].sort(),
+    )
+  })
+
+  it("still lists at most its limit, the most urgent and the oldest first", async () => {
+    const many = (await minimal.person(ORG, { name: "Fixture many" })).id
+    await sql`
+      INSERT INTO kernel.attention_events
+        (org_id, user_id, app, entity_type, entity_id, kind, urgency, summary, actor_type,
+         occurred_at, digest_eligible_at)
+      SELECT ${ORG}::uuid, ${many}::uuid, 'kernel', 'agent_notification', 'n' || g,
+             'agent_notification', 40, 'Row', 'agent', now() - make_interval(mins => g), now()
+        FROM generate_series(1, 230) g`
+    const r = await request({ notify: [many] })
+    await reminder(r.id, many)
+    await minimal.grantScope(many, "projects:approve")
+    const items = await feedOf(many)
+    expect(items).toHaveLength(200)
+    expect(items[0]?.entityId).toBe(r.id)
+    expect(items[1]?.entityId).toBe("n230")
   })
 })
 
@@ -213,6 +335,67 @@ describe("the line that says a request was decided", () => {
     )
     expect(rows[0]?.summary).toBe(`Approval ${r.handle} expired`)
     expect(rows[0]?.metadata?.decisionTitle).toBe("Email the November invoice")
+  })
+
+  it("names a record only to who may read it", async () => {
+    const company = await createTestCompany(ORG, "Harbour works")
+    const summary = {
+      title: "Projects: move",
+      lines: [],
+      names: [
+        {
+          shown: "Projects: move",
+          named: `Projects: move: ${recordToken({ app: "kernel", entityType: "company", id: company })}`,
+        },
+      ],
+    }
+    const spec = { status: "expired", requestedBy: people.sara, summary }
+    const { r, rows } = await decisionRow(spec, people.sara as string)
+    expect(rows[0]?.metadata?.decisionTitle).toBe("Projects: move")
+    const [seen] = await rowsOf(r.id, people.sara as string, ["kernel:companies:read"])
+    expect(seen?.metadata?.decisionTitle).toBe("Projects: move: Harbour works")
+  })
+
+  it("a card with no title of its own, or one that is not words, is named by its handle", async () => {
+    for (const summary of [{ title: "projects:createTask" }, { title: 7 }, { title: " " }, {}]) {
+      const { rows } = await decisionRow(
+        { status: "expired", requestedBy: people.sara, summary },
+        people.sara as string,
+      )
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.metadata?.decisionTitle).toBeUndefined()
+    }
+  })
+
+  it("is not given a title of a request it does not name, nor a reminder one", async () => {
+    const r = await request({ status: "expired", requestedBy: people.sara })
+    const row = (over: Record<string, unknown>) =>
+      sql.unsafe(
+        insertSql("kernel.attention_events", {
+          org_id: ORG,
+          user_id: people.sara as string,
+          app: "kernel",
+          entity_type: "approval_request",
+          entity_id: r.id,
+          kind: "approval_decision",
+          urgency: 50,
+          summary: "Approval request-9 expired",
+          actor_type: "system",
+          occurred_at: { raw: "now()" },
+          digest_eligible_at: { raw: "now()" },
+          ...over,
+        }),
+      )
+    // An app's own row, and a kernel row of another kind of record, with the same id.
+    await row({ app: "projects" })
+    await row({ entity_type: "ticket" })
+    const rows = await rowsOf(r.id, people.sara as string, [])
+    expect(rows).toHaveLength(2)
+    expect(rows.every((i) => i.metadata?.decisionTitle === undefined)).toBe(true)
+    const waits = await request()
+    await reminder(waits.id, people.ines as string)
+    const [told] = await rowsOf(waits.id, people.ines as string)
+    expect(told?.metadata?.decisionTitle).toBeUndefined()
   })
 
   it("names nothing of a restricted record", async () => {

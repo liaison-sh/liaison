@@ -240,7 +240,7 @@ describe("an answer closed by its next steps is still judged", () => {
 
   it("hands the guard the text before the chips, and replaces it", async () => {
     const seen: string[] = []
-    let retraction: Retraction | null = null
+    const cuts: Array<Retraction | null> = []
     let streamed = ""
     for await (const raw of withFalseApprovalGuard({
       first: run(closed(FIRST)),
@@ -249,15 +249,15 @@ describe("an answer closed by its next steps is still judged", () => {
         return true
       },
       continueWith: () => run(textRun("No shipping app is connected.")),
-      onRetract: (r) => {
-        retraction = r
-      },
+      onRetract: (r) => cuts.push(r),
     })) {
       const chunk = raw as Chunk
       if (chunk.type === "text-delta") streamed += chunk.text as string
     }
     expect(seen).toEqual([FIRST])
-    expect(retraction && retractFromText(streamed, retraction)).toBe("No shipping app is connected.")
+    expect(cuts.map((cut) => cut && retractFromText(streamed, cut))).toEqual([
+      "No shipping app is connected.",
+    ])
   })
 
   it("does not judge an answer the turn cut on a tool that works", async () => {

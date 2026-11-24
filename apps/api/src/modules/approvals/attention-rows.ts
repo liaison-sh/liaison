@@ -10,30 +10,41 @@
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
+import { isUuid } from "~/lib/uuid"
 import {
-  approvalRowName,
   type CallersDecisionRow,
   FEED_STATUS_SQL,
   isCallersDecision,
   readCurrentScopes,
 } from "~/modules/approvals/attention"
+import { withViewerNames } from "~/modules/apps/approval-record-names"
 import { isRestrictedScope } from "~/modules/permissions/restricted-scope"
 
 const K = drizzleSql.raw(schemaRef("kernel"))
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export interface RequestNow {
   /** It waits (or stalled) and this person may decide it: the rule of the approvals feed. */
   theirs: boolean
-  /** What it is about. Null for a request about a restricted record: Home names nothing of it. */
+  /**
+   * What it is about, when its card has a title of its own, with each record called what the reader
+   * may call it. Null for a request about a restricted record: Home names nothing of it.
+   */
   title: string | null
+  /** The tool it asks for: whose app the row is about. */
+  toolName: string
 }
 
 type Row = CallersDecisionRow & {
   open: boolean
-  summary: { title?: string } | null
+  summary: { title?: unknown } | null
   current_payload: Record<string, unknown> | null
   proposing_turn_scopes: string[] | null
+}
+
+/** The title its card was given: the action in words alone would be English in any language's line. */
+function ownTitle(r: Row): string | null {
+  const title = r.summary?.title
+  return typeof title === "string" && title.trim() !== "" && title !== r.tool_name ? title : null
 }
 
 /** The requests of `ids` the reader can see, as they are now. One read; none when nothing names one. */
@@ -43,10 +54,10 @@ export async function readRequestsNow(
   readerId: string,
   ids: readonly string[],
 ): Promise<Map<string, RequestNow>> {
-  const unique = [...new Set(ids)].filter((id) => UUID_RE.test(id))
+  const unique = [...new Set(ids)].filter(isUuid)
   if (unique.length === 0) return new Map()
   const scopes = await readCurrentScopes(tx)
-  const rows = extractRows<Row>(
+  const stored = extractRows<Row>(
     await tx.execute(drizzleSql`
       SELECT ar.id::text AS id, ar.tool_name, ar.status, ar.metadata, ar.notify_user_ids,
              ar.requested_by, ar.approve_scope, ar.resource_owner_id,
@@ -59,14 +70,14 @@ export async function readRequestsNow(
            drizzleSql`, `,
          )})`),
   )
+  const rows = await withViewerNames(tx, orgId, stored)
   return new Map(
     rows.map((r) => [
       r.id,
       {
         theirs: r.open === true && isCallersDecision(r, readerId, scopes),
-        title: (r.proposing_turn_scopes ?? []).some(isRestrictedScope)
-          ? null
-          : approvalRowName(r, {}).title,
+        title: (r.proposing_turn_scopes ?? []).some(isRestrictedScope) ? null : ownTitle(r),
+        toolName: r.tool_name,
       },
     ]),
   )

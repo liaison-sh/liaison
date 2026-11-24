@@ -14,6 +14,7 @@ import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { cancelApprovalsForDeletedTasks, reopenApprovalsForRestoredTasks } from "./cancel"
 import { runRoutedReminderSweep } from "./routed-reminders"
 
 const SIGNED_ONLY_BY_A_PERSON = "fixture:ship"
@@ -223,6 +224,39 @@ describe("routed reminders: a routed row is not lost", () => {
     expect(reminded.notify_user_ids).toEqual(
       expect.arrayContaining(sorted(people.ines, people.tom, people.sara, people.lea)),
     )
+  })
+
+  it("a request cancelled with its task and given back with it tells its deciders again, in its place", async () => {
+    const task = randomUUID()
+    const id = await insertRow({
+      tool: "projects:update",
+      waited: "24h01",
+      notify: sorted(people.ines, people.tom),
+      routePersonId: people.tom as string,
+      title: "Its task goes and comes back",
+    })
+    await sql`UPDATE kernel.approval_requests
+                 SET current_payload = jsonb_build_object('taskId', ${task}::text) WHERE id = ${id}::uuid`
+    await runRoutedReminderSweep({ orgId: ORG })
+    expect(await remindersFor(id)).toHaveLength(1)
+    const before = await rowOf(id)
+    const actor = { actorId: people.ines as string, actorType: "user" as const }
+
+    expect(await cancelApprovalsForDeletedTasks(ORG, [task], actor)).toEqual([id])
+    await runRoutedReminderSweep({ orgId: ORG })
+    expect(await remindersFor(id)).toHaveLength(1)
+
+    expect(await reopenApprovalsForRestoredTasks(ORG, [task], actor)).toEqual([id])
+    await runRoutedReminderSweep({ orgId: ORG })
+    await runRoutedReminderSweep({ orgId: ORG })
+    expect((await remindersFor(id)).map((r) => r.targets)).toEqual([
+      sorted(people.ines, people.tom),
+      sorted(people.ines, people.tom),
+    ])
+    const after = await rowOf(id)
+    for (const key of ["status", "route_person_id", "notify_user_ids", "created_at", "reason"]) {
+      expect(after[key]).toEqual(before[key])
+    }
   })
 
   it("two workers sweeping at once send it once", async () => {

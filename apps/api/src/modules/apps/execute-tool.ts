@@ -275,6 +275,7 @@ import {
   approvalEditableFieldsRegistry,
   approvalExpiryRegistry,
 } from "~/modules/apps/app-registries"
+import { withoutNames } from "~/modules/apps/approval-record-names"
 import { generateApprovalSummary } from "~/modules/apps/approval-summarizers"
 import { ingestionCallerApp } from "~/modules/apps/cross-app-ingestions"
 import { ensureAppsForOrg, getDefaultApps } from "~/modules/apps/init"
@@ -5825,7 +5826,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       blocked: {
         reason: "taint_escalation",
         approvalRequestId,
-        summary,
+        summary: withoutNames(summary),
         requesterCanApprove,
         outsideText: OUTSIDE_TEXT_HOLD_NOTE,
         ...(await gatedAgentNotesFor(tool, validatedParams, {
@@ -6280,7 +6281,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         blocked: {
           reason: "gated",
           approvalRequestId,
-          summary,
+          summary: withoutNames(summary),
           ...(joinedTurnBundle ? { sequenced: true } : {}),
           // The row's real audience: an owner-routed approval (a personal
           // resource of the requester) is decided by the requester alone even
@@ -6349,7 +6350,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         blocked: {
           reason: "gated",
           approvalRequestId,
-          summary,
+          summary: withoutNames(summary),
           requesterCanApprove,
           sequenced: true,
           ...buildSequencingOutputs(tool, approvalRequestId),

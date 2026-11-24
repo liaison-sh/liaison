@@ -1,1 +1,2 @@
 A whole answer with its next steps ends the turn -> apps/api/src/modules/agent/providers/answer-after-tools.ts (replyIsClosed)
+A shared conversation gets the answer its next steps close, without the notes -> apps/api/src/modules/agent/runtime/shared-thread-reply.ts (replyForAudience)

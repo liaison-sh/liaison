@@ -41,15 +41,20 @@ describe("readableSummaryLines", () => {
     ])
   })
 
-  it("drops a line that says nothing but an id, in a stored line or a stored JSON line", () => {
+  it("says a field is set when its stored value is nothing but an id, in a line or a JSON line", () => {
     const id = "6c1bffa3-edf4-4e2f-b1d2-6ff36ba0a708"
     expect(readableSummaryLines([`Task id: ${id}`, "Outcome: won", `Ids: ${id}, ${id}`])).toEqual([
+      "Task: a record",
       "Outcome: won",
+      "Ids: 2 items",
     ])
-    expect(readableSummaryLines([`{"task_id":"${id}","outcome":"won"}`])).toEqual(["outcome: won"])
+    expect(readableSummaryLines([`{"task_id":"${id}","outcome":"won"}`])).toEqual([
+      "task: a record",
+      "outcome: won",
+    ])
     // Words around an id are the summarizer's own, and stay.
     expect(readableSummaryLines([`Reply to ${id} by mail`])).toEqual([`Reply to ${id} by mail`])
-    expect(readableSummaryLines([id])).toEqual([])
+    expect(readableSummaryLines([id])).toEqual(["a record"])
   })
 
   it("keeps the outside-text marking, and splits a line into its words and the quote", () => {

@@ -1,1 +1,1 @@
-A held deal change names the deal, its key, client and pipeline; the stored amount is left out -> apps/api/src/apps/projects/summarizers.ts (summarizeDealsUpdate)
+A held deal change names the deal, its key, client and pipeline to who may read them; the stored amount is left out -> apps/api/src/apps/projects/summarizers.ts (summarizeDealsUpdate)

@@ -20,7 +20,11 @@ import type { UserContext } from "~/db/rls"
 import { threadParticipants, threads } from "~/db/schema/kernel"
 import { agents } from "~/db/schema/kernel/agents"
 import * as eventBusModule from "~/infra/events/event-bus"
-import { AgentServiceTestAccess, invokeAgentForThread } from "~/modules/agent/runtime/agent-service"
+import {
+  AgentServiceTestAccess,
+  invokeAgentForThread,
+  rerunAgentTurn,
+} from "~/modules/agent/runtime/agent-service"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { sendMessage } from "~/modules/threads/message"
@@ -54,7 +58,7 @@ function scriptedTurn(steps: MockStep[]) {
       stream: simulateReadableStream({
         chunks: [
           { type: "stream-start" as const, warnings: [] },
-          ...step.flatMap((part) => {
+          ...step.flatMap((part): unknown[] => {
             const id = `p${n++}`
             if ("call" in part) {
               return [
@@ -141,17 +145,22 @@ describe("a reply in a shared thread is the final answer only", () => {
     })
   }
 
-  async function seedPersonalAgent(ownerUserId: string): Promise<void> {
-    await withPrivilegedDb(orgId, "test-str-agent", (tx) =>
-      tx.insert(agents).values({
-        orgId,
-        kind: "personal",
-        handle: `@str-${crypto.randomUUID().slice(0, 8)}`,
-        displayName: "Liaison",
-        ownerUserId,
-        scopeCeiling: [SCOPE],
-      }),
+  async function seedPersonalAgent(ownerUserId: string): Promise<string> {
+    const [agent] = await withPrivilegedDb(orgId, "test-str-agent", (tx) =>
+      tx
+        .insert(agents)
+        .values({
+          orgId,
+          kind: "personal",
+          handle: `@str-${crypto.randomUUID().slice(0, 8)}`,
+          displayName: "Liaison",
+          ownerUserId,
+          scopeCeiling: [SCOPE],
+        })
+        .returning({ id: agents.id }),
     )
+    if (!agent) throw new Error("no agent was seeded")
+    return agent.id
   }
 
   /**
@@ -277,12 +286,7 @@ describe("a reply in a shared thread is the final answer only", () => {
     await seedPersonalAgent(asker)
     const threadId = await seedThread(shared ? "thread" : "agent_chat", asker, [asker, ...others])
     const { model, run } = scriptedTurn(steps)
-    const reply = await turn(
-      threadId,
-      await actorFor(asker),
-      run,
-      unwatched,
-    )
+    const reply = await turn(threadId, await actorFor(asker), run, unwatched)
     return { reply, calls: model.doStreamCalls.length }
   }
 
@@ -336,5 +340,44 @@ describe("a reply in a shared thread is the final answer only", () => {
       true,
     )
     expect(reply.content).toBe(CLOSED)
+  })
+
+  test("the answer asked for again to be shared is whole too, without the work before it", async () => {
+    const asker = (await minimal.person(orgId)).id
+    await minimal.grantScope(asker, SCOPE)
+    const teammate = (await minimal.person(orgId)).id
+    await minimal.grantScope(teammate, SCOPE)
+    const agentId = await seedPersonalAgent(asker)
+    const threadId = await seedThread("thread", asker, [asker, teammate])
+    const { run } = scriptedTurn([
+      [{ text: NARRATION }, { call: TOOL }],
+      // A rerun answers and offers nothing: its steps are refused, and it says no more.
+      [{ text: CLOSED }, chips("Open the project")],
+      [],
+    ])
+    const msg = await withPrivilegedDb(orgId, "test-str-msg", (tx) =>
+      sendMessage(tx as unknown as RlsClient, {
+        requiredScopes: [],
+        orgId,
+        userId: asker,
+        threadId,
+        content: "@Liaison what does the retainer bill?",
+        authorType: "user",
+      }),
+    )
+    AgentServiceTestAccess.setStreamText(run as never)
+    try {
+      const reply = await rerunAgentTurn({
+        orgId,
+        threadId,
+        turnId: msg?.id ?? "",
+        requesterId: asker,
+        agentId,
+        effectiveScope: [SCOPE],
+      })
+      expect(reply.content).toBe(CLOSED)
+    } finally {
+      AgentServiceTestAccess.setStreamText()
+    }
   })
 })

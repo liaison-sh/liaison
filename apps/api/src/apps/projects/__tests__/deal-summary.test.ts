@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The card of a deal change names the deal, the client and the amount the change sets: the person
-// deciding must know which deal they are closing. The deal's stored amount is not on it (it has a
-// scope of its own), nor a client shared by name.
+// The card of a deal change says which deal, the client and the amount the change sets: the person
+// deciding must know which deal they are closing. Its records are named to who may read them. The
+// deal's stored amount is not on it (it has a scope of its own), nor a client shared by name.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { type ApprovalSummary, truncateApprovalSummary } from "@liaison/shared"
 import {
   type DealWorld,
   makeDealWorld,
@@ -14,6 +15,8 @@ import {
 } from "~/apps/projects/service/__tests__/deal-world"
 import { sql } from "~/db/connection"
 import { withRlsContext } from "~/db/rls"
+import { entityRegistry } from "~/modules/apps/app-registries"
+import { asStoredSummary, withViewerNames } from "~/modules/apps/approval-record-names"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { createTestCompany } from "~/tests/helpers/company"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -23,15 +26,40 @@ let w: DealWorld
 let deal = ""
 let key = ""
 
-const card = (params: Record<string, unknown>) =>
-  withRlsContext(w.actor, (tx) =>
+const stored = async (params: Record<string, unknown>) => {
+  const made = await withRlsContext(w.actor, (tx) =>
     summarizeDealsUpdate(params, { tx, orgId: w.orgId, userId: w.userId }),
   )
+  return asStoredSummary(made, truncateApprovalSummary)
+}
+
+/** The card as a person holding `scopes` reads it. */
+const card = async (
+  params: Record<string, unknown>,
+  scopes = ["projects:projects:read", "kernel:companies:read", "kernel:contacts:read"],
+) => {
+  const summary = await stored(params)
+  const [row] = await withRlsContext({ ...w.actor, scopes }, (tx) =>
+    withViewerNames(tx, w.orgId, [{ summary }]),
+  )
+  return row?.summary as ApprovalSummary
+}
 
 describe("the card of a deal change", () => {
   beforeAll(async () => {
     await acquireTestLock()
     w = await makeDealWorld("deal-card")
+    for (const [kind, labelField, tableName] of [
+      ["task", "title", "tasks"],
+      ["project", "name", "projects"],
+    ] as const) {
+      entityRegistry.set([w.orgId, "projects", kind], {
+        labelField,
+        handlePrefix: "x",
+        tableName,
+        readScope: "projects:projects:read",
+      } as never)
+    }
     const pipeline = await makePipeline(w, "Sales 2027")
     deal = await makeTask(w, pipeline.projectId, "Supplier portal")
     const client = await createTestCompany(w.orgId, "Northwind Cooperative")
@@ -52,6 +80,7 @@ describe("the card of a deal change", () => {
   }, 120_000)
 
   afterAll(async () => {
+    entityRegistry.deleteByPrefix([w.orgId])
     await releaseTestLock()
   })
 
@@ -65,6 +94,17 @@ describe("the card of a deal change", () => {
       { label: "Open deal", app: "projects", entityType: "task", entityId: deal },
     ])
     expect(JSON.stringify({ ...c, links: [] })).not.toContain(deal)
+  })
+
+  it("holds no name, and a decider who may not read the deal reads none", async () => {
+    const kept = await stored({ taskId: deal, outcome: "won" })
+    expect(kept.title).toBe("Mark the deal won")
+    expect(kept.subtitle).toBe("Pending approval")
+    for (const c of [kept, await card({ taskId: deal, outcome: "won" }, ["projects:approve"])]) {
+      expect(JSON.stringify(c)).not.toContain("Supplier portal")
+      expect(JSON.stringify(c)).not.toContain("Northwind")
+      expect(JSON.stringify(c)).not.toContain("Sales 2027")
+    }
   })
 
   it("reads a deal named by its key the same", async () => {
@@ -106,7 +146,7 @@ describe("the card of a deal change", () => {
     await sql`UPDATE kernel.companies SET org_access = 'none', created_by = ${w.userId}
                WHERE id = ${quiet}`
     const set = await card({ taskId: deal, companyId: quiet })
-    expect(set.lines).toEqual(["Client: a company shared by name"])
+    expect(set.lines).toEqual(["Client: a company"])
     const person = crypto.randomUUID()
     await sql.unsafe(
       insertSql("kernel.contacts", {
@@ -120,12 +160,10 @@ describe("the card of a deal change", () => {
         owner_user_id: w.userId,
       }),
     )
-    expect((await card({ taskId: deal, contactId: person })).lines).toEqual([
-      "Contact: a contact shared by name",
-    ])
+    expect((await card({ taskId: deal, contactId: person })).lines).toEqual(["Contact: a contact"])
     await sql`UPDATE app_projects.deals SET company_id = ${quiet} WHERE task_id = ${deal}`
     const c = await card({ taskId: deal, outcome: "won" })
-    expect(c.subtitle).toBe("Sales 2027")
+    expect(c.subtitle).toBe("a company, Sales 2027")
   })
 
   it("says so when the deal cannot be seen, with no raw id", async () => {

@@ -187,6 +187,11 @@ describe("approving a run", () => {
       external_refs: { ...(doc(h, added.draft_id).external_refs as object), tax_country: "US" },
     })
     seen.add(await hash())
+    // At the same amount too: another country outside the issuer's.
+    await h.db.update("documents", added.draft_id, {
+      external_refs: { ...(doc(h, added.draft_id).external_refs as object), tax_country: "CA" },
+    })
+    seen.add(await hash())
     for (const patch of [
       { operation_category: "mixed" },
       { service_period_end: "2026-12-31" },
@@ -197,7 +202,7 @@ describe("approving a run", () => {
     }
     await h.db.update("issuer_profiles", ISSUER, { country: "GB" })
     seen.add(await hash())
-    expect(seen.size).toBe(6)
+    expect(seen.size).toBe(7)
   })
 
   test("again, by someone else, the run and its row say the last approver", async () => {

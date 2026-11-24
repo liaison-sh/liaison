@@ -8,6 +8,7 @@ import {
   type KnowledgeCollectionRow,
   requireCollectionsScope,
 } from "~/apps/knowledge/collections"
+import { detachFolderPage } from "~/apps/knowledge/folder-pages"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import {
   assertCanWriteDocumentRow,
@@ -66,6 +67,8 @@ export async function moveDocument(
         "This page is no longer in that folder. Reload the list and try again.",
       )
     }
+    // A folder's page that leaves its folder is an ordinary page.
+    await detachFolderPage(tx, actor, row.id, from.id)
   }
   let entityId = row.id
   if (to) {

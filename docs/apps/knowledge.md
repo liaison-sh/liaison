@@ -27,6 +27,18 @@ You can also click **Create knowledge from…** on the Knowledge home to ask you
 
 If someone else saves the document while you edit it, Liaison tells you and offers **Load the latest version**.
 
+## A folder's own page
+
+A folder can have a page of its own: text about what the folder holds, shown above the list of what is inside. The folder has no page until someone writes in it. The first text makes an ordinary document, titled as the folder and filed in it. In a shared folder everyone in the organization can edit it; in a personal folder only you can see it. After that you share it like any other document.
+
+Writing the first text needs the right to manage folders and to create documents. A folder synced from another app has no page.
+
+The list under the page shows the folders and documents directly inside that you can open. Someone who cannot read the folder's page still sees the list, and nothing of the page.
+
+Renaming the folder renames its page, when you can edit the page. Renaming the page renames the folder, when you can manage folders. The page stops being the folder's page when it moves to the archive or leaves the folder; the folder then has none until someone writes in it again. Deleting the folder keeps a page that has text: it goes where the folder's documents go, to the folder above it or to **Unfiled**. An empty page goes to the archive, when the person deleting the folder can archive it.
+
+Agents read and update a folder's page like any other document.
+
 ## Images and files in a document
 
 A document's images and files are read by the people who can read the document, and by nobody else. When someone loses access to the document, they lose access to its files too. Adding or removing a file needs the right to edit the document.

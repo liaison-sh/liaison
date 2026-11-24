@@ -924,7 +924,10 @@ export async function listKnowledgeDocuments(
   const unfiledClause = opts.unfiled
     ? drizzleSql`AND d.document_scope = 'organization'
         AND ${inNoVisibleFolder()}
-        AND NOT ${onlyMine(actor)}`
+        AND NOT ${onlyMine(actor)}
+        AND NOT EXISTS (
+          SELECT 1 FROM ${knowledgeRel("collections")} c
+           WHERE c.org_id = d.org_id AND c.index_document_id = d.id AND c.archived_at IS NULL)`
     : drizzleSql``
   const rows = extractRows<DocumentDbRow>(
     await tx.execute(drizzleSql`
@@ -1410,6 +1413,11 @@ export async function updateKnowledgeDocument(
   if (parsed.body !== undefined && parsed.body !== row.body) {
     await links.refreshDocumentLinks(tx, actor.orgId, parsed.id, parsed.body)
   }
+  // A folder's page carries the folder's name (folder-pages.ts).
+  if (parsed.title !== undefined && parsed.title !== row.title) {
+    const { followPageRename } = await import("~/apps/knowledge/folder-pages")
+    await followPageRename(tx, parsed.id, parsed.title, actor)
+  }
 
   // Owner reassignment changes who is implicitly on the ACL (recomputed from
   // owner_user_id/created_by/document_shares) — recompute so search's
@@ -1488,6 +1496,9 @@ export async function archiveKnowledgeDocument(
   `)
   const archived = extractRows<{ id: string }>(updateResult).length > 0
   if (archived) {
+    // A folder's page in Trash is no longer the folder's page (folder-pages.ts).
+    const { detachFolderPage } = await import("~/apps/knowledge/folder-pages")
+    await detachFolderPage(tx, actor, id)
     await tx.queueEvent({
       app: "knowledge",
       entity: "document",

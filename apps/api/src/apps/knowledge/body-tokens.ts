@@ -12,9 +12,9 @@
  * and is reported; the next save tries again. One mechanism for people and agents,
  * create and update; nothing else in the text is touched.
  */
-import { fileIdsOf, replaceFileIds } from "@liaison/shared"
+import { fileIdsOf, pageToken, replaceFileIds } from "@liaison/shared"
 import { sql } from "drizzle-orm"
-import { kernelRel } from "~/apps/knowledge/schema-refs"
+import { kernelRel, knowledgeRel } from "~/apps/knowledge/schema-refs"
 import type { KnowledgeActor } from "~/apps/knowledge/service"
 import { extractRows, type RlsClient } from "~/db"
 import { privilegedFrom } from "~/db/privileged"
@@ -140,4 +140,75 @@ export function adoptionFields(adoption: FileAdoption): Partial<FileAdoption> {
   const copiedAny = Object.keys(adoption.fileIdMap).length > 0
   if (!copiedAny && adoption.notCopied.length === 0) return {}
   return { fileIdMap: adoption.fileIdMap, notCopied: adoption.notCopied }
+}
+
+/**
+ * A link between imported pages, as an import's text names it before its pages exist:
+ * `[label](notion-ref:<32 hex>)`, the id the other tool gave the page. The import's
+ * link pass (import-kind.ts) replaces it by the page token once every page is written.
+ */
+export const IMPORT_PAGE_REF_RE = /\[((?:\\.|[^\]\\])*)\]\(notion-ref:([0-9a-f]{32})\)/g
+
+/** The ids an import's links name, once each. */
+export function importPageRefsOf(body: string): string[] {
+  return [...new Set([...body.matchAll(IMPORT_PAGE_REF_RE)].map((m) => m[2] as string))]
+}
+
+/** The text with each import link the `resolve` answer names replaced by its page token;
+ *  any other is kept (`keep`) or written as its label. */
+export function replaceImportPageRefs(
+  body: string,
+  resolve: (ref: string) => string | null,
+  unresolved: "keep" | "label",
+  onUnresolved?: (label: string) => void,
+): string {
+  return body.replace(IMPORT_PAGE_REF_RE, (whole, label: string, ref: string) => {
+    const id = resolve(ref)
+    if (id) return pageToken(id)
+    if (unresolved === "keep") return whole
+    const text = label.replace(/\\(.)/g, "$1")
+    onUnresolved?.(text)
+    return text
+  })
+}
+
+/** The source label of a page an import made (`builtin:notion:u:<id>:<ref>` -> the
+ *  label before the last `:`), or null for any other page. */
+function builtinImportLabel(externalRef: string | null | undefined): string | null {
+  if (!externalRef?.startsWith("builtin:")) return null
+  const cut = externalRef.lastIndexOf(":")
+  return cut > 0 ? externalRef.slice(0, cut) : null
+}
+
+/**
+ * A later write of an imported page still naming `notion-ref:` links (an editor opened
+ * before the import's link pass kept its own text, K-R9): each link to a page of the
+ * same import that the writer can open becomes its page token, so no link stays dead
+ * because of that race. Links to pages not there (yet) are kept as they are. Runs in
+ * the writer's transaction: row security decides what the writer can open.
+ */
+export async function resolveImportedPageRefs(
+  tx: RlsClient,
+  orgId: string,
+  documentId: string,
+  body: string,
+): Promise<string> {
+  const refs = importPageRefsOf(body)
+  if (refs.length === 0) return body
+  const [own] = extractRows<{ external_ref: string | null }>(
+    await tx.execute(sql`
+      SELECT external_ref FROM ${knowledgeRel("documents")}
+       WHERE id = ${documentId}::uuid AND org_id = ${orgId}::uuid`),
+  )
+  const label = builtinImportLabel(own?.external_ref)
+  if (!label) return body
+  const wanted = refs.map((r) => `${label}:${r}`)
+  const found = extractRows<{ id: string; external_ref: string }>(
+    await tx.execute(sql`
+      SELECT id::text AS id, external_ref FROM ${knowledgeRel("documents")}
+       WHERE org_id = ${orgId}::uuid AND external_ref = ANY(${`{${wanted.join(",")}}`}::text[])
+         AND archived_at IS NULL AND trashed_at IS NULL`),
+  )
+  const byRef = new Map(found.map((r) => [r.external_ref.slice(label.length + 1), r.id]))
+  return replaceImportPageRefs(body, (ref) => byRef.get(ref) ?? null, "keep")
 }

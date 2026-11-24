@@ -237,7 +237,8 @@ describe("knowledge.document", () => {
     const id = String((await doc(label, "gone"))!.id)
     await LiveIndexTestAccess.clear()
     const report = await undoImportRun(orgId, run.runId, { userId: adminId })
-    expect(report).toEqual({ deleted: 1, refused: [] })
+    // The page and its first version (the import's text).
+    expect(report).toEqual({ deleted: 2, refused: [] })
     const pending = await LiveIndexTestAccess.pendingItems()
     const docKey = documentId(orgId, "knowledge", "document", id)
     const item = pending.find((p) => p.key === docKey)

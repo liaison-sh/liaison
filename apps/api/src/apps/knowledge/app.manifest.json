@@ -57,7 +57,7 @@
       }
     ]
   },
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "Knowledge workspace for local documents and curated source links",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1453,6 +1453,7 @@
             },
             "collectionRefs": {
               "type": "array",
+              "maxItems": 500,
               "items": {
                 "type": "string",
                 "minLength": 1
@@ -1496,6 +1497,7 @@
             },
             "attachments": {
               "type": "array",
+              "maxItems": 500,
               "items": {
                 "type": "object",
                 "required": [
@@ -1506,6 +1508,47 @@
                   "fileId": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "ref": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "How the body names the file: ![](import-file:<ref>). A file that cannot be copied is named in the report and its link becomes its text."
+                  }
+                }
+              }
+            },
+            "orgAccess": {
+              "type": "string",
+              "enum": [
+                "none",
+                "viewer",
+                "editor"
+              ],
+              "description": "Who in the organization sees the page: only its owner (none), everyone reads (viewer), everyone edits (editor). Default: from the sensitivity."
+            },
+            "indexOfCollectionRef": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The page is this imported folder's own page, filed in it."
+            },
+            "losses": {
+              "type": "array",
+              "maxItems": 500,
+              "description": "What the source had that this page does not carry, named in the run report.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "what",
+                  "where"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "what": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "where": {
+                    "type": "string"
                   }
                 }
               }
@@ -1519,7 +1562,8 @@
           "app_knowledge.collection_memberships",
           "app_knowledge.tags",
           "app_knowledge.taggings",
-          "kernel.files"
+          "kernel.files",
+          "app_knowledge.document_versions"
         ],
         "writeScopes": [
           "knowledge:documents:create"

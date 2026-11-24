@@ -1140,6 +1140,13 @@ export async function registerKernelJobs(): Promise<void> {
     const { pruneAwayRanges } = await import("~/modules/users/away")
     log.info(await pruneAwayRanges(), "away_ranges_retention")
   })
+  // Signing and approval links whose server stopped before it mailed them: a fresh link is
+  // mailed, once (modules/client-actions/unsent-links.ts).
+  await registerScheduledJob("kernel", "client-action-unsent-links", "*/5 * * * *", async () => {
+    const { mailUnsentLinks } = await import("~/modules/client-actions/unsent-links")
+    const out = await mailUnsentLinks()
+    if (out.mailed > 0) log.warn(out, "client_action_unsent_links")
+  })
   // Projects: once a day the time and budgets org row is recomputed from the projects'
   // switches, and time rows follow their task's project (apps/projects/service/reconcile-sweep.ts).
   await registerScheduledJob("kernel", "reconcile-sweep", "13 * * * *", async () => {

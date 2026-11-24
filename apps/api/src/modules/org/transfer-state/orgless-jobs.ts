@@ -47,6 +47,7 @@ export const ORGLESS_JOB_AUDIT: Readonly<Record<string, OrglessJobEntry>> = {
   "kernel:app-code-modules-retention": skips("modules/apps/workers/adhoc-module.ts"),
   "kernel:notification-deliveries-retention": skips("modules/notifications/delivery-log.ts"),
   "kernel:effect-ledger-retention": skips("lib/effect-once.ts"),
+  "kernel:client-action-unsent-links": skips("modules/client-actions/unsent-links.ts"),
   "kernel:away-ranges-prune": skips("modules/users/away.ts"),
   "kernel:suppression-links-prune": skips("modules/mail/commercial-footer.ts"),
   "kernel:prospect-retention": skips("modules/contacts/prospect-retention.ts"),

@@ -5,7 +5,9 @@
 // signers leaves none of them, no mail and no event; the same send again, at the same moment or
 // later, makes and mails nothing more, a signer who answered included; other signers on a
 // document already sent are refused. A reminder of many signers reads the document once, and
-// the same reminder again mails nobody twice.
+// the same reminder again mails nobody twice. A link whose mail never started (the server
+// stopped after the commit) is mailed once, later; a failed mail is told as such; two people at
+// one address are two signers.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import postgres from "postgres"
 import { sql } from "~/db"
@@ -13,7 +15,9 @@ import { env } from "~/lib/env"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { createClientActionsMethods } from "~/modules/apps/sandbox/bridge/client-actions"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
+import { remindClientActions } from "~/modules/client-actions/mint"
 import { ClientActionTargetsTestAccess } from "~/modules/client-actions/targets"
+import { mailUnsentLinks } from "~/modules/client-actions/unsent-links"
 import { superuserUrlForTestDb } from "~/tests/route-test-setup"
 import { k, useClientActionWorld } from "../../../test-support/client-actions-kit"
 
@@ -71,7 +75,14 @@ interface Answer {
   error?: { code: string; message: string }
   already_sent?: boolean
   group_id?: string
-  actions?: Array<{ id: string; status: string; invited_email: string; deduped: boolean }>
+  actions?: Array<{
+    id: string
+    status: string
+    invited_email: string
+    invited_name: string
+    deduped: boolean
+    mail: string | null
+  }>
   reminded?: Array<{ id: string }>
   recently_mailed?: Array<{ id: string }>
 }
@@ -144,6 +155,28 @@ async function triggerAfter(targetId: string, at: number, act: string): Promise<
     END $$ LANGUAGE plpgsql SECURITY DEFINER`)
   await owner.unsafe(`CREATE TRIGGER send_many_test BEFORE INSERT ON ${schema}.client_actions
     FOR EACH ROW EXECUTE FUNCTION ${schema}.send_many_test_fn()`)
+}
+
+/** `act` runs in the database when a link's mail is marked as handed over. */
+async function triggerOnClaim(targetId: string, act: string): Promise<void> {
+  await owner.unsafe(`CREATE OR REPLACE FUNCTION kernel.send_many_test_fn() RETURNS trigger AS $$
+    BEGIN
+      IF NEW.target_id = '${targetId}' AND OLD.sent_at IS NULL AND NEW.sent_at IS NOT NULL THEN
+        ${act}
+      END IF;
+      RETURN NEW;
+    END $$ LANGUAGE plpgsql SECURITY DEFINER`)
+  await owner.unsafe(`CREATE TRIGGER send_many_test BEFORE UPDATE ON kernel.client_actions
+    FOR EACH ROW EXECUTE FUNCTION kernel.send_many_test_fn()`)
+}
+
+/** The trail of a target's links, moved back in time (the trail itself is append only). */
+async function age(targetId: string, minutes: number): Promise<void> {
+  await owner.begin(async (tx) => {
+    await tx.unsafe("SET LOCAL session_replication_role = replica")
+    await tx.unsafe(`UPDATE kernel.client_action_events SET at = at - interval '${minutes} minutes'
+      WHERE action_id IN (SELECT id FROM kernel.client_actions WHERE target_id = '${targetId}')`)
+  })
 }
 
 async function dropTrigger(): Promise<void> {
@@ -327,5 +360,227 @@ describe("a reminder of 40 signers", () => {
     const again = await mint({ remind: { ids } })
     expect(again.reminded).toHaveLength(5)
     expect(await mailsSettle(targetId, 10)).toBe(10)
+  })
+})
+
+/** The links of a target whose mails were never started, as a server that stopped leaves them. */
+async function stoppedBeforeMails(n: number): Promise<{ targetId: string; out: Answer }> {
+  const targetId = crypto.randomUUID()
+  await triggerOnClaim(targetId, "RAISE EXCEPTION 'the server stopped';")
+  const out = await mint(sendOf(targetId, n))
+  expect(out.status).toBe("ok")
+  expect(await mailsSettle(targetId, 0)).toBe(0)
+  await dropTrigger()
+  return { targetId, out }
+}
+
+describe("links whose server stopped before their mails", () => {
+  it("are mailed once by the job, each to its signer, and the same send asked before says so", async () => {
+    const { targetId, out } = await stoppedBeforeMails(7)
+    const again = await mint(sendOf(targetId, 7))
+    expect(again).toMatchObject({ status: "ok", already_sent: true })
+    expect(again.actions?.map((a) => a.mail)).toEqual(Array(7).fill("owed"))
+    // The minutes after a send are its own run's: the job leaves them to it.
+    await mailUnsentLinks()
+    expect(await mailsSettle(targetId, 0)).toBe(0)
+    await age(targetId, 6)
+    const runs = await Promise.all([mailUnsentLinks(), mailUnsentLinks()])
+    expect(runs.reduce((t, r) => t + r.mailed, 0)).toBe(7)
+    expect(await mailsSettle(targetId, 7)).toBe(7)
+    const to = kit.capture.sent.filter((m) => m.to.includes(targetId.slice(0, 8))).map((m) => m.to)
+    expect(new Set(to).size).toBe(7)
+    await age(targetId, 6)
+    expect(await mailUnsentLinks()).toEqual({ mailed: 0 })
+    expect(await mailsSettle(targetId, 7)).toBe(7)
+    const after = await mint(sendOf(targetId, 7))
+    expect(after.actions?.map((a) => a.mail)).toEqual(Array(7).fill("sent"))
+    expect(after.actions?.map((a) => a.id)).toEqual(out.actions?.map((a) => a.id))
+  })
+
+  it("a mail that starts while the job looks goes out once", async () => {
+    const targetId = crypto.randomUUID()
+    await triggerOnClaim(targetId, "PERFORM pg_sleep(1);")
+    await mint(sendOf(targetId, 3))
+    await age(targetId, 6)
+    await mailUnsentLinks()
+    expect(await mailsSettle(targetId, 3)).toBe(3)
+    await new Promise((r) => setTimeout(r, 1200))
+    expect(linkMails(targetId)).toBe(3)
+  })
+
+  it("withdrawn, answered or long past, they are not mailed", async () => {
+    const { targetId, out } = await stoppedBeforeMails(3)
+    await sql`UPDATE ${k("client_actions")} SET revoked_at = now(), revoke_reason = 'withdrawn'
+               WHERE id = ${out.actions?.[0]?.id ?? ""}`
+    await sql`UPDATE ${k("client_actions")} SET decided_at = now(), decision = 'signed'
+               WHERE id = ${out.actions?.[1]?.id ?? ""}`
+    await age(targetId, 4 * 24 * 60)
+    await mailUnsentLinks()
+    expect(await mailsSettle(targetId, 0)).toBe(0)
+  })
+})
+
+describe("a link whose mail failed", () => {
+  it("is said to have failed, not to stand, and a reminder a moment later mails it again", async () => {
+    const targetId = crypto.randomUUID()
+    const failing = `s2-${targetId.slice(0, 8)}@signers.example`
+    const real = kit.capture.send.bind(kit.capture)
+    kit.capture.send = async (m) => {
+      if (m.to === failing) throw new Error("mailbox unavailable")
+      return real(m)
+    }
+    try {
+      const out = await mint(sendOf(targetId, 2))
+      const ids = (out.actions ?? []).map((a) => a.id)
+      const failed = async () =>
+        (
+          await sql`SELECT 1 FROM ${k("client_action_events")}
+            WHERE action_id = ${ids[1] ?? ""} AND event = 'rotated'
+              AND meta->>'reason' = 'send_failed'`
+        ).length
+      const failures = async (n: number) => {
+        const end = Date.now() + 5_000
+        while ((await failed()) < n && Date.now() < end) await new Promise((r) => setTimeout(r, 25))
+        expect(await failed()).toBe(n)
+      }
+      await failures(1)
+      const again = await mint(sendOf(targetId, 2))
+      expect(again.actions?.map((a) => a.mail)).toEqual(["sent", "failed"])
+      // A failed mail was told to its sender: it is not one to mail by itself.
+      await age(targetId, 6)
+      await mailUnsentLinks()
+      expect(await mailsSettle(targetId, 1)).toBe(1)
+      // Reminded twice in a row while the mail fails: each time it is mailed, never "minutes ago".
+      for (const n of [2, 3]) {
+        const r = await mint({ remind: { ids: [ids[1]] } })
+        expect(r.reminded).toHaveLength(1)
+        expect(r.recently_mailed).toEqual([])
+        await failures(n)
+      }
+    } finally {
+      kit.capture.send = real
+    }
+  })
+})
+
+describe("who the signers are", () => {
+  it("two people at one address are two signers, each with their own link and mail", async () => {
+    const targetId = crypto.randomUUID()
+    const email = `couple-${targetId.slice(0, 8)}@signers.example`
+    const signers = [
+      { email, name: "Anne Couple" },
+      { email, name: "Jean Couple" },
+      { email, name: " anne couple " },
+    ]
+    for (const order of ["any", "sequential"]) {
+      const id = order === "any" ? targetId : crypto.randomUUID()
+      const out = await mint(sendOf(id, 0, { signers, order }))
+      expect(out.actions?.map((a) => a.invited_name)).toEqual(["Anne Couple", "Jean Couple"])
+      expect(out.actions?.map((a) => a.status)).toEqual([
+        "open",
+        order === "any" ? "open" : "waiting_turn",
+      ])
+      expect(await rowsOf(id)).toHaveLength(2)
+      const again = await mint(sendOf(id, 0, { signers: signers.slice(0, 2).reverse(), order }))
+      expect(again).toMatchObject({ status: "ok", already_sent: true })
+      const alone = await mint(sendOf(id, 0, { signers: signers.slice(0, 1), order }))
+      expect(alone.error?.code).toBe("ALREADY_SENT")
+      expect(await rowsOf(id)).toHaveLength(2)
+    }
+    expect(await mailsSettle(targetId, 2)).toBeGreaterThanOrEqual(2)
+  })
+
+  it("signers in any order are kept in the order they were named", async () => {
+    const targetId = crypto.randomUUID()
+    await mint(sendOf(targetId, 12))
+    const again = await mint(sendOf(targetId, 12))
+    expect(again.actions?.map((a) => a.invited_name)).toEqual(
+      signersOf(targetId, 12).map((s) => s.name),
+    )
+    const listed = JSON.parse(
+      await bridge().client_actions_record(
+        JSON.stringify({ target_type: kit.targetType, target_id: targetId }),
+      ),
+    ) as { links: Array<{ invited_name: string; send_size: number }> }
+    expect(listed.links.map((l) => l.invited_name)).toEqual(
+      signersOf(targetId, 12).map((s) => s.name),
+    )
+    expect(listed.links.map((l) => l.send_size)).toEqual(Array(12).fill(12))
+  })
+
+  it("the same signers asked to accept instead of sign are another send", async () => {
+    const targetId = crypto.randomUUID()
+    ClientActionTargetsTestAccess.set(
+      kit.targetApp,
+      kit.targetType,
+      ["sign", "accept"],
+      async () => kit.view,
+    )
+    await mint(sendOf(targetId, 2))
+    const out = await mint(sendOf(targetId, 2, { kind: "accept" }))
+    expect(out.error?.code).toBe("ALREADY_SENT")
+    expect(await rowsOf(targetId)).toHaveLength(2)
+  })
+
+  it("a signer moved to a corrected address counts there, not at the address replaced", async () => {
+    const targetId = crypto.randomUUID()
+    const out = await mint(sendOf(targetId, 2))
+    await mailsSettle(targetId, 2)
+    const fixed = `fixed-${targetId.slice(0, 8)}@signers.example`
+    const moved = await mint({ new_link: { after: out.actions?.[0]?.id, email: fixed } })
+    expect(moved.status).toBe("ok")
+    const [, second] = signersOf(targetId, 2)
+    const again = await mint(
+      sendOf(targetId, 2, { signers: [{ email: fixed, name: "Signer 1" }, second] }),
+    )
+    expect(again).toMatchObject({ status: "ok", already_sent: true })
+    expect((await mint(sendOf(targetId, 2))).error?.code).toBe("ALREADY_SENT")
+  })
+
+  it("a restricted document's send names its readers in the word the app hears", async () => {
+    const targetId = crypto.randomUUID()
+    const readers = [kit.w.admin.userId]
+    await mint(sendOf(targetId, 1, { visible_to: readers }))
+    const [e] = (await sql`
+      SELECT payload FROM kernel.pending_events
+       WHERE org_id = ${kit.w.orgId} AND payload::text LIKE ${`%${targetId}%`}
+         AND payload::text LIKE '%links_made%'`) as unknown as Array<{
+      payload: { data: { visibleTo?: string[] } }
+    }>
+    expect(e?.payload.data.visibleTo).toEqual(readers)
+  })
+})
+
+describe("a reminder's check", () => {
+  it("stops it before any link is replaced, and covers every address it mails", async () => {
+    const targetId = crypto.randomUUID()
+    const out = await mint(sendOf(targetId, 2))
+    const ids = (out.actions ?? []).map((a) => a.id)
+    await mailsSettle(targetId, 2)
+    const before = (await rowsOf(targetId)).map((r) => r.token_hash).sort()
+    const stopped = await remindClientActions({
+      orgId: kit.w.orgId,
+      targetApp: kit.targetApp,
+      ids,
+      check: async () => ({ code: "SEND_GUARD_REPLIED", message: "They wrote back." }),
+    })
+    expect(stopped).toEqual({ stopped: { code: "SEND_GUARD_REPLIED", message: "They wrote back." } })
+    expect((await rowsOf(targetId)).map((r) => r.token_hash).sort()).toEqual(before)
+    // The second link is locked when the check reads the addresses, and open again right after.
+    await sql`UPDATE ${k("client_actions")} SET code_locked_at = now() WHERE id = ${ids[1] ?? ""}`
+    let covered: string[] = []
+    const r = await remindClientActions({
+      orgId: kit.w.orgId,
+      targetApp: kit.targetApp,
+      ids,
+      check: async (emails) => {
+        covered = emails
+        await sql`UPDATE ${k("client_actions")} SET code_locked_at = NULL WHERE id = ${ids[1] ?? ""}`
+        return null
+      },
+    })
+    expect(covered).toEqual([`s1-${targetId.slice(0, 8)}@signers.example`])
+    expect("reminded" in r ? r.reminded.map((x) => x.id) : []).toEqual([ids[0] ?? ""])
+    expect(await mailsSettle(targetId, 3)).toBe(3)
   })
 })

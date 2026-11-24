@@ -7,6 +7,12 @@
 // rotates the token again (the mailed one is dead) and tells the sender, and no
 // rendered body is ever queued for a retry.
 //
+// `sent_at` is written just before its mail is handed over (`claimLinkMail`), and
+// emptied when that fails. A link whose token stands and whose `sent_at` is empty,
+// with no failure recorded, was never mailed: the server stopped in between. The
+// `client-action-unsent-links` job gives it a fresh token and mails it, once
+// (unsent-links.ts).
+//
 // A send of several signers (`mintClientActionSend`) reads the document once and
 // writes every signer in one transaction, with the event that tells the target's
 // app: after a failure or a killed caller there are all of its links or none, and
@@ -86,6 +92,8 @@ export interface MintInput {
   approvedByUserId?: string | null
   /** The link of the same signer this one replaces (a new link): it leaves the send's group. */
   replacesActionId?: string | null
+  /** One signer of a send written whole: how many signers that send has. */
+  sendSize?: number | null
 }
 
 /**
@@ -169,6 +177,16 @@ async function resolveInvitee(tx: PrivilegedDb, input: MintInput): Promise<Invit
     companyId: input.companyId ?? null,
   }
 }
+
+/** The name a link is kept under. */
+const nameOf = (i: Invitee) => i.name.trim().slice(0, 200)
+
+/**
+ * Who a signer of a send is: a contact at the address it signs at, else an address and the name
+ * typed with it, so two people who share one address are two signers.
+ */
+const signerKey = (i: { contactId: string | null; email: string; name: string }) =>
+  i.contactId ? `${i.contactId}|${i.email}` : `|${i.email}|${i.name.trim().toLowerCase()}`
 
 /** The address each signer of one send would be mailed at, in order (a pinned check covers them). */
 export async function signerAddresses(
@@ -279,8 +297,33 @@ interface LinkMailArgs {
   createdByUserId: string | null
 }
 
+/**
+ * Marks one link's mail as handed over, right before it is. False: that token no longer stands
+ * (withdrawn, answered, rotated), or its mail was handed over already, so nothing is mailed.
+ */
+async function claimLinkMail(orgId: string, actionId: string, token: string): Promise<boolean> {
+  return withPrivilegedDb(orgId, "client-action-mail-claim", async (tx) => {
+    const rows = extractRows<{ id: string }>(
+      await tx.execute(sql`
+        UPDATE ${K()}.client_actions SET sent_at = now()
+         WHERE id = ${actionId} AND org_id = ${orgId} AND token_hash = ${hashToken(token)}
+           AND sent_at IS NULL AND decided_at IS NULL AND revoked_at IS NULL
+         RETURNING id
+      `),
+    )
+    return rows.length > 0
+  })
+}
+
 /** The person's link mail. A failed send makes that link dead by rotation; never throws. */
 async function mailLink(orgId: string, args: LinkMailArgs): Promise<void> {
+  try {
+    if (!(await claimLinkMail(orgId, args.actionId, args.token))) return
+  } catch (err) {
+    // Nothing was mailed: `sent_at` is still empty and the job finds it.
+    log.error({ err, orgId, actionId: args.actionId }, "client action link mail not started")
+    return
+  }
   await sendLinkMail({
     orgId,
     to: args.to,
@@ -428,6 +471,7 @@ async function insertClientAction(
 ): Promise<Inserted> {
   const token = input.waitingTurn ? null : generateToken(32)
   const mailId = newActionMailId()
+  const invitedName = nameOf(invitee)
   const [existing] = extractRows<{
     id: string
     expires_at: Date
@@ -439,6 +483,7 @@ async function insertClientAction(
        WHERE org_id = ${input.orgId} AND target_id = ${input.targetId}
          AND contact_id IS NOT DISTINCT FROM ${invitee.contactId}
          AND invited_email = ${invitee.email}
+         AND (contact_id IS NOT NULL OR lower(invited_name) = lower(${invitedName}))
          AND decided_at IS NULL AND revoked_at IS NULL AND expires_at > now()
        LIMIT 1
     `),
@@ -479,20 +524,19 @@ async function insertClientAction(
         org_id, group_id, kind, target_app, target_type, target_id, target_sha256,
         target_blocks_sha256, company_id,
         contact_id, signer_user_id, invited_email, invited_name, sign_order, token_hash,
-        expires_at, sent_at, visible_to, required_phrase, created_by_user_id, created_by_agent_id,
-        approved_by_user_id
+        expires_at, visible_to, required_phrase, created_by_user_id, created_by_agent_id,
+        approved_by_user_id, created_at
       ) VALUES (
         ${input.orgId}, coalesce(${input.groupId ?? null}::uuid, gen_random_uuid()), ${input.kind},
         ${input.targetApp}, ${input.targetType}, ${input.targetId}, ${view.sha256},
         ${view.blocksSha256 ?? null},
         ${invitee.companyId}, ${invitee.contactId}, ${signerUserId}, ${invitee.email},
-        ${invitee.name.slice(0, 200)}, ${input.signOrder ?? null},
+        ${invitedName}, ${input.signOrder ?? null},
         ${token ? hashToken(token) : null},
         now() + make_interval(days => ${input.expiresInDays}),
-        ${token && !signerUserId ? sql`now()` : sql`NULL`},
         ${input.visibleTo && input.visibleTo.length > 0 ? sql`${`{${input.visibleTo.join(",")}}`}::uuid[]` : sql`NULL`},
         ${input.requiredPhrase ?? null}, ${input.createdByUserId}, ${input.createdByAgentId ?? null},
-        ${input.approvedByUserId ?? null}::uuid
+        ${input.approvedByUserId ?? null}::uuid, clock_timestamp()
       ) RETURNING id, expires_at
     `),
   )
@@ -507,6 +551,7 @@ async function insertClientAction(
       kind: input.kind,
       target: `${input.targetApp}.${input.targetType}`,
       ...(input.replacesActionId ? { replaces: input.replacesActionId } : {}),
+      ...(input.sendSize ? { send_size: input.sendSize } : {}),
     },
   })
   const mailed = token !== null && signerUserId === null
@@ -599,8 +644,9 @@ function mailsOf(made: readonly Inserted[]): OwedMail[] {
 /**
  * Makes one client action and mails its link. Refuses a target no app of the org
  * declared, a kind the target does not take, and a target whose hash moved since
- * the caller read it. A second call for the same target, contact and address
- * while the first is open returns the first and sends nothing.
+ * the caller read it. A second call for the same target and the same person (the
+ * contact at that address, or without a contact the address and its name) while
+ * the first is open returns the first and sends nothing.
  */
 export async function mintClientAction(input: MintInput): Promise<MintResult> {
   assertMintable(input)
@@ -615,10 +661,18 @@ export async function mintClientAction(input: MintInput): Promise<MintResult> {
   return made.result
 }
 
+/**
+ * Where a link's mail is: `owed` (made now, it leaves after the commit, or the server stopped
+ * before it left and the job sends it), `sent`, `failed` (its link is dead, the sender was
+ * told), or null when no mail goes with it (answered, not their turn, a member's own session).
+ */
+export type LinkMailState = "owed" | "sent" | "failed" | null
+
 /** One signer of a send as it stands: a fresh link, or where the link made before is now. */
 export type SendAction = Omit<MintResult, "status"> & {
   status: MintResult["status"] | "decided" | "declined"
   signOrder: number | null
+  mail: LinkMailState
 }
 
 export interface SendSigner {
@@ -662,6 +716,31 @@ interface SentLink {
   decision: string | null
   expires_at: Date
   signer_user_id: string | null
+  sent_at: Date | null
+  mail_failed: boolean
+}
+
+/**
+ * True for the row `alias` when the last mail it owed failed (its link is dead and its sender was
+ * told), so it is not one the server stopped before mailing.
+ */
+function mailFailedSql(alias: string) {
+  const a = sql.raw(alias)
+  return sql`EXISTS (
+    SELECT 1 FROM ${K()}.client_action_events f
+     WHERE f.action_id = ${a}.id AND f.org_id = ${a}.org_id AND f.event = 'rotated'
+       AND f.meta->>'reason' = 'send_failed'
+       AND NOT EXISTS (SELECT 1 FROM ${K()}.client_action_events s
+                        WHERE s.action_id = f.action_id AND s.org_id = f.org_id
+                          AND s.event = 'sent' AND s.at > f.at))`
+}
+
+function mailStateOf(
+  l: Pick<SentLink, "decision" | "token_hash" | "signer_user_id" | "sent_at" | "mail_failed">,
+): LinkMailState {
+  if (l.decision !== null || l.token_hash === null || l.signer_user_id !== null) return null
+  if (l.sent_at !== null) return "sent"
+  return l.mail_failed ? "failed" : "owed"
 }
 
 /**
@@ -673,7 +752,8 @@ async function runningSend(tx: PrivilegedDb, input: MintSendInput): Promise<Sent
   const rows = extractRows<SentLink>(
     await tx.execute(sql`
       SELECT l.id, l.group_id, l.kind, l.contact_id, l.invited_email, l.invited_name, l.sign_order,
-             l.token_hash, l.decision, l.expires_at, l.signer_user_id
+             l.token_hash, l.decision, l.expires_at, l.signer_user_id, l.sent_at,
+             ${mailFailedSql("l")} AS mail_failed
         FROM ${K()}.client_actions l
        WHERE l.org_id = ${input.orgId} AND l.target_app = ${input.targetApp}
          AND l.target_type = ${input.targetType} AND l.target_id = ${input.targetId}
@@ -688,8 +768,6 @@ async function runningSend(tx: PrivilegedDb, input: MintSendInput): Promise<Sent
   )
   return rows.filter((r) => live.has(r.group_id))
 }
-
-const signerKey = (contactId: string | null, email: string) => `${contactId ?? ""}|${email}`
 
 /** The names a refusal lists: the first few, then how many more. */
 function namesOf(links: readonly SentLink[]): string {
@@ -714,20 +792,26 @@ export async function mintClientActionSend(input: MintSendInput): Promise<MintSe
   const view = await readMintView(base)
   const out = await withPrivilegedDb(input.orgId, "client-action-mint-send", async (tx) => {
     await lockTargetLinks(tx, base)
-    const invitees: Invitee[] = []
-    for (const s of signers)
-      invitees.push(
-        await resolveInvitee(tx, {
-          ...base,
-          contactId: s.contactId ?? null,
-          invitedEmail: s.email ?? null,
-          invitedName: s.name ?? null,
-        }),
-      )
+    // One person named twice is one signer; two people at one address are two.
+    const invitees = new Map<string, { signer: SendSigner; invitee: Invitee }>()
+    for (const s of signers) {
+      const invitee = await resolveInvitee(tx, {
+        ...base,
+        contactId: s.contactId ?? null,
+        invitedEmail: s.email ?? null,
+        invitedName: s.name ?? null,
+      })
+      const key = signerKey({ ...invitee, name: nameOf(invitee) })
+      if (!invitees.has(key)) invitees.set(key, { signer: s, invitee })
+    }
     const before = await runningSend(tx, input)
     if (before.length > 0) {
-      const had = new Set(before.map((l) => signerKey(l.contact_id, l.invited_email)))
-      const asked = new Set(invitees.map((i) => signerKey(i.contactId, i.email)))
+      const had = new Set(
+        before.map((l) =>
+          signerKey({ contactId: l.contact_id, email: l.invited_email, name: l.invited_name }),
+        ),
+      )
+      const asked = new Set(invitees.keys())
       const same =
         had.size === asked.size &&
         [...asked].every((key) => had.has(key)) &&
@@ -743,7 +827,7 @@ export async function mintClientActionSend(input: MintSendInput): Promise<MintSe
     const sender = await readSender(tx, input.orgId, base.createdByUserId)
     const groupId = crypto.randomUUID()
     const made: Inserted[] = []
-    for (const [i, s] of signers.entries()) {
+    for (const [i, { signer: s, invitee }] of [...invitees.values()].entries()) {
       made.push(
         await insertClientAction(
           tx,
@@ -755,9 +839,10 @@ export async function mintClientActionSend(input: MintSendInput): Promise<MintSe
             signOrder: sequential ? i + 1 : null,
             waitingTurn: sequential && i > 0,
             groupId,
+            sendSize: invitees.size,
           },
           view,
-          invitees[i] as Invitee,
+          invitee,
           sender,
         ),
       )
@@ -804,12 +889,17 @@ export async function mintClientActionSend(input: MintSendInput): Promise<MintSe
         signerIsStaff: l.signer_user_id !== null,
         title: view.title,
         sharedOnPortal: false,
+        mail: mailStateOf(l),
       })),
     }
   return {
     groupId: out.groupId,
     alreadySent: false,
-    actions: out.made.map((m) => ({ ...m.result, signOrder: m.input.signOrder ?? null })),
+    actions: out.made.map((m) => ({
+      ...m.result,
+      signOrder: m.input.signOrder ?? null,
+      mail: m.result.mailQueued ? ("owed" as const) : null,
+    })),
   }
 }
 
@@ -883,14 +973,44 @@ export async function rotateClientActionToken(
   return token
 }
 
+/** A link whose mail was owed this long ago and never started was left by a server that stopped. */
+const UNSENT_AFTER_MINUTES = 5
+/** Older than this, its sender has had days to see it: a restored copy never mails old links. */
+const UNSENT_WITHIN_DAYS = 3
+
+/** An open mailed link whose mail never started, as of now. */
+export function unsentLinkSql() {
+  return sql`
+    a.token_hash IS NOT NULL AND a.sent_at IS NULL AND a.signer_user_id IS NULL
+    AND a.decided_at IS NULL AND a.revoked_at IS NULL AND a.code_locked_at IS NULL
+    AND a.expires_at > now() AND NOT ${mailFailedSql("a")}
+    AND (SELECT max(e.at) FROM ${K()}.client_action_events e
+          WHERE e.action_id = a.id AND e.org_id = a.org_id AND e.event = 'sent')
+        BETWEEN now() - make_interval(days => ${UNSENT_WITHIN_DAYS})
+            AND now() - make_interval(mins => ${UNSENT_AFTER_MINUTES})`
+}
+
 /** Mails a fresh link for an open action to its invited address (resend, next signer's turn). */
 export async function remailClientAction(
   orgId: string,
   actionId: string,
-  opts: { resend?: boolean } = {},
+  opts: { resend?: boolean; /** Only while its mail never started. */ onlyUnsent?: boolean } = {},
 ): Promise<boolean> {
   const mailId = newActionMailId()
   const out = await withPrivilegedDb(orgId, "client-action-remail", async (tx) => {
+    if (opts.onlyUnsent) {
+      // Locked first, read after: the read then sees what another run wrote meanwhile.
+      await tx.execute(sql`
+        SELECT id FROM ${K()}.client_actions
+         WHERE id = ${actionId} AND org_id = ${orgId} FOR UPDATE`)
+      const still = extractRows<{ id: string }>(
+        await tx.execute(sql`
+          SELECT a.id FROM ${K()}.client_actions a
+           WHERE a.id = ${actionId} AND a.org_id = ${orgId} AND ${unsentLinkSql()}
+        `),
+      )
+      if (still.length === 0) return null
+    }
     const [a] = extractRows<{
       kind: ClientActionKind
       target_app: string
@@ -910,7 +1030,7 @@ export async function remailClientAction(
     if (!a || a.signer_user_id) return null
     const token = await rotateClientActionToken(tx, orgId, actionId)
     if (!token) return null
-    await tx.execute(sql`UPDATE ${K()}.client_actions SET sent_at = now() WHERE id = ${actionId}`)
+    await tx.execute(sql`UPDATE ${K()}.client_actions SET sent_at = NULL WHERE id = ${actionId}`)
     await writeClientActionEvent(tx, {
       orgId,
       actionId,
@@ -1187,7 +1307,8 @@ export interface RemindedLink {
  * their turn and a closed link get nothing. Every token of the reminder is replaced in one
  * transaction, or none is. A signer whose link was mailed again in the last minutes (the same
  * reminder, its answer lost, asked again) keeps that link and gets no second mail: they are
- * answered in `recentlyMailed`. The document is read once.
+ * answered in `recentlyMailed`. A signer whose last mail failed holds no link that opens, so
+ * they are mailed. The document is read once.
  */
 export async function remindClientActions(input: {
   orgId: string
@@ -1224,7 +1345,7 @@ export async function remindClientActions(input: {
                                 max(e.at) > now() - make_interval(mins => ${REMINDED_MINUTES})
                            FROM ${K()}.client_action_events e
                           WHERE e.action_id = a.id AND e.org_id = a.org_id AND e.event = 'sent'),
-                        false) AS recent
+                        false) AND NOT ${mailFailedSql("a")} AS recent
           FROM ${K()}.client_actions a
          WHERE a.org_id = ${input.orgId} AND a.target_app = ${input.targetApp}
            AND a.id::text IN (${wanted})
@@ -1272,7 +1393,7 @@ export async function remindClientActions(input: {
       const token = await rotateClientActionToken(tx, input.orgId, r.id)
       if (!token) continue
       const mailId = newActionMailId()
-      await tx.execute(sql`UPDATE ${K()}.client_actions SET sent_at = now() WHERE id = ${r.id}`)
+      await tx.execute(sql`UPDATE ${K()}.client_actions SET sent_at = NULL WHERE id = ${r.id}`)
       await writeClientActionEvent(tx, {
         orgId: input.orgId,
         actionId: r.id,
@@ -1420,6 +1541,10 @@ export interface TargetLink {
   revokeReason: string | null
   /** The member who signs with this link (a staff signer), else null. */
   signerUserId: string | null
+  /** How many signers the send that made it has; null when it was not written as part of one. */
+  sendSize: number | null
+  /** Where its mail is, while it can be answered. */
+  mail: LinkMailState
 }
 
 /** Every link of one target of this app, newest turn last (no token, code or device field). */
@@ -1445,11 +1570,17 @@ export async function listTargetClientActions(input: {
       replaced: boolean
       revoke_reason: string | null
       signer_user_id: string | null
+      sent_at: Date | null
+      mail_failed: boolean
+      send_size: number | null
     }>(
       await tx.execute(sql`
         SELECT l.id, l.invited_name, l.invited_email, l.sign_order, l.decision, l.decided_at,
                l.revoked_at, l.revoke_reason, l.code_locked_at, l.code_verified_at, l.token_hash, l.expires_at,
-               l.signer_user_id,
+               l.signer_user_id, l.sent_at, ${mailFailedSql("l")} AS mail_failed,
+               (SELECT (e.meta->>'send_size')::int FROM ${K()}.client_action_events e
+                 WHERE e.action_id = l.id AND e.org_id = l.org_id AND e.event = 'created'
+                 LIMIT 1) AS send_size,
                ${replacedSql("l")} AS replaced
           FROM ${K()}.client_actions l
          WHERE l.org_id = ${input.orgId} AND l.target_app = ${input.targetApp}
@@ -1485,6 +1616,8 @@ export async function listTargetClientActions(input: {
     replaced: r.replaced === true,
     revokeReason: r.revoked_at ? r.revoke_reason : null,
     signerUserId: r.signer_user_id ?? null,
+    sendSize: r.send_size === null ? null : Number(r.send_size),
+    mail: r.revoked_at ? null : mailStateOf(r),
   }))
 }
 

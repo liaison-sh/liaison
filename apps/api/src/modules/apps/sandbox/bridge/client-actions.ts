@@ -377,7 +377,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         status: "ok",
         group_id: sent.groupId,
         ...(sent.alreadySent ? { already_sent: true } : {}),
-        actions: sent.actions.map((a) => actionOut(a, a.signOrder)),
+        actions: sent.actions.map((a) => ({ ...actionOut(a, a.signOrder), mail: a.mail })),
       })
     } catch (err) {
       if (err instanceof ClientActionError)
@@ -464,6 +464,8 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
             replaced: l.replaced,
             revoke_reason: l.revokeReason,
             signer_user_id: l.signerUserId,
+            send_size: l.sendSize,
+            mail: l.mail,
           })),
         })
       }

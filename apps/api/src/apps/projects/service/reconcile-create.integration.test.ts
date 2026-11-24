@@ -1638,6 +1638,8 @@ describe("a period invoiced before it ends", () => {
     const p = await dailyProject()
     const a = await closedTask(p.id, "First", "2026-09-04", [], "1 day")
     const own = await closedTask(p.id, "Client's own", "2026-09-04", [], "1 day")
+    // Proposed with it first, then without: what is left out is kept on the card as it stands.
+    await proposal(p.key, "2026-09", [lineOf("First", [a])])
     const sep = await proposal(p.key, "2026-09", [lineOf("First", [a])], {
       excluded: [{ taskId: own, reason: "client_own" }],
     })
@@ -1789,6 +1791,39 @@ describe("a retainer month invoiced before it ends", () => {
     await approveIssue(again.documentId)
     const nov = await run(reconcileFacts, { project: r.key, month: "2026-11" })
     expect(nov.unbilledEarlier).toEqual([])
+  }, 120_000)
+
+  it("a month undone while the next card holds its later hours cannot bill them again", async () => {
+    const r = await retainerProject(["2026-09", "2026-10"])
+    const a = await closedTask(r.id, "Upkeep", null, [["2026-09-03", 47 * 60]])
+    const sep = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    expect((await create(sep)).error).toBeUndefined()
+    await draftedOn(sep, "2026-09-05")
+    await seedTaskTime(seedContext({ orgId, now: new Date() }), actorOf(owner.userId, ["*"]), [
+      { taskId: a, projectId: r.id, workDate: "2026-09-18", minutes: 600 },
+    ] as never)
+    const oct = await proposal(r.key, "2026-10", [])
+    const made = await create(oct)
+    expect((await draftLinesOf(made.documentId)).map((l) => l.slice(1))).toEqual([
+      [1, 450000],
+      [10, 12000],
+    ])
+    // September goes back and is asked again, its whole month of hours with it.
+    expect((await run(reconcileUndo, { reconciliationId: sep.reconciliationId })).undone).toBe(true)
+    const again = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    expect(again.lines[0].billMinutes).toBe(57 * 60)
+    expect((await create(again)).error).toMatchObject({ code: "already_on" })
+    expect((await docsOf(r.id)).map((d) => d.external_ref)).toEqual([
+      `retainer:${r.schedule}:2026-10`,
+    ])
+    // The later hours given back, the month bills them all.
+    expect((await run(reconcileUndo, { reconciliationId: oct.reconciliationId })).undone).toBe(true)
+    const whole = await create(again)
+    expect(whole.error).toBeUndefined()
+    expect((await draftLinesOf(whole.documentId)).map((l) => l.slice(1))).toEqual([
+      [1, 450000],
+      [17, 12000],
+    ])
   }, 120_000)
 
   it("two cards offering the same later hours bill them once", async () => {

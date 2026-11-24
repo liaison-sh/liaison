@@ -154,6 +154,8 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
   "app_invoicing.recurring_run_items.period_key":
     "the billing period a row is for, not a credential",
   "app_invoicing.recurring_run_items.state": STATUS,
+  "app_invoicing.stripe_sales.key":
+    "the Stripe invoice or charge id of a sale that has its document, not a credential",
   "app_mail.accounts.encryption_state": "mailbox encryption status label",
   "app_mail.accounts.encryption_conversion":
     "progress of a mailbox encryption change, holds no key",

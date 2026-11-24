@@ -235,6 +235,20 @@ describe("a send of 40 signers", () => {
     expect(await mailsSettle(targetId, 3)).toBe(3)
   })
 
+  it("the same send once every signer answered makes none, even past the links' end", async () => {
+    const targetId = crypto.randomUUID()
+    await mint(sendOf(targetId, 2))
+    await mailsSettle(targetId, 2)
+    await sql`UPDATE ${k("client_actions")}
+                 SET decided_at = now(), decision = 'signed', expires_at = now() - interval '1 day'
+               WHERE target_id = ${targetId}`
+    const again = await mint(sendOf(targetId, 2))
+    expect(again).toMatchObject({ status: "ok", already_sent: true })
+    expect(again.actions?.map((x) => x.status)).toEqual(["decided", "decided"])
+    expect(await rowsOf(targetId)).toHaveLength(2)
+    expect(await mailsSettle(targetId, 2)).toBe(2)
+  })
+
   it("other signers on a document already sent are refused, and nothing is sent", async () => {
     const targetId = crypto.randomUUID()
     await mint(sendOf(targetId, 2))
@@ -243,6 +257,10 @@ describe("a send of 40 signers", () => {
     expect(more.error?.code).toBe("ALREADY_SENT")
     const fewer = await mint(sendOf(targetId, 1))
     expect(fewer.error?.code).toBe("ALREADY_SENT")
+    const other = await mint(
+      sendOf(targetId, 2, { signers: [...signersOf(targetId, 1), { email: "x@signers.example" }] }),
+    )
+    expect(other.error?.code).toBe("ALREADY_SENT")
     expect(await rowsOf(targetId)).toHaveLength(2)
     expect(await mailsSettle(targetId, 2)).toBe(2)
   })

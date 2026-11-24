@@ -877,6 +877,28 @@ describe("every row is reached, however many wait", () => {
     expect(openParks(db).filter((p) => p.event_id === "stripe:re_1")).toHaveLength(0)
   })
 
+  test("a refund waiting a day for its invoice is told though 520 others were already", async () => {
+    const db = stripeDb()
+    for (let i = 0; i < 521; i++)
+      await db.insert("deferred_events", {
+        event_id: `stripe:re_${i}`,
+        event_payload_json: { kind: "stripe_credit_note", refund_id: `re_${i}`, charge_id: "ch_x" },
+        status: "awaiting_dependency",
+        reason: "invoice_not_issued",
+        blocked_on: {
+          kind: "stripe_credit_note",
+          invoice_ref: "stripe:in_x",
+          refund_id: `re_${i}`,
+        },
+        retry_count: 1,
+        retried_at: null,
+        created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+      })
+    const ctx = stripeCtx(db)
+    await reconcileStripePayments(ctx)
+    expect(ctx.emitted.filter((e) => e.entity === "stripe_refund")).toHaveLength(521)
+  })
+
   test("the open park of an event with many closed ones is found, and all its parks of a kind close", async () => {
     const db = stripeDb()
     for (let i = 0; i < 60; i++)

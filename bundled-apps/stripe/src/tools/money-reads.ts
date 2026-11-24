@@ -194,28 +194,8 @@ function asStripeAnswers(row: Obj, obj: Obj): Obj {
   return { ...row, ...said }
 }
 
-/** The charges known to have paid an invoice: the one it names, and those the mirror links to it. */
-async function chargesOfInvoice(ctx: MoneyReadCtx, id: string, obj: Obj): Promise<string[]> {
-  const rows = (await ctx.db.findMany("stripe_payments", {
-    where: { invoice_id: id, status: "succeeded" },
-    limit: 50,
-  })) as Obj[]
-  const named = typeof obj.charge === "string" ? [obj.charge] : []
-  return [...new Set([...named, ...rows.map((r) => String(r.stripe_id))])]
-}
-
-async function invoiceNow(ctx: MoneyReadCtx, row: Obj, obj: Obj, now: string): Promise<Obj> {
-  const payload = await invoiceEventPayload(
-    ctx,
-    asStripeAnswers(row, obj),
-    obj,
-    newTally(),
-    now,
-    false,
-  )
-  const charges = await chargesOfInvoice(ctx, String(row.stripe_id), obj)
-  return { ...payload, charge_id: payload.charge_id ?? charges[0] ?? null, charge_ids: charges }
-}
+const invoiceNow = (ctx: MoneyReadCtx, row: Obj, obj: Obj, now: string): Promise<Obj> =>
+  invoiceEventPayload(ctx, asStripeAnswers(row, obj), obj, newTally(), now, false)
 
 export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyReadCtx) {
   const hold = await moneyActionHold(ctx.db)

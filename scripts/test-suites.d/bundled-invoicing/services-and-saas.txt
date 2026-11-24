@@ -4,6 +4,7 @@ src/issuer-guard.test.ts
 src/streams.test.ts
 # Card payments on Stripe: invoices, payments, refunds, unmatched payments (pure store).
 src/handlers/stripe-subscribers.test.ts
+src/handlers/stripe-parked-invoices.test.ts
 src/handlers/stripe-refund-credit-note.test.ts
 # A Stripe invoice or refund credit note e-invoices like any no-person issue (pure store).
 src/handlers/stripe-einvoice-send.test.ts

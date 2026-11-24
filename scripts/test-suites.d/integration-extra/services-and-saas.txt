@@ -10,6 +10,8 @@ src/tests/integration/run-edit-taint.integration.test.ts
 src/tests/integration/stripe-webhook-signing-secret-roll.integration.test.ts
 # Card payments on Stripe in mode A: typed events into invoicing's subscribers.
 src/tests/integration/stripe-invoicing-money.test.ts
+# Two transactions on one Stripe sale: one invoice, whoever the two are.
+src/tests/integration/stripe-one-sale-one-invoice.test.ts
 # A signed Stripe refund through the webhook route to one credit note, and the safety job.
 src/tests/integration/stripe-refund-to-credit-note.test.ts
 # The demo's card-payments stand-in: reads from the mirror, modelled writes through the app's handler.

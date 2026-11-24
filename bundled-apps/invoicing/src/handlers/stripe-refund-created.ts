@@ -17,7 +17,13 @@
 // (before a switch, or before Stripe was connected) has no Liaison invoice to credit: the refund is
 // recorded as Stripe's. One still waiting for its invoice after a day raises one Home item (the
 // safety job), closed once the refund gets its credit note or is skipped.
-import { park, resolveOpenParks, STRIPE_CREDIT_NOTE_PARK } from "../deferred"
+import {
+  type DeferredRow,
+  openRowsOf,
+  park,
+  resolveOpenParks,
+  STRIPE_CREDIT_NOTE_PARK,
+} from "../deferred"
 import { reportCollection } from "../einvoicing/collection"
 import { autoCreditNoteCounterparty } from "../einvoicing/parked-credit-note"
 import type { EinvCtx } from "../einvoicing/transmit"
@@ -34,6 +40,7 @@ import {
   type StripeCtx,
   stripeRef,
 } from "./stripe-invoice-finalized"
+import type { LinesCtx } from "./stripe-lines"
 import { saleDocument } from "./stripe-sale"
 
 type Row = Record<string, unknown>
@@ -186,19 +193,15 @@ async function issuedByStripeAt(
 export const REFUND_WAIT_MS = 24 * 60 * 60 * 1000
 
 export async function flagLongRefundWaits(ctx: StripeCtx, now = Date.now()): Promise<number> {
-  const rows = (await ctx.db.findMany("deferred_events", {
-    where: {
-      reason: "invoice_not_issued",
-      status: { in: ["awaiting_config", "awaiting_data", "awaiting_dependency"] },
-    },
-    limit: 500,
-  })) as Row[]
+  const rows: DeferredRow[] = []
+  for await (const r of openRowsOf(ctx as LinesCtx, "stripe:re_", { payload: true }))
+    if (r.reason === "invoice_not_issued") rows.push(r)
   let raised = 0
   for (const row of rows) {
-    const b = (row.blocked_on ?? {}) as Row
+    const b = row.blocked_on as Row
     if (b.kind !== STRIPE_CREDIT_NOTE_PARK || typeof b.refund_id !== "string") continue
-    const since = isoOf(row.created_at)
-    if (!since || now - Date.parse(since) < REFUND_WAIT_MS) continue
+    const since = row.created_at.getTime()
+    if (since === 0 || now - since < REFUND_WAIT_MS) continue
     const p = (row.event_payload_json ?? {}) as Partial<ParkedStripeCreditNote>
     const def = await park(
       { db: ctx.db },

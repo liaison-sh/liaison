@@ -11,7 +11,7 @@
       "method": "db_findMany",
       "args": [
         "deferred_events",
-        "{\"where\":{\"reason\":\"invoice_not_issued\",\"status\":{\"in\":[\"awaiting_config\",\"awaiting_data\",\"awaiting_dependency\"]}},\"limit\":500}"
+        "{\"where\":{\"status\":{\"in\":[\"awaiting_config\",\"awaiting_data\",\"awaiting_dependency\",\"render_failed\",\"email_failed\"]}},\"search\":{\"fields\":[\"event_id\"],\"query\":\"stripe:re_\"},\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
       ],
       "reply": "[]"
     },

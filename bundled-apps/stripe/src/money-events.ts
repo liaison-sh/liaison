@@ -381,6 +381,16 @@ export async function invoiceLines(
 
 const s = (v: unknown) => (typeof v === "number" ? String(v) : v)
 
+/** The charges known to have paid an invoice: the one it names, and those the mirror links to it. */
+async function chargesOfInvoice(ctx: MoneyEventCtx, id: string, obj: Obj): Promise<string[]> {
+  const rows = (await ctx.db.findMany("stripe_payments", {
+    where: { invoice_id: id, status: "succeeded" },
+    limit: 50,
+  })) as Obj[]
+  const named = typeof obj.charge === "string" ? [obj.charge] : []
+  return [...new Set([...named, ...rows.map((r) => String(r.stripe_id))])]
+}
+
 /** `invoice:finalized` and `invoice:paid` as invoicing reads them, from the invoice's mirror row and the object read from Stripe. */
 export async function invoiceEventPayload(
   ctx: MoneyEventCtx,
@@ -398,6 +408,9 @@ export async function invoiceEventPayload(
     stripeUpdated,
     store,
   )
+  // A charge pays a paid invoice: who already invoiced that charge is asked under its name.
+  const charges =
+    row.status === "paid" ? await chargesOfInvoice(ctx, String(row.stripe_id), obj) : []
   return {
     stripe_invoice_id: row.stripe_id,
     customer_id: row.customer_id,
@@ -415,7 +428,8 @@ export async function invoiceEventPayload(
     paid_at: row.paid_at,
     billing_reason: row.billing_reason,
     next_payment_attempt: row.next_payment_attempt,
-    charge_id: idOf(obj.charge),
+    charge_id: idOf(obj.charge) ?? charges[0] ?? null,
+    ...(charges.length > 0 ? { charge_ids: charges } : {}),
     customer: buyerOf(customer, tally),
     lines,
   }

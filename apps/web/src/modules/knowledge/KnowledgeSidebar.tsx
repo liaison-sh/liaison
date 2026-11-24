@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { FolderOpen, Plus, Search } from "lucide-solid"
+import { FolderOpen, Plus, Search, Trash2 } from "lucide-solid"
 import {
   type Component,
   createEffect,
@@ -30,7 +30,6 @@ import KnowledgeCollectionTree, {
 import KnowledgeMoveDialog, { type MoveTarget } from "./KnowledgeMoveDialog"
 import {
   archiveCollection,
-  archiveKnowledgeDocument,
   type CollectionTreeNode,
   createCollection,
   createKnowledgeDocument as createDocApi,
@@ -53,9 +52,14 @@ import {
   setKnowledgeView,
 } from "./knowledge-store"
 import { refusalMessage } from "./refusal"
-
-/** The scope that lets a person archive a page (Trash replaces it later). */
-const ARCHIVE_SCOPE = "knowledge:documents:archive"
+import {
+  canMoveToTrash,
+  canSeeTrash,
+  loadTrash,
+  moveToTrash,
+  trashCount,
+  trashRefusalKey,
+} from "./trash"
 
 function findNode(tree: readonly CollectionTreeNode[], id: string): CollectionTreeNode | null {
   for (const n of tree) {
@@ -106,7 +110,6 @@ const KnowledgeSidebar: Component = () => {
       knowledgeStore.collectionsTree.find((n) => n.kind === "unfiled" || n.id === "__unfiled__")
         ?.documents.length ?? 0,
   )
-  const canArchiveDocs = () => hasScope(ARCHIVE_SCOPE)
   // Actions follow the person's scopes, as the server checks them: none is
   // offered that the server would refuse for want of one.
   const canManageFolders = () =>
@@ -166,7 +169,18 @@ const KnowledgeSidebar: Component = () => {
   onMount(() => {
     void loadDocuments(api)
     void loadCollectionsTree(api)
+    if (canSeeTrash()) void loadTrash(api).catch(() => {})
   })
+
+  /** Trash opens in the Knowledge tab, whichever tab is active. */
+  function showTrash() {
+    setKnowledgeView("trash")
+    openTab({
+      type: "knowledge:home",
+      entityId: "knowledge-home",
+      label: i18n.t("kernel.agentUi.knowledge"),
+    })
+  }
 
   async function reloadAfterChange() {
     await loadCollectionsTree(api)
@@ -424,16 +438,15 @@ const KnowledgeSidebar: Component = () => {
     }
   }
 
-  async function archiveDoc(docId: string) {
+  /** Move to trash from the row menu, with the 10 s Undo; the page's tab closes. */
+  async function trashDoc(docId: string, title: string) {
     try {
-      await archiveKnowledgeDocument(api, docId)
-      evictTabByEntity("knowledge:document", docId)
-      void loadDocuments(api)
-      await reloadAfterChange()
-      addToast({ type: "success", message: i18n.t("knowledge.pageArchived") })
+      await moveToTrash(api, { id: docId, title }, i18n.t)
     } catch (err) {
-      refused(err, i18n.t("knowledge.cannotDoThisOnPage"))
+      addToast({ type: "error", message: i18n.t(trashRefusalKey(err, "trash")) })
+      return
     }
+    evictTabByEntity("knowledge:document", docId)
   }
 
   // ---- Views -----------------------------------------------------------
@@ -462,8 +475,8 @@ const KnowledgeSidebar: Component = () => {
     onRename: openRenameDialog,
     onRenameDoc: (id: string) => void openRenameDocDialog(id),
     onArchive: openArchiveDialog,
-    onArchiveDoc: (id: string) => void archiveDoc(id),
-    canArchiveDocs: canArchiveDocs(),
+    onTrashDoc: (id: string, title: string) => void trashDoc(id, title),
+    canTrashDocs: canMoveToTrash(),
     canManageFolders: canManageFolders(),
     canCreatePages: canCreatePages(),
     onCopyLink: (id: string) => void copyLink(id),
@@ -642,24 +655,46 @@ const KnowledgeSidebar: Component = () => {
         </div>
       </ScrollFade>
 
-      {/* Auto-appearing Unfiled entry — only when there are orphan docs */}
-      <Show when={unfiledCount() > 0}>
+      {/* Auto-appearing Unfiled entry (only when there are orphan docs), then Trash
+          for whoever may restore pages (S19). */}
+      <Show when={unfiledCount() > 0 || canSeeTrash()}>
         <div class="border-t border-border-subtle py-1">
-          <button
-            type="button"
-            data-testid="knowledge-sidebar-unfiled"
-            aria-current={knowledgeStore.view === "unfiled" && onHomeTab() ? "page" : undefined}
-            class={`flex w-full items-center gap-2 px-5 py-2.5 text-[13px] outline-none transition-colors ${
-              knowledgeStore.view === "unfiled" && onHomeTab()
-                ? "bg-surface-active font-medium text-text"
-                : "text-text-tertiary hover:bg-surface-hover hover:text-text-secondary focus-visible:bg-surface-hover focus-visible:text-text-secondary"
-            }`}
-            onClick={toggleUnfiled}
-          >
-            <FolderOpen size={14} />
-            <span class="flex-1 text-left">{i18n.t("knowledge.unfiled")}</span>
-            <span class="rounded-full bg-surface px-2 py-0.5 text-[11px]">{unfiledCount()}</span>
-          </button>
+          <Show when={unfiledCount() > 0}>
+            <button
+              type="button"
+              data-testid="knowledge-sidebar-unfiled"
+              aria-current={knowledgeStore.view === "unfiled" && onHomeTab() ? "page" : undefined}
+              class={`flex w-full items-center gap-2 px-5 py-2.5 text-[13px] outline-none transition-colors ${
+                knowledgeStore.view === "unfiled" && onHomeTab()
+                  ? "bg-surface-active font-medium text-text"
+                  : "text-text-tertiary hover:bg-surface-hover hover:text-text-secondary focus-visible:bg-surface-hover focus-visible:text-text-secondary"
+              }`}
+              onClick={toggleUnfiled}
+            >
+              <FolderOpen size={14} />
+              <span class="flex-1 text-left">{i18n.t("knowledge.unfiled")}</span>
+              <span class="rounded-full bg-surface px-2 py-0.5 text-[11px]">{unfiledCount()}</span>
+            </button>
+          </Show>
+          <Show when={canSeeTrash()}>
+            <button
+              type="button"
+              data-testid="knowledge-sidebar-trash"
+              aria-current={knowledgeStore.view === "trash" ? "page" : undefined}
+              class={`flex w-full items-center gap-2 px-5 py-2.5 text-[13px] outline-none transition-colors ${
+                knowledgeStore.view === "trash"
+                  ? "bg-surface-active font-medium text-text"
+                  : "text-text-tertiary hover:bg-surface-hover hover:text-text-secondary focus-visible:bg-surface-hover focus-visible:text-text-secondary"
+              }`}
+              onClick={showTrash}
+            >
+              <Trash2 size={14} />
+              <span class="flex-1 text-left">{i18n.t("knowledge.trash.title")}</span>
+              <Show when={trashCount() > 0}>
+                <span class="rounded-full bg-surface px-2 py-0.5 text-[11px]">{trashCount()}</span>
+              </Show>
+            </button>
+          </Show>
         </div>
       </Show>
 

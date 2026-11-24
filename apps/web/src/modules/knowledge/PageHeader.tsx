@@ -5,15 +5,7 @@
 // writing helpers, references, Share and the page's actions. There is no Edit
 // and no Save: a page saves itself.
 
-import {
-  Archive,
-  ArchiveRestore,
-  ArrowLeftRight,
-  CheckCircle,
-  History,
-  MoreHorizontal,
-  Share2,
-} from "lucide-solid"
+import { ArrowLeftRight, CheckCircle, History, MoreHorizontal, Share2, Trash2 } from "lucide-solid"
 import { type Component, createSignal, For, Show } from "solid-js"
 import { rovingFocus } from "~/lib/roving-focus"
 import { ComposerAssist } from "~/modules/assist/ComposerAssist"
@@ -54,8 +46,9 @@ export interface PageHeaderProps {
   onShare: () => void
   onHistory: () => void
   onVerify: () => void
-  onArchive: () => void
-  onRestore: () => void
+  /** "Move to trash" is offered (archive scope, edit right, not a synced page). */
+  canTrash: boolean
+  onTrash: () => void
 }
 
 const REVIEW_KEYS: Record<string, string> = {
@@ -283,7 +276,13 @@ const PageMenu: Component<PageHeaderProps> = (props) => {
         <MoreHorizontal size={16} />
       </FloatingPanel.Trigger>
       <FloatingPanel.Content class="w-48" onKeyDown={rovingFocus}>
-        <button type="button" data-roving class={MENU_ITEM} onClick={run(() => props.onVerify())}>
+        <button
+          type="button"
+          data-roving
+          data-testid="knowledge-doc-verify"
+          class={MENU_ITEM}
+          onClick={run(() => props.onVerify())}
+        >
           <CheckCircle size={14} />
           {i18n.t("knowledge.verify")}
         </button>
@@ -299,29 +298,17 @@ const PageMenu: Component<PageHeaderProps> = (props) => {
             {i18n.t("knowledge.autosave.history")}
           </button>
         </Show>
-        <div class="my-1 h-px bg-border-subtle" />
-        <Show
-          when={props.doc.status === "archived"}
-          fallback={
-            <button
-              type="button"
-              data-roving
-              class={MENU_ITEM}
-              onClick={run(() => props.onArchive())}
-            >
-              <Archive size={14} />
-              {i18n.t("kernel.common.archive")}
-            </button>
-          }
-        >
+        <Show when={props.canTrash}>
+          <div class="my-1 h-px bg-border-subtle" />
           <button
             type="button"
             data-roving
+            data-testid="knowledge-doc-trash"
             class={MENU_ITEM}
-            onClick={run(() => props.onRestore())}
+            onClick={run(() => props.onTrash())}
           >
-            <ArchiveRestore size={14} />
-            {i18n.t("kernel.common.restore")}
+            <Trash2 size={14} />
+            {i18n.t("knowledge.trash.moveToTrash")}
           </button>
         </Show>
       </FloatingPanel.Content>

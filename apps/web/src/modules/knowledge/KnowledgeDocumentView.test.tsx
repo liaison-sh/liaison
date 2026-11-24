@@ -1,192 +1,416 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "~/lib/api-error"
 import { editorOf, setMarkdown } from "~/modules/editor/test-helpers"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
 import { ApiContext } from "~/modules/shell/ApiContext"
+import { liveSavers } from "./autosave"
+import { _resetPageDrafts, type DraftStore, draftKey, type PageDraft } from "./drafts"
 import KnowledgeDocumentView from "./KnowledgeDocumentView"
-import { resetKnowledgeStore } from "./knowledge-store"
+import { resetKnowledgeStore, setKnowledgeStoreDocument } from "./knowledge-store"
 
 // The viewer's scopes: the attachments section follows knowledge:attachments:download.
 const scopes = vi.hoisted(() => new Set(["knowledge:attachments:download"]))
 vi.mock("~/modules/auth/auth-store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/modules/auth/auth-store")>()),
   hasScope: (scope: string) => scopes.has(scope),
+  userFromToken: () => ({ userId: "amina", orgId: "o1", name: "Amina Cherif" }),
 }))
 
-interface ApiStub {
-  get: ReturnType<typeof vi.fn>
-  post: ReturnType<typeof vi.fn>
-  patch: ReturnType<typeof vi.fn>
-  put: ReturnType<typeof vi.fn>
-  getEnvelope: ReturnType<typeof vi.fn>
+interface Page {
+  id: string
+  title: string
+  body: string
+  revision: number
+  [k: string]: unknown
 }
 
-function makeApi(doc: Record<string, unknown> = {}): ApiStub {
-  return {
+/** A server with one page: revisions, versions, and a log of what was sent. */
+function makeApi(over: Partial<Page> = {}) {
+  let page: Page = {
+    id: "doc1",
+    title: "Hello",
+    body: "# H1\n\nFirst line.",
+    revision: 1,
+    reviewStatus: "verified",
+    documentScope: "organization",
+    sensitivity: "internal",
+    ownerUserId: "alice",
+    status: "active",
+    canEdit: true,
+    updatedAt: new Date().toISOString(),
+    ...over,
+  }
+  const versions = [
+    {
+      id: "v1",
+      kind: "edit",
+      title: "Hello",
+      authorType: "user",
+      authorId: "lucas",
+      authorName: "Lucas Pereira",
+      agentId: null,
+      revision: 1,
+      baseRevision: 0,
+      startedAt: "2026-11-24T10:00:00.000Z",
+      createdAt: "2026-11-24T10:00:00.000Z",
+      updatedAt: "2026-11-24T10:00:00.000Z",
+    },
+  ]
+  const api = {
     get: vi.fn(async (path: string) => {
       if (path.endsWith("/backlinks")) return { backlinks: [] }
       if (path.endsWith("/sharing")) return { orgAccess: "none", shares: [] }
-      if (path === "/knowledge/members") return []
-      // The share dialog also lists roles; an unrouted path would fall through
-      // to the document payload, which is not iterable.
-      if (path === "/knowledge/roles") return []
-      return {
-        id: "doc1",
-        title: "Hello",
-        body: "# H1",
-        revision: 1,
-        reviewStatus: "verified",
-        documentScope: "personal",
-        ownerUserId: "alice",
-        status: "active",
-        canEdit: true,
-        ...doc,
-      }
+      if (path === "/knowledge/members" || path === "/knowledge/roles") return []
+      if (path.startsWith("/files")) return []
+      if (path.endsWith("/versions")) return versions
+      if (path.includes("/versions/")) return { ...versions[0], body: "Old text." }
+      return { ...page }
     }),
-    post: vi.fn(async () => ({})),
-    patch: vi.fn(async () => ({ revision: 2 })),
+    post: vi.fn(async (path: string, body: { revision?: number }) => {
+      if (path.endsWith("/restore") && path.includes("/versions/")) {
+        page = { ...page, body: "Old text.", revision: page.revision + 1 }
+        return { ...page }
+      }
+      void body
+      return { id: "unapplied1" }
+    }),
+    patch: vi.fn(async (path: string, body: { title: string; body: string; revision: number }) => {
+      void path
+      if (body.revision !== page.revision) throw new ApiError("Revision conflict", 409)
+      page = { ...page, title: body.title, body: body.body, revision: page.revision + 1 }
+      return { ...page }
+    }),
     put: vi.fn(async () => ({})),
-    getEnvelope: vi.fn(async () => ({ data: [] })),
+    getEnvelope: vi.fn(async (_path: string) => ({ data: [] })),
+    /** Someone else saves the page. */
+    theyWrite(text: string) {
+      page = { ...page, body: text, revision: page.revision + 1 }
+      return { ...page }
+    },
+    page: () => page,
+  }
+  return api
+}
+
+function memoryDrafts(): DraftStore & { map: Map<string, PageDraft> } {
+  const map = new Map<string, PageDraft>()
+  return {
+    map,
+    async put(d) {
+      map.set(draftKey(d), { ...d })
+    },
+    async remove(key) {
+      map.delete(key)
+    },
+    async forUser(userId) {
+      return [...map.values()].filter((d) => d.userId === userId)
+    },
+    writeShadow(d) {
+      map.set(draftKey(d), { ...d })
+    },
   }
 }
 
-function renderView(api: ApiStub, entityId = "doc1") {
+let drafts: ReturnType<typeof memoryDrafts>
+
+function renderView(
+  api: ReturnType<typeof makeApi>,
+  entityId = "doc1",
+  locale: "en" | "fr" = "en",
+) {
   return render(() => (
-    <ApiContext.Provider value={api as never}>
-      <KnowledgeDocumentView entityId={entityId} />
-    </ApiContext.Provider>
+    <I18nProvider initialLocale={locale}>
+      <ApiContext.Provider value={api as never}>
+        <KnowledgeDocumentView entityId={entityId} />
+      </ApiContext.Provider>
+    </I18nProvider>
   ))
 }
 
-afterEach(() => {
+const SAVE_WAIT = { timeout: 4_000 }
+
+async function bodyField() {
+  return screen.findByTestId("knowledge-doc-body-editor", {}, SAVE_WAIT)
+}
+
+const patchPaths = (api: ReturnType<typeof makeApi>) =>
+  api.patch.mock.calls.map(([path]) => String(path))
+
+beforeEach(() => {
+  drafts = memoryDrafts()
+  _resetPageDrafts(drafts)
+})
+
+afterEach(async () => {
+  for (const s of liveSavers()) await s.destroy({ discard: true })
+  _resetPageDrafts(null)
   resetKnowledgeStore()
   scopes.add("knowledge:attachments:download")
 })
 
-describe("KnowledgeDocumentView", () => {
-  it("renders the body as parsed markdown by default (read mode)", async () => {
-    const api = makeApi()
-    renderView(api)
+describe("KnowledgeDocumentView: a reader", () => {
+  it("sees the rendered text: no editor, no save state, a checklist that does not tick", async () => {
+    renderView(makeApi({ canEdit: false, body: "# H1\n\n- [ ] call back\n- [x] done" }))
     const rendered = await screen.findByTestId("knowledge-doc-body-rendered")
-    // Markdown `# H1` should become an actual <h1> in the DOM, not raw text.
     expect(rendered.querySelector("h1")?.textContent?.trim()).toBe("H1")
-    expect(rendered.innerHTML).not.toContain("# H1")
-    expect((await screen.findByTestId("knowledge-doc-title")).textContent).toBe("Hello")
-    // The contenteditable raw-source editor is hidden until Edit is clicked.
-    expect(screen.queryByTestId("knowledge-doc-body-editor")).not.toBeInTheDocument()
-  })
-
-  it("offers Edit, and an editable title, only to whoever the server says may edit", async () => {
-    renderView(makeApi({ canEdit: false }))
-    await screen.findByTestId("knowledge-doc-body-rendered")
-    expect(screen.queryByTestId("knowledge-doc-edit")).toBeNull()
+    // A checklist is drawn, not a control: nothing to tick, nothing sent.
+    expect(rendered.querySelectorAll(".md-task-box")).toHaveLength(2)
+    expect(rendered.querySelectorAll("input")).toHaveLength(0)
+    fireEvent.click(rendered.querySelector(".md-task-box")!)
+    expect(rendered.querySelectorAll(".md-task-done")).toHaveLength(1)
+    expect(screen.queryByTestId("knowledge-doc-body-editor")).toBeNull()
+    expect(screen.queryByTestId("save-state")).toBeNull()
     expect(screen.getByTestId("knowledge-doc-title").getAttribute("contenteditable")).toBe("false")
+    expect(screen.queryByTestId("knowledge-doc-edit")).toBeNull()
   })
 
-  it("at phone width an editable document still offers Edit (the tour's edit step needs it)", async () => {
-    const { DESKTOP_QUERY, PHONE_QUERY, syncShellTier } = await import("~/modules/shell/shell-tier")
-    const tier = (answer: string) => {
-      vi.stubGlobal("matchMedia", (query: string) => ({
-        matches: query === answer,
-        media: query,
-        onchange: null,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        addListener: () => {},
-        removeListener: () => {},
-        dispatchEvent: () => false,
-      }))
-      syncShellTier()
-    }
-    tier(PHONE_QUERY)
-    try {
-      renderView(makeApi())
-      fireEvent.click(await screen.findByTestId("knowledge-doc-edit"))
-      expect(await screen.findByTestId("knowledge-doc-body-editor")).toBeInTheDocument()
-    } finally {
-      tier(DESKTOP_QUERY)
-      vi.unstubAllGlobals()
-    }
+  it("a synced page is read only, with no history", async () => {
+    renderView(makeApi({ syncedSourceId: "src1", syncedSourceApp: "google-drive" }))
+    await screen.findByTestId("knowledge-doc-synced-banner")
+    expect(screen.queryByTestId("knowledge-doc-body-editor")).toBeNull()
+    expect(screen.queryByTestId("save-state")).toBeNull()
   })
+})
 
-  it("Edit opens the document editor on the formatted text, not its markdown", async () => {
+describe("KnowledgeDocumentView: an editor", () => {
+  it("edits on click: the editor is there at once, with no Edit, Save or Cancel", async () => {
     renderView(makeApi())
-    fireEvent.click(await screen.findByTestId("knowledge-doc-edit"))
-    const field = await screen.findByTestId("knowledge-doc-body-editor")
+    const field = await bodyField()
     expect(field.querySelector("h1")?.textContent).toBe("H1")
-    expect(field.textContent).not.toContain("#")
-    expect(screen.getByTestId("rich-editor.tool-table")).toBeInTheDocument()
+    expect(screen.queryByTestId("knowledge-doc-edit")).toBeNull()
+    expect(screen.queryByTestId("knowledge-doc-save")).toBeNull()
+    expect(screen.queryByTestId("knowledge-doc-cancel-edit")).toBeNull()
+    expect(screen.getByTestId("knowledge-doc-title").getAttribute("contenteditable")).toBe("true")
+    expect(screen.getByTestId("save-state").textContent).toBe("Saved")
   })
 
-  it("saving an unedited document sends nothing", async () => {
+  it("opening and leaving sends nothing", async () => {
+    const api = makeApi()
+    const view = renderView(api)
+    await bodyField()
+    await new Promise((r) => setTimeout(r, 1_200))
+    view.unmount()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(api.patch).not.toHaveBeenCalled()
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it("saves typed text by itself with ?autosave=1 and its session, then says Saved", async () => {
     const api = makeApi()
     renderView(api)
-    fireEvent.click(await screen.findByTestId("knowledge-doc-edit"))
-    await screen.findByTestId("knowledge-doc-body-editor")
-    fireEvent.click(screen.getByTestId("knowledge-doc-save"))
-    await screen.findByTestId("knowledge-doc-body-rendered")
+    const field = await bodyField()
+    setMarkdown(field, "# H1\n\nFirst line. More.")
+    await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1), SAVE_WAIT)
+    expect(patchPaths(api)[0]).toMatch(
+      /^\/knowledge\/documents\/doc1\?autosave=1&session=[0-9a-f-]{36}$/,
+    )
+    expect(api.patch.mock.calls[0]![1]).toMatchObject({ revision: 1, title: "Hello" })
+    expect(String(api.patch.mock.calls[0]![1].body)).toContain("More.")
+    await waitFor(() => expect(screen.getByTestId("save-state").textContent).toBe("Saved"))
+    expect(screen.getByTestId("knowledge-doc-edited").textContent).toMatch(/^Edited by you/)
+  })
+
+  it("the title saves the same way", async () => {
+    const api = makeApi()
+    renderView(api)
+    await bodyField()
+    const title = screen.getByTestId("knowledge-doc-title")
+    title.textContent = "Returns policy"
+    fireEvent.input(title)
+    await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1), SAVE_WAIT)
+    expect(api.patch.mock.calls[0]![1]).toMatchObject({ title: "Returns policy" })
+  })
+
+  it("the selection survives a save acknowledgement", async () => {
+    const api = makeApi()
+    renderView(api)
+    const field = await bodyField()
+    setMarkdown(field, "# H1\n\nFirst line, edited.")
+    const editor = editorOf(field)
+    editor.commands.setTextSelection({ from: 5, to: 9 })
+    await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1), SAVE_WAIT)
+    await waitFor(() => expect(screen.getByTestId("save-state").textContent).toBe("Saved"))
+    expect(editor.state.selection.from).toBe(5)
+    expect(editor.state.selection.to).toBe(9)
+  })
+
+  it("someone else's save while I typed: conflict, my text kept on screen", async () => {
+    const api = makeApi()
+    renderView(api)
+    const field = await bodyField()
+    api.theyWrite("Their text.")
+    setMarkdown(field, "My text.")
+    await screen.findByTestId("knowledge-doc-conflict-banner", {}, SAVE_WAIT)
+    expect(screen.getByTestId("save-state").textContent).toBe(
+      "Not saved: someone else saved this page",
+    )
+    expect(field.textContent).toContain("My text.")
+    // Lucas is the newest author in the page's history.
+    await waitFor(() =>
+      expect(screen.getByTestId("knowledge-doc-conflict-banner").textContent).toContain(
+        "Lucas Pereira saved this page",
+      ),
+    )
+  })
+
+  it("Keep mine sends fresh=1 at their revision", async () => {
+    const api = makeApi()
+    renderView(api)
+    const field = await bodyField()
+    api.theyWrite("Their text.")
+    setMarkdown(field, "My text.")
+    fireEvent.click(await screen.findByTestId("conflict-open", {}, SAVE_WAIT))
+    fireEvent.click(await screen.findByTestId("conflict-mine"))
+    await waitFor(() => expect(patchPaths(api).at(-1)).toContain("&fresh=1"))
+    expect(api.patch.mock.calls.at(-1)![1]).toMatchObject({ revision: 2 })
+    expect(api.page().body).toContain("My text.")
+    await waitFor(() => expect(screen.queryByTestId("knowledge-doc-conflict-banner")).toBeNull())
+  })
+
+  it("Take theirs puts my text in Page history and shows theirs", async () => {
+    const api = makeApi()
+    renderView(api)
+    const field = await bodyField()
+    api.theyWrite("Their text.")
+    setMarkdown(field, "My text.")
+    fireEvent.click(await screen.findByTestId("conflict-open", {}, SAVE_WAIT))
+    fireEvent.click(await screen.findByTestId("conflict-theirs"))
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        "/knowledge/documents/doc1/versions",
+        expect.objectContaining({ body: "My text.", baseRevision: 1 }),
+        expect.anything(),
+      ),
+    )
+    await waitFor(() => expect(field.textContent).toContain("Their text."))
+  })
+
+  it("See both shows the two texts with the choices", async () => {
+    const api = makeApi()
+    renderView(api)
+    const field = await bodyField()
+    api.theyWrite("Their text.")
+    setMarkdown(field, "My text.")
+    fireEvent.click(await screen.findByTestId("conflict-open", {}, SAVE_WAIT))
+    fireEvent.click(await screen.findByTestId("conflict-both"))
+    const dialog = await screen.findByTestId("conflict-dialog")
+    expect(dialog.getAttribute("data-mode")).toBe("both")
+    expect(dialog.textContent).toContain("My text.")
+    expect(dialog.textContent).toContain("Their text.")
+    expect(screen.getByTestId("conflict-both-mine")).toBeInTheDocument()
+  })
+
+  it("conflict then close the tab: my text is posted to Page history (D7)", async () => {
+    const api = makeApi()
+    const view = renderView(api)
+    const field = await bodyField()
+    api.theyWrite("Their text.")
+    setMarkdown(field, "My text.")
+    await screen.findByTestId("knowledge-doc-conflict-banner", {}, SAVE_WAIT)
+    view.unmount()
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        "/knowledge/documents/doc1/versions",
+        expect.objectContaining({ body: "My text.", baseRevision: 1 }),
+        expect.anything(),
+      ),
+    )
+  })
+
+  it("leaving with unsaved text saves it first", async () => {
+    const api = makeApi()
+    const view = renderView(api)
+    const field = await bodyField()
+    setMarkdown(field, "Typed just before leaving.")
+    view.unmount()
+    await waitFor(() => expect(api.page().body).toBe("Typed just before leaving."))
+  })
+
+  it("a remote save is taken in place while nothing is unsaved", async () => {
+    const api = makeApi()
+    renderView(api)
+    const field = await bodyField()
+    setKnowledgeStoreDocument(api.theyWrite("Their newer text."))
+    await waitFor(() => expect(field.textContent).toContain("Their newer text."))
     expect(api.patch).not.toHaveBeenCalled()
   })
 
-  it("saves the edit as markdown at the revision it was opened at, shown at once", async () => {
+  it("page gone while typing: the text stays, the notice offers Copy (edge 3)", async () => {
     const api = makeApi()
-    let answer!: () => void
-    api.patch.mockImplementation(() => new Promise((resolve) => (answer = () => resolve({}))))
     renderView(api)
-    fireEvent.click(await screen.findByTestId("knowledge-doc-edit"))
-    setMarkdown(await screen.findByTestId("knowledge-doc-body-editor"), "# H1\n\nLe **taux**")
-    fireEvent.click(screen.getByTestId("knowledge-doc-save"))
-    expect(api.patch).toHaveBeenCalledWith("/knowledge/documents/doc1", {
-      body: "# H1\n\nLe **taux**",
-      revision: 1,
+    const field = await bodyField()
+    api.patch.mockImplementation(async () => {
+      throw new ApiError("Knowledge item not found", 404)
     })
-    // Before the server answers, the reader already sees the saved text.
-    const rendered = await screen.findByTestId("knowledge-doc-body-rendered")
-    expect(rendered.querySelector("strong")?.textContent).toBe("taux")
-    answer()
-    await waitFor(() => expect(screen.queryByTestId("knowledge-doc-saving")).toBeNull())
+    setMarkdown(field, "Words I must not lose.")
+    await screen.findByTestId("knowledge-doc-no-access", {}, SAVE_WAIT)
+    expect(screen.getByTestId("knowledge-doc-copy-text")).toBeInTheDocument()
+    expect(field.textContent).toContain("Words I must not lose.")
+    await waitFor(() =>
+      expect([...drafts.map.values()].some((d) => d.body.includes("Words I must not lose."))).toBe(
+        true,
+      ),
+    )
   })
 
-  it("a save refused for a newer revision keeps the edit and says so", async () => {
+  it("a draft left by a closed tab is put back and saved", async () => {
+    await drafts.put({
+      userId: "amina",
+      docId: "doc1",
+      sessionId: "closed-tab",
+      title: "Hello",
+      body: "Text from the closed tab.",
+      baseRevision: 1,
+      baseHash: "",
+      at: Date.now() - 60_000,
+      beat: Date.now() - 60_000,
+    })
     const api = makeApi()
-    api.patch.mockRejectedValue(new ApiError("Revision conflict", 409, "REVISION_CONFLICT"))
     renderView(api)
-    fireEvent.click(await screen.findByTestId("knowledge-doc-edit"))
-    setMarkdown(await screen.findByTestId("knowledge-doc-body-editor"), "Ma version")
-    fireEvent.click(screen.getByTestId("knowledge-doc-save"))
-    const banner = await screen.findByTestId("knowledge-doc-conflict-banner")
-    // Above the scrolling text, not at its top: Save is pressed scrolled down.
-    expect(screen.getByTestId("knowledge-doc-body").contains(banner)).toBe(false)
-    const field = await screen.findByTestId("knowledge-doc-body-editor")
-    expect(editorOf(field).getText()).toBe("Ma version")
-    expect(screen.getByTestId("knowledge-doc-save")).toBeDisabled()
-
-    const reads = api.get.mock.calls.filter(([path]) => path === "/knowledge/documents/doc1").length
-    fireEvent.click(screen.getByTestId("knowledge-doc-load-latest"))
-    await screen.findByTestId("knowledge-doc-body-rendered")
-    expect(
-      api.get.mock.calls.filter(([path]) => path === "/knowledge/documents/doc1").length,
-    ).toBeGreaterThan(reads)
+    const field = await bodyField()
+    expect(field.textContent).toContain("Text from the closed tab.")
+    await waitFor(() => expect(api.page().body).toBe("Text from the closed tab."), SAVE_WAIT)
+    await waitFor(() => expect(drafts.map.size).toBe(0))
   })
 
-  it("renders attachment list with parentApp=knowledge (MF-6)", async () => {
+  it("Page history: list, compare, restore with the current revision", async () => {
     const api = makeApi()
-    // FileList calls api.get('/files') — return an empty list.
-    api.get.mockImplementation(async (path: string) => {
-      if (path.endsWith("/backlinks")) return { backlinks: [] }
-      if (path.startsWith("/files")) return []
-      return {
-        id: "doc1",
-        title: "Hello",
-        body: "",
-        revision: 1,
-        documentScope: "personal",
-        status: "active",
-      }
-    })
     renderView(api)
+    await bodyField()
+    fireEvent.click(screen.getByTestId("knowledge-doc-menu"))
+    fireEvent.click(await screen.findByTestId("knowledge-doc-history"))
+    const history = await screen.findByTestId("page-history")
+    await waitFor(() => expect(screen.getAllByTestId("history-version")).toHaveLength(2))
+    const items = screen.getAllByTestId("history-version")
+    expect(items[1]!.textContent).toContain("Lucas Pereira")
+    fireEvent.click(items[1]!)
+    await waitFor(() =>
+      expect(screen.getByTestId("history-diff").textContent).toContain("Old text."),
+    )
+    fireEvent.click(screen.getByTestId("history-restore"))
+    fireEvent.click(await screen.findByTestId("history-restore-confirm"))
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        "/knowledge/documents/doc1/versions/v1/restore",
+        { revision: 1 },
+        expect.anything(),
+      ),
+    )
+    await waitFor(() => expect(history.isConnected).toBe(false))
+    expect((await bodyField()).textContent).toContain("Old text.")
+  })
+
+  it("the review badge is a translated label, never the raw value", async () => {
+    renderView(makeApi({ reviewStatus: "needs_review" }), "doc1", "fr")
+    expect((await screen.findByTestId("knowledge-doc-review-status")).textContent).toBe("À revoir")
+  })
+})
+
+describe("KnowledgeDocumentView: around the text", () => {
+  it("renders the attachment list for knowledge documents (MF-6)", async () => {
+    renderView(makeApi())
     expect(await screen.findByTestId("knowledge-attachment-list")).toBeInTheDocument()
   })
 
@@ -194,151 +418,83 @@ describe("KnowledgeDocumentView", () => {
     scopes.delete("knowledge:attachments:download")
     const api = makeApi()
     renderView(api)
-    await screen.findByText("Hello")
+    await screen.findByTestId("knowledge-doc-title")
     expect(screen.queryByTestId("knowledge-attachment-list")).toBeNull()
     expect(api.getEnvelope.mock.calls.some(([path]) => String(path).startsWith("/files"))).toBe(
       false,
     )
   })
 
-  it("personal note isolation: 404 renders not-found (MF-3)", async () => {
+  it("personal note isolation: 404 renders not-found and evicts the tab (MF-3, T23)", async () => {
+    const { openTab, tabStore } = await import("~/modules/shell/tab-store")
+    openTab({ type: "knowledge:document", entityId: "alices-id", label: "Denied doc" })
     const api = makeApi()
     api.get.mockImplementation(async () => {
       throw new ApiError("Knowledge item not found", 404, "NOT_FOUND")
     })
     renderView(api, "alices-id")
     expect(await screen.findByTestId("knowledge-doc-not-found")).toBeInTheDocument()
-  })
-
-  it("404 evicts the dangling knowledge:document tab (T23)", async () => {
-    const { openTab, tabStore } = await import("~/modules/shell/tab-store")
-    openTab({ type: "knowledge:document", entityId: "alices-id", label: "Denied doc" })
-    expect(tabStore.tabs.some((t) => t.entityId === "alices-id")).toBe(true)
-
-    const api = makeApi()
-    api.get.mockImplementation(async () => {
-      throw new ApiError("Knowledge item not found", 404, "NOT_FOUND")
-    })
-    renderView(api, "alices-id")
-    await screen.findByTestId("knowledge-doc-not-found")
     expect(tabStore.tabs.some((t) => t.entityId === "alices-id")).toBe(false)
   })
 
-  it("hides the review-status chip on personal-scope documents", async () => {
-    const api = makeApi()
-    api.get.mockImplementation(async (path: string) => {
-      if (path.endsWith("/backlinks")) return { backlinks: [] }
-      return {
-        id: "doc1",
-        title: "Hello",
-        body: "# H1",
-        revision: 1,
-        reviewStatus: "unverified",
-        documentScope: "personal",
-        ownerUserId: "alice",
-        status: "active",
-      }
-    })
-    renderView(api)
-    await screen.findByTestId("knowledge-doc-title")
-    expect(screen.queryByTestId("knowledge-doc-review-status")).not.toBeInTheDocument()
-  })
-
-  it("shows the review-status chip on organization-scope documents", async () => {
-    const api = makeApi()
-    api.get.mockImplementation(async (path: string) => {
-      if (path.endsWith("/backlinks")) return { backlinks: [] }
-      return {
-        id: "doc1",
-        title: "Hello",
-        body: "# H1",
-        revision: 1,
-        reviewStatus: "unverified",
-        documentScope: "organization",
-        ownerUserId: "alice",
-        status: "active",
-        sensitivity: "internal",
-      }
-    })
-    renderView(api)
-    expect((await screen.findByTestId("knowledge-doc-review-status")).textContent).toBe(
-      "unverified",
+  it("hides the review chip on personal pages", async () => {
+    renderView(
+      makeApi({ documentScope: "personal", sensitivity: undefined, reviewStatus: "unverified" }),
     )
+    await screen.findByTestId("knowledge-doc-title")
+    expect(screen.queryByTestId("knowledge-doc-review-status")).toBeNull()
   })
 
   it("shows a Share button that opens the share dialog", async () => {
-    const api = makeApi()
-    renderView(api)
-    await screen.findByTestId("knowledge-doc-title")
-    const shareButton = await screen.findByTestId("knowledge-share-button")
-    expect(screen.queryByTestId("knowledge-share-dialog")).not.toBeInTheDocument()
-    fireEvent.click(shareButton)
+    renderView(makeApi())
+    fireEvent.click(await screen.findByTestId("knowledge-share-button"))
     expect(await screen.findByTestId("knowledge-share-dialog")).toBeInTheDocument()
   })
 
-  it("B11: badge changes after Verify without reload; a title-save conflict is shown, the typed title stays", async () => {
+  it("B11: the badge changes after Verify without a reload", async () => {
     let review = "needs_review"
-    const api = makeApi()
+    const api = makeApi({ reviewStatus: review })
+    const get = api.get.getMockImplementation() as (path: string) => Promise<object>
+    const post = api.post.getMockImplementation() as (
+      path: string,
+      body: { revision?: number },
+    ) => Promise<object>
     api.get.mockImplementation(async (path: string) => {
-      if (path.endsWith("/backlinks")) return { backlinks: [] }
-      if (path === "/knowledge/collections/tree") return []
-      return {
-        id: "doc1",
-        title: "Hello",
-        body: "# H1",
-        revision: 3,
-        reviewStatus: review,
-        documentScope: "organization",
-        sensitivity: "internal",
-        canEdit: true,
-      }
+      const out = await get(path)
+      return (
+        path === "/knowledge/documents/doc1" ? { ...out, reviewStatus: review } : out
+      ) as never
     })
-    api.post.mockImplementation(async (path: string) => {
+    api.post.mockImplementation(async (path: string, body: { revision?: number }) => {
       if (path.endsWith("/verify")) review = "verified"
-      return {}
-    })
-    api.patch.mockImplementation(async () => {
-      throw new ApiError("Revision conflict", 409, "CONFLICT")
+      return (await post(path, body)) as never
     })
     renderView(api)
     expect(await screen.findByTestId("knowledge-doc-review-status")).toHaveTextContent(
-      "needs_review",
+      "Needs review",
     )
-    // Verify from the actions menu: the badge follows, no reload.
-    const actions = screen.getByTestId("knowledge-doc-header").querySelectorAll("button")
-    fireEvent.click(actions[actions.length - 1])
+    fireEvent.click(screen.getByTestId("knowledge-doc-menu"))
     fireEvent.click(await screen.findByText("Verify"))
     await waitFor(() =>
-      expect(screen.getByTestId("knowledge-doc-review-status")).toHaveTextContent("verified"),
+      expect(screen.getByTestId("knowledge-doc-review-status")).toHaveTextContent("Verified"),
     )
-    // A title saved over someone else's save: said, and the typed title stays.
-    const title = screen.getByTestId("knowledge-doc-title")
-    title.textContent = "My new title"
-    fireEvent.blur(title)
-    expect(await screen.findByTestId("knowledge-doc-title-conflict")).toBeInTheDocument()
-    expect(screen.getByTestId("knowledge-doc-title").textContent).toBe("My new title")
   })
 
   it("B12: the references count reads in the reader's language", async () => {
     const api = makeApi()
-    api.get.mockImplementation(async (path: string) => {
-      if (path.endsWith("/backlinks"))
-        return {
-          backlinks: [
-            { app: "knowledge", entityType: "document", entityId: "a", title: "A" },
-            { app: "knowledge", entityType: "document", entityId: "b", title: "B" },
-          ],
-        }
-      if (path === "/knowledge/collections/tree") return []
-      return { id: "doc1", title: "Hello", body: "", revision: 1, canEdit: true }
-    })
-    render(() => (
-      <I18nProvider initialLocale="fr">
-        <ApiContext.Provider value={api as never}>
-          <KnowledgeDocumentView entityId="doc1" />
-        </ApiContext.Provider>
-      </I18nProvider>
-    ))
+    const get = api.get.getMockImplementation() as (path: string) => Promise<object>
+    api.get.mockImplementation(
+      async (path: string) =>
+        (path.endsWith("/backlinks")
+          ? {
+              backlinks: [
+                { app: "knowledge", entityType: "document", entityId: "a", title: "A" },
+                { app: "knowledge", entityType: "document", entityId: "b", title: "B" },
+              ],
+            }
+          : await get(path)) as never,
+    )
+    renderView(api, "doc1", "fr")
     expect(await screen.findByText("2 références")).toBeInTheDocument()
   })
 })

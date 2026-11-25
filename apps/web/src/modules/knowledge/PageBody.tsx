@@ -20,13 +20,14 @@ import { relativeTime } from "~/lib/relative-time"
 import { hasScope } from "~/modules/auth/auth-store"
 import type { RichEditorHandle } from "~/modules/editor"
 import type { FileViewDeps } from "~/modules/editor/file-view"
-import type { EditorFiles } from "~/modules/editor/RichEditor"
+import type { PageLinkDeps } from "~/modules/editor/page-link-view"
+import type { EditorFiles, EditorPages } from "~/modules/editor/RichEditor"
 import FileList from "~/modules/files/FileList"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { Button } from "~/ui/Button"
 import { OverlaySheet } from "~/ui/OverlaySheet"
 import { ScrollFade } from "~/ui/ScrollFade"
-import { hydrateFileTokens } from "./hydrate-tokens"
+import { hydrateFileTokens, hydratePageLinks } from "./hydrate-tokens"
 import { getPulseUpdated, isSyncedSourceArchived } from "./knowledge-store"
 import { renderMarkdown } from "./markdown"
 
@@ -57,6 +58,10 @@ export interface PageBodyProps {
   fileView: FileViewDeps | null
   /** The editor's files (paste, drop, pick); absent for a reader. */
   editorFiles?: EditorFiles
+  /** How links to other pages show their titles, for the reader and the editor. */
+  pageLinks: PageLinkDeps | null
+  /** The editor's `@` / `[[` page picker; absent for a reader. */
+  editorPages?: EditorPages
   /** Add files to the page's Attachments (a writer only); absent: no add control. */
   onAddFiles?: (files: File[]) => void
   onEdit: () => void
@@ -69,13 +74,20 @@ export const PageBody: Component<PageBodyProps> = (props) => {
   const readOnly = () => {
     let el: HTMLDivElement | undefined
     let stop = () => {}
-    // The rendered text is in place before effects run: its file tokens get their views.
+    // The rendered text is in place before effects run: its file tokens get their
+    // views, its page links their titles.
     createEffect(
       on(
         () => props.doc.body,
         () => {
           stop()
-          if (el) stop = hydrateFileTokens(el, props.fileView, i18n.t("kernel.editor.fileToken"))
+          if (!el) return
+          const files = hydrateFileTokens(el, props.fileView, i18n.t("kernel.editor.fileToken"))
+          const pages = hydratePageLinks(el, props.pageLinks)
+          stop = () => {
+            files()
+            pages()
+          }
         },
       ),
     )
@@ -190,6 +202,7 @@ export const PageBody: Component<PageBodyProps> = (props) => {
               onEdit={props.onEdit}
               aria-label={props.doc.title}
               files={props.editorFiles}
+              pages={props.editorPages}
               data-testid="knowledge-doc-body-editor"
               editorClass="min-h-[20rem] text-[13px] leading-relaxed"
             />

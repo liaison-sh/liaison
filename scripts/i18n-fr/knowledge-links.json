@@ -1,0 +1,12 @@
+{
+  "key": {
+    "kernel.editor.linkToPage": "Lier une page",
+    "kernel.editor.pagesLoading": "Recherche des pages",
+    "kernel.editor.noPage": "Aucune page trouvée",
+    "kernel.editor.pageUnavailable": "Page que vous ne pouvez pas ouvrir",
+    "kernel.editor.untitledPage": "Sans titre",
+    "knowledge.links.linkedFrom": "Pages qui pointent ici",
+    "knowledge.links.conversations": "Conversations",
+    "knowledge.links.untitledThread": "Conversation sans titre"
+  }
+}

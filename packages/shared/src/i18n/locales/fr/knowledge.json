@@ -313,5 +313,10 @@
     "failed": "{{name}} n'a pas été ajouté : l'envoi a échoué. Réessayez.",
     "unreadable": "Une image ou un fichier collé fait partie de ceux que vous ne pouvez pas ouvrir : il n'a pas été ajouté.",
     "copyLater": "Une image d'une autre page n'a pas encore pu être copiée ici : le stockage est plein. Elle sera copiée lors d'un prochain enregistrement, quand il y aura de la place."
+  },
+  "links": {
+    "linkedFrom": "Pages qui pointent ici",
+    "untitledThread": "Conversation sans titre",
+    "conversations": "Conversations"
   }
 }

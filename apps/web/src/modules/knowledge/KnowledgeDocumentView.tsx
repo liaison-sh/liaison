@@ -65,6 +65,7 @@ import { PageBody } from "./PageBody"
 import { PageHeader } from "./PageHeader"
 import { PageHistory, versionAuthor } from "./PageHistory"
 import { pageFileView, uploadPageFile, uploadRefusal } from "./page-files"
+import { editorPages, pageLinkDeps } from "./page-links"
 import {
   canMoveToTrash,
   daysLeftLabel,
@@ -310,6 +311,9 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
 
   // ── Files ────────────────────────────────────────────────────────────────
   const fileView = api ? pageFileView(api, i18n.t) : null
+  // Links to other pages: titles for this reader, and the writer's `@` / `[[` picker.
+  const pageLinks = api ? pageLinkDeps(api, i18n.t) : null
+  const pagePicker = api ? editorPages(api, i18n.t, props.entityId) : undefined
   const refused = (message: string) => addToast({ type: "warning", message })
   const upload = async (file: File): Promise<string> => {
     const d = row()
@@ -443,11 +447,13 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
     }
   })
 
-  createEffect(() => {
-    const id = props.entityId
+  // What links here; asked again each time the list is opened, so titles are current.
+  let backlinksAsk: AbortController | undefined
+  const loadBacklinks = (id: string) => {
     if (!id || !api) return
+    backlinksAsk?.abort()
     const ac = new AbortController()
-    onCleanup(() => ac.abort())
+    backlinksAsk = ac
     void getKnowledgeDocumentBacklinks(api, id, { signal: ac.signal })
       .then((result) => {
         if (!ac.signal.aborted) setBacklinks(result.backlinks ?? [])
@@ -455,7 +461,9 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
       .catch(() => {
         if (!ac.signal.aborted) setBacklinks([])
       })
-  })
+  }
+  createEffect(() => loadBacklinks(props.entityId))
+  onCleanup(() => backlinksAsk?.abort())
 
   // ── Conflict choices ──────────────────────────────────────────────────────
   const theirs = () => {
@@ -723,6 +731,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                 status={status()}
                 edited={edited()}
                 backlinks={backlinks()}
+                onBacklinksOpen={() => loadBacklinks(props.entityId)}
                 dictation={bodyDictation}
                 editor={() => editor}
                 titleRef={(el) => {
@@ -801,6 +810,8 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                 }}
                 fileView={fileView}
                 editorFiles={editorText() !== null ? editorFiles : undefined}
+                pageLinks={pageLinks}
+                editorPages={editorText() !== null ? pagePicker : undefined}
                 onAddFiles={editorText() !== null && api ? addFiles : undefined}
                 onEdit={() => saver?.edit()}
                 onRefreshSynced={() => {

@@ -38,6 +38,8 @@ import {
 } from "~/modules/shell/markdown-content"
 import type { FileViewDeps } from "./file-view"
 import { LiaisonFile, UploadingFile } from "./liaison-file"
+import { PageLink } from "./page-link"
+import type { PageLinkDeps, PageLinkLabels } from "./page-link-view"
 import { rawHtml } from "./raw-html"
 import { RawMarkdownInline, type RawMarkdownLabels } from "./raw-image"
 
@@ -234,7 +236,7 @@ const MarkdownTable = Node.create({
 
 // What a table cell may hold for the editor to write it back unchanged.
 const CELL_INLINE = new Set(["text", "escape", "strong", "em", "codespan", "del", "link"])
-const CELL_EXTRA = new Set(["underline", "mention", "liaisonFile"])
+const CELL_EXTRA = new Set(["underline", "mention", "liaisonFile", "pageLink"])
 
 function cellEditable(tokens: Token[] | undefined): boolean {
   return (tokens ?? []).every((t) => {
@@ -602,6 +604,8 @@ export function editorExtensions(
     keys: EditorKeys
     rawLabels?: RawMarkdownLabels
     files?: EditorFileOptions
+    /** How page links get their titles (document preset). */
+    pageLinks?: { deps: PageLinkDeps | null; labels: PageLinkLabels }
   },
 ): AnyExtension[] {
   const inline = preset === "inline"
@@ -636,7 +640,9 @@ export function editorExtensions(
           UploadingFile.configure(options.files ? { label: options.files.uploading } : {}),
         ]
       : []),
-    // A page keeps images and label-less links (page links) as their source.
+    // Links to other pages, by id (before the source chip of an empty link).
+    ...(doc ? [options.pageLinks ? PageLink.configure(options.pageLinks) : PageLink] : []),
+    // A page keeps images and other label-less links as their source.
     ...(doc
       ? [
           options.rawLabels

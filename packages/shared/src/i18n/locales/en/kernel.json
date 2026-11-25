@@ -5105,7 +5105,12 @@
     "image": "Image",
     "file": "File",
     "fileToken": "Image or file",
-    "uploadingFile": "Uploading {{name}}"
+    "uploadingFile": "Uploading {{name}}",
+    "linkToPage": "Link to a page",
+    "pagesLoading": "Looking for pages",
+    "noPage": "No page found",
+    "pageUnavailable": "Page you cannot open",
+    "untitledPage": "Untitled"
   },
   "nodes": {
     "chat": {

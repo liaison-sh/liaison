@@ -71,11 +71,22 @@ export function keepRendererClasses(value: string): string {
     .join(" ")
 }
 
+/**
+ * A page's file token renders as `<span data-page-file="<uuid>">` (knowledge/markdown.ts):
+ * the id is all it may hold. Any other value (a URL, markup) is dropped with the attribute.
+ */
+const FILE_ID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+
 // Scoped to `sanitizeHtml` (the global DOMPurify instance also serves the mail sanitiser, whose
 // own rules stand): only while this flag is up are classes filtered.
 let filteringClasses = false
-DOMPurify.addHook("uponSanitizeAttribute", (_node, data) => {
-  if (!filteringClasses || data.attrName !== "class") return
+DOMPurify.addHook("uponSanitizeAttribute", (node, data) => {
+  if (!filteringClasses) return
+  if (data.attrName === "data-page-file") {
+    if (node.nodeName !== "SPAN" || !FILE_ID.test(data.attrValue)) data.keepAttr = false
+    return
+  }
+  if (data.attrName !== "class") return
   const kept = keepRendererClasses(data.attrValue)
   if (kept) data.attrValue = kept
   else data.keepAttr = false

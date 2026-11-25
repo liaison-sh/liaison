@@ -8,11 +8,18 @@
 // `value` is the field's markdown. While nothing has been edited, `onChange`
 // hands back that exact string rather than the editor's own spelling of it,
 // so opening a field and leaving it never rewrites what was stored.
-import { type EmojiSuggestion, emojiForShortcode, searchEmojiShortcodes } from "@liaison/shared"
+import {
+  type EmojiSuggestion,
+  emojiForShortcode,
+  fileIdsOf,
+  replaceFileIds,
+  searchEmojiShortcodes,
+} from "@liaison/shared"
 import { Editor, type JSONContent } from "@tiptap/core"
 import { CharacterCount } from "@tiptap/extensions"
 import { closeHistory } from "@tiptap/pm/history"
-import { type EditorState, Selection } from "@tiptap/pm/state"
+import { Slice } from "@tiptap/pm/model"
+import { type EditorState, Selection, TextSelection } from "@tiptap/pm/state"
 import {
   type Component,
   createEffect,
@@ -32,6 +39,8 @@ import { EditorToolbar, LinkRow } from "./EditorToolbar"
 import { EmojiSuggest } from "./EmojiSuggest"
 import { emojiNameBeforeColon, emojiQueryAt } from "./emoji-trigger"
 import { type EditorPreset, editorExtensions, insertedTintKey } from "./extensions"
+import type { FileViewDeps } from "./file-view"
+import { fileIdsInFragment, isEmptySlice, withFileIds, withoutFiles } from "./liaison-file"
 import { mapSource, type SourceMap, spliceMarkdown } from "./source-map"
 
 export interface RichEditorHandle {
@@ -71,6 +80,27 @@ export interface RichEditorHandle {
    * becomes the one loaded.
    */
   applyRemote: (markdown: string) => void
+  /** Upload files and put each where the caret is, as the page's image or file. */
+  insertFiles: (files: File[]) => void
+  /**
+   * The server stored its own copies of files of other pages: their ids become the
+   * copies' ids (old id to new id). Not an edit: nothing is emitted, nothing lands in
+   * the undo history, the caret stays, and the text becomes the one the server holds.
+   */
+  replaceFileIds: (map: Readonly<Record<string, string>>) => void
+}
+
+/** A page's files: how they are drawn, stored and refused (document preset). */
+export interface EditorFiles {
+  view: FileViewDeps
+  /** Store a file on the page; answers the new file's id. Rejects with a readable message. */
+  upload: (file: File) => Promise<string>
+  /** A file was not added: the reason, said to the writer. */
+  onRefused: (message: string) => void
+  /** Said when a pasted file is one the writer cannot read (it is not inserted). */
+  unreadable: string
+  /** The chip of a file on its way. */
+  uploading: (name: string) => string
 }
 
 /** How long text written by dictation stays tinted (the CSS fade's length). */
@@ -170,6 +200,8 @@ export interface RichEditorProps {
   onBlur?: () => void
   /** Called first; a handler that calls `preventDefault` keeps the paste (pasted files). */
   onPaste?: (event: ClipboardEvent) => void
+  /** A page's files (document preset): pasted, dropped and picked files are uploaded. */
+  files?: EditorFiles
   ref?: (handle: RichEditorHandle) => void
   class?: string
   editorClass?: string
@@ -442,6 +474,131 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
     settle(ed, markdown)
   }
 
+  // ── A page's files ─────────────────────────────────────────────────────────
+  let uploadSeq = 0
+  const chipAt = (ed: Editor, key: string): number => {
+    let at = -1
+    ed.state.doc.descendants((node, pos) => {
+      if (at >= 0) return false
+      if (node.type.name === "uploadingFile" && node.attrs.key === key) at = pos
+      return true
+    })
+    return at
+  }
+  /** Each file: a chip where it goes now, the file's token once it is stored. */
+  const startUploads = (ed: Editor, files: File[], at?: number) => {
+    const files_ = props.files
+    if (!files_ || props.preset !== "document" || !files.length || ed.isDestroyed) return
+    if (at !== undefined) {
+      const pos = Math.max(0, Math.min(at, ed.state.doc.content.size))
+      ed.commands.setTextSelection(pos)
+    }
+    for (const file of files) {
+      const key = `upload-${++uploadSeq}`
+      ed.chain()
+        .focus()
+        .insertContent({ type: "uploadingFile", attrs: { key, name: file.name } })
+        .run()
+      const settleChip = (id: string | null, error?: unknown) => {
+        if (ed.isDestroyed) return
+        const pos = chipAt(ed, key)
+        if (pos >= 0) {
+          const tr = ed.state.tr.setMeta("addToHistory", false)
+          if (id) tr.replaceWith(pos, pos + 1, ed.schema.nodes.liaisonFile!.create({ id }))
+          else tr.delete(pos, pos + 1)
+          ed.view.dispatch(tr)
+        }
+        if (!id) files_.onRefused(error instanceof Error ? error.message : String(error ?? ""))
+      }
+      void files_.upload(file).then(
+        (id) => settleChip(id),
+        (err) => settleChip(null, err),
+      )
+    }
+  }
+  /**
+   * Insert what was pasted or dropped once every file it names is one the writer can
+   * read: an unreadable file is left out (edge 8) and the writer is told.
+   */
+  const insertChecked = (
+    ed: Editor,
+    ids: string[],
+    range: { from: number; to: number },
+    insert: (readable: (id: string) => boolean) => void,
+  ) => {
+    const files_ = props.files
+    if (!files_) return
+    const held: HeldPlace = { ...range, selection: range.from !== range.to }
+    anchors.add(held)
+    const unique = [...new Set(ids.map((id) => id.toLowerCase()))]
+    void Promise.all(
+      unique.map((id) =>
+        files_.view.resolve(id).then(
+          (file) => [id, !!file] as const,
+          () => [id, false] as const,
+        ),
+      ),
+    ).then((answers) => {
+      anchors.delete(held)
+      if (ed.isDestroyed) return
+      const ok = new Set(answers.filter(([, readable]) => readable).map(([id]) => id))
+      if (ok.size < unique.length) files_.onRefused(files_.unreadable)
+      const size = ed.state.doc.content.size
+      const from = Math.max(0, Math.min(held.selection ? held.from : held.to, size))
+      const to = Math.max(from, Math.min(held.to, size))
+      ed.view.dispatch(ed.state.tr.setSelection(TextSelection.create(ed.state.doc, from, to)))
+      insert((id) => ok.has(id.toLowerCase()))
+    })
+  }
+  const pasteSliceChecked = (ed: Editor, slice: Slice, range: { from: number; to: number }) =>
+    insertChecked(ed, fileIdsInFragment(slice.content), range, (readable) => {
+      const kept = new Slice(withoutFiles(slice.content, readable), slice.openStart, slice.openEnd)
+      if (isEmptySlice(kept)) return
+      ed.view.dispatch(
+        ed.state.tr.replaceSelection(kept).scrollIntoView().setMeta("uiEvent", "paste"),
+      )
+    })
+  const pasteTokensChecked = (ed: Editor, text: string) => {
+    const { from, to } = ed.state.selection
+    insertChecked(ed, fileIdsOf(text), { from, to }, (readable) => {
+      const kept = text.replace(
+        /!\[(?:\\.|[^\]\\])*\]\(liaison-file:([0-9a-fA-F-]{36})\)/g,
+        (whole, id: string) => (readable(id) ? whole : ""),
+      )
+      if (!kept.trim()) return
+      // One paragraph goes into the line the caret is on, as typed text would.
+      const parsed = ed.markdown?.parse(kept)
+      const only = parsed?.content?.length === 1 ? parsed.content[0] : undefined
+      if (only?.type === "paragraph" && only.content) ed.commands.insertContent(only.content)
+      else ed.commands.insertContent(kept, { contentType: "markdown" })
+    })
+  }
+  const replaceIds = (ed: Editor, map: Readonly<Record<string, string>>) => {
+    const to = new Map(Object.entries(map).map(([from, id]) => [from.toLowerCase(), id]))
+    const lookup = (id: string) => to.get(id.toLowerCase())
+    if (!to.size || ed.isDestroyed) return
+    const tr = ed.state.tr
+    ed.state.doc.descendants((node, pos) => {
+      if (node.type.name !== "liaisonFile") return true
+      const next = lookup(String(node.attrs.id))
+      if (next) tr.setNodeMarkup(pos, undefined, { ...node.attrs, id: next })
+      return false
+    })
+    if (!tr.docChanged) return
+    ed.view.dispatch(tr.setMeta("addToHistory", false).setMeta("preventUpdate", true))
+    // The text as loaded, its blocks and its serialization take the new ids too, so
+    // an unedited page still hands back exactly what the server holds.
+    if (sourceMap) {
+      sourceMap = sourceMap.map((block) => ({
+        raw: replaceFileIds(block.raw, map),
+        nodes: block.nodes.map((node) => withFileIds(node, lookup)),
+      }))
+    }
+    loaded = replaceFileIds(loaded, map)
+    baseline = replaceFileIds(baseline, map)
+    if (emitted !== undefined) emitted = replaceFileIds(emitted, map)
+  }
+
   onMount(() => {
     const ed = new Editor({
       element: mount,
@@ -451,6 +608,12 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
           rawLabels: {
             image: i18n.t("kernel.editor.remoteImage"),
             link: i18n.t("kernel.editor.pageLink"),
+          },
+          files: {
+            view: props.files?.view ?? null,
+            label: i18n.t("kernel.editor.fileToken"),
+            uploading: (name) =>
+              props.files?.uploading(name) ?? i18n.t("kernel.editor.uploadingFile", { name }),
           },
           keys: {
             onSubmit: props.onSubmit && (() => props.onSubmit?.()),
@@ -477,8 +640,32 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
           ...(props["data-testid"] ? { "data-testid": props["data-testid"] } : {}),
         },
         // Files dropped on the text go to the surface around it (the comment
-        // box's drop zone), never into the text.
-        handleDrop: (_view, event) => !!event.dataTransfer?.files.length,
+        // box's drop zone), never into the text; a page uploads them where they fell.
+        handleDrop: (view, event, slice, moved) => {
+          const dropped = Array.from(event.dataTransfer?.files ?? [])
+          const at = () => {
+            try {
+              return view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
+            } catch {
+              return undefined // no layout: where the caret is
+            }
+          }
+          if (dropped.length) {
+            if (props.files && props.preset === "document") {
+              event.preventDefault()
+              startUploads(ed, dropped, at())
+            }
+            return true
+          }
+          // Content naming files, dragged in from elsewhere: checked as a paste is.
+          if (!moved && props.files && slice && fileIdsInFragment(slice.content).length) {
+            event.preventDefault()
+            const pos = at() ?? ed.state.selection.from
+            pasteSliceChecked(ed, slice, { from: pos, to: pos })
+            return true
+          }
+          return false
+        },
         handleKeyDown: (_view, event) => emojiKey(event) || (props.onKeyDown?.(event) ?? false),
         handleTextInput: (view, from, to, text) => {
           const at = softSpace
@@ -496,12 +683,30 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
           }
           return text === " " && from === at && to === at
         },
-        handlePaste: (_view, event) => {
+        handlePaste: (_view, event, slice) => {
           props.onPaste?.(event)
           if (event.defaultPrevented) return true
           // A file the surface did not take (an image, a document) is dropped
           // whole: never its name, a data URL or a stray character in the text.
-          if (Array.from(event.clipboardData?.items ?? []).some((item) => item.kind === "file")) {
+          // A page uploads it and shows it where the caret is.
+          const items = Array.from(event.clipboardData?.items ?? [])
+          if (items.some((item) => item.kind === "file")) {
+            const pasted = items
+              .filter((item) => item.kind === "file")
+              .map((item) => item.getAsFile())
+              .filter((file): file is File => !!file)
+            startUploads(ed, pasted)
+            return true
+          }
+          // HTML naming files of this app (another page's editor or reader): each
+          // file must be one the writer can read before it goes in.
+          if (
+            props.files &&
+            event.clipboardData?.types.includes("text/html") &&
+            fileIdsInFragment(slice.content).length
+          ) {
+            const { from, to } = ed.state.selection
+            pasteSliceChecked(ed, slice, { from, to })
             return true
           }
           // Plain text is read as markdown: it is what the field stores, and
@@ -528,6 +733,10 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
                 { type: "text", text: " " },
               ])
               .run()
+            return true
+          }
+          if (props.files && props.preset === "document" && fileIdsOf(text).length) {
+            pasteTokensChecked(ed, text)
             return true
           }
           const lines = text.replace(/\r\n?/g, "\n").replace(/\n+$/, "")
@@ -638,6 +847,8 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
         return roundTrips
       },
       applyRemote: (markdown) => applyRemote(ed, markdown),
+      insertFiles: (files) => startUploads(ed, files),
+      replaceFileIds: (map) => replaceIds(ed, map),
     })
     onCleanup(() => {
       setEditor(undefined)
@@ -699,11 +910,21 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
           version={version}
           disabled={props.disabled}
           onLink={() => setLinking(true)}
+          onPick={props.files && props.preset === "document" ? pick : undefined}
           overflow={props.toolbarOverflow}
           class={props.toolbarClass}
         />
       </Show>
     )
+  }
+  let imageInput: HTMLInputElement | undefined
+  let fileInput: HTMLInputElement | undefined
+  const pick = (kind: "image" | "file") => (kind === "image" ? imageInput : fileInput)?.click()
+  const picked = (input: HTMLInputElement) => {
+    const chosen = Array.from(input.files ?? [])
+    input.value = ""
+    const ed = editor()
+    if (ed && chosen.length) startUploads(ed, chosen)
   }
   const showToolbar = () =>
     !props.disabled &&
@@ -736,6 +957,25 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
         )}
       </Show>
       <div ref={mount} class="min-w-0" />
+      <Show when={props.files && props.preset === "document"}>
+        <input
+          ref={imageInput}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          data-testid="rich-editor.pick-image"
+          onChange={(e) => picked(e.currentTarget)}
+        />
+        <input
+          ref={fileInput}
+          type="file"
+          multiple
+          hidden
+          data-testid="rich-editor.pick-file"
+          onChange={(e) => picked(e.currentTarget)}
+        />
+      </Show>
       <Show when={!props.toolbarMount && props.toolbar === "focus" && showToolbar()}>
         {toolbar()}
       </Show>

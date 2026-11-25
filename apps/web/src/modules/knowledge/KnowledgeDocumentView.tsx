@@ -64,6 +64,7 @@ import {
 import { PageBody } from "./PageBody"
 import { PageHeader } from "./PageHeader"
 import { PageHistory, versionAuthor } from "./PageHistory"
+import { pageFileView, uploadPageFile, uploadRefusal } from "./page-files"
 import {
   canMoveToTrash,
   daysLeftLabel,
@@ -307,8 +308,46 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
       await postDraftToHistory(api, drafts, extra, i18n.t("knowledge.untitled"))
   }
 
+  // ── Files ────────────────────────────────────────────────────────────────
+  const fileView = api ? pageFileView(api, i18n.t) : null
+  const refused = (message: string) => addToast({ type: "warning", message })
+  const upload = async (file: File): Promise<string> => {
+    const d = row()
+    if (!api || !d) throw new Error(i18n.t("knowledge.files.failed", { name: file.name }))
+    try {
+      return (await uploadPageFile(api, d.id, file)).id
+    } catch (err) {
+      throw new Error(uploadRefusal(i18n.t, err, file.name))
+    }
+  }
+  const editorFiles = fileView
+    ? {
+        view: fileView,
+        upload,
+        onRefused: refused,
+        unreadable: i18n.t("knowledge.files.unreadable"),
+        uploading: (name: string) => i18n.t("kernel.editor.uploadingFile", { name }),
+      }
+    : undefined
+  const addFiles = (files: File[]) => {
+    for (const file of files) void upload(file).catch((err: Error) => refused(err.message))
+  }
+  /** Files of other pages the save could not copy yet (storage full): said once each. */
+  const toldNotCopied = new Set<string>()
+  const filesOfSave = (stored: SavedRow) => {
+    const map = stored.fileIdMap as Record<string, string> | undefined
+    if (map && Object.keys(map).length) editor?.replaceFileIds(map)
+    const notCopied = (stored.notCopied as Array<{ id: string; reason: string }> | undefined) ?? []
+    const later = notCopied.filter(
+      (n) => (n.reason === "quota" || n.reason === "storage") && !toldNotCopied.has(n.id),
+    )
+    for (const n of later) toldNotCopied.add(n.id)
+    if (later.length) refused(i18n.t("knowledge.files.copyLater"))
+  }
+
   /** The server stored this view's text. */
   const saved = (stored: SavedRow) => {
+    filesOfSave(stored)
     const before = row()
     mutate((d) =>
       isRow(d) ? ({ ...d, ...stored, body: stored.body, title: stored.title } as Fetched) : d,
@@ -760,6 +799,9 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                 editorRef={(handle) => {
                   editor = handle
                 }}
+                fileView={fileView}
+                editorFiles={editorText() !== null ? editorFiles : undefined}
+                onAddFiles={editorText() !== null && api ? addFiles : undefined}
                 onEdit={() => saver?.edit()}
                 onRefreshSynced={() => {
                   const sourceId = d().syncedSourceId

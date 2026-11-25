@@ -66,6 +66,18 @@ Agents read and update a folder's page like any other document.
 
 ## Images and files in a document
 
+### Add an image or a file
+
+- Paste an image or a file into the text, or drop it on the text. It is uploaded and shows where the cursor was.
+- Or click **Image** or **File** in the toolbar and pick one or more files.
+- To add a file without putting it in the text, click **Add a file** under **Attachments**. On a phone, open **Sources** first.
+
+An image shows as the picture. Any other file, an SVG image included, shows as a card with its name and size; click it to download the file. While a file uploads, the text shows **Uploading** and its name. A file that is too large, or that does not fit in your organization's storage, is not added, and Liaison says why.
+
+When you remove an image or a file from the text, the file stays listed under **Attachments**. It is deleted with the document.
+
+A pasted image from a website is never loaded: the text keeps its address and shows **Image from another site, not loaded**. Upload the image instead. An image or a file of another document you cannot open is not added when you paste it, and Liaison tells you.
+
 A document's images and files are read by the people who can read the document, and by nobody else. When someone loses access to the document, they lose access to its files too. Adding or removing a file needs the right to edit the document.
 
 A document shows only images stored in Liaison. When you save a document that shows an image or a file of another document, Liaison stores its own copy on this document, so it stays when the other document is deleted. A file you cannot read is not copied: its place in the text is kept, and readers see that it is not available. Only images and files of other documents, and files you have just uploaded, are copied: an email or ticket attachment, a template's file or an encrypted file is never copied onto a document, and readers see it as not available. A copy made by a save that then failed, which no version of the document names, is removed by an hourly cleanup. When your organization's storage is full, the document is still saved and the copy is made at a later save, once there is room.

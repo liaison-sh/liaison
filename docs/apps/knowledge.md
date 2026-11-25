@@ -60,9 +60,9 @@ Every change by a person or an agent is kept with its author and time. One perso
 
 ## A folder's own page
 
-Click a folder's name in the sidebar to open it as a page; the arrow next to it only shows or hides what is inside. The folder page has the folder's own text, then **In this folder**: the folders and documents directly inside that you can open, each opening in its own tab. An empty folder says **Nothing here yet.**; **New page** makes a document in the folder (private, in a personal folder). The folders above it are links at the top.
+Click a folder's name in the sidebar to open it as a page; the arrow next to it only shows or hides what is inside. The folder page has the folder's own text, then **In this folder**: the folders and documents directly inside that you can open, each opening in its own tab. An empty folder says **Nothing here yet.**; **New page** makes a document in the folder (private, in a personal folder). **New page** shows only if your role lets you make pages. The folders above it are links at the top.
 
-To write the folder's text, click under its name (**Write about this folder**) and type: the page is made as you start, and saves itself like any page.
+To write the folder's text, click under its name (**Write about this folder**) and type: the page is made as you start, and saves itself like any page. Until the page exists, what you type is kept in this browser like any unsaved page text: signing out asks about it, and it comes back if you close the tab and open the folder again. If the page cannot be made, a message says so, with **Try again** and **Copy text**; nothing is sent again until you click **Try again**. If someone else made the folder's page while you typed, your text never replaces theirs: the page opens with your text and asks you what to keep, as when two people edit one page.
 
 A folder can have a page of its own: text about what the folder holds, shown above the list of what is inside. The folder has no page until someone writes in it. The first text makes an ordinary document, titled as the folder and filed in it. In a shared folder everyone in the organization can edit it; in a personal folder only you can see it. After that you share it like any other document.
 
@@ -70,7 +70,7 @@ Writing the first text needs the right to manage folders and to create documents
 
 The list under the page shows the folders and documents directly inside that you can open. Someone who cannot read the folder's page still sees the list, and nothing of the page.
 
-Renaming the folder renames its page, when you can edit the page; a verified page stays verified, as its text did not change. Renaming the page renames the folder, when you can manage folders; otherwise only the page is renamed. The page stops being the folder's page when it moves to the archive or leaves the folder; the folder then has none until someone writes in it again. Deleting the folder keeps a page that has text: it goes where the folder's documents go, to the folder above it or to **Unfiled**. An empty page goes to the archive, when the person deleting the folder can archive it.
+Renaming the folder renames its page, when you can edit the page; a verified page stays verified, as its text did not change. Renaming the page renames the folder, when you can manage folders; otherwise only the page is renamed. The page stops being the folder's page when it moves to Trash or leaves the folder; the folder then has none until someone writes in it again. Deleting the folder keeps a page that has text: it goes where the folder's documents go, to the folder above it or to **Unfiled**. An empty page goes to Trash, when the person deleting the folder can move it there.
 
 Agents read and update a folder's page like any other document.
 

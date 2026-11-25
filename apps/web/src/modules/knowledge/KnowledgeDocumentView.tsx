@@ -111,7 +111,12 @@ export interface DocumentInFolder {
   onGone: () => void
   /** The page was made a moment ago from this text (still being typed): it opens on
    *  that row and that text at once, with no reload, and saves what came after. */
-  fresh?: { row: KnowledgeDocumentFetched; text: string }
+  fresh?: {
+    row: KnowledgeDocumentFetched
+    text: string
+    /** The page was someone else's already (made meanwhile): the text meets it as a conflict. */
+    existing?: boolean
+  }
 }
 
 type Fetched = KnowledgeDocumentFetched | TrashedPage | null | "not-found"
@@ -314,8 +319,15 @@ const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFo
     if (fresh && fresh.row.id === d.id) {
       focusOnOpen = true
       setEditorText(fresh.text)
-      saver = makeSaver(api, userId, d, drafts, liveness)
-      if (fresh.text !== d.body) saver.edit()
+      const s = makeSaver(api, userId, d, drafts, liveness)
+      saver = s
+      if (fresh.text === d.body) return
+      if (fresh.existing) {
+        // Someone else's text is the page: mine is never saved over it, the person
+        // chooses (Keep mine, Take theirs, See both).
+        s.markConflict({ ...d })
+        await s.persistDraft()
+      } else s.edit()
       return
     }
     try {

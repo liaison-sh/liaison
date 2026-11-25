@@ -97,6 +97,8 @@ interface Doc {
   orgAccess: string
   archivedAt: string | null
   canEdit?: boolean
+  /** POST /collections/:id/page only: made by this call. */
+  created?: boolean
 }
 
 interface FolderPage {
@@ -271,6 +273,7 @@ describe("the first edit makes the folder's page", () => {
     expect({ status: made.status, error: made.error }).toEqual({ status: 201, error: undefined })
     expect(made.data.title).toBe("Policies")
     expect(made.data.body).toBe("How we work")
+    expect(made.data.created).toBe(true)
     expect(made.data.orgAccess).toBe("editor")
     expect((await storedFolder(id)).index_document_id).toBe(made.data.id)
     expect(await foldersOf(made.data.id)).toEqual([id])
@@ -278,6 +281,8 @@ describe("the first edit makes the folder's page", () => {
     // A second first edit (another tab, a retry) gets the same page, text unchanged.
     const again = await start(ana, id, "other text")
     expect(again.status).toBe(200)
+    // Said in the answer too: the client opens it as someone else's text, never over it.
+    expect(again.data.created).toBe(false)
     expect(again.data.id).toBe(made.data.id)
     expect((await storedDoc(made.data.id)).body).toBe("How we work")
 

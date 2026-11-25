@@ -308,7 +308,8 @@ export async function startKnowledgeFolderPage(
   api: ApiClient,
   folderId: string,
   body: string,
-): Promise<{ id: string; title: string; body: string; revision: number }> {
+): Promise<{ id: string; title: string; body: string; revision: number; created?: boolean }> {
+  // `created: false`: the folder already had a page (someone made it meanwhile).
   return api.post(`/knowledge/collections/${folderId}/page`, { body })
 }
 

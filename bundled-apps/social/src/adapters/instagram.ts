@@ -12,12 +12,10 @@
 import { packCursor, parseCursor, parseJsonCursor } from "./cursor"
 import { facebookAdapter, metaTimeToIso } from "./facebook"
 import {
-  type GraphError,
   type GraphPage,
   graphError,
   graphTime,
   type ListError,
-  type ListState,
   readListState,
   usageThrottled,
   walkNewestFirst,
@@ -198,11 +196,6 @@ interface IgConversation {
   id: string
   participants?: { data?: IgConversationParticipant[] }
   updated_time?: string
-}
-
-interface IgConversationsResponse {
-  data?: IgConversation[]
-  paging?: { cursors?: { after?: string } }
 }
 
 interface IgDmMessage {

@@ -31,7 +31,9 @@ export const STUDIO_SALES_CFG: SalesScenarioCfg = {
   copy: "studioSales",
   injector: STUDIO_SALES_EMAIL_INJECTOR,
   prospectRoutineName: STUDIO_PROSPECT_ROUTINE_NAME,
-  bundleHeadTools: [STUDIO_COMPANY_WRITE_TOOL],
+  // The company heads the one request; when the run asked for the company
+  // first and carried on after its approval, the proposal heads the rest.
+  bundleHeadTools: [STUDIO_COMPANY_WRITE_TOOL, STUDIO_PROPOSAL_TOOL],
   minutes: 4,
   extraBeats: [
     {

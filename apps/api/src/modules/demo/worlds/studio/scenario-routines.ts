@@ -20,7 +20,9 @@ export function studioProposalRoutinePrompt(): string {
     "Do NOT wait for an approval between the steps: make the next call at once, with the token " +
     "copied exactly where the step says.\n\n" +
     "1. Read the email. Look the sender up with kernel__contacts_search by their email, then " +
-    "their company with kernel__companies_search by its domain, then by its name.\n" +
+    "their company with kernel__companies_search by its domain, then by its name. Then call " +
+    "agreements__templates_list (it only reads) and note the statement of work template's id: " +
+    "once the first write is proposed, a call that only reads is not run.\n" +
     "2. If the firm is not there yet, read its website with web_fetch, at exactly " +
     "https://DOMAIN/ where DOMAIN is the part of the sender's address after the @, with " +
     "nothing after the last slash. If the fetch fails, go on without it and say so in the " +
@@ -30,8 +32,8 @@ export function studioProposalRoutinePrompt(): string {
     "@ref:<id>:id. A firm ALREADY there: make no call; its id is the id the search returned.\n" +
     "4. Deal. Call projects__create in the Sales pipeline: title the firm's name and what they " +
     "ask for, companyId the id token from step 3, whole.\n" +
-    "5. Proposal. Call agreements__templates_list (it only reads), then " +
-    "agreements__agreement_create with kind sow, the statement of work template's id, the " +
+    "5. Proposal. Call agreements__agreement_create with kind sow, the statement of work " +
+    "template's id from step 1, the " +
     "title of what they ask for, company_id the id token from step 3, whole, and the scope " +
     "taken from the brief. Set NO price: the price is mine to set.\n" +
     "6. Reply. Call mail__reply with conversationId (from the event data) and a textBody that " +

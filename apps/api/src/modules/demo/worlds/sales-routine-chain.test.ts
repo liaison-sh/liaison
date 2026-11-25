@@ -58,6 +58,17 @@ describe("the sales routines chain their writes into one request", () => {
     expect(company).toEqual(expect.arrayContaining(["id", "name"]))
   })
 
+  // Once the first write is proposed, a call that only reads is not run
+  // (agent-service.ts ROUTINE_CHAIN_ONLY_RESULT): a read the chain needs comes
+  // before it, or the run pauses half way (demo walk 2026-11-25).
+  it("every read the chain needs comes before its first write", () => {
+    const prompt = studioProposalRoutinePrompt()
+    const firstWrite = prompt.indexOf("call kernel__companies_write")
+    expect(firstWrite).toBeGreaterThan(0)
+    expect(prompt.indexOf("agreements__templates_list")).toBeGreaterThan(0)
+    expect(prompt.lastIndexOf("agreements__templates_list")).toBeLessThan(firstWrite)
+  })
+
   it("every field that cites the company takes its id token", () => {
     const idToken = buildRefToken(HEAD, "id")
     // The proposal: the agreements app's company_id is a uuid.

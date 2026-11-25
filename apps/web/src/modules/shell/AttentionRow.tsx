@@ -523,6 +523,13 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
         decision === "approve" && props.item.action?.type === "decide_approval"
           ? (reviewedPayloadHash(props.item.action.approvalId) ?? props.item.action.payloadHash)
           : undefined
+      // A request of several steps: the row lists them, and the approve binds each
+      // later step as the row showed it. Without them the server refused every
+      // such Approve from Home (409 payload_changed, demo walk 2026-11-25).
+      const stepPayloadHashes =
+        decision === "approve" && props.item.action?.type === "decide_approval"
+          ? props.item.action.stepPayloadHashes
+          : undefined
       // Behind the Undo window: the row hides now and the decision is sent
       // when the window ends (decision-queue.ts).
       await queueDecision(
@@ -533,6 +540,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
           decision,
           ...(reason ? { reason } : {}),
           ...(payloadHash ? { payloadHash } : {}),
+          ...(stepPayloadHashes ? { stepPayloadHashes } : {}),
         },
         {
           label: {

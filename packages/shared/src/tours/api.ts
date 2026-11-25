@@ -159,7 +159,17 @@ export type TourBeatStatus =
    * The run paused on an approval it asked for before it did what the step
    * waits on: it carries on once that request is decided on Home.
    */
-  | { kind: "routine-waiting"; routineName: string | null }
+  | {
+      kind: "routine-waiting"
+      routineName: string | null
+      /**
+       * The request the run waits on that a person decides now (a request's
+       * first step; its later steps go with it), null when none is pending.
+       * The step's Do it for me approves it, as Approve on its card would.
+       */
+      requestId: string | null
+      toolName: string | null
+    }
   | { kind: "routine-failed"; routineName: string | null; error: string | null }
   | {
       kind: "routine-skipped"

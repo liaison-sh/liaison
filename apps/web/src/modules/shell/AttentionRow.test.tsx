@@ -570,6 +570,42 @@ describe("AttentionRow", () => {
     )
   })
 
+  // Demo walk 2026-11-25: Approve on a row of two steps was refused (409
+  // payload_changed) for want of the later step's fingerprint, which the row
+  // now carries from the feed.
+  it("attention-row.decide-approve on a request of several steps sends each later step's fingerprint", async () => {
+    const post = vi.fn().mockResolvedValue({})
+    const item: AttentionItem = {
+      id: "kernel:approval:b1",
+      app: "kernel",
+      entity: "approval_request",
+      entityId: "b1",
+      kind: "approval_pending",
+      summary: "Create the company",
+      urgency: 60,
+      occurredAt: "2026-05-06T00:00:00Z",
+      action: {
+        type: "decide_approval",
+        approvalId: "b1",
+        payloadHash: "hash-b1",
+        stepPayloadHashes: { b2: "hash-b2" },
+      },
+    }
+    const { getByTestId } = render(() => (
+      <ApiContext.Provider value={makeApi(post)}>
+        <AttentionRow item={item} />
+      </ApiContext.Provider>
+    ))
+    fireEvent.click(getByTestId("attention-row-kernel-approval_request-b1-approve"))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(post).toHaveBeenCalledWith(
+      "/approvals/b1/decide",
+      { decision: "approve", payloadHash: "hash-b1", stepPayloadHashes: { b2: "hash-b2" } },
+      { suppressGlobalError: true },
+    )
+  })
+
   // Fabrikam, 2026-10-01: a bare decision on a sealed mail send is refused (409
   // mailbox_fulfilment_required) and read "decided by someone else". A mail
   // send is approved through its card, which decrypts the draft first.

@@ -12,7 +12,6 @@ import Redis from "ioredis"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { auditLog, routines, users } from "~/db/schema/kernel"
 import { _publishEventInternal, EventBusTestAccess, initEventBus } from "~/infra/events/event-bus"
-import * as jobs from "~/infra/jobs/jobs"
 import {
   __resetEventRoutineSubscriber,
   catchUpMissedEvents,
@@ -24,6 +23,7 @@ import {
   startEventRoutineSync,
   stopEventRoutineSync,
 } from "~/infra/jobs/event-routine-subscriber"
+import * as jobs from "~/infra/jobs/jobs"
 import { LeadershipTestAccess, startLeadership } from "~/infra/leadership"
 import { env } from "~/lib/env"
 import { RESP_PROTOCOL } from "~/lib/redis"
@@ -277,7 +277,7 @@ describe("a routine armed after its event", () => {
     )
   })
 
-  const ticks = (spy: ReturnType<typeof spyOn>, routineId: string) =>
+  const ticks = (spy: { mock: { calls: unknown[][] } }, routineId: string) =>
     spy.mock.calls.filter(
       ([app, job, payload]) =>
         app === "kernel" &&
@@ -369,7 +369,9 @@ describe("a routine armed after its event", () => {
       const armed = await armedAt(id)
       await logTicketCreated(new Date(armed.getTime() + 500))
       const later = new Date(armed.getTime() + 60 * 60_000)
-      expect(await catchUpMissedEvents({ routineId: id, orgId, event: EVENT }, armed, later)).toBe(0)
+      expect(await catchUpMissedEvents({ routineId: id, orgId, event: EVENT }, armed, later)).toBe(
+        0,
+      )
       expect(ticks(enqueue, id)).toHaveLength(0)
     } finally {
       enqueue.mockRestore()
@@ -378,7 +380,10 @@ describe("a routine armed after its event", () => {
 
   it("switching a seeded routine on announces it to the cell", async () => {
     const id = await insertEventRoutine({ enabled: false })
-    const listener = new Redis(env.REDIS_URL, { protocol: RESP_PROTOCOL, maxRetriesPerRequest: null })
+    const listener = new Redis(env.REDIS_URL, {
+      protocol: RESP_PROTOCOL,
+      maxRetriesPerRequest: null,
+    })
     const heard: string[] = []
     try {
       listener.on("message", (_channel: string, message: string) => {

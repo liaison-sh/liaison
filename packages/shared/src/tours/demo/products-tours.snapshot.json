@@ -567,7 +567,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.common.held.way3"
+            "label": "tours.scenarios.common.held.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "undo": {
@@ -634,7 +635,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.common.held.way3"
+            "label": "tours.scenarios.common.held.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "undo": {
@@ -823,7 +825,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.common.sendBelow"
+            "label": "tours.scenarios.common.sendBelow",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "say": {
@@ -905,7 +908,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.chat.searching.way3"
+            "label": "tours.scenarios.chat.searching.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "route": "/threads/{question}",
@@ -931,7 +935,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.chat.sources.way3"
+            "label": "tours.scenarios.chat.sources.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "route": "/threads/{question}",
@@ -957,7 +962,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.common.sendBelow"
+            "label": "tours.scenarios.common.sendBelow",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "say": {
@@ -1042,7 +1048,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.chat.searching.way3"
+            "label": "tours.scenarios.chat.searching.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "route": "/threads/{question}",
@@ -1086,7 +1093,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.common.held.way3"
+            "label": "tours.scenarios.common.held.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "undo": {
@@ -1156,7 +1164,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.common.sendBelow"
+            "label": "tours.scenarios.common.sendBelow",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "say": {
@@ -1241,7 +1250,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.chat.searching.way3"
+            "label": "tours.scenarios.chat.searching.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "route": "/threads/{question}",
@@ -1597,7 +1607,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.sales.brief.way3"
+            "label": "tours.scenarios.sales.brief.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "route": "/",
@@ -1979,7 +1990,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.common.sendBelow"
+            "label": "tours.scenarios.common.sendBelow",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "say": {
@@ -2061,7 +2073,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.dev.bugs.way3"
+            "label": "tours.scenarios.dev.bugs.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "route": "/sessions",
@@ -2087,7 +2100,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.common.sendBelow"
+            "label": "tours.scenarios.common.sendBelow",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "say": {
@@ -2169,7 +2183,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.dev.dispatch.way3"
+            "label": "tours.scenarios.dev.dispatch.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "route": "/sessions",
@@ -2214,7 +2229,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.common.held.way3"
+            "label": "tours.scenarios.common.held.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "undo": {
@@ -2377,7 +2393,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.dev.report.way3"
+            "label": "tours.scenarios.dev.report.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "route": "/sessions/{dispatch}",
@@ -2521,7 +2538,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.common.sendBelow"
+            "label": "tours.scenarios.common.sendBelow",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "say": {
@@ -2603,7 +2621,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.knowledge.answer.way3"
+            "label": "tours.scenarios.knowledge.answer.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "route": "/knowledge",

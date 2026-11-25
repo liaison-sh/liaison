@@ -29,6 +29,7 @@ import {
 } from "solid-js"
 import { spaNavigate } from "~/framework/spa-navigate"
 import { cn } from "~/lib/cn"
+import { toolActionPhrase } from "~/modules/approvals/approval-copy"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { pluralFormFor } from "~/modules/projects/plural"
 import { refusalCodeInThread } from "~/modules/threads/turn-refusal"
@@ -168,16 +169,6 @@ export function routineRunOf(status: TourBeatStatus | undefined): RoutineRunView
     default:
       return null
   }
-}
-
-/** A tool's name as a person reads it (`web_search` → "web search", `projects__create` → "projects create"). */
-export function toolLabel(toolName: string): string {
-  // The workspace's own tools read without their prefix ("web search", not
-  // "kernel web search"); an app's keep its name ("projects create").
-  return toolName
-    .replace(/^kernel(:|__)/, "")
-    .replace(/[_:]+/g, " ")
-    .trim()
 }
 
 /** How long a run has taken, as m:ss. */
@@ -751,7 +742,9 @@ export const TourPanel: Component<TourPanelProps> = (props) => {
               </Show>
               <span>
                 {held()
-                  ? i18n.t("tours.engine.heldBody", { tool: toolLabel(held()?.toolName ?? "") })
+                  ? i18n.t("tours.engine.heldBody", {
+                      tool: toolActionPhrase(held()?.toolName ?? "", i18n.t),
+                    })
                   : copy(undo()?.body ?? props.beat.body)}
               </span>
             </p>

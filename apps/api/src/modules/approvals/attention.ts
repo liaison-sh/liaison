@@ -29,6 +29,7 @@ import { approvalActionPhrase, deriveApprovalDetail } from "~/modules/approvals/
 import { readApprovalRequesters } from "~/modules/approvals/requester"
 import { type RoutedRows, readApprovalRoutes } from "~/modules/approvals/route-world"
 import { withServedSummaries } from "~/modules/approvals/served-summary"
+import { shownToolCall } from "~/modules/approvals/tool-name"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { withViewerNames } from "~/modules/apps/approval-record-names"
 import { sendGuardProviderPill } from "~/modules/mail/send-guard"
@@ -228,15 +229,19 @@ export function approvalRowName(
 } {
   const authored =
     row.summary?.title && row.summary.title !== row.tool_name ? row.summary.title : null
+  // A call through the stable entry reads as the tool it calls.
+  const shown = shownToolCall(row.tool_name, row.current_payload)
   const titleDetail = authored
     ? null
-    : deriveApprovalDetail(row.tool_name, row.current_payload, { skillNamesById })
+    : deriveApprovalDetail(shown.toolName, shown.payload as Record<string, unknown> | null, {
+        skillNamesById,
+      })
   const titleKind = authored ? "summary" : titleDetail ? "derived" : "action"
   const title =
     authored ??
     (titleDetail
-      ? `${approvalActionPhrase(row.tool_name)}: ${titleDetail}`
-      : humanizeToolName(row.tool_name))
+      ? `${approvalActionPhrase(shown.toolName)}: ${titleDetail}`
+      : humanizeToolName(shown.toolName))
   return { authored, titleDetail, titleKind, title }
 }
 
@@ -821,7 +826,9 @@ export async function computeApprovalAttentionItems(
         ...(isSeededWrite(r.metadata) ? { seeded: true } : {}),
         // What ACTION is gated ("Tickets: reply") + how risky it is, so the
         // feed row is decidable at a glance without expanding the card.
-        actionLabel: humanizeToolName(shown.tool_name),
+        actionLabel: humanizeToolName(
+          shownToolCall(shown.tool_name, shown.current_payload).toolName,
+        ),
         ...(() => {
           const pill = approvalRowPill(orgId, shown.tool_name, shown.current_payload)
           return pill ? { pill } : {}

@@ -2,8 +2,8 @@
 
 import { and, sql as drizzleSql, eq, inArray } from "drizzle-orm"
 import Redis from "ioredis"
-import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { extractRows } from "~/db"
+import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { auditLog, routineRuns, routines } from "~/db/schema/kernel"
 import {
   type AppEvent,

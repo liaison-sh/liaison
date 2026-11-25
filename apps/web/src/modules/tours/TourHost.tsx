@@ -427,7 +427,7 @@ export const TourOverlay: Component<TourOverlayProps> = (props) => {
   const path = () => beat()?.path ?? []
   const hops = Array.from({ length: TOUR_PATH_MAX }, (_, i) =>
     createAnchorTracker(() =>
-      working() || undoing() || asked() !== null ? undefined : path()[i]?.anchor,
+      working() || undoing() || asked() !== null ? undefined : (path()[i]?.anchor ?? path()[i]?.at),
     ),
   )
   const railAnchor = () => (lost() && !phone() ? railWayAnchor(route()) : null)

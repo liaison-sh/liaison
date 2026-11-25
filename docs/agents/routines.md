@@ -220,6 +220,8 @@ An administrator who manages apps (`kernel:apps:admin`) can also edit or delete 
 
 ## Re-run events a routine missed
 
+An event that comes in just after an event routine is switched on, created or given a new trigger, before every server process has picked the routine up, still runs it: the process that picks it up runs it for the events of its kind since that moment, once (up to 15 minutes back).
+
 If the server was down, event routines can miss events. A scheduled job already looks back 14 days (`ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS`). To backfill over a window you choose, run the reconciler once:
 
 ```

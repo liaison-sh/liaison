@@ -8,7 +8,7 @@ import { z } from "zod"
 import { isRecord } from "~/lib/guards"
 import { appsLogger as log } from "~/lib/logger"
 import { isUuid, UUID_RE } from "~/lib/uuid"
-import { humanizeToolName, splitToolName } from "~/modules/approvals/tool-name"
+import { humanizeToolName, shownToolCall, splitToolName } from "~/modules/approvals/tool-name"
 import { type ApprovalSummarizer, approvalSummarizerRegistry } from "~/modules/apps/app-registries"
 import {
   asStoredSummary,
@@ -241,7 +241,11 @@ async function refsFor(
  * (approvals/served-summary.ts).
  */
 export function genericApprovalSummary(toolName: string, params: unknown): ApprovalSummary {
-  return bounded(genericCard(toolName, params, NO_REFS))
+  const shown = shownToolCall(toolName, params)
+  return {
+    ...bounded(genericCard(shown.toolName, shown.payload, NO_REFS)),
+    kind: toolName,
+  }
 }
 
 function genericCard(toolName: string, params: unknown, refs: RecordRefs): ApprovalSummary {
@@ -331,6 +335,20 @@ export async function generateApprovalSummary(
   ctx: Parameters<ApprovalSummarizer>[1],
   fullToolName: string,
 ): Promise<ApprovalSummary> {
+  // A call through the stable entry reads as the tool it calls; the card stays the entry's.
+  const shown = shownToolCall(fullToolName, params)
+  if (shown.toolName !== fullToolName) {
+    const inner = splitToolName(shown.toolName)
+    const summary = await generateApprovalSummary(
+      orgId,
+      inner.appName,
+      inner.toolShortName,
+      shown.payload,
+      ctx,
+      shown.toolName,
+    )
+    return { ...summary, kind: fullToolName }
+  }
   const summarizer = approvalSummarizerRegistry.get([orgId, appName, toolName])
   if (!summarizer) return defaultSummary(fullToolName, params, ctx)
 

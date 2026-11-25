@@ -433,7 +433,10 @@ function beatOfCurrentTour(beatId: string, phone: boolean): EffectiveBeat | unde
   const anchor = beat.anchorPinned ? resolveBeatAnchor(beat.anchor, created) : null
   const path = beat.path?.map((hop) => {
     const resolved = hop.anchor ? resolveBeatAnchor(hop.anchor, created) : null
-    return resolved ? { ...hop, anchor: resolved } : hop
+    const at = hop.at ? resolveBeatAnchor(hop.at, created) : null
+    return resolved || at
+      ? { ...hop, ...(resolved ? { anchor: resolved } : {}), ...(at ? { at } : {}) }
+      : hop
   })
   if (!anchor && !path) return beat
   return { ...beat, ...(anchor ? { anchor } : {}), ...(path ? { path } : {}) }

@@ -35,7 +35,7 @@ function hostileBody(marker: string, ownFile: string, privateFile: string): stri
     `<p style="background-image:url(https://${EVIL}/css.png)">styled</p>`,
     `<svg><image href="https://${EVIL}/svg.png"/></svg>`,
     `![svg](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=)`,
-    `<span data-liaison-file="https://${EVIL}/span.png">bad span</span>`,
+    `<span data-page-file="https://${EVIL}/span.png">bad span</span>`,
     `<style>body{background:url(https://${EVIL}/style.png)}</style>`,
     `<link rel="stylesheet" href="https://${EVIL}/x.css">`,
     `<iframe src="https://${EVIL}/frame"></iframe>`,

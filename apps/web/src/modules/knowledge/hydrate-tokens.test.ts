@@ -24,8 +24,8 @@ const HOSTILE_BODY = [
   '<svg><image href="https://evil.example/svg.png"/></svg>',
   "![svg](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=)",
   '<a href="data:text/html,<img src=https://evil.example/a.png>">data link</a>',
-  `<span data-liaison-file="https://evil.example/span.png">bad span</span>`,
-  `<span data-liaison-file="${OTHER_ORG}"></span>`,
+  `<span data-page-file="https://evil.example/span.png">bad span</span>`,
+  `<span data-page-file="${OTHER_ORG}"></span>`,
   `Mine: ![](liaison-file:${MINE}) and another org's: ![](liaison-file:${OTHER_ORG})`,
   "<style>body{background:url(https://evil.example/style.png)}</style>",
   '<link rel="stylesheet" href="https://evil.example/x.css">',
@@ -72,7 +72,7 @@ describe("the reader of a page", () => {
   it("renders a file token as an empty span holding only the id", () => {
     const html = renderMarkdown(`A ![](liaison-file:${MINE}) B ![alt](liaison-file:${MINE})`)
     expect(html.trim()).toBe(
-      `<p>A <span data-liaison-file="${MINE}"></span> B <span data-liaison-file="${MINE}"></span></p>`,
+      `<p>A <span data-page-file="${MINE}"></span> B <span data-page-file="${MINE}"></span></p>`,
     )
   })
 
@@ -96,7 +96,7 @@ describe("the reader of a page", () => {
 
   it("looks up nothing for a span whose value is not a file id, even unsanitized", () => {
     const root = document.createElement("div")
-    root.innerHTML = '<span data-liaison-file="https://evil.example/x.png">x</span>'
+    root.innerHTML = '<span data-page-file="https://evil.example/x.png">x</span>'
     const view = deps()
     hydrateFileTokens(root, view, "Image or file")
     expect(view.resolve).not.toHaveBeenCalled()

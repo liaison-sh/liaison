@@ -72,7 +72,7 @@ export function keepRendererClasses(value: string): string {
 }
 
 /**
- * A page's file token renders as `<span data-liaison-file="<uuid>">` (knowledge/markdown.ts):
+ * A page's file token renders as `<span data-page-file="<uuid>">` (knowledge/markdown.ts):
  * the id is all it may hold. Any other value (a URL, markup) is dropped with the attribute.
  */
 const FILE_ID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
@@ -82,7 +82,7 @@ const FILE_ID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0
 let filteringClasses = false
 DOMPurify.addHook("uponSanitizeAttribute", (node, data) => {
   if (!filteringClasses) return
-  if (data.attrName === "data-liaison-file") {
+  if (data.attrName === "data-page-file") {
     if (node.nodeName !== "SPAN" || !FILE_ID.test(data.attrValue)) data.keepAttr = false
     return
   }

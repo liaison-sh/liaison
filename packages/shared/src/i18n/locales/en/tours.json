@@ -425,6 +425,8 @@
     "routineRunningUnnamed": "The routine is working on it ({{elapsed}}). This step moves on when it is done.",
     "routineDone": "The routine “{{name}}” has finished.",
     "routineDoneUnnamed": "The routine has finished.",
+    "routineWaiting": "The routine “{{name}}” is waiting for an approval it asked for. Decide it in Home and the routine carries on.",
+    "routineWaitingUnnamed": "The routine is waiting for an approval it asked for. Decide it in Home and the routine carries on.",
     "routineFailed": "The routine “{{name}}” stopped with an error: {{error}} Try again later, or skip this step.",
     "routineFailedUnnamed": "The routine stopped with an error: {{error}} Try again later, or skip this step.",
     "routineFailedNoReason": "The routine “{{name}}” stopped with an error. Try again later, or skip this step.",
@@ -1412,55 +1414,55 @@
       },
       "liveTicket": {
         "title": "A client is writing in",
-        "body": "Nothing to do yet: his ticket lands at the top of the list in a moment. Press Next once it is there.",
-        "role": "Rémi Castel manages the partner portal project for Groupe Marlin. He needs last month's invoice again and a reset of the test site, and he is emailing support right now."
+        "body": "Nothing to do yet: her ticket lands at the top of the list in a moment. Press Next once it is there.",
+        "role": "Inès Royer runs the stock data project for Coopérative Alpine. She needs last month's invoice again and an empty supplier list on the test export, and she is emailing support right now."
       },
       "open": {
         "title": "His ticket is here",
-        "body": "Open his ticket, then press Next.",
-        "role": "Before anyone answers Rémi, you want to see what he wrote.",
-        "way2": "Click Rémi Castel's ticket, at the top of the list"
+        "body": "Open her ticket, then press Next.",
+        "role": "Before anyone answers Inès, you want to see what she wrote.",
+        "way2": "Click Inès Royer's ticket, at the top of the list"
       },
       "routineNote": {
         "title": "The routine's internal note",
-        "body": "It reads the ticket, the client's history and the studio handbook, then leaves a note for the team: its verdict, its sources and what a person must check. Rémi never sees it. Press Next once the note is in; you'll approve its reply two steps on.",
+        "body": "It reads the ticket, the client's history and the studio handbook, then leaves a note for the team: its verdict, its sources and what a person must check. Inès never sees it. Press Next once the note is in; you'll approve its reply two steps on.",
         "role": "Your support routine works the ticket first, so you start from its findings, not from zero."
       },
       "routineDraft": {
         "title": "A reply draft waits for you",
-        "body": "The routine drafts the reply to Rémi. Press Next once the draft shows; you'll read it and approve it in the next step.",
-        "role": "Nothing reaches Rémi until a person says yes, and that person is you."
+        "body": "The routine drafts the reply to Inès. Press Next once the draft shows; you'll read it and approve it in the next step.",
+        "role": "Nothing reaches Inès until a person says yes, and that person is you."
       },
       "approve": {
         "title": "Approve the reply",
-        "body": "Edit a sentence if you like, then press Approve. It goes to Rémi (a fictional client here).",
-        "role": "You decide what goes out: read the draft as Rémi will read it.",
+        "body": "Edit a sentence if you like, then press Approve. It goes to Inès (a fictional client here).",
+        "role": "You decide what goes out: read the draft as Inès will read it.",
         "undo": "Let it go, or press Undo to see the reply come back as a draft."
       },
       "sent": {
         "title": "Sent",
         "body": "The reply shows in the conversation, next to the routine's note. Press Next.",
-        "role": "Rémi has his answer, and the team can see exactly what was said."
+        "role": "Inès has her answer, and the team can see exactly what was said."
       },
       "askAgent": {
         "title": "Check what the client has asked before",
         "body": "Ask {{agent}} from Chats, beside the ticket, and press Send. It answers from the client's tickets, its company and its invoices.",
-        "text": "What has Groupe Marlin asked support before, and which invoices did we send them last month?",
-        "role": "Before you promise Rémi a date for the reset, you want to see what his team asked before.",
+        "text": "What has Coopérative Alpine asked support before, and which invoices did we send them last month?",
+        "role": "Before you promise Inès a date for the test export, you want to see what her team asked before.",
         "way1": "Open Chats, beside the ticket",
         "way2": "Pick {{agent}}, first in the list",
         "say": "Ask {{agent}}:"
       },
       "answer": {
         "title": "Its answer",
-        "body": "{{agent}} answers beside his ticket, from the tickets and the client's record. Press Next once it has answered.",
+        "body": "{{agent}} answers beside her ticket, from the tickets and the client's record. Press Next once it has answered.",
         "role": "You decide on the date with the client's history in front of you.",
         "way3": "Read its answer under your question"
       },
       "done": {
         "title": "That's support",
         "body": "A routine reads every ticket, writes the note and the draft; you review and decide. Nothing goes out without your approval.",
-        "role": "You stayed in charge of every word Rémi received."
+        "role": "You stayed in charge of every word Inès received."
       }
     },
     "studioProjects": {

@@ -167,7 +167,11 @@ export function advancePath(
     if (!taken) break
     reached += 1
   }
-  const there = wasThere || atTarget
+  // Seen on screen at all counts as got there, off the step's page too: the
+  // project's subtasks show on the project, not on the task the step opens
+  // from. Without it a person who went on from the list to a subtask kept
+  // "You're on the project" with nothing to take them back (walk 2026-11-25).
+  const there = wasThere || atTarget || targetOnScreen
   if (
     reached === prev.reached &&
     seen.size === prev.seen.size &&

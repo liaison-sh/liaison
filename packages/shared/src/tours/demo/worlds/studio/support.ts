@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-/** The services world's support scenario: a client asks for an invoice copy and a test site reset. */
+/** The services world's support scenario: a client asks for an invoice copy and an empty test supplier list. */
 import type { ScenarioCfg } from "../../shared"
 import { buildSupportTour } from "../../support"
 

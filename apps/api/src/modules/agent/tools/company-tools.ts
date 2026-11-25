@@ -1039,6 +1039,10 @@ export function registerCompanyTools(orgId: string): void {
     handler: anyHandler(handleCompaniesWrite),
     preflight: anyPreflight(companiesWritePreflight),
     writesToTable: "kernel.companies",
+    // A new company's id and name, for the later steps of the same request (its contact, a
+    // deal, a quote, the reply), before the company exists: its gated result lists them as
+    // @ref tokens. Without them the request stopped at the company, one approval per write.
+    referenceableOutputs: ["id", "name"],
   })
   registerApprovalSummarizer(orgId, "kernel", "companies_write", summarizeCompaniesWrite)
 

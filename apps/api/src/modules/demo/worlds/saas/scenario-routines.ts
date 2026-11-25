@@ -44,12 +44,14 @@ export function prospectRoutinePrompt(issuerProfileId: string): string {
     "nothing after the last slash. Note what the group does and its size. If the fetch " +
     "fails, go on without it and say so in the brief.\n" +
     "3. Company. A NEW group: call kernel__companies_write with its name, its domain and one " +
-    "line on what it does. Its result has outputs.record_id, a token like @ref:<id>:record_id. " +
+    "line on what it does. Its result has outputs.id, a token like @ref:<id>:id. " +
     "A group ALREADY there: make no call; its id is the id the search returned.\n" +
-    "4. Contact. A NEW sender: call kernel__contacts_write with their name, email and the " +
-    "company from step 3 (the whole token). A sender ALREADY there: make no call.\n" +
+    "4. Contact. A NEW sender: call kernel__contacts_write with their name, email and companyId: " +
+    "the id token from step 3, whole. A sender ALREADY there: make no call.\n" +
     "5. Quote. Call invoicing__quote_create_and_issue with:\n" +
     `- issuer_profile_id: ${issuerProfileId}\n` +
+    '- customer_reference: the id token from step 3, whole ("@ref:<id>:id"); for a group ' +
+    "already there, its id\n" +
     "- counterparty: legal_name (the group), country (ISO code, from their address), address " +
     "(from their signature or website), email (the sender's address)\n" +
     "- items: one line for the Group plan, quantity the number of sites they ask for, " +

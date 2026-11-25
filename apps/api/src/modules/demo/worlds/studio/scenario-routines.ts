@@ -26,16 +26,18 @@ export function studioProposalRoutinePrompt(): string {
     "nothing after the last slash. If the fetch fails, go on without it and say so in the " +
     "brief.\n" +
     "3. Company. A NEW firm: call kernel__companies_write with its name, its domain and one " +
-    "line on what it does. Its result has outputs.record_id, a token like @ref:<id>:record_id. " +
-    "A firm ALREADY there: make no call; its id is the id the search returned.\n" +
+    "line on what it does. Its result has outputs.id and outputs.name, tokens like " +
+    "@ref:<id>:id. A firm ALREADY there: make no call; its id is the id the search returned.\n" +
     "4. Deal. Call projects__create in the Sales pipeline: title the firm's name and what they " +
-    "ask for, linked to the company from step 3 (the whole token).\n" +
-    "5. Proposal. Call agreements__templates_list, then agreements__agreement_create with kind " +
-    "sow, the statement of work template's id, the title of what they ask for, the company " +
-    "from step 3 and the scope taken from the brief. Set NO price: the price is mine to set.\n" +
+    "ask for, companyId the id token from step 3, whole.\n" +
+    "5. Proposal. Call agreements__templates_list (it only reads), then " +
+    "agreements__agreement_create with kind sow, the statement of work template's id, the " +
+    "title of what they ask for, company_id the id token from step 3, whole, and the scope " +
+    "taken from the brief. Set NO price: the price is mine to set.\n" +
     "6. Reply. Call mail__reply with conversationId (from the event data) and a textBody that " +
-    "thanks them for the brief, restates what they ask for in two lines, and says a proposal " +
-    "with its price follows. No price, no figure of money.\n" +
+    "thanks them for the brief, names their firm with the name token from step 3, restates " +
+    "what they ask for in two lines, and says a proposal with its price follows. No price, no " +
+    "figure of money.\n" +
     "Then stop: the run waits for my decision and comes back to you with the results.\n" +
     "7. Once I have decided, close with a short brief: who they are, what the firm does (say " +
     "where you learned it), what they want, and what became of the company, the deal, the " +

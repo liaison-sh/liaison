@@ -318,9 +318,12 @@ const CollectionRow: Component<CollectionRowProps> = (props) => {
           <button
             type="button"
             data-testid={`knowledge-tree-toggle-${node().id}`}
-            aria-label={i18n.t(open() ? "knowledge.closeFolder" : "knowledge.folderPage.showInside", {
-              name: name(),
-            })}
+            aria-label={i18n.t(
+              open() ? "knowledge.closeFolder" : "knowledge.folderPage.showInside",
+              {
+                name: name(),
+              },
+            )}
             aria-expanded={open() ? "true" : "false"}
             onClick={() => toggleFolder(node().id)}
             class={toggleClass()}

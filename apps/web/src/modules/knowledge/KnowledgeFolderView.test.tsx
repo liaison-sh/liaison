@@ -54,7 +54,7 @@ function makeApi(view: KnowledgeFolderPage) {
   const api = {
     hold: false,
     failStart: false,
-    get: vi.fn(async (path: string) => {
+    get: vi.fn(async (path: string): Promise<unknown> => {
       if (path === `/knowledge/collections/${FOLDER}/page`) return { ...view }
       if (path.endsWith("/backlinks")) return { backlinks: [] }
       if (path.endsWith("/versions")) return []

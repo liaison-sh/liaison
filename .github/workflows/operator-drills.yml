@@ -146,7 +146,14 @@ jobs:
           set -euo pipefail
           cd deploy
           docker compose up -d --wait --wait-timeout 600 app sandbox
-          sudo sh ./sandbox-firewall.sh apply
+          # The boot unit too: before docker.service, wanted by it, valid for
+          # systemd, and its own `apply --boot` (the root-disk copy) passes.
+          sudo sh ./sandbox-firewall.sh install
+          systemd-analyze verify /etc/systemd/system/liaison-sandbox-firewall.service
+          systemctl show -p Before -p WantedBy liaison-sandbox-firewall | tee /dev/stderr | grep -q '^WantedBy=.*docker.service'
+          systemctl show -p Before liaison-sandbox-firewall | grep -q 'docker.service'
+          sudo systemctl restart liaison-sandbox-firewall
+          systemctl is-active liaison-sandbox-firewall
           docker compose exec -T sandbox bun --eval "fetch('http://localhost:8790/stats').then(r => r.json()).then(j => console.log(JSON.stringify(j.pool ?? j)))"
           # Docker's name service as gVisor sees it (diagnostic only).
           docker compose exec -T sandbox bun --eval "require('node:dns').promises.lookup('app-bridge').then(a => console.log('dns app-bridge:', JSON.stringify(a)), e => console.log('dns app-bridge:', e.code))"

@@ -49,7 +49,7 @@ import {
   offeredLocalModelFor,
   parseLocalModels,
 } from "~/lib/desktop-shell-contract"
-import { onSessionTeardown, runBeforeSignOut } from "~/lib/session-lifecycle"
+import { confirmSignOut, onSessionTeardown, runBeforeSignOut } from "~/lib/session-lifecycle"
 
 let bridge: DesktopBridge | null = null
 let unsubscribe: (() => void) | null = null
@@ -158,7 +158,10 @@ export function desktopServers(): DesktopServers | null {
   // The shell signs out by itself, as the phone's does (lib/native-bridge.ts):
   // the page's before-sign-out work runs first, while the session still
   // authenticates it.
+  // First of all the sign-out guards: unsaved text is saved, or the person is asked
+  // and may stay signed in.
   const signOut = async (): Promise<void> => {
+    if (!(await confirmSignOut())) return
     await runBeforeSignOut()
     await servers.signOut()
   }

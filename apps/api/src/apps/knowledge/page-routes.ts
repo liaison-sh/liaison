@@ -7,6 +7,7 @@ import type { AppEnv } from "~/app"
 import { MAX_RESOLVE_IDS, pageBacklinks, pickPages, readablePages } from "~/apps/knowledge/links"
 import { moveDocument } from "~/apps/knowledge/move"
 import {
+  archiveKnowledgeDocument,
   assertCanReadDocumentRow,
   assertCanWriteDocumentRow,
   type KnowledgeActor,
@@ -16,6 +17,14 @@ import {
   loadKnowledgeDocument,
   updateKnowledgeDocument,
 } from "~/apps/knowledge/service"
+import {
+  alertTrash,
+  assertCanDeleteForGood,
+  DeleteForGoodScopeError,
+  deleteForGood,
+  listTrash,
+  PurgeResidueError,
+} from "~/apps/knowledge/trash"
 import { getVersion, listVersions, saveUnapplied } from "~/apps/knowledge/versions"
 import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
@@ -274,4 +283,73 @@ export function mountPageRoutes(routes: Hono<AppEnv>, helpers: PageRouteHelpers)
       }
     },
   )
+  // Trash (S19, D3, D4): what the caller may restore, with the days left.
+  routes.get("/trash", async (c) => {
+    const actor = helpers.getActor(c)
+    const items = await withRequestRls(c, (tx) => listTrash(tx, actor))
+    return success(c, items)
+  })
+
+  // One page's Trash entry, for a link that opens a trashed page: the same
+  // not-found as an unknown id when the caller cannot restore it.
+  routes.get("/trash/:id", zValidator("param", idParamSchema), async (c) => {
+    try {
+      const actor = helpers.getActor(c)
+      const { id } = c.req.valid("param")
+      const [entry] = await withRequestRls(c, (tx) => listTrash(tx, actor, { id }))
+      if (!entry) throw notFound()
+      return success(c, entry)
+    } catch (err) {
+      return helpers.pageNotFound(c, err)
+    }
+  })
+
+  // "Move to trash": the archive, by the name people see.
+  routes.post("/documents/:id/trash", zValidator("param", idParamSchema), async (c) => {
+    try {
+      const actor = helpers.getActor(c)
+      const { id } = c.req.valid("param")
+      const doc = await withRequestRls(c, (tx) => archiveKnowledgeDocument(tx, id, actor))
+      return success(c, doc)
+    } catch (err) {
+      return helpers.pageWriteRefusal(c, err)
+    }
+  })
+
+  // Delete for good (A23, K-R19): the checks run under the caller's own row view
+  // (edit right, else the not-found of an unknown id; then the admin scope; then
+  // in Trash with a clock); only then the privileged delete, which locks the row
+  // and checks the Trash rule again, so a restore committed meanwhile wins.
+  routes.delete("/documents/:id", zValidator("param", idParamSchema), async (c) => {
+    try {
+      const actor = helpers.getActor(c)
+      const { id } = c.req.valid("param")
+      await withRequestRls(c, (tx) => assertCanDeleteForGood(tx, id, actor))
+      if (!(await deleteForGood(actor.orgId, id, actor.userId))) {
+        throw new KnowledgeError("VALIDATION", "This page is no longer in Trash")
+      }
+      return success(c, { id, deleted: true })
+    } catch (err) {
+      if (err instanceof DeleteForGoodScopeError) {
+        return c.json({ error: { message: err.message, code: err.code } }, 403)
+      }
+      if (err instanceof PurgeResidueError) {
+        alertTrash(
+          err,
+          { orgId: c.get("orgId"), documentId: err.documentId, residue: err.residue },
+          "knowledge: delete for good left rows, page kept in Trash",
+        )
+        return c.json(
+          {
+            error: {
+              message: "This page could not be deleted for good. It stays in Trash.",
+              code: "PURGE_INCOMPLETE",
+            },
+          },
+          500,
+        )
+      }
+      return helpers.pageWriteRefusal(c, err)
+    }
+  })
 }

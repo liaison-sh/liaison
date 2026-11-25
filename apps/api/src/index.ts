@@ -394,6 +394,21 @@ try {
   await runPhase10Boot()
   rootLogger.info("Phase 10 boot complete")
 
+  // Legal records: a trigger body an older release wrote is rewritten now (its
+  // demo exception trusted a jsonb marker), not only once its app registers
+  // again or an org is purged. One catalog query when every body is current. A
+  // body that cannot be read back is logged; the server still starts.
+  if (hostsJobs(role)) {
+    try {
+      const { ensureImmutableTriggersCurrent } = await import(
+        "~/modules/org/purge/immutable-triggers"
+      )
+      await ensureImmutableTriggersCurrent()
+    } catch (err) {
+      rootLogger.error({ err }, "Immutability triggers could not all be brought up to date")
+    }
+  }
+
   // Phase 15: inbound MCP-client kernel module: the engine and its reap timer
   // only. An org's connections are projected at its first touch.
   try {

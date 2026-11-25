@@ -95,8 +95,10 @@ const DeleteAccountSection: Component = () => {
     // The sign-in screen this lands on says why (account-deleted-notice.ts).
     markAccountDeleted()
     const servers = nativeServers()
-    if (servers) await servers.signOut().catch(() => undefined)
-    else await authManager.logout()
+    // Forced: the account is gone, so nothing can be saved and nobody asked; its
+    // local drafts are erased with it.
+    if (servers) await servers.signOut({ forced: true }).catch(() => undefined)
+    else await authManager.logout({ forced: true })
   }
 
   return (

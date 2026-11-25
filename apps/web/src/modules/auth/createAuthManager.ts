@@ -13,7 +13,7 @@ import {
 import { authApiUrl } from "~/lib/env"
 import { log } from "~/lib/logger"
 import { noteIfOrgSuspended } from "~/lib/org-suspended"
-import { runBeforeSignOut, teardownSession } from "~/lib/session-lifecycle"
+import { confirmSignOut, runBeforeSignOut, teardownSession } from "~/lib/session-lifecycle"
 import { clearLiaisonStorage } from "~/lib/storage"
 import {
   accessToken,
@@ -174,7 +174,15 @@ export function createAuthManager(options: AuthManagerOptions = {}) {
     return refreshPromise
   }
 
-  async function logout(): Promise<void> {
+  /**
+   * Sign out. False when it did not happen: the person chose to stay signed in
+   * rather than lose text that could not be saved (the sign-out guards). `forced`
+   * skips that question where nothing can be saved or asked (a deleted account,
+   * an ended demo workspace).
+   */
+  async function logout(opts: { forced?: boolean } = {}): Promise<boolean> {
+    // FIRST, before anything ends: unsaved text is saved, or the person is asked.
+    if (!(await confirmSignOut({ forced: opts.forced === true }))) return false
     epoch += 1
     // First, while the session still authenticates it: work that must land
     // before the sign-out (a decision still inside its Undo window is sent).
@@ -218,6 +226,7 @@ export function createAuthManager(options: AuthManagerOptions = {}) {
     // Stores self-register via onSessionTeardown() — no manual list needed.
     teardownSession()
     clearLiaisonStorage()
+    return true
   }
 
   /**
@@ -288,7 +297,7 @@ export async function leaveEndedDemoWorkspace(
 ): Promise<void> {
   teardownSession()
   try {
-    await authManager.logout()
+    await authManager.logout({ forced: true })
   } catch (err) {
     authLog.warn({ err }, "Sign-out of an ended demo workspace failed; leaving anyway")
     clearAuth()

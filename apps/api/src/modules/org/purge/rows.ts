@@ -22,7 +22,7 @@
 // retention period. Each DELETE here sets `ORG_PURGE_SETTING` to the org,
 // transaction locally, after the caller's guard. The trigger honours it only
 // for `liaison_admin`, only for that org's rows, and only while that org's
-// stored row says it may go (`deleting_at` set, or a demo marker), so no other
+// stored row says it may go (`deleting_at` set, or class `demo`), so no other
 // org's legal records are touched.
 import { sql as drizzleSql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"

@@ -46,6 +46,7 @@ import DesktopConnectDialog from "~/modules/desktop/DesktopConnectDialog"
 import DesktopDeviceApprovalDialog from "~/modules/desktop/DesktopDeviceApprovalDialog"
 import { installDesktopNotices } from "~/modules/desktop/desktop-notices"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { SignOutUnsavedDialog } from "~/modules/knowledge/SignOutUnsavedDialog"
 import { MailboxAgentHost } from "~/modules/mailbox/MailboxAgentHost"
 import { MailboxUnlockHost } from "~/modules/mailbox/MailboxUnlockHost"
 import {
@@ -897,7 +898,8 @@ export const Shell: Component = () => {
   })
 
   async function handleLogout() {
-    await auth.logout()
+    // The person chose to stay signed in (text that could not be saved).
+    if (!(await auth.logout())) return
     ws.clearLastEventId()
     ws.disconnect()
   }
@@ -1213,6 +1215,8 @@ export const Shell: Component = () => {
             <ClaudeSignInDialog />
             <NewChannelDialog />
             <NewMessageDialog />
+            {/* An explicit sign-out with page text that could not be saved asks here. */}
+            <SignOutUnsavedDialog />
             {/*
               Guided tours: the panel, its spotlight and the resume chip float
               over the app without blocking it, so they hang off the shell,

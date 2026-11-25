@@ -36,6 +36,10 @@ describe("knowledge app manifest (T14)", () => {
   it("member can manage folders, and a curator still can", () => {
     const roles = manifest.roles as Record<string, { extends?: string; scopes: string[] }>
     expect(roles.member.scopes).toContain("knowledge:collections:manage")
+    // Trash (D4): anyone with the edit right restores, so members move pages to Trash and back.
+    expect(roles.member.scopes).toContain("knowledge:documents:archive")
+    // Deleting for good stays an administrator's.
+    expect(roles.member.scopes).not.toContain("knowledge:documents:admin")
     expect(roles.curator.extends).toBe("member")
     // Syncing a source stays a curator's decision.
     expect(roles.member.scopes).not.toContain("knowledge:sources:manage")

@@ -10,7 +10,8 @@
  *   POST /:id/cancel       stop a run between batches       kernel:imports:run
  *   POST /:id/undo         undo a finished run              kernel:imports:undo
  *   GET  /transforms       the org's transforms (latest)    kernel:imports:read
- *   POST /previews         preview a transform (dry run)    kernel:imports:run
+ *   POST /previews         preview a transform (dry run),   kernel:imports:run
+ *                          or a built-in ({builtin, params}: its label is the server's)
  *   POST /previews/:id/start  start one's own preview       kernel:imports:run
  *
  * Cancel and undo also need, read live, the kinds' write scopes and to be the
@@ -33,7 +34,7 @@ import { requireScope } from "~/middleware/require-scope"
 import { assertRunAuthority } from "~/modules/imports/authority"
 import { enqueueImportRun } from "~/modules/imports/job"
 import { getImportKind, type ImportKindInfo, listImportKinds } from "~/modules/imports/kinds"
-import { loadPreview, previewImport, startFromPreview } from "~/modules/imports/preview"
+import { loadAnyPreview, previewImport, startFromPreview } from "~/modules/imports/preview"
 import { missingWriteScopes } from "~/modules/imports/runner"
 import { createImportRun, failRun, getImportRun, requestRunCancel } from "~/modules/imports/runs"
 import { FORMAT_KINDS, resolveImportFile } from "~/modules/imports/source"
@@ -157,7 +158,7 @@ export const importRoutes = new Hono<AppEnv>()
     async (c) => {
       const actor = extractRlsContext(c)
       try {
-        const pv = await loadPreview(actor.orgId, c.req.valid("param").id, actor.userId)
+        const pv = await loadAnyPreview(actor.orgId, c.req.valid("param").id, actor.userId)
         const run = await startFromPreview({ orgId: actor.orgId, userId: actor.userId }, pv)
         return c.json({ data: run }, 202)
       } catch (err) {

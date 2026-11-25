@@ -7,6 +7,7 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { openEntity } from "~/modules/shell/entity-opener"
 import { Button } from "~/ui/Button"
 import { Input } from "~/ui/Input"
+import KnowledgeHomeLink from "./KnowledgeHomeLink"
 import { knowledgeStore, searchKnowledge } from "./knowledge-store"
 
 // Map a search hit to its entity type for the entity-opener registry. Prefer
@@ -64,6 +65,9 @@ const KnowledgeSearchView: Component<{ api: ApiClient }> = (props) => {
 
   return (
     <div data-testid="knowledge-search-view" class="flex flex-col gap-3 p-4">
+      <div>
+        <KnowledgeHomeLink />
+      </div>
       <Input
         type="text"
         placeholder={i18n.t("knowledge.searchKnowledgeAndSources")}

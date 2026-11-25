@@ -1,0 +1,4 @@
+Only class demo is deleted or reset; a billed, control plane made or named operator org is refused -> apps/api/src/modules/demo/demo-reset.ts (claimForPurge, assertPurgeAllowed, assertResetAllowed) ; apps/api/src/modules/demo/org-class.ts (notACustomerOrg, isNamedOperatorOrg)
+Class set at creation, never changed -> apps/api/src/modules/provisioning/ensure-org.ts (ensureOrg, OrgClassMismatchError) ; apps/api/src/modules/demo/demo-pool.ts (createVisitorOrgShell)
+demo reclassify lists, --apply changes -> apps/api/src/cli/demo-reclassify.ts (runDemoReclassifyCli) ; apps/api/src/modules/demo/reclassify.ts (reclassifyWindowOrgs)
+The migration classes existing demo workspaces and stops on a marked, billed org -> apps/api/src/db/migrations/0309_org_class.sql

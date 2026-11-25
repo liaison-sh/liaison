@@ -235,4 +235,28 @@ describe("the desktop's sign out", () => {
       dispose()
     }
   })
+
+  it("stops before anything when a sign-out guard says no", async () => {
+    const { onBeforeSignOut, onSignOutGuard } = await import("~/lib/session-lifecycle")
+    const before = vi.fn()
+    const disposeBefore = onBeforeSignOut(before)
+    const disposeGuard = onSignOutGuard(async () => false)
+    const fake = installFakeBridge()
+    const signOut = vi.fn(async () => {})
+    ;(fake.bridge as unknown as { servers: unknown }).servers = {
+      list: vi.fn(),
+      add: vi.fn(),
+      switchTo: vi.fn(),
+      remove: vi.fn(),
+      signOut,
+    }
+    try {
+      await desktopServers()?.signOut()
+      expect(before).not.toHaveBeenCalled()
+      expect(signOut).not.toHaveBeenCalled()
+    } finally {
+      disposeBefore()
+      disposeGuard()
+    }
+  })
 })

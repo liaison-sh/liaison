@@ -78,10 +78,7 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "sync_state",
-        "{\"where\":{\"platform\":\"instagram\",\"active\":true}}"
-      ],
+      "args": ["sync_state", "{\"where\":{\"platform\":\"instagram\",\"active\":true}}"],
       "reply": "[]"
     },
     {

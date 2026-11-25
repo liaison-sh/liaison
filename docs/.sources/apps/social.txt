@@ -60,9 +60,6 @@ dismiss_finding -> bundled-apps/social/app.manifest.json:553
 watch_object -> bundled-apps/social/app.manifest.json:560
 unwatch_object -> bundled-apps/social/app.manifest.json:577
 Facebook guide: Meta developer registration first ("Sorry, the link you followed may be broken"), Page use case permissions under Customize, pages_messaging under the Messenger use case's Customize -> bundled-apps/social/app.manifest.json:116-135
-connection instagram_unified, Unified login preview, optional -> bundled-apps/social/app.manifest.json:92
-reads pending verification, nothing syncs (no sync plan for instagram_unified) -> bundled-apps/social/src/connection.ts:39
-guide: portfolio, use case, configuration, Never, Configuration ID, Meta App ID -> bundled-apps/social/app.manifest.json:121
 app setting instagramLoginConfigurationId -> bundled-apps/social/app.manifest.json:28
 no revoke call: remove the app from the business portfolio -> bundled-apps/social/app.manifest.json:115
 Facebook token reminder 14 days before expiry -> apps/api/src/modules/apps/connections/attention.ts:198

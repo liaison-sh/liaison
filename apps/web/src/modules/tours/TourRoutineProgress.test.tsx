@@ -248,6 +248,18 @@ describe("a step waiting on a routine says what the server says the routine is d
     expect(screen.queryByTestId("tour-routine-setup")).toBeNull()
   })
 
+  // Demo walk 2026-11-25: a sales run ended "succeeded" without staging its
+  // reply; the card said "The routine has finished" with a check while the
+  // step never moved. It says the run finished without doing it, and Skip is on the card.
+  it("finished without doing the step: says so, no check, and Skip is on the card", async () => {
+    await mount()
+    await serve({ kind: "routine-incomplete", routineName: "Support first look" })
+    const ended = await screen.findByTestId("tour-routine-progress")
+    expect(ended.dataset.status).toBe("incomplete")
+    expect(ended.textContent).toContain("finished without doing this step")
+    expect(screen.getByTestId("tour-skip-beat")).toBeTruthy()
+  })
+
   it("a page reloaded mid-run reads the run from the server", async () => {
     server.status = running(30_000)
     await mount()

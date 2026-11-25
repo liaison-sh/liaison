@@ -183,7 +183,7 @@ afterEach(async () => {
 })
 
 describe("a step waiting on a routine", () => {
-  it("a long run that succeeded: running while it runs, then succeeded, never running again", async () => {
+  it("a long run that ended: running while it runs, then ended, never running again", async () => {
     expect((await status(at("routine-note"))).kind).toBe("pending")
     const startedAt = new Date(Date.now() - 77_000).toISOString()
     await noteRoutineRunStarted({
@@ -199,11 +199,14 @@ describe("a step waiting on a routine", () => {
       startedAt,
     })
     await runRow("succeeded", null, 77_000)
-    // The row alone already says it finished, before its end frame landed.
-    expect((await status(at("routine-note"))).kind).toBe("routine-succeeded")
+    // The row alone already says it ended, before its end frame landed. It
+    // ended "succeeded" without the note this step waits on: the run finished
+    // without doing the step, never "finished" with a check over a step that
+    // will not move (demo walk 2026-11-25, a sales run without its reply).
+    expect((await status(at("routine-note"))).kind).toBe("routine-incomplete")
     await noteRoutineRunEnded({ orgId, routineId, eventEntityId: ticket })
     expect(await status(at("routine-note"))).toEqual({
-      kind: "routine-succeeded",
+      kind: "routine-incomplete",
       routineName: "Draft a reply to new tickets",
     })
   })

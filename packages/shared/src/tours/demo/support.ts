@@ -32,6 +32,13 @@ import {
   WAIT_FOR_AGENT_STEPS,
 } from "./shared"
 
+/**
+ * The composer of the person's conversation with their own agent: on screen
+ * once that conversation is open beside the ticket, so Chats and its row are
+ * behind the person (the way's last hop, `at`).
+ */
+const PERSONAL_COMPOSER = "compose-field[data-personal-agent=true]"
+
 export function buildSupportTour(cfg: ScenarioCfg): Tour {
   const k = scenarioKey(cfg.copy ?? "support")
   return scenarioTour("support", cfg, {
@@ -150,11 +157,11 @@ export function buildSupportTour(cfg: ScenarioCfg): Tour {
         role: k("askAgent.role"),
         // The conversation with the person's own agent, reached from Chats
         // beside the ticket: each place on the way is ringed in turn.
-        anchor: "compose-field[data-personal-agent=true]",
+        anchor: PERSONAL_COMPOSER,
         path: [
           hop(k("askAgent.way1"), "dock-chats", "phone-tab-chats"),
           hop(k("askAgent.way2"), RUN_CONVERSATION_ROW, RUN_CONVERSATION_ROW_PHONE),
-          lastHop("tours.scenarios.common.sendBelow"),
+          lastHop("tours.scenarios.common.sendBelow", PERSONAL_COMPOSER),
         ],
         say: { lead: k("askAgent.say"), text: k("askAgent.text") },
         route: "/tickets/{live-ticket}",
@@ -174,7 +181,7 @@ export function buildSupportTour(cfg: ScenarioCfg): Tour {
         path: [
           hop(k("askAgent.way1"), "dock-chats", "phone-tab-chats"),
           hop(k("askAgent.way2"), RUN_CONVERSATION_ROW, RUN_CONVERSATION_ROW_PHONE),
-          lastHop(k("answer.way3")),
+          lastHop(k("answer.way3"), PERSONAL_COMPOSER),
         ],
         route: "/tickets/{live-ticket}",
         // Next stays off while the agent is still answering.

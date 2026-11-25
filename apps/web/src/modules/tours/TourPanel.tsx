@@ -112,7 +112,7 @@ const MODEL_SETUP_ROUTE = "/settings/ai-models"
 
 /** The routine run a step waits on, as the server's step status says it. */
 interface RoutineRunView {
-  phase: "running" | "succeeded" | "waiting" | "failed" | "skipped"
+  phase: "running" | "succeeded" | "incomplete" | "waiting" | "failed" | "skipped"
   routineName: string | null
   /** When the run began (ms, the server's clock); null when unknown or not running. */
   startedAt: number | null
@@ -139,6 +139,14 @@ export function routineRunOf(status: TourBeatStatus | undefined): RoutineRunView
     case "routine-succeeded":
       return {
         phase: "succeeded",
+        routineName: status.routineName,
+        startedAt: null,
+        error: null,
+        status: null,
+      }
+    case "routine-incomplete":
+      return {
+        phase: "incomplete",
         routineName: status.routineName,
         startedAt: null,
         error: null,
@@ -574,6 +582,10 @@ export const TourPanel: Component<TourPanelProps> = (props) => {
     return since !== null && unstartedNow() - since >= ROUTINE_START_GRACE_MS
   }
 
+  /** The routine's run ended without doing this step: it will not arrive from that run. */
+  const routineEndedShort = () =>
+    !passed() && !arrived() && props.progress.beatStatus?.kind === "routine-incomplete"
+
   /** The hop to take now, while the step's element is away: one line, "n/m". */
   const hop = () => {
     const way = props.way
@@ -899,8 +911,8 @@ export const TourPanel: Component<TourPanelProps> = (props) => {
             {doMyselfButton()}
             <Show when={skipBeatInline()}>{skipBeatButton()}</Show>
           </Match>
-          {/* A routine that never started: skip this step to go on. */}
-          <Match when={routineNotStarted()}>{skipBeatButton()}</Match>
+          {/* A routine that never started, or ended without doing this step: skip it to go on. */}
+          <Match when={routineNotStarted() || routineEndedShort()}>{skipBeatButton()}</Match>
           {/* The agent, a routine or a replay does it: Next, once it is done. */}
           <Match when={waitsOnRunningWork(props.beat)}>{nextButton(() => true)}</Match>
           {/* ONE state: the agent or the tour is on it (working, or a step the
@@ -1072,6 +1084,10 @@ const RoutineRunLine: Component<{ run: RoutineRunView }> = (props) => {
         return name
           ? i18n.t("tours.engine.routineDone", { name })
           : i18n.t("tours.engine.routineDoneUnnamed")
+      case "incomplete":
+        return name
+          ? i18n.t("tours.engine.routineIncomplete", { name })
+          : i18n.t("tours.engine.routineIncompleteUnnamed")
       case "waiting":
         if (props.run.asks) {
           return name
@@ -1111,6 +1127,7 @@ const RoutineRunLine: Component<{ run: RoutineRunView }> = (props) => {
         props.run.phase === "running" && "text-text-tertiary",
         props.run.phase === "succeeded" && "text-success",
         (props.run.phase === "failed" ||
+          props.run.phase === "incomplete" ||
           props.run.phase === "skipped" ||
           props.run.phase === "waiting") &&
           "text-text-secondary",

@@ -151,6 +151,7 @@ Credit-paused routines stay scheduled across restarts -> apps/api/src/infra/jobs
 Scope-paused routine records Skipped: missing access per skipped run -> apps/api/src/modules/agent/routines/routine-worker.ts:680
 A run waits at a held step instead of carrying on -> apps/api/src/modules/agent/routines/routine-run-resume.ts:14
 A held step with references to its result: the run first proposes the steps chained on them -> apps/api/src/modules/agent/runtime/agent-service.ts:335
+Every held step proposed while chaining joins the request, with or without references of its own -> apps/api/src/modules/agent/runtime/agent-service.ts:520
 The turn stops after the step that parked the call -> apps/api/src/modules/agent/runtime/agent-service.ts:251
 Waiting for approval run status -> packages/shared/src/i18n/locales/en/kernel.json:361
 Routine name is waiting for an approval line -> packages/shared/src/i18n/locales/en/kernel.json:2920

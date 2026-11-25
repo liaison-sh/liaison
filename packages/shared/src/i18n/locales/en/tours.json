@@ -425,6 +425,8 @@
     "routineRunningUnnamed": "The routine is working on it ({{elapsed}}). This step moves on when it is done.",
     "routineDone": "The routine “{{name}}” has finished.",
     "routineDoneUnnamed": "The routine has finished.",
+    "routineIncomplete": "The routine “{{name}}” finished without doing this step. Skip it to go on.",
+    "routineIncompleteUnnamed": "The routine finished without doing this step. Skip it to go on.",
     "routineWaiting": "The routine “{{name}}” is waiting for an approval it asked for. Decide it in Home and the routine carries on.",
     "routineWaitingAsks": "The routine “{{name}}” asks for your approval before it goes on. Approve its request in Home, or press Do it for me, and the routine carries on.",
     "routineWaitingAsksUnnamed": "The routine asks for your approval before it goes on. Approve its request in Home, or press Do it for me, and the routine carries on.",

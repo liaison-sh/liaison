@@ -67,7 +67,8 @@ export function buildProjectsTour(cfg: ProjectsScenarioCfg): Tour {
       RUN_CONVERSATION_ROW,
       RUN_CONVERSATION_ROW_PHONE,
     ),
-    lastHop(last),
+    // Its composer on screen: the conversation is open already, Chats and its row are behind.
+    lastHop(last, RUN_COMPOSER_ANCHOR),
   ]
   return scenarioTour("projects", cfg, {
     app: "kernel",

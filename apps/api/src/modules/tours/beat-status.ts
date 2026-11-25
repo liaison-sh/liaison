@@ -680,6 +680,11 @@ async function followAnsweredQuestion(
     : progress
 }
 
+/** A do step whose event is the routine's own work (`actor: "any"`), not a person's press. */
+function doneByRoutine(beat: EffectiveBeat): boolean {
+  return beat.kind === "do" && beat.event?.actor === "any" && !approvesSomething(beat)
+}
+
 /** A step that approves something: it waits on the person's press, never on a turn. */
 function approvesSomething(beat: EffectiveBeat): boolean {
   return beat.event?.entity === "approval_request" && beat.event.action === "update"
@@ -711,6 +716,14 @@ export async function computeBeatStatus(input: {
     // (sales walk 2026-10-27: "the runner did not understand where we're
     // at"). Running, failed or skipped still say so: the card is not there yet.
     if (approvesSomething(beat) && run.kind === "routine-succeeded") return { kind: "pending" }
+    // A step the routine itself completes (its event is the run's own work)
+    // that has not arrived when the run ended "succeeded": the run finished
+    // without doing it. "The routine has finished", with its check, read as
+    // done while the step never moved (a sales run that ended without staging
+    // its reply, demo walk 2026-11-25). The card says so and offers Skip.
+    if (run.kind === "routine-succeeded" && doneByRoutine(beat)) {
+      return { kind: "routine-incomplete", routineName: run.routineName }
+    }
     // A run paused on an approval: a step approving what it staged, or one
     // showing what it made, waits on the person as before. A step that waits
     // for the routine to DO something says the run waits on an approval: it

@@ -637,21 +637,6 @@ liaison org transfer agent --role target | agent --role source <org id> --transf
 | `--target-cmd <command>` | no | Source only: the command that starts the target agent (e.g. an ssh to the target). |
 | `--fail-at <precopy\|draining\|frozen\|after-cas>` | no | Source only, for rehearsals on test servers: stop on the spot at that step (no abort, no more heartbeats), as a crash would. |
 
-## demo reclassify
-
-For the operator of a public demo, once, right after upgrading it to the release that gives every org a class: the visitor workspaces the previous release made while both ran have none, and the demo reaper deletes no org of another class. Lists the workspaces created in the window, and with `--apply` makes exactly those demo orgs, so they are deleted at their own expiry. Only a workspace with a valid visitor marker, a visitor workspace's generated slug, no billing and no control plane create is ever listed, never the operator's org. Refused (exit 2) with demo mode off and in the managed edition.
-
-```
-liaison demo reclassify --since <instant> --until <instant> [--org <id>] [--apply]
-```
-
-| Flag | Required | Description |
-| --- | --- | --- |
-| `--since <instant>` | yes | The start of the window, with its zone: a little before the migration ran. |
-| `--until <instant>` | yes | The end of the window: when the last process of the previous release stopped. |
-| `--org <id>` | no | Only this workspace. |
-| `--apply` | no | Make the change; without it the command only lists. |
-
 ## org caps
 
 Show or set an organization's caps: seats (active people), mailboxes (connected Gmail or IMAP addresses), storage in GB, background jobs per hour, custom apps, audit days, and the org's app runs, app calls and app CPU milliseconds per UTC day. Without a change flag it prints the caps and the usage; a change keeps the caps it does not name. A missing cap is unlimited, which is how every org starts. Each cap is a whole number of at least 1: 0 is refused, and `--unset` makes a cap unlimited. Only the operator sets caps: org admins see them read only in Settings → Organization. A cap below current usage removes nothing; new seats and mailboxes are refused until usage drops, background jobs over the hourly cap wait for the next hour, and past an app day cap tools are refused while webhooks, events and app jobs wait for the next UTC day.

@@ -69,7 +69,7 @@
   },
   "app_knowledge.documents": {
     "rows": 3,
-    "digest": "93d617325beee343"
+    "digest": "19fb0a9167a9b7a4"
   },
   "app_knowledge.taggings": {
     "rows": 6,
@@ -249,7 +249,7 @@
   },
   "kernel.pending_events": {
     "rows": 467,
-    "digest": "e2b1e82cec53c7d6"
+    "digest": "6d671c1e0f5d8851"
   },
   "kernel.portal_people": {
     "rows": 2,
@@ -261,7 +261,7 @@
   },
   "kernel.roles": {
     "rows": 37,
-    "digest": "c9c3c74329b87d17"
+    "digest": "380dc656bee24b89"
   },
   "kernel.routines": {
     "rows": 3,

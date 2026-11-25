@@ -55,7 +55,7 @@ const TOPOLOGY = {
   LIAISON_ROLE: "api",
   LIAISON_API_REPLICAS: "2",
   LIAISON_WORKER_REPLICAS: "1",
-  // Split logins: all five pools. The process exits before it connects.
+  // Split logins: all six pools. The process exits before it connects.
   DATABASE_REQUEST_PASSWORD: "pool-boot-test",
   DB_POOL_MAX: "",
   DB_PRIVILEGED_POOL_MAX: "",
@@ -70,7 +70,14 @@ describe("boot: the pool budget", () => {
     expect(r.code).toBe(1)
     expect(r.ms).toBeLessThan(10_000)
     expect(r.output).toContain("pool_budget_exceeded")
-    for (const pool of ["main=5", "request=6", "privileged=10", "jobs=3", "privileged-jobs=2"]) {
+    for (const pool of [
+      "main=5",
+      "request=4",
+      "privileged=10",
+      "jobs=3",
+      "privileged-jobs=2",
+      "portal=2",
+    ]) {
       expect(r.output).toContain(pool)
     }
   }, 40_000)
@@ -104,7 +111,7 @@ describe("boot: the pool budget", () => {
       reportPoolPlan(planPools({ ...input, cellMax: 200 }), ok.log, { endpoint: "pooler" }),
     ).toBe("ok")
     expect(ok.lines).toHaveLength(1)
-    expect(ok.lines[0]?.obj.perLogin).toEqual({ request: 9, privileged: 17 })
+    expect(ok.lines[0]?.obj.perLogin).toEqual({ request: 7, privileged: 17, portal: 2 })
   })
 
   it("plans a worker's privileged pool so the kernel keeps 2/4/2/1/1 slots, unscaled", () => {

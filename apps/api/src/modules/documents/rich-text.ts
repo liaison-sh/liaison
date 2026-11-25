@@ -55,6 +55,7 @@ import {
 import { PDFDocument } from "pdf-lib"
 import { z } from "zod"
 import { MAX_PAGES, type ResolvedImage, replayDrawCommands } from "~/modules/pdf/replay"
+import { LEGAL_INLINE_RE, type LegalFill, type LegalRefusal, layoutLegal } from "./legal-layout"
 
 // ---------------------------------------------------------------------------
 // Bounds
@@ -164,6 +165,14 @@ const pageSchema = z
       .strict()
       .optional(),
     fontSize: z.number().finite().min(8).max(14).optional(),
+    /** `legal`: the classic contract layout of legal-layout.ts (its blocks need it). */
+    layout: z.enum(["standard", "legal"]).optional(),
+    /** The document's language, for the words the legal layout prints itself. */
+    lang: z.enum(["en", "fr"]).optional(),
+    /** The legal layout's running header says "Confidentiel" / "Confidential". */
+    confidential: z.boolean().optional(),
+    /** The legal layout's running header title (the document title when absent). */
+    shortTitle: z.string().max(120).optional(),
   })
   .strict()
 
@@ -212,15 +221,31 @@ const paragraphBlock = z
   })
   .strict()
 
+/**
+ * A list prints either one line per row of the record list `from` (`line`, read relative to
+ * the row), or the written `items`, each a text like a paragraph's; never both.
+ */
 const listBlock = z
   .object({
     type: z.literal("list"),
-    from: listPath,
-    line: templateText,
+    from: listPath.optional(),
+    line: templateText.optional(),
+    items: z.array(templateText).min(1).max(RICH_TEXT_MAX_BLOCKS).optional(),
     where: conditionsSchema.optional(),
     ...when,
   })
   .strict()
+
+/** A list's shape rules (kept out of the object so the block union stays discriminated). */
+function listProblem(l: z.infer<typeof listBlock>): string | null {
+  if (l.items !== undefined)
+    return l.from !== undefined || l.line !== undefined || l.where !== undefined
+      ? "a list takes its written items, or from and line, never both"
+      : null
+  if (l.from === undefined || l.line === undefined)
+    return "a list takes its written items, or from (a record list) and line"
+  return null
+}
 
 const columnSchema = z
   .object({
@@ -247,6 +272,20 @@ const tableBlock = z
       .max(200)
       .optional(),
     size: fontSize.optional(),
+    /**
+     * A last row summing one column of `from`: `path` reads each row (relative to it) and holds
+     * whole minor units (an integer, or a text of digits); `currency` is a record path to the
+     * currency code the sum prints in. The sum is exact (BigInt); a row that is not a whole
+     * number refuses the print, naming the field.
+     */
+    total: z
+      .object({
+        label: templateText,
+        path: z.string().max(500).regex(PATH_RE, "a dot path, such as amount_minor"),
+        currency: z.string().max(500).regex(PATH_RE, "a dot path, such as currency").optional(),
+      })
+      .strict()
+      .optional(),
     ...when,
   })
   .strict()
@@ -258,8 +297,123 @@ function tableProblem(t: z.infer<typeof tableBlock>): string | null {
     return "every column of a table over `from` needs its text"
   if (!(t.rows ?? []).every((r) => (Array.isArray(r) ? r : r.cells).length === t.columns.length))
     return "every fixed row has one cell per column"
+  if (t.total !== undefined && t.from === undefined) return "a table total sums the rows of `from`"
   return null
 }
+
+// ---------------------------------------------------------------------------
+// Legal blocks (page.layout = "legal", legal-layout.ts)
+// ---------------------------------------------------------------------------
+
+/** A legal text: a template text that may also hold {{ref:id}} and {{def:Term}}. */
+const legalText = z
+  .string()
+  .max(RICH_TEXT_MAX_TEXT)
+  .refine(
+    (t) => !malformedPlaceholder(t.replace(LEGAL_INLINE_RE, "")),
+    "a placeholder is {{path}}, {{path ?? words}} or a computation; a legal text also takes {{ref:<clause id>}} and {{def:<defined term>}}",
+  )
+  .refine(
+    (t) => [...t.matchAll(PLACEHOLDER_RE)].every((m) => (m[4] ?? "").length <= FALLBACK_MAX),
+    `the words after ?? in a placeholder are at most ${FALLBACK_MAX} characters`,
+  )
+
+const legalId = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]{1,64}$/, "an id of letters, digits, - and _, such as fees")
+
+/** An agreements block an agent wrote and no person has read yet (never printed as such). */
+const agentDraft = { agent_draft: z.boolean().optional() }
+
+const articleBlock = z
+  .object({
+    type: z.literal("article"),
+    /** What {{ref:<id>}} points at; the number is computed. */
+    id: legalId.optional(),
+    level: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
+    heading: legalText.optional(),
+    text: legalText,
+    /** Written by an agent and not read by a person yet (the agreements app refuses to freeze it). */
+    ...agentDraft,
+    /** A person marked this clause's typed article numbers as citations of another text. */
+    citation: z.boolean().optional(),
+    ...when,
+  })
+  .strict()
+
+const partyItem = z
+  .object({
+    kind: z.enum(["company", "person"]),
+    name: templateText,
+    form: templateText.optional(),
+    capital: templateText.optional(),
+    seat: templateText.optional(),
+    rcs_city: templateText.optional(),
+    rcs_number: templateText.optional(),
+    represented_by: templateText.optional(),
+    capacity: templateText.optional(),
+    /** The defined term the party goes by ("le Client"), which {{def:Client}} prints. */
+    defined_as: templateText,
+  })
+  .strict()
+
+const partiesBlock = z
+  .object({
+    type: z.literal("parties"),
+    ...agentDraft,
+    lead: templateText.optional(),
+    groups: z
+      .array(
+        z
+          .object({
+            items: z.array(partyItem).min(1).max(10),
+            side: z.enum(["one", "other"]).optional(),
+          })
+          .strict(),
+      )
+      .min(2)
+      .max(6),
+    in_presence: legalText.optional(),
+    ...when,
+  })
+  .strict()
+
+const recitalsBlock = z
+  .object({
+    type: z.literal("recitals"),
+    ...agentDraft,
+    items: z.array(legalText).min(1).max(26),
+    closing: templateText.optional(),
+    ...when,
+  })
+  .strict()
+
+const definitionsBlock = z
+  .object({
+    type: z.literal("definitions"),
+    ...agentDraft,
+    items: z
+      .array(z.object({ term: templateText, text: legalText }).strict())
+      .min(1)
+      .max(100),
+    ...when,
+  })
+  .strict()
+
+const tocBlock = z.object({ type: z.literal("toc"), ...when }).strict()
+
+const signatureBlock = z
+  .object({
+    type: z.literal("signature_block"),
+    ...agentDraft,
+    place: templateText,
+    lines: z
+      .array(z.object({ party: templateText, name: templateText, capacity: templateText }).strict())
+      .min(1)
+      .max(10),
+    ...when,
+  })
+  .strict()
 
 const imageBlock = z
   .object({
@@ -285,6 +439,38 @@ const leafBlock = z.discriminatedUnion("type", [
   spacerBlock,
 ])
 
+/** What an annex holds: clauses numbered within the annex, text and definitions. */
+const annexInner = z.discriminatedUnion("type", [
+  headingBlock,
+  paragraphBlock,
+  spacerBlock,
+  articleBlock,
+  definitionsBlock,
+])
+
+const annexBlock = z
+  .object({
+    type: z.literal("annex"),
+    ...agentDraft,
+    id: legalId.optional(),
+    title: legalText,
+    blocks: z.array(annexInner).min(1).max(RICH_TEXT_MAX_BLOCKS),
+    ...when,
+  })
+  .strict()
+
+/** The block types only the legal layout prints, and the standard ones it does not. */
+const LEGAL_ONLY = new Set([
+  "article",
+  "parties",
+  "recitals",
+  "definitions",
+  "annex",
+  "toc",
+  "signature_block",
+])
+const NOT_IN_LEGAL = new Set(["list", "table", "image", "repeat"])
+
 const repeatBlock = z
   .object({
     type: z.literal("repeat"),
@@ -303,12 +489,21 @@ const blockSchema = z.discriminatedUnion("type", [
   imageBlock,
   spacerBlock,
   repeatBlock,
+  articleBlock,
+  partiesBlock,
+  recitalsBlock,
+  definitionsBlock,
+  annexBlock,
+  tocBlock,
+  signatureBlock,
 ])
 
 type AnyBlock = z.infer<typeof blockSchema>
 
 function everyBlock(blocks: readonly AnyBlock[]): AnyBlock[] {
-  return blocks.flatMap((b) => (b.type === "repeat" ? [b, ...b.blocks] : [b]))
+  return blocks.flatMap((b): AnyBlock[] =>
+    b.type === "repeat" ? [b, ...b.blocks] : b.type === "annex" ? [b, ...b.blocks] : [b],
+  )
 }
 
 export const richTextBodySchema = z
@@ -324,11 +519,37 @@ export const richTextBodySchema = z
     `a template shows at most ${MAX_EMBED_IMAGES} different images`,
   )
   .superRefine((b, ctx) => {
+    const legal = b.page?.layout === "legal"
+    const ids = new Set<string>()
     b.blocks.forEach((block, i) => {
+      if (!legal && LEGAL_ONLY.has(block.type))
+        ctx.addIssue({
+          code: "custom",
+          message: `a ${block.type} block prints in the legal layout only: set page.layout to legal`,
+          path: ["blocks", i],
+        })
+      if (legal && NOT_IN_LEGAL.has(block.type))
+        ctx.addIssue({
+          code: "custom",
+          message: `the legal layout prints no ${block.type} block: use articles, paragraphs and annexes`,
+          path: ["blocks", i],
+        })
+      const own = block.type === "annex" ? [block, ...block.blocks] : [block]
+      for (const x of own) {
+        if ((x.type === "article" || x.type === "annex") && x.id !== undefined) {
+          if (ids.has(x.id))
+            ctx.addIssue({
+              code: "custom",
+              message: `two clauses have the id ${x.id}: a reference must point at one`,
+              path: ["blocks", i],
+            })
+          ids.add(x.id)
+        }
+      }
       const inner = block.type === "repeat" ? block.blocks : [block]
       inner.forEach((x, j) => {
-        if (x.type !== "table") return
-        const problem = tableProblem(x)
+        if (x.type !== "table" && x.type !== "list") return
+        const problem = x.type === "table" ? tableProblem(x) : listProblem(x)
         if (problem)
           ctx.addIssue({
             code: "custom",
@@ -342,13 +563,14 @@ export const richTextBodySchema = z
 export type RichTextBody = z.infer<typeof richTextBodySchema>
 export type RichTextBlock = RichTextBody["blocks"][number]
 type LeafBlock = z.infer<typeof leafBlock>
+type LegalInner = z.infer<typeof annexInner>
 type Conditions = z.infer<typeof conditionsSchema>
 
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
 
-export type RichTextErrorCode = "body_invalid" | "too_many_rows" | "document_too_large"
+export type RichTextErrorCode = "body_invalid" | "too_many_rows" | LegalRefusal
 
 export class RichTextError extends Error {
   constructor(
@@ -406,6 +628,8 @@ export function richTextPlaceholderPaths(body: RichTextBody): string[] {
     conditions(block.when, prefix)
     if (block.type === "heading" || block.type === "paragraph") each(block.text, prefix)
     else if (block.type === "list") {
+      for (const item of block.items ?? []) each(item, prefix)
+      if (block.from === undefined) return
       const from = prefix ? `${prefix}.${block.from}` : block.from
       out.add(from)
       conditions(block.where, from)
@@ -425,13 +649,70 @@ export function richTextPlaceholderPaths(body: RichTextBody): string[] {
       }
     }
   }
+  const legal = (block: Exclude<RichTextBlock, LeafBlock | { type: "repeat" }> | LegalInner) => {
+    conditions(block.when, null)
+    switch (block.type) {
+      case "article":
+        each(block.heading, null)
+        each(block.text, null)
+        break
+      case "parties":
+        for (const g of block.groups)
+          for (const item of g.items)
+            for (const v of [
+              item.name,
+              item.form,
+              item.capital,
+              item.seat,
+              item.rcs_city,
+              item.rcs_number,
+              item.represented_by,
+              item.capacity,
+              item.defined_as,
+            ])
+              each(v, null)
+        each(block.lead, null)
+        each(block.in_presence, null)
+        break
+      case "recitals":
+        for (const t of block.items) each(t, null)
+        each(block.closing, null)
+        break
+      case "definitions":
+        for (const item of block.items) {
+          each(item.term, null)
+          each(item.text, null)
+        }
+        break
+      case "annex":
+        each(block.title, null)
+        for (const inner of block.blocks) {
+          if (inner.type === "heading" || inner.type === "paragraph" || inner.type === "spacer")
+            leaf(inner, null)
+          else legal(inner)
+        }
+        break
+      case "signature_block":
+        each(block.place, null)
+        for (const l of block.lines) {
+          each(l.party, null)
+          each(l.name, null)
+          each(l.capacity, null)
+        }
+        break
+      default:
+        break
+    }
+  }
   for (const block of body.blocks) {
     if (block.type === "repeat") {
       conditions(block.when, null)
       out.add(block.from)
       conditions(block.where, block.from)
       for (const inner of block.blocks) leaf(inner, block.from)
-    } else leaf(block, null)
+    } else if (LEGAL_ONLY.has(block.type))
+      legal(block as Exclude<RichTextBlock, LeafBlock | { type: "repeat" }>)
+    else leaf(block as LeafBlock, null)
   }
   return [...out]
 }
@@ -792,6 +1073,29 @@ function evaluateExpr(expr: Expr, record: Record<string, unknown>, base: string 
   }
 }
 
+/** Decimals of a currency's minor unit (ISO 4217, through Intl); 2 when unknown. */
+function currencyDecimals(currency: string): number {
+  try {
+    return (
+      new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions()
+        .maximumFractionDigits ?? 2
+    )
+  } catch {
+    return 2
+  }
+}
+
+/** Whole minor units as text, exactly: `1234567` EUR prints `EUR 12,345.67`. */
+export function formatMinorUnits(minor: bigint, currency: string | null): string {
+  const decimals = currency ? currencyDecimals(currency) : 2
+  const negative = minor < 0n
+  const abs = negative ? -minor : minor
+  const scale = 10n ** BigInt(decimals)
+  const whole = (abs / scale).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+  const frac = decimals > 0 ? `.${(abs % scale).toString().padStart(decimals, "0")}` : ""
+  return `${currency ? `${currency} ` : ""}${negative ? "-" : ""}${whole}${frac}`
+}
+
 /** A computed number as text: `fixed` decimals, else at most 6 with trailing zeros cut. */
 function formatNumber(value: number, fixed: number | undefined): string {
   const text = fixed !== undefined ? value.toFixed(fixed) : String(Number(value.toFixed(6)))
@@ -802,10 +1106,142 @@ function formatNumber(value: number, fixed: number | undefined): string {
 // Layout
 // ---------------------------------------------------------------------------
 
-class Layout {
-  readonly commands: DrawCommand[] = []
+/** Placeholders filled against a record, each blank noted once: shared by both layouts. */
+class Fill implements LegalFill {
   readonly blanks: RichTextBlank[] = []
   private readonly blankKeys = new Set<string>()
+
+  constructor(
+    protected readonly record: Record<string, unknown>,
+    protected readonly labelOf: (path: string) => string,
+  ) {}
+
+  blockPrints(conditions: unknown): boolean {
+    return conditionsHold(this.record, null, conditions as Conditions | undefined)
+  }
+
+  refuse(code: LegalRefusal, message: string): never {
+    throw new RichTextError(code, message)
+  }
+
+  /** Text with its placeholders resolved: record values as text, blanks as grey runs. */
+  runs(text: string, baseOrBold: string | null | boolean, maybeBold?: boolean): TextRun[] {
+    const base = typeof baseOrBold === "boolean" ? null : baseOrBold
+    const bold = typeof baseOrBold === "boolean" ? baseOrBold : maybeBold === true
+    const out: TextRun[] = []
+    let last = 0
+    for (const match of text.matchAll(PLACEHOLDER_RE)) {
+      const index = match.index ?? 0
+      if (index > last) out.push({ text: text.slice(last, index), bold })
+      const placeholder = placeholderOf(match)
+      const fallback = placeholder?.fallback
+      const { value, path } = this.resolvePlaceholder(placeholder, base)
+      if (value !== null) {
+        out.push({ text: value, bold })
+      } else if (fallback === undefined) {
+        const label = this.labelOf(path)
+        out.push({ text: `[${label}]`, color: "placeholder", bold })
+        this.noteBlank(path, label)
+      } else if (fallback.trim() !== "") {
+        // The template's own words for a missing value, grey: still a blank to fill.
+        out.push({ text: fallback.trim(), color: "placeholder", bold })
+        this.noteBlank(path, this.labelOf(path))
+      }
+      last = index + match[0].length
+    }
+    if (last < text.length) out.push({ text: text.slice(last), bold })
+    return out
+  }
+
+  /** A placeholder's printed value, or null and the path to report as the blank. */
+  protected resolvePlaceholder(
+    p: Placeholder | null,
+    base: string | null,
+  ): { value: string | null; path: string } {
+    // The schema refuses a malformed placeholder; this is only for the type.
+    if (!p) return { value: null, path: "" }
+    if (p.path !== null) {
+      const path = scopedPath(this.record, base, p.path)
+      const raw = readPath(this.record, path)
+      if (p.fixed === undefined) return { value: printable(raw), path }
+      const n = numeric(raw)
+      return { value: n === null ? null : formatNumber(n, p.fixed), path }
+    }
+    if (!p.expr) return { value: null, path: "" }
+    const computed = evaluateExpr(p.expr, this.record, base)
+    if (computed.ok) return { value: formatNumber(computed.value, p.fixed), path: "" }
+    // A division by zero names no operand: the blank is the computation as written.
+    return { value: null, path: computed.missing ?? p.source }
+  }
+
+  /**
+   * The exact sum of `path` over `rows`, in whole minor units, printed with the currency's
+   * decimals. A missing currency or an absent value prints grey and lists the blank; a value
+   * that is not a whole number refuses the print.
+   */
+  totalRun(
+    rows: readonly string[],
+    path: string,
+    currencyPath: string | undefined,
+    base: string | null,
+  ): TextRun {
+    let sum = 0n
+    for (const row of rows) {
+      const full = `${row}.${path}`
+      const raw = readPath(this.record, full)
+      if (raw === null || raw === undefined || raw === "") {
+        const label = this.labelOf(full)
+        this.noteBlank(full, label)
+        return { text: `[${label}]`, color: "placeholder", bold: true }
+      }
+      const digits =
+        typeof raw === "number"
+          ? Number.isSafeInteger(raw)
+            ? String(raw)
+            : null
+          : typeof raw === "string" && /^-?\d+$/.test(raw.trim())
+            ? raw.trim()
+            : typeof raw === "bigint"
+              ? String(raw)
+              : null
+      if (digits === null) {
+        throw new RichTextError(
+          "body_invalid",
+          `The total needs whole minor units; ${this.labelOf(full)} holds ${String(raw).slice(0, 40)}`,
+        )
+      }
+      sum += BigInt(digits)
+    }
+    let currency: string | null = null
+    if (currencyPath !== undefined) {
+      const cpath = scopedPath(this.record, base, currencyPath)
+      const raw = printable(readPath(this.record, cpath))
+      if (raw === null || !/^[A-Za-z]{3}$/.test(raw.trim())) {
+        const label = this.labelOf(cpath)
+        this.noteBlank(cpath, label)
+        return { text: `[${label}]`, color: "placeholder", bold: true }
+      }
+      currency = raw.trim().toUpperCase()
+    }
+    return { text: formatMinorUnits(sum, currency), bold: true }
+  }
+
+  noteBlank(path: string, label: string): void {
+    // One entry per field: a missing SKU on 300 rows is one thing to fill.
+    const key = path
+      .split(".")
+      .filter((s) => !/^\d+$/.test(s))
+      .join(".")
+    if (this.blankKeys.has(key)) return
+    this.blankKeys.add(key)
+    this.blanks.push({ path, label })
+  }
+}
+
+class Layout extends Fill {
+  readonly commands: DrawCommand[] = []
+  /** The text each laid-out block meant to print, before wrapping: what a freeze compares. */
+  readonly intended: string[] = []
   private page = -1
   private y = 0
   private readonly width: number
@@ -818,11 +1254,12 @@ class Layout {
 
   constructor(
     body: RichTextBody,
-    private readonly record: Record<string, unknown>,
-    private readonly labelOf: (path: string) => string,
+    record: Record<string, unknown>,
+    labelOf: (path: string) => string,
     private readonly images: ReadonlyMap<string, ImageInfo>,
     title: string | undefined,
   ) {
+    super(record, labelOf)
     const size = PAGE_SIZES[body.page?.size ?? "A4"]
     this.width = size.width
     this.height = size.height
@@ -885,67 +1322,9 @@ class Layout {
     this.commands.push(cmd)
   }
 
-  /** Text with its placeholders resolved: record values as text, blanks as grey runs. */
-  runs(text: string, base: string | null, bold: boolean): TextRun[] {
-    const out: TextRun[] = []
-    let last = 0
-    for (const match of text.matchAll(PLACEHOLDER_RE)) {
-      const index = match.index ?? 0
-      if (index > last) out.push({ text: text.slice(last, index), bold })
-      const placeholder = placeholderOf(match)
-      const fallback = placeholder?.fallback
-      const { value, path } = this.resolvePlaceholder(placeholder, base)
-      if (value !== null) {
-        out.push({ text: value, bold })
-      } else if (fallback === undefined) {
-        const label = this.labelOf(path)
-        out.push({ text: `[${label}]`, color: "placeholder", bold })
-        this.noteBlank(path, label)
-      } else if (fallback.trim() !== "") {
-        // The template's own words for a missing value, grey: still a blank to fill.
-        out.push({ text: fallback.trim(), color: "placeholder", bold })
-        this.noteBlank(path, this.labelOf(path))
-      }
-      last = index + match[0].length
-    }
-    if (last < text.length) out.push({ text: text.slice(last), bold })
-    return out
-  }
-
-  /** A placeholder's printed value, or null and the path to report as the blank. */
-  private resolvePlaceholder(
-    p: Placeholder | null,
-    base: string | null,
-  ): { value: string | null; path: string } {
-    // The schema refuses a malformed placeholder; this is only for the type.
-    if (!p) return { value: null, path: "" }
-    if (p.path !== null) {
-      const path = scopedPath(this.record, base, p.path)
-      const raw = readPath(this.record, path)
-      if (p.fixed === undefined) return { value: printable(raw), path }
-      const n = numeric(raw)
-      return { value: n === null ? null : formatNumber(n, p.fixed), path }
-    }
-    if (!p.expr) return { value: null, path: "" }
-    const computed = evaluateExpr(p.expr, this.record, base)
-    if (computed.ok) return { value: formatNumber(computed.value, p.fixed), path: "" }
-    // A division by zero names no operand: the blank is the computation as written.
-    return { value: null, path: computed.missing ?? p.source }
-  }
-
-  noteBlank(path: string, label: string): void {
-    // One entry per field: a missing SKU on 300 rows is one thing to fill.
-    const key = path
-      .split(".")
-      .filter((s) => !/^\d+$/.test(s))
-      .join(".")
-    if (this.blankKeys.has(key)) return
-    this.blankKeys.add(key)
-    this.blanks.push({ path, label })
-  }
-
   /** Lay out runs as wrapped lines, each hard line break starting a new line. */
   text(runs: TextRun[], size: number, lineHeight: number): void {
+    this.intended.push(runs.map((r) => r.text).join(""))
     for (const hard of splitHardLines(runs)) {
       for (const line of wrapRuns(hard, this.contentWidth, size)) this.line(line, size, lineHeight)
     }
@@ -1036,6 +1415,8 @@ class Layout {
       }
       this.y = top - height
     }
+    for (const cells of header ? [header, ...rows] : rows)
+      for (const runs of cells) this.intended.push(runs.map((r) => r.text).join(""))
     if (header) drawRow(header, true)
     for (const cells of rows) drawRow(cells, false)
   }
@@ -1131,7 +1512,17 @@ export function layoutRichText(
   labelOf: (path: string) => string,
   images: ReadonlyMap<string, ImageInfo> = new Map(),
   title?: string,
-): { commands: DrawCommand[]; blanks: RichTextBlank[]; pageCount: number } {
+): {
+  commands: DrawCommand[]
+  blanks: RichTextBlank[]
+  pageCount: number
+  intended: string[]
+  /** Legal layout: the body's drawn text, header, footer and contents left out. */
+  bodyText?: string
+  /** Legal layout: each contents entry's printed page and the page its heading is on. */
+  toc?: Array<{ label: string; printedPage: number; headingPage: number }>
+} {
+  if (body.page?.layout === "legal") return layoutLegal(body, new Fill(record, labelOf), title)
   // Every top-level list is checked before any layout work.
   for (const block of body.blocks) {
     if ((block.type === "list" || block.type === "repeat") && block.from)
@@ -1159,6 +1550,12 @@ export function layoutRichText(
         break
       }
       case "list": {
+        if (block.from === undefined || block.line === undefined) {
+          for (const item of block.items ?? [])
+            layout.text(layout.runs(item, base, false), size, size * 1.4)
+          layout.gap(size * 0.6)
+          break
+        }
         const rows = keptRows(record, base, block.from, block.where)
         if (rows === null) {
           const path = scopedPath(record, base, block.from)
@@ -1191,6 +1588,16 @@ export function layoutRichText(
             ]
           })
         }
+        if (block.from !== undefined && block.total !== undefined) {
+          const kept = keptRows(record, base, block.from, block.where) ?? []
+          const label = layout.runs(block.total.label, base, true)
+          const amount = layout.totalRun(kept, block.total.path, block.total.currency, base)
+          const cells: TextRun[][] = block.columns.map(() => [])
+          cells[0] = label
+          cells[block.columns.length - 1] =
+            block.columns.length === 1 ? [...label, { text: " ", bold: true }, amount] : [amount]
+          rows.push(cells)
+        }
         if (rows.length > 0 || header) layout.table(block.columns, header, rows, ts)
         layout.gap(size * 0.8)
         break
@@ -1213,9 +1620,26 @@ export function layoutRichText(
       for (const row of keptRows(record, null, block.from, block.where) ?? []) {
         for (const inner of block.blocks) leaf(inner, row)
       }
-    } else leaf(block, null)
+    } else if (!LEGAL_ONLY.has(block.type)) leaf(block as LeafBlock, null)
   }
-  return { commands: layout.commands, blanks: layout.blanks, pageCount: layout.pageCount }
+  return {
+    commands: layout.commands,
+    blanks: layout.blanks,
+    pageCount: layout.pageCount,
+    intended: layout.intended,
+  }
+}
+
+/**
+ * The fields a filled source still lacks: every placeholder that would print grey, each named
+ * once by its label. A source with any blank cannot be frozen (the preview's grey print stays).
+ */
+export function blankFields(
+  body: unknown,
+  record: Record<string, unknown>,
+  labelOf: (path: string) => string = (path) => path,
+): RichTextBlank[] {
+  return layoutRichText(parseRichTextBody(body), record, labelOf).blanks
 }
 
 /** Read an image's size the way the replayer will embed it; null when unusable. */
@@ -1256,4 +1680,73 @@ export async function renderRichText(input: RichTextRenderInput): Promise<RichTe
     resolveImage: async (fileId) => images.get(fileId)?.image ?? null,
   })
   return { bytes, blanks, pageCount }
+}
+
+// ---------------------------------------------------------------------------
+// Freeze
+// ---------------------------------------------------------------------------
+
+/** What a freeze stores and checks: the bytes, their hash, and the two texts it compares. */
+export interface RichTextFrozen {
+  bytes: Uint8Array
+  /** Hex SHA-256 of `bytes`. */
+  sha256: string
+  pageCount: number
+  blanks: RichTextBlank[]
+  /** The filled source's text, block by block, before any layout. */
+  sourceText: string
+  /** The text the layout drew, run by run, in drawing order (legal: header, footer, contents left out). */
+  layoutText: string
+  /** Every contents entry shows the page its heading is on (true without contents). */
+  tocMatches: boolean
+}
+
+/** Whitespace is layout's business (wrapping, cell padding): the compare ignores it. */
+function withoutWhitespace(text: string): string {
+  return text.replace(/\s+/g, "")
+}
+
+/** True when the drawn text equals the source's text, whitespace aside. */
+export function freezeTextMatches(sourceText: string, layoutText: string): boolean {
+  return withoutWhitespace(sourceText) === withoutWhitespace(layoutText)
+}
+
+/** The text runs a list of draw commands prints, in order. */
+export function drawnText(commands: readonly DrawCommand[]): string {
+  return commands.flatMap((c) => (c.op === "drawText" ? [c.text] : [])).join(" ")
+}
+
+/**
+ * Render a filled source for a freeze: no image (a frozen document holds only its
+ * text), the PDF bytes with their hash, and the source's own text beside the text
+ * the layout drew, so the caller refuses a freeze where they differ.
+ */
+export async function renderRichTextForFreeze(input: {
+  body: unknown
+  record: Record<string, unknown>
+  labelOf?: (path: string) => string
+  title?: string
+}): Promise<RichTextFrozen> {
+  const body = parseRichTextBody(input.body)
+  const labelOf = input.labelOf ?? ((path: string) => path)
+  const { commands, blanks, pageCount, intended, bodyText, toc } = layoutRichText(
+    body,
+    input.record,
+    labelOf,
+    new Map(),
+    input.title,
+  )
+  const bytes = await replayDrawCommands(commands, { resolveImage: async () => null })
+  const sha256 = new Bun.CryptoHasher("sha256").update(bytes).digest("hex")
+  return {
+    bytes,
+    sha256,
+    pageCount,
+    blanks,
+    sourceText: intended.join("\n"),
+    // The legal layout's header, footer and contents are left out of the compare...
+    layoutText: bodyText ?? drawnText(commands),
+    // ...and the contents are checked apart: each entry's page is where its heading landed.
+    tocMatches: (toc ?? []).every((e) => e.printedPage === e.headingPage),
+  }
 }

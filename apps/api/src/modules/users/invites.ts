@@ -38,7 +38,14 @@ export async function createInvitation(
   params: CreateInvitationParams,
 ): Promise<
   | { inviteToken: string; inviteUrl: string }
-  | { error: "USER_EXISTS" | "SCOPE_ESCALATION" | "DIMENSION_ESCALATION" | "INVITE_PENDING" }
+  | {
+      error:
+        | "USER_EXISTS"
+        | "SCOPE_ESCALATION"
+        | "DIMENSION_ESCALATION"
+        | "INVITE_PENDING"
+        | "EMAIL_IS_PORTAL_USER"
+    }
   | null
 > {
   const { orgId, email, roleId, roleName, invitedBy, actorScopes, actorDimensionGrants } = params
@@ -85,10 +92,13 @@ export async function createInvitation(
   }
 
   const [existing] = await db
-    .select()
+    .select({ userType: users.userType })
     .from(users)
     .where(and(eq(users.email, normalizedEmail), eq(users.orgId, orgId)))
     .limit(1)
+  // A client's row (visible on a privileged handle or to kernel:portal:admin;
+  // the RLS callers check it before their transaction, emailHeldByPortalUser).
+  if (existing?.userType === "external") return { error: "EMAIL_IS_PORTAL_USER" as const }
   if (existing) return { error: "USER_EXISTS" as const }
 
   // Pre-check for a pending (unaccepted) invitation to the same address so

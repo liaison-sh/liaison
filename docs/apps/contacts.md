@@ -7,7 +7,9 @@ screenshotAlt: "The Contacts list showing people with their email addresses and 
 
 Contacts is the list of people your organization deals with. It fills itself: contacts appear as you exchange mail or when an agent mentions someone. You edit, group, share and merge them here, and agents read and update them for you.
 
-For sales workflows built on Contacts, see [Keep customers and prospects in Contacts](../sales/contacts.md) and [Find and merge duplicate contacts](../sales/duplicates.md).
+For sales workflows built on Contacts, see [Keep customers and prospects in Contacts](../sales/contacts.md), [Keep companies and see everything about one](../sales/companies.md) and [Find and merge duplicate contacts](../sales/duplicates.md).
+
+Companies are the second list of Contacts: click **Companies** in the sidebar.
 
 ## Find a contact
 
@@ -25,7 +27,7 @@ From a row you can start an **Email** or a **Call**.
 
 Under **Addresses** you add, edit, verify, mark stale or archive the contact's postal addresses. See [Keep verified postal addresses](../sales/contacts.md#keep-verified-postal-addresses).
 
-Under **Activity** you see the contact's mail conversations and **Tickets**.
+Under **Activity** you see the person's timeline: mail, tickets, invoices, meetings and deals. **Follow-ups** says whether commercial mail to them is allowed. Click their company to open its page. See [Companies](../sales/companies.md).
 
 To delete a contact, open **More actions** and click **Delete contact**.
 
@@ -41,7 +43,27 @@ Deleting a group keeps its contacts.
 1. Open the contact and click **Share**.
 2. Choose who can see it, for example everyone with access to a shared mailbox.
 
-A contact becomes the organization's only when it is shared.
+A contact you add yourself is the organization's from the start. One that arrives from your mail or an agent becomes the organization's only when it is shared.
+
+## When an account manager changes
+
+When a company is given to someone else, its previous account manager gets one row on **Home** naming who gave which companies to whom. When an account manager is deactivated, the admin who does it says who takes their companies over (see [Deactivate a user](../admin/users.md#deactivate-a-user)).
+
+## Give a client company its portal
+
+A company page has a **Client portal** section for people who hold `kernel:portal:admin`. It lists who of the company has access, shown as **Invited** until they first sign in.
+
+1. Click **Invite someone**, enter a name and an email, and click **Send the invitation**. The person gets one email with a link to the portal; they sign in each time with a link sent by email, with no password.
+2. Under **What the company sees**, open what the company should read: **Invoices**, **Requests**, and for each of the company's projects its **Progress**, **Hours** and **Reports**. Everything starts closed. Opening hours or invoices asks first and says what the client will then read. Everyone invited sees the same thing, except what names them.
+3. Click **What they see** to read the portal as one of them, through the portal's own reads: each project they see, with its hours line when its hours are shared.
+
+The portal lists a project once any of its **Progress**, **Hours** or **Reports** is open, and its page shows only the parts that are open. So **Hours** open on its own lists the project with its hours alone, for example a retainer's "Hours used: 18 of 40 h so far", and no steps. An agent's invitation of someone already invited or signed in is answered with who is already there, and no second invitation is staged.
+
+Below the switches, each document shared with the company (an agreement sent to one of its people) is listed by its number and title when you may read it, with the same **Open** switch: click it to close that share.
+
+**Access log** lists sign-ins, views, downloads and decisions, for the people given the access log permission only, and names them. **Second step at sign-in** requires or relaxes an authenticator code for the company; the current setting is the highlighted button. After a company merge, a person keeps what they saw before until you click **Show the whole company**. **End access** signs everyone of the company out, cancels open links and closes every share; invoices and signed documents are kept. **Give access again** lets them sign in anew, with every share still closed.
+
+Clients use the portal at `/portal/<your organization's slug>`: a home with their projects, invoices and requests, a page per project with its steps when its progress is shared and its hours as a total when its hours are (billed hours, or a retainer's hours used so far; a project billed by milestone says it has no billed hours), their invoices (paid by bank transfer), their requests and the replies, and the documents waiting on them to sign, accept or approve. Only the person a document was sent to can decide it; signing and accepting always ask the code sent by email. A code asked too soon says when it can be asked again, and once they decide, the page says it was done and shows the document's new state without a reload. The organization's notice shows once per version, with **I have read it**; when the notice changes, the client reads the new one again. The portal has no agent, chat or search.
 
 ## Merge duplicates
 
@@ -86,9 +108,10 @@ See the [scope reference](../reference/scopes.md).
 | Tool | What it does | Approval |
 |---|---|---|
 | `contacts_search` | Search contacts by name, email or company | No |
-| `contacts_read` | Read a contact with recent mail and timeline | No |
+| `contacts_read` | Read a contact with recent mail and timeline, and one line per other app that holds records for them (only what you may read there) | No |
 | `contacts_write` | Create or update a contact | Yes, unless an auto-approve policy covers it |
 | `threads_reply` with `contactId` | Post in a contact's discussion, as the agent | No |
+| `threads_create` with `createdFrom` naming the contact | Post in the contact's discussion, as the agent: the same conversation, never a second one | No |
 | `contacts_export` | Export the contacts you can see to a CSV file | Yes |
 | `contacts_find_duplicates` | Find likely duplicates across the whole list | No |
 | `contacts_merge` | Merge two duplicate contacts | Yes |

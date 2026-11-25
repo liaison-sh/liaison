@@ -31,13 +31,13 @@
 // `Math.random` and no clock read here.
 //
 // ── PDFs ──────────────────────────────────────────────────────────────────────
-// Issued documents are seeded with `pdf_status = 'pending'` and NO
-// `pdf_file_id`. That is the app's own documented "retry me" state: both
-// `documents_retry_pdf` and `documents_send_to_customer` re-render from the
-// persisted document whenever the status is null, pending or failed, so the
-// PDF a visitor asks for is rendered by the real template path on demand. A
-// seeded `pdf_status = 'ready'` would need a real stored file behind it, and a
-// fabricated file id would 404 on the first click.
+// Issued documents are seeded with no `pdf_status` and NO `pdf_file_id`: a PDF
+// never made. `documents_retry_pdf` and `documents_send_to_customer` render from
+// the persisted document whenever the status is null, pending or failed, so the
+// PDF a visitor asks for is rendered by the real template path on demand. Never
+// `pending` (an issue whose render is still owed: the app's interrupted-issue
+// sweep takes those up), and never `ready`, which would need a real stored file:
+// a fabricated file id would 404 on the first click.
 //
 // ── WHERE THE WRITES LIVE ─────────────────────────────────────────────────────
 // This file is the demo company's commerce FICTION: its parties, documents,
@@ -81,8 +81,9 @@ import {
   type WatchedSpec,
 } from "~/seed/factories/commerce/social"
 import { actorFor } from "~/seed/factories/people/actors"
+import { seedCompanies } from "~/seed/factories/people/companies"
 import { resolveContacts } from "~/seed/factories/people/contacts"
-import { DEMO_COMPANY, type DemoSku } from "~/seed/world/fiction"
+import { DEMO_COMPANY, DEMO_SUPPLIERS, type DemoSku } from "~/seed/world/fiction"
 import {
   DEMO_CONTENT_CATEGORY,
   demoBoxtalSender,
@@ -140,19 +141,6 @@ export type PartyKind = "dealer" | "customer" | "supplier"
 export interface DemoParty extends InvoicingParty {
   kind: PartyKind
 }
-
-/**
- * The three suppliers the purchase orders are raised against. They live here
- * rather than in `world.ts` because nothing outside this file buys anything:
- * the world bible describes who the company SELLS to. Every address is on a
- * reserved `.example` domain and every VAT body is all zeroes, the same rules
- * the rest of the demo world follows.
- */
-const DEMO_SUPPLIERS: { key: string; name: string; country: string; vat: string | null }[] = [
-  { key: "sup-chassis", name: "Atelier Mecanique Duval SARL", country: "FR", vat: "FR00000000000" },
-  { key: "sup-boards", name: "Nordkrets Assembly AB", country: "SE", vat: "SE000000000000" },
-  { key: "sup-cartons", name: "Cartonnerie du Rhone SAS", country: "FR", vat: "FR00000000000" },
-]
 
 function buildParties(world: SeedDemoOrgResult["world"]): DemoParty[] {
   const out: DemoParty[] = []
@@ -1829,21 +1817,36 @@ export async function seedDemoCommerce(
   // As the admin, through the contacts service. A customer the support layer
   // already resolved is that same contact, found by email and left as it is
   // (its tag is already there); dealers and suppliers are new.
+  const adminActor = await actorFor(ctx, org.adminUserId)
   const contactIdsByKey = Object.fromEntries(
     (
       await resolveContacts(
         ctx,
-        await actorFor(ctx, org.adminUserId),
+        adminActor,
         parties.map((p) => ({
           key: p.key,
           name: p.name,
           email: p.email,
           ...(p.kind === "customer" ? {} : { company: p.name }),
           tags: [p.kind],
-          ...(p.kind === "customer" ? {} : { metadata: { country: p.country, kind: p.kind } }),
+          ...(p.kind === "customer"
+            ? {}
+            : { recipientCountry: p.country, metadata: { country: p.country, kind: p.kind } }),
         })),
       )
     ).map(([key, c]) => [key, c.id]),
+  )
+  // A dealer's sales address works at that dealer: put it on the company the
+  // support layer wrote (found by name; none is created here), so the company
+  // page lists the address its mail comes from.
+  await seedCompanies(
+    ctx,
+    adminActor,
+    parties
+      .filter((p) => p.kind === "dealer")
+      .map((p) => ({ key: p.key, name: p.name, contactKeys: [p.key] })),
+    contactIdsByKey,
+    { onlyExisting: true },
   )
   const { issuerProfileId } = await seedInvoicingHistory(ctx, {
     issuer: shopIssuer(),

@@ -1,0 +1,3 @@
+# The test drain is bounded by progress: it delivers a backlog of more than a
+# hundred batches, and fails on an outbox a handler keeps refilling.
+src/tests/helpers/outbox.integration.test.ts

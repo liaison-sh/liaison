@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { SUPPORTED_HOST_API_MAJORS } from "@liaison/host"
 import { sql as drizzleSql } from "drizzle-orm"
+import type { Context } from "hono"
 import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import type { AppEnv } from "~/app"
@@ -13,6 +14,17 @@ import { success } from "~/lib/response"
 import { quoteIdent } from "~/lib/sql-utils"
 import { getRequestSignal } from "~/middleware/request-timeout"
 import { requireScope } from "~/middleware/require-scope"
+import {
+  claimToolCard,
+  currentToolCard,
+  type OpenedToolCardRef,
+  openToolCardRef,
+  parseToolCardRef,
+  releaseToolCard,
+  replaceToolCard,
+  type ToolCardRef,
+  unstoredToolCard,
+} from "~/modules/agent/runtime/tool-card-store"
 import {
   checkAppConfigWriteForOrg,
   declaredAppConfigKeys,
@@ -37,7 +49,17 @@ import { getDetailExternalLink } from "~/modules/apps/detail-external-link"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { getInstallTrust } from "~/modules/apps/install-trust"
-import { isAppUnavailableFor, primeOrgApps, unavailableAppsFor } from "~/modules/apps/org-apps"
+import {
+  enabledFeaturesFor,
+  isAppUnavailableFor,
+  primeOrgApps,
+  unavailableAppsFor,
+} from "~/modules/apps/org-apps"
+import {
+  listAdminFeatures,
+  OrgFeatureError,
+  setAdminOrgAppFeature,
+} from "~/modules/apps/org-features"
 import { restToolCall } from "~/modules/apps/rest-tool-call"
 import { boundHost, signUiBundleToken } from "~/modules/apps/ui-bundle-token"
 import { invokeAppExport, toHttpException } from "~/modules/export/invoke-export"
@@ -92,6 +114,53 @@ appRoutes.post("/tools/:toolName", async (c) => {
   return success(c, result.data)
 })
 
+/** Why a `cardRef` stopped the call. On each of these nothing ran and no card changed. */
+function cardRefRefused(c: Context<AppEnv>, opened: OpenedToolCardRef & { ok: false }) {
+  if (opened.refusal === "not_readable") {
+    const message = "This card's conversation cannot be read here. Nothing ran."
+    return c.json({ error: { message, code: "card_not_found" } }, 404)
+  }
+  if (opened.refusal === "other_app") {
+    const message = "This card came from another app's tool. Nothing ran."
+    return c.json({ error: { message, code: "card_other_app" } }, 422)
+  }
+  if (opened.refusal === "not_an_action") {
+    const message =
+      "This card does not offer that call with these values. Nothing ran and the card is unchanged. Use one of the card's own actions."
+    return c.json({ error: { message, code: "card_action_unknown" } }, 422)
+  }
+  return cardChanged(
+    c,
+    opened.card,
+    opened.cardRevision,
+    opened.card
+      ? "This card changed since it was drawn. Nothing was saved. The latest card is attached."
+      : "This card is no longer there. Nothing was saved.",
+  )
+}
+
+/** The refusal that carries the latest card. */
+function cardChanged(
+  c: Context<AppEnv>,
+  card: unknown,
+  cardRevision: number | null,
+  message = "This card changed since it was drawn. Nothing was saved. The latest card is attached.",
+) {
+  return c.json(
+    {
+      error: {
+        message,
+        code: "card_changed",
+        card,
+        cardRevision,
+        // The web client's error reader keeps `details` only: the latest card rides there too.
+        details: { card, cardRevision },
+      },
+    },
+    409,
+  )
+}
+
 // Phase 16.6 — Plugin-friendly form: `/api/apps/<appName>/tools/<toolName>`.
 // Built so plugin UIs can call `host.invokeTool(appName, toolName, args)`
 // without composing the namespaced `<appName>:<toolName>` themselves. The
@@ -117,27 +186,139 @@ appRoutes.post("/:appName/tools/:toolName", async (c) => {
           orgId: c.get("orgId"),
           scopes: (c.get("scopes") as unknown as string[]) ?? [],
           slot,
+          userId: c.get("userId"),
         })
       : []
     return success(c, { panels })
   }
 
+  // A call from a stored card names that card. It is no parameter of the tool.
+  const { cardRef: rawCardRef, ...toolBody } = body
+  const cardRef = parseToolCardRef(rawCardRef)
+  if (cardRef === "invalid") {
+    throw new HTTPException(422, { message: "cardRef needs a messageId and a toolCallId" })
+  }
+  const orgId = c.get("orgId")
+  const actor = extractRlsContext(c)
+  if (!cardRef) {
+    const params = toolBody.params ?? toolBody
+    // A card page (a card opened from a link, in no conversation) asks, beside the nested params,
+    // for the card its call draws.
+    const withCard = toolBody.params !== undefined && toolBody.withCard === true
+    return runAppTool(c, {
+      appName,
+      toolName,
+      params,
+      threadId: toolBody.threadId,
+      ...(withCard ? { withCard: true } : {}),
+    })
+  }
+  // What the card is asked to do: the flat form carries the thread beside the params. The tool
+  // gets exactly the params the card check matched, and runs in the card's own thread: a thread
+  // the request names must be that one.
+  const { threadId: requestThread, ...flatParams } = toolBody
+  const request = { toolName, params: toolBody.params ?? flatParams, threadId: requestThread }
+
+  const first = await openToolCardRef(actor, orgId, appName, cardRef, request)
+  if (!first.ok) return cardRefRefused(c, first)
+  // One action at a time per card: the revision is checked again once the claim is held, so of
+  // two clicks on the same revision one runs and the other is told the card changed.
+  const claim = await claimToolCard(cardRef)
+  if (!claim) {
+    const current = await currentToolCard(actor, orgId, appName, cardRef)
+    return cardRefRefused(
+      c,
+      current.ok ? { ok: false, refusal: "changed", card: null, cardRevision: null } : current,
+    )
+  }
+  try {
+    const opened = await openToolCardRef(actor, orgId, appName, cardRef, request)
+    if (!opened.ok) return cardRefRefused(c, opened)
+    return await runAppTool(c, {
+      appName,
+      toolName,
+      params: request.params,
+      threadId: opened.threadId,
+      cardRef,
+    })
+  } finally {
+    await releaseToolCard(cardRef, claim)
+  }
+})
+
+/** Run an app tool from the REST form, and replace the card it was clicked from, if any. */
+async function runAppTool(
+  c: Context<AppEnv>,
+  args: {
+    appName: string
+    toolName: string
+    params: unknown
+    threadId: unknown
+    cardRef?: ToolCardRef
+    /** No stored card: answer with the card the result draws, for the caller only. */
+    withCard?: boolean
+  },
+) {
+  const { appName, toolName, cardRef } = args
+  const orgId = c.get("orgId")
+  const actor = extractRlsContext(c)
   // Plugin-friendly REST form: same direct browser UI call as /tools/:toolName.
-  const call = await restToolCall(c, body.threadId)
-  const result = await executeTool({
-    toolName: `${appName}:${toolName}`,
-    orgId: c.get("orgId"),
-    actor: extractRlsContext(c),
-    threadId: call.threadId,
-    params: body.params ?? body,
-    origin: call.origin,
-    signal: getRequestSignal(c),
-  })
+  const call = await restToolCall(c, args.threadId)
+  let result: Awaited<ReturnType<typeof executeTool>>
+  try {
+    result = await executeTool({
+      toolName: `${appName}:${toolName}`,
+      orgId,
+      actor,
+      threadId: call.threadId,
+      params: args.params,
+      origin: call.origin,
+      signal: getRequestSignal(c),
+    })
+  } catch (err) {
+    // The tool's own revision moved: it refused. The card it answers with is drawn and kept, so the
+    // next click is on it; with none, what is stored now is drawn.
+    if (cardRef && (err as { code?: unknown } | null)?.code === "card_changed") {
+      const refused = err as { message?: string; details?: { latest?: unknown } }
+      const latest = refused.details?.latest
+      if (latest && typeof latest === "object") {
+        const drawn = await replaceToolCard(cardRef, {
+          orgId,
+          actorId: c.get("userId"),
+          appName,
+          toolName,
+          result: latest,
+        })
+        if (drawn.card && (drawn.stored || drawn.why === "wider_than_message"))
+          return cardChanged(c, drawn.card, drawn.cardRevision, refused.message)
+      }
+      const current = await currentToolCard(actor, orgId, appName, cardRef)
+      if (!current.ok) return cardRefRefused(c, current)
+    }
+    throw err
+  }
   if (result.blocked) {
     return success(c, { blocked: result.blocked })
   }
-  return success(c, result.data)
-})
+  if (!cardRef) {
+    if (!args.withCard) return success(c, result.data)
+    const card = await unstoredToolCard({ orgId, appName, toolName, result: result.data })
+    return success(c, result.data, { card })
+  }
+  const { card, cardRevision, stored, why } = await replaceToolCard(cardRef, {
+    orgId,
+    actorId: c.get("userId"),
+    appName,
+    toolName,
+    result: result.data,
+  })
+  return success(c, result.data, {
+    card,
+    cardRevision,
+    cardStored: stored,
+    ...(why ? { why } : {}),
+  })
+}
 
 appRoutes.post("/run-tool", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
@@ -265,6 +446,15 @@ appRoutes.get("/dimensions/:dimensionKey/values", requireScope("kernel:users:adm
 // Apps that declare NO scopes stay visible to everyone (fail-open — there is
 // nothing to gate on, and historically every app was visible to every member);
 // a full-wildcard (`*`) admin holder sees every app via `hasScope`.
+// The features switched on in this workspace, read with the shell's app list. What
+// is not listed is off: the shell hides a settings section or tab type that names it.
+// Fail-closed: an unreadable app state fails the request.
+appRoutes.get("/features", async (c) => {
+  const orgId = c.get("orgId")
+  await primeOrgApps(orgId)
+  return c.json({ data: enabledFeaturesFor(orgId) })
+})
+
 appRoutes.get("/manifests", async (c) => {
   const orgId = c.get("orgId")
   await ensureAppsForOrg(orgId)
@@ -454,6 +644,51 @@ appRoutes.put("/:appName/config/:key", requireScope("kernel:apps:admin"), async 
     source: "api",
   })
   return success(c, { key, value: result.value, changed: result.changed })
+})
+
+// GET /api/apps/:appName/features — the switches an admin turns on inside the app
+// (declared `features`, the derived ones aside), whether each is on, and whether this
+// caller may change it (the feature's declared `adminScope`).
+appRoutes.get("/:appName/features", async (c) => {
+  const orgId = c.get("orgId")
+  await ensureAppsForOrg(orgId)
+  const appName = c.req.param("appName")
+  const listed = await listAdminFeatures(orgId, appName)
+  if (listed === null) throw new HTTPException(404, { message: `App "${appName}" not found` })
+  const scopes = (c.get("scopes") as string[] | undefined) ?? []
+  return success(
+    c,
+    listed.map((f) => ({ ...f, canChange: hasScope(f.adminScope, scopes) })),
+  )
+})
+
+// PUT /api/apps/:appName/features/:feature  body { enabled }
+// An admin turns a feature of the app on or off for the workspace. The feature's
+// declared `adminScope` is checked by the writer; a derived feature is refused.
+appRoutes.put("/:appName/features/:feature", async (c) => {
+  const orgId = c.get("orgId")
+  await ensureAppsForOrg(orgId)
+  const { appName, feature } = c.req.param()
+  const body = (await c.req.json().catch(() => null)) as unknown
+  const enabled =
+    body && typeof body === "object" && "enabled" in body ? Reflect.get(body, "enabled") : undefined
+  if (typeof enabled !== "boolean") {
+    throw new HTTPException(400, { message: "Body must be { enabled: boolean }" })
+  }
+  try {
+    const { changed } = await setAdminOrgAppFeature({
+      orgId,
+      app: appName,
+      feature,
+      enabled,
+      actor: { userId: c.get("userId") ?? null, scopes: (c.get("scopes") as string[]) ?? [] },
+    })
+    return success(c, { app: appName, feature, enabled, changed })
+  } catch (err) {
+    if (err instanceof OrgFeatureError)
+      throw new HTTPException(err.status, { message: err.message })
+    throw err
+  }
 })
 
 // GET /api/apps/:appName/views/detail/:entity/:id/external-link

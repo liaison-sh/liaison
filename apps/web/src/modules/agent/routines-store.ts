@@ -138,6 +138,8 @@ export interface RoutineRunTranscript {
 export interface RoutineTemplateRow {
   appName: string
   templateKey: string
+  /** The name people read ("Scope check"); absent = the key. */
+  title?: string
   description: string
   kind: string
   /** True when an instance already exists for the org. */

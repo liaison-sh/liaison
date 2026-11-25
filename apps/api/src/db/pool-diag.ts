@@ -99,6 +99,7 @@ const gauges: Record<PoolName, Gauge> = {
   privileged: newGauge(),
   jobs: newGauge(),
   privilegedJobs: newGauge(),
+  portal: newGauge(),
 }
 
 /** One pool's gauge on /diag. */

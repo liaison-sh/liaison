@@ -9,10 +9,20 @@
 // the character to "?" before drawing -- the alternative was a failed render.
 // The Helvetica family is now served by an embedded Liberation Sans instead.
 import { describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import type { DrawCommand } from "@liaison/shared"
 import { PDFDocument, StandardFonts } from "pdf-lib"
+import { extractPdfText } from "./pdf-text"
 import { replayDrawCommands } from "./replay"
-import { faceBytes, needsCjkFace, splitByFace } from "./unicode-fonts"
+import {
+  faceBytes,
+  faceDraws,
+  fontsDir,
+  needsCjkFace,
+  splitByFace,
+  type UnicodeFace,
+} from "./unicode-fonts"
 
 const POLISH = "Igor \u0141ukawski"
 
@@ -77,12 +87,17 @@ describe("unicode text in the replayer", () => {
   })
 
   it("still honours an explicit request for a serif or a monospace", async () => {
-    // Only the Helvetica family is remapped. Widening Times to a sans to gain
-    // charset coverage would silently change what the template asked for.
+    // Times is served by a serif and Courier keeps its monospace: widening
+    // either to a sans to gain charset coverage would change what the template
+    // asked for.
     for (const font of ["TimesRoman", "Courier"] as StandardFontName[]) {
       const bytes = await replayDrawCommands(withText("Plain ASCII", font))
       expect(bytes.byteLength).toBeGreaterThan(0)
     }
+    const times = Buffer.from(await replayDrawCommands(withText("Plain ASCII", "TimesRoman")))
+    expect(times.includes(Buffer.from("LiberationSerif"))).toBe(true)
+    const courier = Buffer.from(await replayDrawCommands(withText("Plain ASCII", "Courier")))
+    expect(courier.includes(Buffer.from("/Courier"))).toBe(true)
   })
 
   it("rejects an un-allowlisted font name as before", async () => {
@@ -142,5 +157,44 @@ describe("CJK fallback face", () => {
     for (const ch of [..."Abc123", "\u0141", "\u00e9", "\u0414"]) {
       expect(needsCjkFace(ch)).toBe(false)
     }
+  })
+})
+
+describe("the serif faces of the legal layout", () => {
+  // Every character a French or English contract prints: the accented letters,
+  // the ligatures, the guillemets, the euro and section signs, and the two
+  // non-breaking spaces French typography puts before ; ! ? : and inside « ».
+  const FRENCH = "àâäæçéèêëîïôöœùûüÿÀÂÄÆÇÉÈÊËÎÏÔÖŒÙÛÜŸ"
+  const MARKS = "«»€§\u00a0\u202f’–—…"
+  const SERIF_FACES: UnicodeFace[] = ["serif", "serifBold", "serifItalic", "serifBoldItalic"]
+
+  it("every serif face draws every French letter, œ, Œ, « », €, §, U+00A0 and U+202F", () => {
+    for (const face of SERIF_FACES) {
+      for (const ch of [...FRENCH, ...MARKS]) {
+        expect({ face, ch, drawn: faceDraws(face, ch) }).toEqual({ face, ch, drawn: true })
+      }
+    }
+  })
+
+  it("a Times font prints those characters into the page, read back from the bytes", async () => {
+    const line = `Société « Maison Œuvre » ${FRENCH} : 1\u00a0200\u00a0€ § 3`
+    for (const font of [
+      "TimesRoman",
+      "TimesRomanBold",
+      "TimesRomanItalic",
+      "TimesRomanBoldItalic",
+    ] as StandardFontName[]) {
+      const text = await extractPdfText(await replayDrawCommands(withText(line, font)))
+      for (const ch of ["Œuvre", "«", "»", "€", "§", "œ", FRENCH.slice(0, 10)]) {
+        expect(text).toContain(ch)
+      }
+    }
+  })
+
+  it("the serif faces ship with their licence beside them", () => {
+    expect(faceBytes("serif").byteLength).toBeGreaterThan(300_000)
+    const licence = readFileSync(join(fontsDir(), "LICENSE-LiberationFonts.txt"), "utf8")
+    expect(licence).toContain("SIL Open Font License")
+    expect(licence).toContain("Liberation")
   })
 })

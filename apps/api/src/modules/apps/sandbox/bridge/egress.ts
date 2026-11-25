@@ -36,6 +36,11 @@ import {
   sandboxEgressPolicy,
   validateSandboxFetchUrl,
 } from "~/modules/apps/sandbox/bridge/shared"
+import {
+  FAKE_SHOP_DOMAIN_HEADER,
+  shopifyFakeAdminFetchPolicy,
+  shopifyFakeAdminTarget,
+} from "~/modules/apps/sandbox/bridge/shopify-fake-admin"
 import { maybeTestViesResponse } from "~/modules/apps/sandbox/bridge/test-vies"
 import {
   type ImapCredentials,
@@ -62,6 +67,8 @@ import {
 } from "~/modules/demo/demo-egress"
 import { demoFixtureMessageId, isDemoFixtureDelivery } from "~/modules/demo/fixture-delivery"
 import { maybeDemoShopifyResponse } from "~/modules/demo/shopify/provider"
+import { maybeDemoPaymentsResponse } from "~/modules/demo/worlds/saas/payments/provider"
+import { maybeDemoGithubResponse } from "~/modules/demo/worlds/studio/github/provider"
 
 // Per-call egress limits of a sandboxed `ctx.fetch`, from the limit table
 // (run-limits.ts `egressLimits`): a read waits 10 s by default
@@ -499,9 +506,51 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
             headers: headersWithActor,
           })
 
+      // DEMO INSTANCE ONLY, the same gate for card payments: a demo org's
+      // payments calls are answered by the stand-in from its own mirror and
+      // outside state (or refused), so no real account is ever reached.
+      const demoPayments =
+        demoShopify || demoBoxtal
+          ? null
+          : await maybeDemoPaymentsResponse({
+              url: wireUrl,
+              method,
+              body: typeof body === "string" ? body : undefined,
+              orgId,
+              appName,
+              allowedDomains,
+              headers: headersWithActor,
+            })
+
+      // The services world's GitHub: a request carrying its stand-in token is answered from the
+      // world's history (or refused) on every box, whatever its demo mode, and never put on the
+      // wire. Every other request returns null after one string compare per header.
+      const demoGithub =
+        demoShopify || demoBoxtal || demoPayments
+          ? null
+          : await maybeDemoGithubResponse({
+              url: wireUrl,
+              method,
+              orgId,
+              headers: headersWithActor,
+            })
+
       // TEST STACKS ONLY (LIAISON_TEST_VIES_STUB=1 under NODE_ENV test): the EU VIES VAT check
       // is answered by a stand-in, so a test never depends on the live service (test-vies.ts).
-      const testVies = demoShopify || demoBoxtal ? null : maybeTestViesResponse(wireUrl)
+      const testVies =
+        demoShopify || demoBoxtal || demoPayments || demoGithub
+          ? null
+          : maybeTestViesResponse(wireUrl)
+
+      // LABELLED PRIVATE TEST BOX ONLY (LIAISON_TEST_SHOPIFY_ADMIN_URL, gated in
+      // lib/shopify-fake-admin-gate.ts): the Shopify app's Admin API request goes
+      // to the box's fake instead of the store. Null on every real instance, where
+      // the request below goes to Shopify exactly as before.
+      const fakeShopify =
+        demoShopify || demoBoxtal || demoPayments || demoGithub || testVies
+          ? null
+          : shopifyFakeAdminTarget(appName, wireUrl)
+      if (fakeShopify) headersWithActor[FAKE_SHOP_DOMAIN_HEADER] = fakeShopify.shopDomain
 
       let response: Response
       let responseBody: string
@@ -512,6 +561,10 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
           response = demoShopify
         } else if (demoBoxtal) {
           response = demoBoxtal
+        } else if (demoPayments) {
+          response = demoPayments
+        } else if (demoGithub) {
+          response = demoGithub
         } else if (testVies) {
           response = testVies
         } else {
@@ -547,7 +600,24 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
           const idempotent = IDEMPOTENT_METHODS.has(String(method).toUpperCase())
           for (let attempt = 1; ; attempt++) {
             try {
-              if (
+              if (fakeShopify) {
+                // The fake's exact origin only, on a private address, no redirect followed.
+                response = await fetchWithPinnedHost(
+                  fakeShopify.url,
+                  {
+                    method,
+                    headers: headersWithActor,
+                    body,
+                    redirect: "manual",
+                    signal: AbortSignal.timeout(fetchTimeoutMs),
+                  },
+                  {
+                    maxRedirects: 0,
+                    fetchImpl: sandboxEgressOverrides.fetch ?? undefined,
+                    ...shopifyFakeAdminFetchPolicy(fakeShopify.origin),
+                  },
+                )
+              } else if (
                 sandboxEgressOverrides.fetch &&
                 sandboxEgressOverrides.fetchInterceptsHost?.(new URL(url).hostname)
               ) {
@@ -926,6 +996,7 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
         const result: SmtpSendResult = {
           messageId: message.messageId ?? demoFixtureMessageId(),
           deliveryState: "delivered",
+          captured: true,
         }
         return JSON.stringify(result)
       }

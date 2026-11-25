@@ -1300,7 +1300,10 @@ auth.post("/password-reset/confirm", zValidator("json", passwordResetConfirmSche
     const [updated] = await tx
       .update(users)
       .set({ passwordHash: newHash, authVersion: sql`auth_version + 1` })
-      .where(and(eq(users.id, claimed.userId), eq(users.status, "active")))
+      // Never on a client's row: an external user has no password.
+      .where(
+        and(eq(users.id, claimed.userId), eq(users.status, "active"), eq(users.userType, "member")),
+      )
       .returning({ id: users.id })
     if (!updated) return null
     const ended = await tx

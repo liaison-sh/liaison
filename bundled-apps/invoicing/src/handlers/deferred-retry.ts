@@ -14,16 +14,20 @@ import {
   type DeferredCtx,
   type DeferredRow,
   type IdentityChangedAt,
+  type IssuerChangedAt,
+  isIssuerWait,
   markPermanentFailure,
   resolveParkAttention,
   retryEligible,
+  toDeferredRow,
 } from "../deferred"
 
 export type DeferredRetryCtx = DeferredCtx
 
-export type DeferredDispatch = (
-  row: DeferredRow,
-) => Promise<{ status: "ok" } | { status: "still_blocked"; reason: string }>
+/** `still_blocked` with no reason: the handler parked the row again under its own reason. */
+export type DispatchOutcome = { status: "ok" } | { status: "still_blocked"; reason?: string }
+
+export type DeferredDispatch = (row: DeferredRow) => Promise<DispatchOutcome>
 
 export interface DeferredRetryResult {
   scanned: number
@@ -54,7 +58,12 @@ function isTxAborted(err: unknown): boolean {
 export async function deferredRetryJob(
   ctx: DeferredRetryCtx,
   dispatch: DeferredDispatch,
-  opts?: { now?: Date; batchSize?: number; identityChangedAt?: IdentityChangedAt },
+  opts?: {
+    now?: Date
+    batchSize?: number
+    identityChangedAt?: IdentityChangedAt
+    issuerChangedAt?: IssuerChangedAt
+  },
 ): Promise<DeferredRetryResult> {
   const now = opts?.now ?? new Date()
   // Self-heal first: collapse duplicate open parks of the same order + blocker, so the drain
@@ -71,6 +80,7 @@ export async function deferredRetryJob(
     now,
     batchSize: opts?.batchSize,
     identityChangedAt: opts?.identityChangedAt,
+    issuerChangedAt: opts?.issuerChangedAt,
   })
 
   let succeeded = 0
@@ -84,7 +94,7 @@ export async function deferredRetryJob(
     // aborted shared tx (25P02): every subsequent write would fail identically,
     // so stop the loop instead of hammering the poisoned tx (that cascade is
     // exactly what produced the flood of 25P02 UPDATE failures in prod).
-    let outcome: { status: "ok" } | { status: "still_blocked"; reason: string }
+    let outcome: DispatchOutcome
     try {
       outcome = await dispatch(row)
     } catch (err) {
@@ -107,17 +117,32 @@ export async function deferredRetryJob(
         // The park is closed: close its attention item (the identity item once no other park
         // waits on the contact).
         await resolveParkAttention(ctx, row)
-      } else {
+      } else if (isIssuerWait(row.blocked_on) && (await waitsElsewhere(ctx, row))) {
+        // The issuer no longer blocks (the event now waits on something else): this park is
+        // closed with its attention item, never left retrying beside the new one.
         await ctx.db.update("deferred_events", row.id, {
           retried_at: now.toISOString(),
           retry_count: row.retry_count + 1,
-          reason: outcome.reason,
+          status: "resolved",
+          reason: "issuer_completed",
+        })
+        succeeded += 1
+        await resolveParkAttention(ctx, row)
+      } else {
+        // An issuer park keeps its reason, which the Deferred list words for a person.
+        const reason = isIssuerWait(row.blocked_on)
+          ? (row.reason ?? outcome.reason)
+          : outcome.reason
+        await ctx.db.update("deferred_events", row.id, {
+          retried_at: now.toISOString(),
+          retry_count: row.retry_count + 1,
+          ...(reason === undefined ? {} : { reason }),
         })
         const updatedRow: DeferredRow = {
           ...row,
           retried_at: now,
           retry_count: row.retry_count + 1,
-          reason: outcome.reason,
+          reason: reason ?? row.reason,
         }
         const after = await markPermanentFailure(ctx, updatedRow, { now })
         if (after.status === "permanent_failure") {
@@ -144,4 +169,21 @@ export async function deferredRetryJob(
     dead_lettered,
     collapsed,
   }
+}
+
+/** True when the park's event has another open park of a different kind: it waits elsewhere. */
+async function waitsElsewhere(ctx: DeferredRetryCtx, row: DeferredRow): Promise<boolean> {
+  const rows = (await ctx.db.findMany("deferred_events", {
+    where: { event_id: row.event_id },
+    limit: 50,
+  })) as Array<Record<string, unknown>>
+  return rows
+    .map(toDeferredRow)
+    .some(
+      (r) =>
+        r.id !== row.id &&
+        r.status !== "resolved" &&
+        r.status !== "permanent_failure" &&
+        !isIssuerWait(r.blocked_on),
+    )
 }

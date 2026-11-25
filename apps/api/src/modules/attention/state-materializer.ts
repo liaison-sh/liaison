@@ -90,7 +90,7 @@ async function defaultListOrgsWithActiveUsers(): Promise<string[]> {
     "state-materializer:list-orgs",
     async (tx: PrivilegedDb) => {
       const rows = (await tx.execute(
-        sql`SELECT DISTINCT org_id FROM ${K}.users WHERE status = 'active'`,
+        sql`SELECT DISTINCT org_id FROM ${K}.users WHERE status = 'active' AND user_type = 'member'`,
       )) as unknown as Array<{ org_id: string }>
       return rows.map((r) => r.org_id)
     },
@@ -105,7 +105,7 @@ export async function defaultListActiveUsers(orgId: string): Promise<string[]> {
   return withPrivilegedDb(orgId, "state-materializer:list-users", async (tx: PrivilegedDb) => {
     const rows = (await tx.execute(
       sql`SELECT u.id FROM ${K}.users u
-          WHERE u.org_id = ${orgId} AND u.status = 'active'`,
+          WHERE u.org_id = ${orgId} AND u.status = 'active' AND u.user_type = 'member'`,
     )) as unknown as Array<{ id: string }>
     return rows.map((r) => r.id)
   })
@@ -352,6 +352,7 @@ export async function runStateMaterializeOnce(
               isUrgent,
               // The provider ran as this user: an approval it lists is one they are asked to decide.
               ...(item.kind === "approval_pending" ? { approverIds: [userId] } : {}),
+              ...approvalPlacement(item),
               // An approval raised in a chat the person is reading right now
               // (their own agent asking, the card on their screen) does not
               // interrupt them: they have seen it (etiquette rule 1).
@@ -365,15 +366,18 @@ export async function runStateMaterializeOnce(
           // web's partitionPeerRequests). It stays in the feed behind the
           // filter, so its row is kept, but it is nobody else's news: no push,
           // no desktop banner, no digest line.
+          // A request that reached this person only because someone went away is not news
+          // either: it is on their Home from the next read, with no push for it.
           const peerNoise = isPeerSelfApprovableItem(item)
+          const handedOver = isHandedOverItem(item, now)
           const inserted = await deps.upsertEmailOnlyRow({
             ...base,
-            ...(peerNoise
+            ...(peerNoise || handedOver
               ? { digestState: "suppressed" as const, digestEligibleAt: now }
               : emailEnqueue(decision, now)),
           })
           if (inserted === false) continue
-          if (peerNoise) continue
+          if (peerNoise || handedOver) continue
           if (now.getTime() - occurredAt.getTime() > LIVE_FRESHNESS_MS) continue
           await deps.dispatchLive(decision, {
             notifyId: `attention:${sourceKey}`,
@@ -389,6 +393,30 @@ export async function runStateMaterializeOnce(
       }
     }
   }
+}
+
+/**
+ * How long a request waits before the person standing in for someone who went away stops
+ * counting it as news: a request proposed since the last tick or two is theirs to hear about,
+ * one that was already waiting when they were named is only on their Home.
+ */
+const HANDED_OVER_AFTER_MS = 15 * 60 * 1000
+
+function isHandedOverItem(item: AttentionItem, now: Date): boolean {
+  return (
+    item.kind === "approval_pending" &&
+    item.metadata?.placement === "standing_in" &&
+    now.getTime() - new Date(item.occurredAt).getTime() > HANDED_OVER_AFTER_MS
+  )
+}
+
+/** The router's `placement` of an approval row, when the server marked one. */
+function approvalPlacement(item: AttentionItem): Pick<RouterItem, "placement"> {
+  if (item.kind !== "approval_pending") return {}
+  const placement = item.metadata?.placement
+  return placement === "mine" || placement === "standing_in" || placement === "others"
+    ? { placement }
+    : {}
 }
 
 /**
@@ -420,7 +448,9 @@ async function waitForRelease(
 
 /** The same mine-vs-peer rule as Home's approvals partition: only rows the server marked. */
 function isPeerSelfApprovableItem(item: AttentionItem): boolean {
-  return item.kind === "approval_pending" && item.metadata?.peerSelfApprovable === true
+  if (item.kind !== "approval_pending") return false
+  // A row for someone else is quiet the same way: it is theirs, this person can also approve it.
+  return item.metadata?.peerSelfApprovable === true || item.metadata?.placement === "others"
 }
 
 /** One org's materializer run, fanned out by the minute tick (one job per org). */

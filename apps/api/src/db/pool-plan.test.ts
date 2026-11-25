@@ -39,10 +39,15 @@ describe("planPools", () => {
     const api = planPools(input({ role: "api" }))
     const worker = planPools(input({ role: "worker" }))
     // The api's jobs pool: its event handlers (2) plus one for short transactions.
-    expect(sizes(api)).toEqual([5, 6, 10, 3, 2])
+    // Split, the request floor (6) gives the portal pool its 2: still 26 per api.
+    expect(sizes(api)).toEqual([5, 4, 10, 3, 2])
+    expect(api.pools.portal).toBe(2)
     expect(api.perProcess).toBe(26)
     expect(api.pinnedJobSlots).toBe(API_EVENT_HANDLER_SLOTS)
     expect(sizes(worker)).toEqual([5, 7, 15, 5, 2])
+    // A worker serves no portal route.
+    expect(worker.pools.portal).toBe(0)
+    expect(worker.physical).not.toContain("portal")
     expect(worker.perProcess).toBe(34)
     expect(worker.pinnedJobSlots).toBe(3)
     for (const p of [api, worker]) {
@@ -59,12 +64,12 @@ describe("planPools", () => {
     const api = planPools(input({ role: "api", cellMax: 400 }))
     const worker = planPools(input({ role: "worker", cellMax: 400 }))
     expect(sizes(api)).toEqual([5, 25, 20, 3, 2])
-    expect(api.perProcess).toBe(55)
+    expect(api.perProcess).toBe(57)
     expect(sizes(worker)).toEqual([5, 7, 15, 7, 5])
     expect(worker.perProcess).toBe(39)
     expect(worker.pinnedJobSlots).toBe(5)
     expect(api.pinnedJobSlots).toBe(API_EVENT_HANDLER_SLOTS)
-    expect(api.unallocated).toBe(37)
+    expect(api.unallocated).toBe(33)
   })
 
   it("unsplit logins count three physical pools", () => {
@@ -122,7 +127,14 @@ describe("planPools", () => {
     expect(p.steady).toBe(84)
     expect(p.verdict).toBe("refuse")
     const text = describePlan(p)
-    for (const name of ["main=5", "request=6", "privileged=10", "jobs=3", "privileged-jobs=2"]) {
+    for (const name of [
+      "main=5",
+      "request=4",
+      "privileged=10",
+      "jobs=3",
+      "privileged-jobs=2",
+      "portal=2",
+    ]) {
       expect(text).toContain(name)
     }
   })
@@ -163,11 +175,13 @@ describe("planPools", () => {
   it("role all: one process, maxima under a large budget, clamped toward its floors under a small one", () => {
     const big = planPools(input({ role: "all", cellMax: 1000 }))
     expect(sizes(big)).toEqual([5, 25, 15, 30, 30])
-    expect(big.steady).toBe(105)
-    expect(big.overlap).toBe(105)
+    expect(big.pools.portal).toBe(2)
+    expect(big.steady).toBe(107)
+    expect(big.overlap).toBe(107)
     const small = planPools(input({ role: "all", cellMax: 60 }))
-    // available 32, floors 5 + 7 + 15 + 3 + 2 = 32
-    expect(sizes(small)).toEqual([5, 7, 15, 3, 2])
+    // available 32, floors 5 + 5 + 15 + 3 + 2 + portal 2 = 32
+    expect(sizes(small)).toEqual([5, 5, 15, 3, 2])
+    expect(small.pools.portal).toBe(2)
     expect(small.verdict).toBe("ok")
     const legacyAll = planPools(
       input({
@@ -198,8 +212,26 @@ describe("planPools", () => {
     expect(judgeAgainstLimit(api, 97)).toEqual({ verdict: "refuse", available: 84 })
     expect(judgeAgainstLimit(api, 197).verdict).toBe("ok")
     expect(judgeAgainstLimit(api, 180).verdict).toBe("warn")
-    // request login: request + jobs; privileged login: main + privileged + privileged-jobs.
-    expect(api.logins).toEqual({ request: 9, privileged: 17 })
+    // request login: request + jobs; privileged login: main + privileged + privileged-jobs;
+    // portal login: the portal pool (a pooler needs a pool for liaison_portal too).
+    expect(api.logins).toEqual({ request: 7, privileged: 17, portal: 2 })
+  })
+})
+
+describe("the portal pool", () => {
+  it("split logins plan a portal pool, unsplit plans none", () => {
+    for (const role of ["api", "all", "cli", "oneshot"] as const) {
+      const split = planPools(input({ role }))
+      expect(split.pools.portal).toBeGreaterThan(0)
+      expect(split.physical).toContain("portal")
+      const unsplit = planPools(input({ role, split: false }))
+      expect(unsplit.pools.portal).toBe(0)
+      expect(unsplit.physical).not.toContain("portal")
+      expect(unsplit.logins.portal).toBe(0)
+    }
+    const legacy = planPools(input({ cellMax: undefined }))
+    expect(legacy.pools.portal).toBe(2)
+    expect(planPools(input({ cellMax: undefined, split: false })).pools.portal).toBe(0)
   })
 })
 

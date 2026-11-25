@@ -191,7 +191,7 @@ async function resolveActorUserId(orgId: string): Promise<string> {
     const rows = extractRows<{ id: string }>(
       await tx.execute(drizzleSql`
         SELECT id FROM ${kernelRel("users")}
-        WHERE org_id = ${orgId}::uuid AND status = 'active'
+        WHERE org_id = ${orgId}::uuid AND status = 'active' AND user_type = 'member'
         ORDER BY created_at ASC LIMIT 1
       `),
     )

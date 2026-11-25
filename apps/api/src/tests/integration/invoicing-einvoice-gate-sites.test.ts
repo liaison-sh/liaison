@@ -203,10 +203,12 @@ describe("invoicing e-invoicing gate at every manual issue site (real Postgres, 
 
     // A French, VAT-registered issuer (in scope of the reform), and the org's gate in enforce.
     issuerProfileId = randomUUID()
+    // Complete as a seller, so each refusal below is the buyer's.
     await sql`INSERT INTO app_invoicing.issuer_profiles
-      (id, org_id, legal_name, country, vat_id, address, default_currency, default_language)
+      (id, org_id, legal_name, country, vat_id, siren, address, address_line1, postcode, city,
+       default_currency, default_language)
       VALUES (${issuerProfileId}, ${ORG}, 'Gate Sites Issuer SAS', 'FR', 'FR68900000001',
-              '1 rue Test, 75001 Paris', 'EUR', 'fr')`
+              '900000001', '1 rue Test, 75001 Paris', '1 rue Test', '75001', 'Paris', 'EUR', 'fr')`
     await sql`INSERT INTO app_invoicing.einvoicing_settings (org_id, gate_mode, gate_mode_source)
       VALUES (${ORG}, 'enforce', 'config')`
   }, 60_000)

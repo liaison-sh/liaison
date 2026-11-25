@@ -7,6 +7,7 @@ import { connectionLimitsErrors } from "~/modules/apps/connection-limits"
 import { createParamValidatorCache } from "~/modules/apps/param-validator"
 import { pinnedOverlap } from "~/modules/apps/pinned-params"
 import { validateProviderContracts } from "~/modules/apps/provider-contracts/validate"
+import { resultCardErrors } from "~/modules/apps/result-card-schema"
 
 /** Compiles a knowledge source kind's configSchema (the same options its config check uses). */
 export const knowledgeConfigValidator = createParamValidatorCache({ allErrors: true })
@@ -128,6 +129,7 @@ const toolSchema = z.object({
   externalEffect: z.boolean().optional(),
   retryOnTransientDbError: z.boolean().optional(),
   atomic: z.boolean().optional(),
+  ownsTransactions: z.boolean().optional(),
   approvalCard: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
   returns: z
     .object({
@@ -234,6 +236,9 @@ const builtinSkillSchema = z.object({
   // reconcile overlay — false ⇒ seed a disabledBy:'seed' row at first install.
   kind: z.enum(["playbook", "guide"]).optional(),
   enabledByDefault: z.boolean().optional(),
+  // An app feature the skill belongs to: an org with the feature off is shown no
+  // listing of it and cannot read it, as with a tool of that feature.
+  feature: z.string().min(1).optional(),
 })
 
 const agentDeclSchema = z.object({
@@ -250,6 +255,8 @@ const agentDeclSchema = z.object({
 
 const routineTemplateSchema = z.object({
   description: z.string().min(1),
+  /** The name people read ("Scope check"), copied to the routine's title when enabled. */
+  title: z.string().min(1).max(80).optional(),
   kind: z.enum(["recurring", "scheduled", "event"]),
   cron: z.string().optional(),
   timezone: z.string().optional(),
@@ -258,6 +265,7 @@ const routineTemplateSchema = z.object({
   promptTemplate: z.string().min(1),
   scopes: z.array(z.string()),
   enabledByDefault: z.boolean(),
+  followUp: z.boolean().optional(),
   // A flow template (0303) and its event filter, with `{{projectId}}` / `{{status:<label>}}`
   // placeholders filled for the chosen project when the template is enabled. Checked against the
   // flow schema then (routineFlowSchema), placeholders filled.
@@ -639,7 +647,12 @@ function parentMadeOnPrintErrors(
   if (!parent || parent.schemaRef !== `app_${appName}` || !table) {
     return fail("the fileParent must be a table of this app's own schema")
   }
-  if (table.dimensions || table.personalScope || table.rlsGovernedByMigration === true) {
+  if (
+    table.dimensions ||
+    table.personalScope ||
+    table.sharedRows ||
+    table.rlsGovernedByMigration === true
+  ) {
     return fail(
       `table "${tableName}" restricts rows beyond its scope (dimensions, personal or migration policies)`,
     )
@@ -944,6 +957,7 @@ import { appManifestJsonSchema } from "~/modules/apps/manifest-schema"
 import { defaultFillerCompileError } from "~/modules/apps/param-validator"
 import { fieldDefaultErrors } from "~/modules/apps/settings-schema-from-manifest"
 import { importDeclarationErrors } from "~/modules/imports/kind-schema"
+import { RESTRICTED_ENTITY_KINDS } from "~/modules/permissions/restricted-scope"
 import { KERNEL_SCOPES } from "~/modules/permissions/scope-catalog"
 
 const KERNEL_SCOPE_SET = new Set(KERNEL_SCOPES.map((e) => e.scope))
@@ -1183,6 +1197,162 @@ export function appIconErrors(manifest: { iconSvg?: unknown; iconName?: unknown 
 }
 
 /**
+ * Tool keys only an app the platform vouches for may declare: a core app or the
+ * image's own catalog artifact (`_firstParty`, a voucher for declarations only). A third-party
+ * manifest declaring one is refused at registration, signed by a trusted publisher or not.
+ * - `sinkReadersSelf` says the acting user alone reads what the tool writes, and
+ *   `contentParams` names the only parameters through which a call carries the turn
+ *   (scope-taint.ts, rules 6d and 6f): claims about what the handler does that narrow a
+ *   scope-taint refusal.
+ * - `humanTurnOnly` and `dmOnly` say where a call may run (execute-tool.ts): product rules
+ *   of Liaison's own apps, not a contract a third-party app is offered.
+ */
+export const FIRST_PARTY_ONLY_TOOL_KEYS = [
+  "sinkReadersSelf",
+  "contentParams",
+  "humanTurnOnly",
+  "dmOnly",
+] as const
+
+const FIRST_PARTY_ONLY_REASON: Record<(typeof FIRST_PARTY_ONLY_TOOL_KEYS)[number], string> = {
+  sinkReadersSelf: "it narrows a scope-taint refusal",
+  contentParams: "it narrows a scope-taint refusal",
+  humanTurnOnly: "it is a rule of Liaison's own apps",
+  dmOnly: "it is a rule of Liaison's own apps",
+}
+
+/**
+ * Whether a manifest tool's declared `ownsTransactions` holds: it takes the tool's approved run
+ * off whole-run rollback, so its handler must report what it committed through the approval
+ * protocol, a contract only an app the platform vouches for (core, or the image's own catalog
+ * artifact) is held to. Anyone else's declaration is ignored: the run keeps one transaction.
+ * Ignored rather than refused, so an app the vouching cannot read for a moment still loads.
+ */
+export function ownsTransactionsHolds(
+  tool: { ownsTransactions?: unknown; atomic?: unknown },
+  vouched: boolean,
+): boolean {
+  return vouched && tool.ownsTransactions === true && tool.atomic !== true
+}
+
+/** The registration errors for a manifest nobody vouched for that declares a key above. */
+export function firstPartyOnlyToolKeyErrors(manifest: any): string[] {
+  const errors: string[] = []
+  for (const [toolName, tool] of Object.entries((manifest?.tools ?? {}) as Record<string, any>)) {
+    for (const key of FIRST_PARTY_ONLY_TOOL_KEYS) {
+      if (tool?.[key] !== undefined) {
+        errors.push(
+          `tools.${toolName}.${key}: only a first-party app may declare it, because ${FIRST_PARTY_ONLY_REASON[key]}; remove it from the manifest`,
+        )
+      }
+    }
+  }
+  return errors
+}
+
+/**
+ * A context provider names a tool of its own app that writes nothing, and a
+ * scope that tool requires: the scope is what a turn must hold for the tool to
+ * run, so it cannot be one the tool does not check. `loadTools` are the app's
+ * own tools.
+ */
+function contextProviderErrors(manifest: any): string[] {
+  const providers = manifest?.contextProviders
+  if (!Array.isArray(providers)) return []
+  const tools = (manifest.tools ?? {}) as Record<string, any>
+  const errors: string[] = []
+  providers.forEach((p: { tool: string; scope: string; loadTools?: string[] }, i: number) => {
+    const at = `contextProviders[${i}]`
+    const tool = tools[p.tool]
+    if (!tool) {
+      errors.push(`${at}.tool: '${p.tool}' is not a tool of this app`)
+      return
+    }
+    if (tool.readOnly !== true || typeof tool.writesToTable === "string" || tool.gated === true) {
+      errors.push(`${at}.tool: '${p.tool}' must be declared readOnly, ungated and write no table`)
+    }
+    const required: unknown[] = Array.isArray(tool.requiredScopes) ? tool.requiredScopes : []
+    if (!required.includes(p.scope)) {
+      errors.push(`${at}.scope: '${p.scope}' is not in the requiredScopes of '${p.tool}'`)
+    }
+    for (const name of p.loadTools ?? []) {
+      if (!tools[name]) errors.push(`${at}.loadTools: '${name}' is not a tool of this app`)
+    }
+  })
+  return errors
+}
+
+/** A `restrictedRows` names a record kind the kernel has a list function for. */
+export function restrictedRowsErrors(manifest: any): string[] {
+  const errors: string[] = []
+  const app = typeof manifest?.name === "string" ? manifest.name : ""
+  for (const [toolName, tool] of Object.entries((manifest?.tools ?? {}) as Record<string, any>)) {
+    const decl = tool?.restrictedRows
+    if (decl === undefined) continue
+    const kind = `${app}.${String(decl?.entity ?? "")}`
+    if (!RESTRICTED_ENTITY_KINDS.includes(kind)) {
+      errors.push(
+        `tools.${toolName}.restrictedRows.entity: '${kind}' has no list function; known: ${RESTRICTED_ENTITY_KINDS.join(", ")}`,
+      )
+    }
+  }
+  return errors
+}
+
+/**
+ * A `resultTaintWhen` names read scopes of the app's own (`<app>:<resource>:read`): it classifies
+ * part of what the tool returns, so it can only be a read scope of this app.
+ */
+export function resultTaintWhenErrors(manifest: any): string[] {
+  const errors: string[] = []
+  const app = typeof manifest?.name === "string" ? manifest.name : ""
+  for (const [toolName, tool] of Object.entries((manifest?.tools ?? {}) as Record<string, any>)) {
+    const decl = tool?.resultTaintWhen
+    if (decl === undefined) continue
+    for (const scope of Array.isArray(decl?.scopes) ? decl.scopes : []) {
+      const parts = typeof scope === "string" ? scope.split(":") : []
+      if (parts.length !== 3 || parts[0] !== app || parts[2] !== "read" || !parts[1]) {
+        errors.push(
+          `tools.${toolName}.resultTaintWhen.scopes: '${String(scope)}' must be a read scope of this app (${app}:<resource>:read)`,
+        )
+      }
+    }
+  }
+  return errors
+}
+
+/**
+ * An activity source names a read-only, ungated tool of its own app that writes
+ * nothing, and a scope that tool requires, so the scope is one the tool checks.
+ * Two sources of one app never share a filter key.
+ */
+function activitySourceErrors(manifest: any): string[] {
+  const sources = manifest?.activitySources
+  if (!Array.isArray(sources)) return []
+  const tools = (manifest.tools ?? {}) as Record<string, any>
+  const errors: string[] = []
+  const keys = new Set<string>()
+  sources.forEach((s: { tool: string; scope: string; filterKey: string }, i: number) => {
+    const at = `activitySources[${i}]`
+    if (keys.has(s.filterKey)) errors.push(`${at}.filterKey: '${s.filterKey}' is declared twice`)
+    keys.add(s.filterKey)
+    const tool = tools[s.tool]
+    if (!tool) {
+      errors.push(`${at}.tool: '${s.tool}' is not a tool of this app`)
+      return
+    }
+    if (tool.readOnly !== true || typeof tool.writesToTable === "string" || tool.gated === true) {
+      errors.push(`${at}.tool: '${s.tool}' must be declared readOnly, ungated and write no table`)
+    }
+    const required: unknown[] = Array.isArray(tool.requiredScopes) ? tool.requiredScopes : []
+    if (!required.includes(s.scope)) {
+      errors.push(`${at}.scope: '${s.scope}' is not in the requiredScopes of '${s.tool}'`)
+    }
+  })
+  return errors
+}
+
+/**
  * The refusal of a manifest that carries `trusted`. No manifest decides where
  * its app runs: the core apps (core/registry.ts) are server code, every other
  * app runs sandboxed.
@@ -1231,6 +1401,11 @@ export function validateAppManifest(manifest: any): ValidationResult {
   errors.push(...oauthManifestKnobErrors(manifest))
   errors.push(...listingDeclarationErrors(manifest))
   errors.push(...appIconErrors(manifest))
+  errors.push(...resultCardErrors(manifest))
+  errors.push(...contextProviderErrors(manifest))
+  errors.push(...resultTaintWhenErrors(manifest))
+  errors.push(...restrictedRowsErrors(manifest))
+  errors.push(...activitySourceErrors(manifest))
   errors.push(
     ...importDeclarationErrors(
       manifest.import,
@@ -1256,6 +1431,18 @@ export function validateAppManifest(manifest: any): ValidationResult {
           `tools.${toolName}.preflight: must be a string export name, not ${typeof tool.preflight}`,
         )
       }
+      // A `contentParams` entry the tool does not take is never set by a call, so every call
+      // would pass as carrying none of the turn (scope-taint.ts, rule 6f): refused here.
+      if (Array.isArray(tool.contentParams)) {
+        const props = (tool.params?.properties ?? {}) as Record<string, unknown>
+        for (const p of tool.contentParams as unknown[]) {
+          if (typeof p !== "string" || !Object.hasOwn(props, p)) {
+            errors.push(
+              `tools.${toolName}.contentParams: "${String(p)}" is not in params.properties, so no call would carry it`,
+            )
+          }
+        }
+      }
       // Every scope the tool requires must sit in the app's own namespace.
       errors.push(...toolScopeNamespaceErrors(toolName, tool.requiredScopes, String(manifest.name)))
       // A47b. The manifest's parameter defaults are filled by a second ajv pass, compiled
@@ -1274,6 +1461,19 @@ export function validateAppManifest(manifest: any): ValidationResult {
               `would only discover after the approval card was shown. A default inside a oneOf, ` +
               `anyOf or if branch is never filled: move it to the property itself. (${fillerError})`,
           )
+        }
+      }
+      if (Array.isArray(tool.pinnedParams) && Array.isArray(tool.params?.required)) {
+        // A caller's value for a pinned param is dropped before the preflight
+        // (execute-tool.ts), so a pinned param the caller must pass refuses every
+        // call: the caller names the target under a param of its own, the
+        // preflight pins what it checked.
+        for (const key of tool.pinnedParams as string[]) {
+          if ((tool.params.required as unknown[]).includes(key)) {
+            errors.push(
+              `tools.${toolName}.pinnedParams: pinned param "${key}" is required, but a caller's value for it is dropped before the preflight; take the caller's reference under another param and pin "${key}" from the preflight`,
+            )
+          }
         }
       }
       if (tool.approvalImpact !== undefined) {
@@ -1349,6 +1549,27 @@ export function validateAppManifest(manifest: any): ValidationResult {
           ) {
             errors.push(
               `tools.${toolName}.editableFields: field "${ef.field}" widget "${ef.widget}" requires params.properties.${ef.field}.type === "string"`,
+            )
+          } else if (
+            ef.widget === "number" &&
+            props[ef.field].type !== "integer" &&
+            props[ef.field].type !== "number"
+          ) {
+            errors.push(
+              `tools.${toolName}.editableFields: field "${ef.field}" widget "number" requires params.properties.${ef.field}.type === "integer" or "number"`,
+            )
+          } else if (
+            (ef as { unit?: unknown }).unit !== undefined &&
+            !(
+              ((ef as { unit?: unknown }).unit === "hours" &&
+                ef.widget === "number" &&
+                props[ef.field].type === "integer") ||
+              ((ef as { unit?: unknown }).unit === "money" &&
+                (ef.widget === "text" || ef.widget === "number"))
+            )
+          ) {
+            errors.push(
+              `tools.${toolName}.editableFields: field "${ef.field}" unit must be "hours" on an integer number widget or "money" on a text or number widget`,
             )
           } else if (ef.widget === "email-list" && props[ef.field].type !== "array") {
             errors.push(
@@ -1593,6 +1814,26 @@ export function validateAppManifest(manifest: any): ValidationResult {
           continue
         }
         const [evApp, ent, act] = parts
+        // One exception: a template that reads new mail from the app's own contact groups,
+        // named by key (resolved to the org's groups when enabled; authenticated senders only).
+        const groupKeys = (t.eventFilter as { fromGroupKeys?: unknown } | undefined)?.fromGroupKeys
+        if (t.event === "mail:message:create" && groupKeys !== undefined) {
+          const keys =
+            groupKeys && typeof groupKeys === "object" && !Array.isArray(groupKeys)
+              ? Object.entries(groupKeys as Record<string, unknown>)
+              : []
+          if (
+            keys.length === 0 ||
+            keys.some(
+              ([k, v]) =>
+                !/^[a-z][a-z0-9_-]{0,63}$/.test(k) || typeof v !== "string" || v.trim() === "",
+            )
+          )
+            errors.push(
+              `routines.${key}.eventFilter.fromGroupKeys: one or more { key: group name }, keys lowercase`,
+            )
+          continue
+        }
         if (evApp !== manifest.name) {
           errors.push(
             `routines.${key}.event: app "${evApp}" must equal manifest name "${manifest.name}"`,

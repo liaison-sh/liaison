@@ -48,13 +48,31 @@ export async function defaultLoadScopeHolders(
   )
 }
 
+/**
+ * `ids` without the clients' portal accounts, in their order. A notification
+ * target is a colleague; an id no row matches is left for the caller to judge.
+ */
+export async function withoutExternalUsers(orgId: string, ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return []
+  const rows = await withPrivilegedDb(orgId, "attention:without-external", (tx: PrivilegedDb) =>
+    tx
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.orgId, orgId), eq(users.userType, "external"), inArray(users.id, ids))),
+  )
+  const external = new Set(rows.map((r) => r.id))
+  return ids.filter((id) => !external.has(id))
+}
+
 /** `defaultLoadScopeHolders` inside a privileged transaction the caller holds. */
 export async function scopeHoldersInTx(
   tx: PrivilegedDb,
   orgId: string,
   scope: string,
+  /** `exact`: only a grant of `scope` itself counts, for the scopes no wildcard holds. */
+  opts: { exact?: boolean } = {},
 ): Promise<string[]> {
-  const satisfying = scopeAncestors(scope)
+  const satisfying = opts.exact ? [scope] : scopeAncestors(scope)
   {
     // Role-granted holders.
     const viaRoles = await tx
@@ -66,6 +84,7 @@ export async function scopeHoldersInTx(
         and(
           eq(users.orgId, orgId),
           eq(users.status, "active"),
+          eq(users.userType, "member"),
           inArray(roleScopeGrants.scope, satisfying),
         ),
       )
@@ -82,6 +101,7 @@ export async function scopeHoldersInTx(
         and(
           eq(users.orgId, orgId),
           eq(users.status, "active"),
+          eq(users.userType, "member"),
           inArray(userScopeGrants.scope, satisfying),
         ),
       )

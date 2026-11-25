@@ -1,0 +1,6 @@
+{
+  "key": {
+    "kernel.homeKind.advance_received.one": "paiement reçu avant sa facture d'acompte",
+    "kernel.homeKind.advance_received.other": "paiements reçus avant leur facture d'acompte"
+  }
+}

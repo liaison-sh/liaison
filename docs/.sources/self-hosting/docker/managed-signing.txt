@@ -1,0 +1,1 @@
+LIAISON_MANAGED_SIGNING_ENABLED lets a hosted server offer signatures; ignored self-hosted -> apps/api/src/lib/env.ts (LIAISON_MANAGED_SIGNING_ENABLED) ; apps/api/src/modules/apps/sandbox/bridge/client-actions.ts (signingUnavailable)

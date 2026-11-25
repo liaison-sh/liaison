@@ -1,0 +1,1 @@
+Work lists a closed project after the live ones, marked Closed -> apps/api/src/modules/apps/sandbox/bridge/projects.ts (projects_companyProjects) ; apps/web/src/modules/projects/CompanyWorkPanel.tsx (CompanyWorkPanel) ; packages/shared/src/i18n/locales/en/projects.json (companyWork.closed)

@@ -145,6 +145,17 @@ export function conformanceMatrix(): MatrixCase[] {
     }
   }
   out.push(...negativeCreditNotes())
+  // A month of services billed from planned vs done: the document and each line state the month.
+  const month = { start: "2026-10-01", end: "2026-10-31" }
+  const services = fxDocument({ operation_category: "services", vat_on_debits: true })
+  out.push({
+    name: "invoice EUR services with the service month",
+    input: {
+      ...services,
+      service_period: month,
+      lines: services.lines.map((l) => ({ ...l, period: month })),
+    },
+  })
   return out
 }
 

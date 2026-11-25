@@ -36,6 +36,7 @@ import {
   creditNoteCreateAndIssuePreflight,
   creditNoteIssue,
   creditNoteIssuePreflight,
+  documentsConvertLocal,
   documentsConvertToInvoice,
   documentsConvertToInvoicePreflight,
   documentsMarkPaid,
@@ -89,8 +90,9 @@ import {
   settingsIssuerProfileWritePreflight,
   splitPostalAddress,
 } from "./mutations"
+import { issuePayloadFor } from "./mutations/issue-fingerprint"
 import type { ReadsFetch } from "./reads"
-import { documentsGet, type ReadsCtx } from "./reads"
+import { documentsGet, documentsSearch, type ReadsCtx } from "./reads"
 import * as summarizers from "./summarizers"
 import {
   summarizeDocumentSend,
@@ -296,6 +298,16 @@ function makeCtx(opts?: {
 
   const executeTool: CrossAppExecuteTool = async (name, args) => {
     extras.executeToolCalls.push({ name, args })
+    // The app's own internal tool runs its handler, as the kernel does for the app's own call.
+    if (name === "invoicing:documents_convert_local") {
+      return { status: "completed", result: await documentsConvertLocal(ctx, args as never) }
+    }
+    // No Stripe app in these tests: the kernel answers an absent app's tool as not found.
+    if (name.startsWith("stripe:"))
+      return {
+        status: "error",
+        error: { code: "tool_not_found", message: `tool ${name} not registered` },
+      }
     if (opts?.executeToolImpl) return opts.executeToolImpl(name, args)
     return { status: "completed", result: { dispatched: true } }
   }
@@ -935,6 +947,36 @@ describe("drafts.create", () => {
     const issued = issuedDocs(db)[0]!
     expect(issued.shopify_order_id).toBe("12768069779622")
     expect(issued.shopify_order_number).toBe("#1149")
+  })
+
+  test("a draft with external_ref set appears in the Pending list and issues by draft id", async () => {
+    // A draft that comes from a source (a recurring run) carries an external_ref. It is a pending
+    // draft anyone can list, and invoice_issue {draft_id} issues it: one numbered invoice, the
+    // draft consumed.
+    const { ctx, db } = makeCtx()
+    const { draft_id } = await draftsCreate(ctx, {
+      type: "invoice",
+      ...BUYER_DRAFT_EINVOICE,
+      counterparty_contact_id: "contact-1",
+      counterparty_name: "Buyer SARL",
+      counterparty_address: "1 rue Buyer, 75002 Paris",
+      counterparty_email: "ap@buyersarl.example",
+      counterparty_country: "FR",
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    await db.update("documents", draft_id, { external_ref: "recurring:run-1:item-1" })
+
+    const pending = await documentsSearch(ctx as unknown as ReadsCtx, { status: "draft" })
+    expect(pending.map((r) => r.id)).toEqual([draft_id])
+
+    const r = await invoiceIssue(ctx, { draft_id })
+    expect(r.status).toBe("completed")
+    expect(draftDocs(db)).toHaveLength(0)
+    expect(issuedDocs(db)).toHaveLength(1)
+    expect(issuedDocs(db)[0]!.number).toMatch(/^INV-/)
+    expect(await documentsSearch(ctx as unknown as ReadsCtx, { status: "draft" })).toHaveLength(0)
   })
 
   test("defaults currency to EUR when neither input nor issuer specifies one", async () => {
@@ -1742,7 +1784,7 @@ describe("invoice.issue — editable due_at / payment terms on the pending appro
       counterparty_country: "FR",
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      due_at: "2026-07-20", // NET-30 (the wrong terms)
+      due_at: "2099-07-20", // NET-30 (the wrong terms)
       items: sampleDraftItems,
     })
     const r = await invoiceIssue(ctx, { draft_id })
@@ -1752,7 +1794,12 @@ describe("invoice.issue — editable due_at / payment terms on the pending appro
     // due_at is the editable field exposed on the approval (so a human/agent can correct the terms).
     expect(req.editable_fields).toEqual(["due_at"])
     // The current terms are carried on the payload so the approver SEES them before editing.
-    expect(req.current_payload).toEqual({ draft_id, due_at: "2026-07-20" })
+    // With the fingerprint of the draft the card shows, so an edited draft is refused at issue.
+    expect(req.current_payload).toEqual({
+      draft_id,
+      due_at: "2099-07-20",
+      draft_hash: expect.stringMatching(/^2:[0-9a-f]{64}:\d+$/),
+    })
     // Nothing issued yet.
     expect(issuedDocs(db)).toHaveLength(0)
   })
@@ -1778,14 +1825,15 @@ describe("invoice.issue — editable due_at / payment terms on the pending appro
       counterparty_country: "FR",
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      due_at: "2026-07-20", // NET-30 originally on the draft
+      due_at: "2099-07-20", // NET-30 originally on the draft
       items: sampleDraftItems,
     })
-    const r = await invoiceIssue(ctx, { draft_id, due_at: "2026-08-19" }) // corrected NET-60
+    const card = await issuePayloadFor(ctx, draft_id)
+    const r = await invoiceIssue(ctx, { ...card, due_at: "2099-08-19" }) // corrected NET-60
     expect(r.status).toBe("completed")
     const issued = issuedDocs(db)
     expect(issued).toHaveLength(1)
-    expect(String(issued[0]!.due_at)).toBe("2026-08-19")
+    expect(String(issued[0]!.due_at)).toBe("2099-08-19")
   })
 
   test("re-entry WITHOUT an edited due_at issues with the draft's original terms (no accidental clear)", async () => {
@@ -1807,14 +1855,14 @@ describe("invoice.issue — editable due_at / payment terms on the pending appro
       counterparty_country: "FR",
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      due_at: "2026-07-20",
+      due_at: "2099-07-20",
       items: sampleDraftItems,
     })
-    const r = await invoiceIssue(ctx, { draft_id }) // no due_at override
+    const r = await invoiceIssue(ctx, await issuePayloadFor(ctx, draft_id)) // no due_at override
     expect(r.status).toBe("completed")
     const issued = issuedDocs(db)
     expect(issued).toHaveLength(1)
-    expect(String(issued[0]!.due_at)).toBe("2026-07-20")
+    expect(String(issued[0]!.due_at)).toBe("2099-07-20")
   })
 })
 
@@ -2185,6 +2233,49 @@ describe("documents.convert_to_invoice", () => {
     )
   })
 
+  test("a local convert runs as one call of the internal local convert, and its error leaves the quote as it was", async () => {
+    const { ctx, db, extras } = makeCtx()
+    await seedShopifyLinkedQuote(db)
+    // The same quote with no draft order: a local convert.
+    const quote = db
+      .__all("documents")
+      .find((d) => d.id === "00000000-0000-4000-8000-00000000010b")!
+    await db.update("documents", String(quote.id), {
+      shopify_draft_order_id: null,
+      external_refs: {},
+    })
+    const r = await documentsConvertToInvoice(ctx, {
+      operation_category: "goods",
+      source_document_id: String(quote.id),
+    })
+    expect(r.status).toBe("completed")
+    expect(
+      extras.executeToolCalls.filter((c) => c.name === "invoicing:documents_convert_local"),
+    ).toHaveLength(1)
+    const failing = makeCtx()
+    await seedShopifyLinkedQuote(failing.db)
+    await failing.db.update("documents", "00000000-0000-4000-8000-00000000010b", {
+      shopify_draft_order_id: null,
+      external_refs: {},
+    })
+    failing.ctx.executeTool = async () => ({
+      status: "error",
+      error: { code: "forced", message: "forced failure" },
+    })
+    const refused = await documentsConvertToInvoice(failing.ctx, {
+      operation_category: "goods",
+      source_document_id: "00000000-0000-4000-8000-00000000010b",
+    })
+    expect(refused.status === "error" ? refused.error : refused).toEqual({
+      code: "forced",
+      message: expect.stringContaining("no number was used"),
+    })
+    expect(
+      failing.db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-00000000010b")
+        ?.status,
+    ).toBe("sent")
+  })
+
   test("missing source document → not_found", async () => {
     const { ctx } = makeCtx()
     const r = await documentsConvertToInvoice(ctx, {
@@ -2405,8 +2496,27 @@ describe("documents.convert_to_invoice", () => {
     expect(quote.shopify_order_number).toBe("#1149")
     const log = quote.lifecycle_log as Array<Record<string, unknown>>
     expect(log.map((e) => e.event)).toContain("draft_order_completed")
-    // No invoice was issued locally.
+    // No invoice was issued locally, and the local convert (one transaction) was never entered.
     expect(db.__all("documents").filter((d) => d.type === "invoice")).toHaveLength(0)
+    expect(extras.executeToolCalls.map((c) => c.name)).toEqual([
+      "shopify:draft_orders_complete",
+      "shopify:draft_orders_get",
+    ])
+  })
+
+  test("shopify-linked quote: the local convert refuses it and writes nothing", async () => {
+    const { ctx, db, extras } = makeCtx()
+    await seedShopifyLinkedQuote(db)
+    const r = await documentsConvertLocal(ctx, {
+      operation_category: "goods",
+      source_document_id: "00000000-0000-4000-8000-00000000010b",
+    })
+    expect(r.status === "error" ? r.error.code : r.status).toBe("shopify_linked")
+    expect(extras.executeToolCalls).toHaveLength(0)
+    const quote = db
+      .__all("documents")
+      .find((d) => d.id === "00000000-0000-4000-8000-00000000010b")!
+    expect(quote.status).toBe("sent")
   })
 
   test("shopify-linked quote: a pending_approval from Shopify is propagated and the quote untouched", async () => {
@@ -2497,6 +2607,82 @@ describe("documents.mark_paid", () => {
     const renderDoc = (lastRender.data as { document: Record<string, unknown> }).document
     expect(renderDoc.payment_status).toBe("paid")
     expect(renderDoc.paid_at).toBe("2026-05-29")
+  })
+
+  test("marking a transfer invoice paid reports the collection", async () => {
+    const { ctx, db } = makeCtx()
+    const id = "00000000-0000-4000-8000-000000000131"
+    await db.insert("documents", {
+      id,
+      type: "invoice",
+      status: "issued",
+      number: "INV-2026-31",
+      number_int: 31,
+      year_of_issue: 2026,
+      issuer_profile_id: "iss-1",
+      counterparty_contact_id: "contact-1",
+      currency: "EUR",
+      subtotal_minor: "10000",
+      tax_total_minor: "2000",
+      grand_total_minor: "12000",
+      tax_treatment: "eu_domestic",
+      operation_category: "services",
+      regime: "e_invoice",
+      pa_provider: "fakepa",
+      incoterm: "DAP",
+      issued_at: "2026-11-02",
+      pdf_file_id: "pdf-x",
+      pdf_status: "ready",
+      external_refs: {},
+      lifecycle_log: [],
+    })
+    await db.insert("document_lines", {
+      document_id: id,
+      position: 1,
+      description: "Conseil",
+      quantity: "1",
+      unit_price_minor: "10000",
+      subtotal_minor: "10000",
+      tax_minor: "2000",
+      tax_rate_bp: 2000,
+    })
+    await db.insert("einvoice_transmissions", {
+      document_id: id,
+      action: "send_einvoice",
+      idempotency_key: "k-31",
+      state: "sent",
+      provider_app: "fakepa",
+      provider_ref: "pa-31",
+    })
+    const reported: Array<Record<string, unknown>> = []
+    Object.assign(ctx, {
+      contracts: {
+        call: async (_c: string, op: string, params: Record<string, unknown>) => {
+          reported.push({ op, ...params })
+          return { status: "completed", result: { state: "accepted" } }
+        },
+      },
+    })
+    expect(
+      (
+        await documentsMarkPaid(ctx, {
+          document_id: id,
+          paid_date: "2026-11-20",
+          payment_note: "bank transfer",
+        })
+      ).status,
+    ).toBe("completed")
+    expect(reported).toEqual([
+      expect.objectContaining({
+        op: "report_collection",
+        provider_ref: "pa-31",
+        date: "2026-11-20",
+        amounts_by_vat_rate: [{ rate_bp: 2000, net_minor: "10000", vat_minor: "2000" }],
+      }),
+    ])
+    expect(db.__all("documents").find((d) => d.id === id)).toMatchObject({
+      collection_state: "reported",
+    })
   })
 
   test("emits document:paid with paid_at and payment_status", async () => {
@@ -3439,6 +3625,39 @@ describe("documents.send_to_customer", () => {
     // A half-populated error still yields a usable reason.
     const codeOnly = sendErrorFromEnvelope({ error: { code: "smtp_rejected" } })
     expect(codeOnly.code).toBe("smtp_rejected")
+  })
+
+  test("a send from a mailbox the person cannot reach is refused in words for that person", () => {
+    const out = sendErrorFromEnvelope({
+      error: {
+        code: "NOT_FOUND",
+        message:
+          "No mailbox matches that accountId: call mail listAccounts and pass a real account id. Never invent one.",
+      },
+    })
+    expect(out.code).toBe("mailbox_unavailable")
+    expect(out.message).toBe(
+      "This document was not sent: you cannot send from the mailbox chosen in Settings, Invoicing. Someone who can send from it can send it, or an admin can choose another one there.",
+    )
+  })
+
+  test("the mail app's thrown mailbox miss, whatever its code, reads in the person's words", () => {
+    const out = sendErrorFromEnvelope({
+      error: {
+        code: "handler_error",
+        message:
+          "No mailbox matches that accountId: call mail listAccounts and pass a real account id. Never invent one.",
+      },
+    })
+    expect(out.code).toBe("mailbox_unavailable")
+    expect(out.message).not.toContain("listAccounts")
+  })
+
+  test("a not-found that is not the mailbox (an attachment, a conversation) keeps its own reason", () => {
+    const out = sendErrorFromEnvelope({
+      error: { code: "NOT_FOUND", message: "Attachment file not found" },
+    })
+    expect(out).toEqual({ code: "NOT_FOUND", message: "Attachment file not found" })
   })
 
   // Regression — the same fallback with NO contact link at all. A document carrying only a
@@ -4794,6 +5013,54 @@ describe("orderReissueApply", () => {
       ],
     })
     expect(result.status).toBe("completed")
+  })
+
+  test("the replacement of a paid invoice is never due; of an unpaid one it is, by the payment terms", async () => {
+    for (const paid of [true, false]) {
+      const { ctx, db } = makeCtx()
+      const original = await invoiceCreateAndIssue(ctx, {
+        operation_category: "goods",
+        counterparty: defaultCounterparty,
+        issuer_profile_id: "iss-1",
+        currency: "EUR",
+        shopify_order_id: "shop-order-11",
+        shopify_order_number: "#1011",
+        items: sampleDraftItems,
+      })
+      if (original.status !== "completed") throw new Error("unreachable")
+      const row = db.__all("documents").find((d) => d.id === original.document_id)!
+      expect(row.due_at).toBeTruthy()
+      if (paid) row.payment_status = "paid"
+      const result = await orderReissueApply(ctx, {
+        original_document_id: original.document_id,
+        shopify_order_id: "shop-order-11",
+        shopify_order_number: "#1011",
+        billing_signature: "sig-e",
+        dedupe_key: "shop-order-11:sig-e",
+        items: [
+          {
+            description: "Widget",
+            quantity: "1",
+            unit_price_minor: 5_000,
+            product_source: null,
+            external_id: null,
+          },
+        ],
+      })
+      if (result.status !== "completed") throw new Error(JSON.stringify(result))
+      const replacement = db
+        .__all("documents")
+        .find(
+          (d) => d.id === (result as { replacement_document_id?: string }).replacement_document_id,
+        )
+      expect(Boolean(replacement?.due_at)).toBe(!paid)
+      const note = db
+        .__all("documents")
+        .find(
+          (d) => d.id === (result as { credit_note_document_id?: string }).credit_note_document_id,
+        )
+      expect(note?.due_at ?? null).toBeNull()
+    }
   })
 
   test("reissue after a refused original books an internal cancellation and issues the replacement under a new number", async () => {
@@ -9541,7 +9808,7 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
     expect(r.error.message).toContain("settings_issuer_profile_list")
   })
 
-  test("incomplete counterparty: names the missing fields and shows a complete example", async () => {
+  test("incomplete counterparty: names the missing fields in words a person reads", async () => {
     const { ctx } = makeCtx()
     const r = await quoteCreateAndIssue(ctx, {
       counterparty: { ...defaultCounterparty, address: null, email: "" },
@@ -9551,8 +9818,10 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
     })
     if (r.status !== "error") throw new Error("expected error")
     expect(r.error.code).toBe("counterparty_incomplete")
-    expect(r.error.message).toContain("address, email are missing")
-    expect(r.error.message).toContain('"legal_name": "Acme SAS"')
+    expect(r.error.message).toContain(
+      "the customer's postal address and the customer's email address are missing",
+    )
+    expect(r.error.message).not.toContain("{")
     expect(r.error.message).toContain("never make them up")
   })
 
@@ -10142,7 +10411,16 @@ describe("intra-EU business buyer guard", () => {
         type === "invoice"
           ? await invoiceIssuePreflight(m.ctx, { draft_id: d.draft_id })
           : await quoteIssuePreflight(m.ctx, { draft_id: d.draft_id })
-      expect(pre).toEqual({ ok: true, noAutoApprove: true })
+      // An invoice's issue card also pins the fingerprint of the draft it shows.
+      expect(pre).toEqual(
+        type === "invoice"
+          ? {
+              ok: true,
+              noAutoApprove: true,
+              pinnedParams: { draft_hash: expect.stringMatching(/^2:[0-9a-f]{64}:\d+$/) },
+            }
+          : { ok: true, noAutoApprove: true },
+      )
     }
   })
 
@@ -10879,6 +11157,28 @@ describe("the other minor-unit fields read as issuing reads them", () => {
     }
   })
 
+  test("a SIREN whose check digit does not match is refused in Settings, a valid one passes", async () => {
+    const m = makeCtx({ scopes: ["*"] })
+    const typo = await settingsIssuerProfileWritePreflight(m.ctx, "update", {
+      id: "iss-1",
+      siren: "904 000 008",
+    })
+    if (!typo || !("error" in typo)) throw new Error("a SIREN typo passed")
+    expect(typo.error.code).toBe("invalid_params")
+    expect(typo.error.message).toContain("check digit")
+    const short = await settingsIssuerProfileWritePreflight(m.ctx, "update", {
+      id: "iss-1",
+      siren: "90400000",
+    })
+    if (!short || !("error" in short)) throw new Error("an 8-digit SIREN passed")
+    expect(short.error.message).toContain("9-digit number")
+    const ok = await settingsIssuerProfileWritePreflight(m.ctx, "update", {
+      id: "iss-1",
+      siren: "904 000 007",
+    })
+    expect(ok && "error" in ok ? ok.error : null).toBeNull()
+  })
+
   test("an approval threshold with a decimal point is refused", async () => {
     const m = makeCtx({ scopes: ["*"] })
     const res = await settingsIssuerProfileWritePreflight(m.ctx, "update", {
@@ -10927,5 +11227,137 @@ describe("isUniqueViolation", () => {
     expect(isUniqueViolation(text)).toBe(true)
     expect(isUniqueViolation("connection reset")).toBe(false)
     expect(isUniqueViolation(new Error("connection reset"))).toBe(false)
+  })
+})
+
+describe("an e-invoice whose issuer profile cannot sign its legal original", () => {
+  const noSeller = { siren: null, address_line1: null, postcode: null, city: null }
+
+  test("issuing a draft is refused before a number is taken, naming the Settings fields", async () => {
+    const { ctx, db } = makeCtx({ issuer: noSeller })
+    const { draft_id } = await draftsCreate(ctx, {
+      type: "invoice",
+      ...BUYER_DRAFT_EINVOICE,
+      counterparty_contact_id: "contact-1",
+      counterparty_name: "Buyer SARL",
+      counterparty_address: "1 rue Buyer, 75002 Paris",
+      counterparty_email: "ap@buyersarl.example",
+      counterparty_country: "FR",
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    const r = await invoiceIssue(ctx, { draft_id })
+    expect(r.status).toBe("error")
+    if (r.status !== "error") throw new Error("unreachable")
+    expect(r.error.code).toBe("issuer_incomplete")
+    expect(r.error.message).toContain("SIREN, street address, postcode and city")
+    expect(r.error.message).toContain("Settings > Invoicing")
+    expect((r.error.body as { fix_tool: string }).fix_tool).toBe("settings_issuer_profile_update")
+    expect(issuedDocs(db)).toHaveLength(0)
+    expect(draftDocs(db).map((d) => d.id)).toEqual([draft_id])
+    expect(db.__sequences.size).toBe(0)
+  })
+
+  test("create and issue is refused the same way and writes nothing", async () => {
+    const { ctx, db } = makeCtx({ issuer: noSeller, issuerThresholdMinor: null })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("error")
+    if (r.status === "error") expect(r.error.code).toBe("issuer_incomplete")
+    expect(db.__all("documents")).toHaveLength(0)
+    expect(db.__sequences.size).toBe(0)
+  })
+
+  // A fictional company: SIREN 904000007, its French VAT number FR22904000007.
+  const vatOnly = { siren: null, vat_id: "FR22904000007" }
+
+  test("a French VAT number supplies the SIREN that is not on file, and the e-invoice is made", async () => {
+    const { ctx, db } = makeCtx({ issuer: vatOnly, issuerThresholdMinor: null })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("completed")
+    if (r.status !== "completed") throw new Error("unreachable")
+    expect(r.einvoicing_warning).toBeUndefined()
+    const doc = db.__all("documents").find((d) => d.id === r.document_id)!
+    expect(doc.pdf_status).toBe("ready")
+    expect(db.__all("legal_originals").map((l) => l.kind)).toEqual(["facturx"])
+  })
+
+  test("warn mode: an issuer with only a VAT number and a one-line address issues with a plain PDF and says what is missing", async () => {
+    const { ctx, db } = makeCtx({
+      issuer: { ...noSeller, ...vatOnly },
+      issuerThresholdMinor: null,
+      seed: { einvoicing_settings: [{ gate_mode: "warn", gate_mode_source: "upgrade_default" }] },
+    })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("completed")
+    if (r.status !== "completed") throw new Error("unreachable")
+    // The SIREN comes from the VAT number: only the structured address is missing.
+    expect(r.einvoicing_warning?.code).toBe("issuer_incomplete")
+    expect(r.einvoicing_warning?.message).toContain("street address, postcode and city are missing")
+    expect(r.einvoicing_warning?.message).not.toContain("SIREN")
+    const doc = db.__all("documents").find((d) => d.id === r.document_id)!
+    expect(doc.number).toBeTruthy()
+    // A plain PDF as the legal original, never a failed e-invoice file blocking the PDF.
+    expect(doc.pdf_status).toBe("ready")
+    expect(db.__all("legal_originals").map((l) => l.kind)).toEqual(["issued_pdf"])
+    expect(
+      (doc.lifecycle_log as Array<{ event: string; code?: string }>).some(
+        (e) => e.event === "einvoice_gate_warning" && e.code === "issuer_incomplete",
+      ),
+    ).toBe(true)
+  })
+
+  test("enforce mode: the same issuer is refused before a number, naming only the address fields", async () => {
+    const { ctx, db } = makeCtx({ issuer: { ...noSeller, ...vatOnly }, issuerThresholdMinor: null })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("error")
+    if (r.status !== "error") throw new Error("unreachable")
+    expect(r.error.code).toBe("issuer_incomplete")
+    expect((r.error.body as { missing_fields: string[] }).missing_fields).toEqual([
+      "address_line1",
+      "postcode",
+      "city",
+    ])
+    expect(db.__sequences.size).toBe(0)
+  })
+
+  test("a buyer outside e-invoicing still issues with the same issuer profile", async () => {
+    const { ctx } = makeCtx({ issuer: noSeller, issuerThresholdMinor: null })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: {
+        ...defaultCounterparty,
+        contact_id: null,
+        customer_kind: "individual",
+      },
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("completed")
   })
 })

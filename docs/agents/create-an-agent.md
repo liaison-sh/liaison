@@ -90,6 +90,8 @@ Every person has a personal agent that works with that person's own permissions.
 
 A personal agent's ceiling follows its person: when they gain a role or a permission, their agent gains it too, and when they lose one, their agent loses it. An administrator can narrow one person's agent by setting its capabilities. That narrowing stays when the person's permissions change later, and the agent never gets more than the person holds. Setting capabilities that cover everything the person holds removes the narrowing.
 
+A scope held only by its exact grant (see [How access is bounded](permissions.md#how-access-is-bounded)) follows the same rule. If an administrator narrowed the agent and later the person is given such a scope exactly, the agent gets it too, as long as it lies inside the area the narrowing kept and the administrator did not remove that scope by name. A scope the administrator removed stays removed until the administrator names it again, which needs the person to hold it exactly. A narrowing saved before this rule keeps its old meaning: such a scope reaches the agent only when the capabilities name it. Saving that agent's capabilities again keeps it that way: each such scope the old narrowing left out is recorded as removed.
+
 ## Archive an agent
 
 You need `kernel:agents:admin`.

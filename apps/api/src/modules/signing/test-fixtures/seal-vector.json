@@ -1,0 +1,13 @@
+{
+  "comment": "Fixed seal vector. The offline checker reads the same file. Inputs are SHA-256 of the UTF-8 strings 'frozen document', 'signed document' and 'trail'.",
+  "input": {
+    "documentSha256": "b1b517a98732bbbc15bac27be81cb054088bcf834d14eeceedb6fe067920bcd5",
+    "signedPdfSha256": "0c1068dbcf5ef4d8f90bbaee21e4b35ce20816637e6c1011eefc80958875b2c5",
+    "trailSha256": "897abbb178d59a98b5bbc2f51aa5ef612730a437bd717f8a5b344d8a747d987f",
+    "level": "simple",
+    "agreement": "AGR-2026-0001",
+    "version": 2
+  },
+  "canonicalManifest": "{\"agreement\":\"AGR-2026-0001\",\"document_sha256\":\"b1b517a98732bbbc15bac27be81cb054088bcf834d14eeceedb6fe067920bcd5\",\"hash\":\"sha256\",\"level\":\"simple\",\"signed_pdf_sha256\":\"0c1068dbcf5ef4d8f90bbaee21e4b35ce20816637e6c1011eefc80958875b2c5\",\"trail_sha256\":\"897abbb178d59a98b5bbc2f51aa5ef612730a437bd717f8a5b344d8a747d987f\",\"v\":1,\"version\":2}",
+  "seal": "c48adfa472c4af1d9be251778dccdf3fbf313ac6a1bdb3b0412d288e13c7c458"
+}

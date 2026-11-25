@@ -33,7 +33,8 @@ export type Mapping = Record<string, MappingEntry>
 export type RichTextBlock =
   | { type: "heading"; text: string; level?: 1 | 2 | 3 }
   | { type: "paragraph"; text: string }
-  | { type: "list"; from: string; line: string }
+  /** One line per row of the record list `from`, or the written `items`; never both. */
+  | { type: "list"; from?: string; line?: string; items?: string[] }
   | { type: "image"; fileId: string; width?: number; align?: "left" | "center" | "right" }
   | { type: "spacer"; height: number }
 

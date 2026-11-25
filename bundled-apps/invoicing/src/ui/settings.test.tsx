@@ -24,6 +24,7 @@ import {
   isInvalidIban,
   LOGO_ACCEPTED_MIME_TYPES,
   LOGO_MAX_BYTES,
+  pickIssuerSaveFields,
   validateLogoFile,
 } from "./settings"
 
@@ -69,6 +70,7 @@ describe("InvoicingIssuerProfiles (Phase 17 F6)", () => {
     const blocks = m.settings.sections.flatMap((s) => s.blocks)
     expect(blocks.filter((b) => b.block === "custom").map((b) => b.component)).toEqual([
       "InvoicingIssuerProfiles",
+      "InvoicingIssuerStreams",
       "EinvoicingRegistration",
     ])
     // Read-only lists: a list tool and nothing else.
@@ -140,6 +142,16 @@ describe("InvoicingIssuerProfiles (Phase 17 F6)", () => {
 
   it("source emits the IBAN soft-warn copy", () => {
     expect(source).toContain("IBAN looks invalid")
+  })
+
+  it("the form chooses the mailbox documents are sent from among the mailboxes mail shows the person", () => {
+    expect(source).toContain("settings-issuer-profile-field-mail_account_id")
+    expect(source).toContain('hostFetch<MailboxOption[]>("/api/mail/accounts")')
+    expect(source).toContain("Send invoices from")
+    expect(pickIssuerSaveFields({ id: "p", mail_account_id: "m1" })).toEqual({
+      id: "p",
+      mail_account_id: "m1",
+    })
   })
 
   it("source emits the deletion-blocked copy when references exist", () => {

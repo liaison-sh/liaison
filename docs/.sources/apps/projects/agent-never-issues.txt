@@ -1,0 +1,2 @@
+The reconcile skill tells the agent a person creates the invoice on the card and the agent never issues -> apps/api/src/apps/projects/app.manifest.json (skills.reconcile)
+Create invoice and Undo are card actions, not agent tools -> apps/api/src/apps/projects/app.manifest.json (tools.reconcile_create_invoice)

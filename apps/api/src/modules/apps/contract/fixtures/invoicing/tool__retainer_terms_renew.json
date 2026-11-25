@@ -1,0 +1,30 @@
+{
+  "entry": "tool:retainer_terms_renew",
+  "params": {
+    "projectId": "7a1d2c3e-0000-4000-8000-0000000000aa",
+    "agreementId": "7a1d2c3e-0000-4000-8000-0000000000ab",
+    "agreementNumber": "AG-2026-001",
+    "startsOn": "2026-12-01",
+    "minutes": 2640,
+    "feeMinor": "495000"
+  },
+  "recordedFrom": "the contract org on a local stack, record-invoicing-retainer.recorder.test.ts",
+  "expectError": {
+    "reason": "the contract org has no retainer schedule, so the renewal renews nothing: pins that refusal; the renewal itself is proven by retainer-renewal.test.ts"
+  },
+  "calls": [
+    {
+      "method": "hasScope",
+      "args": ["projects:money:write"],
+      "reply": true
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "recurring_schedules",
+        "{\"where\":{\"retainer_project_id\":\"7a1d2c3e-0000-4000-8000-0000000000aa\"},\"limit\":20}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

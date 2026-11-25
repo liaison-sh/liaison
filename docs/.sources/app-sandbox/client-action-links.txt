@@ -1,0 +1,8 @@
+Client action bridge methods, their modes and the person's decision they need -> apps/api/src/modules/apps/sandbox/bridge/client-actions.ts (createClientActionsMethods, personDecided, remind, newLink, guardStops)
+Declared targets only -> apps/api/src/modules/client-actions/targets.ts (declaredTarget)
+Links listed with no token, code or device field -> apps/api/src/modules/client-actions/mint.ts (listTargetClientActions)
+Rich text rendered by the host, read-only -> apps/api/src/modules/apps/sandbox/bridge/rich-text.ts (createRichTextMethods)
+A target minted by its app only, refused by the kernel tool -> apps/api/src/modules/client-actions/tools.ts (sentByItsApp) ; apps/api/src/modules/client-actions/targets.ts (declaredTarget mintedBy) ; apps/api/src/modules/apps/manifest-schema.ts (clientActionTargets mintedBy)
+A replaced link leaves the send's group and is marked replaced -> apps/api/src/modules/client-actions/mint.ts (replacedSql, readClientActionRecord, listTargetClientActions, openNextSignerTurn)
+already_sent, ALREADY_SENT, recently_mailed and the links_made event -> apps/api/src/modules/apps/sandbox/bridge/client-actions.ts (mintSend, remind) ; apps/api/src/modules/client-actions/mint.ts (mintClientActionSend)
+An external tool's timeout says what it started may have gone through -> apps/api/src/modules/apps/execute-tool.ts (App execution timed out)

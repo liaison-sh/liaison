@@ -1,0 +1,38 @@
+{
+  "copy": {
+    "subject": "Your signed copy: {{agreement}}, version {{version}}",
+    "body": "Everyone has signed \"{{title}}\" with {{org}}. Your copy of the signed document and of its evidence file are attached. Keep them: they let you check the document without {{org}}.",
+    "fingerprint": "Fingerprint of the signed document (SHA-256): {{fingerprint}}",
+    "seal": "Seal: {{seal}}",
+    "pending": "The outside timestamp has not arrived yet; a stamped evidence file follows by mail.",
+    "footer": "This mail was sent for you to keep. It holds no link.",
+    "approved_subject": "Your approved copy: {{agreement}}, version {{version}}",
+    "approved_body": "Everyone has approved \"{{title}}\" with {{org}}: a recorded approval. Your copy of the approved document and of its evidence file are attached. Keep them: they let you check the document without {{org}}."
+  },
+  "pages": {
+    "page": "Signature page {{n}} of {{of}}",
+    "heading": "Signatures",
+    "capacity": "Capacity",
+    "typed": "Words typed",
+    "at": "Signed on",
+    "level_ses": "Simple electronic signature",
+    "level_demo": "Demonstration, not a signature",
+    "fingerprint": "Fingerprint of the signed document (SHA-256)",
+    "document": "{{agreement}}, version {{version}}"
+  },
+  "certificate": {
+    "title": "Signature certificate",
+    "document_fingerprint": "Document fingerprint (SHA-256)",
+    "signed_fingerprint": "Signed PDF fingerprint (SHA-256)",
+    "seal": "Seal (SHA-256 of the manifest)",
+    "stamped": "Timestamp: received from an outside authority.",
+    "pending": "Timestamp: pending, not received yet.",
+    "signers": "Signers"
+  },
+  "claim": {
+    "subject": "Restricted agreement {{number}} was claimed",
+    "body": "{{name}} added themselves to the list of people who can see agreement {{number}} on {{on}}.",
+    "why": "An admin may do this only after every person on the list has been deactivated for 7 days. The claim is shown on the agreement to anyone who can see it.",
+    "footer": "You get this mail because you were on the agreement's list. It holds no link."
+  }
+}

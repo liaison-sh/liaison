@@ -681,6 +681,7 @@ const AgentPage: Component<Props> = (props) => {
               <AgentRoutinesTab
                 agentId={agentId()}
                 canCreate={canAdminister()}
+                showTemplates={isOwner()}
                 selected={selectedFor("routines")}
                 run={selectedFor("routines") ? (selectedRun() ?? undefined) : undefined}
                 onSelectedCleared={clearSelected}

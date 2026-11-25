@@ -1,0 +1,4 @@
+ownsTransactions holds for first-party apps only; any other app's declaration is ignored -> apps/api/src/modules/apps/contract.ts (ownsTransactionsHolds) ; apps/api/src/modules/apps/runtime.ts (registerSingleApp)
+ownsTransactions: the approved run on a session, one commit per write -> apps/api/src/modules/apps/run-approved-handler.ts (runApprovedToolHandler)
+ownsTransactions: no protocol row and a throw is an unknown outcome, never no effect -> apps/api/src/modules/apps/run-approved-handler.ts (throwPersistedHandlerOutcome)
+the handler reports started, the committed effect, no effect, finished -> bundled-apps/invoicing/src/mutations/approval-protocol.ts (underApprovalProtocol)

@@ -8,16 +8,18 @@
 // Privileged: written over the system connection, as the provisioning paths
 // write them. Every column is the schema's, so defaults (timezone, settings,
 // status) are the product's.
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import {
   auditLog,
+  awayRanges,
   invitations,
   organizations,
   passwordResets,
   roles,
   userPreferences,
   userRoles,
+  userScopeGrants,
   users,
 } from "~/db/schema/kernel"
 
@@ -72,6 +74,17 @@ export async function seedUserRow(row: UserRowSeed): Promise<string> {
   return id as string
 }
 
+/** A scope granted to one person directly; a grant already held is left as it is. */
+export async function seedUserScopeGrantRow(row: {
+  userId: string
+  orgId: string
+  scope: string
+}): Promise<void> {
+  await withSystemDb("seed-user-scope-grant", (db) =>
+    db.insert(userScopeGrants).values(row).onConflictDoNothing(),
+  )
+}
+
 /** A role of the org by name, created when the org has none of that name. */
 export async function seedRoleRow(orgId: string, name: string): Promise<void> {
   await withSystemDb("seed-role-row", (db) =>
@@ -117,6 +130,38 @@ export async function setUserPreferences(
 export async function seedAuditEntry(row: typeof auditLog.$inferInsert): Promise<string> {
   const [created] = await withSystemDb("seed-audit-entry", (db) =>
     db.insert(auditLog).values(row).returning({ id: auditLog.id }),
+  )
+  return created?.id as string
+}
+
+/**
+ * One away range of a person, from `daysBefore` days before the database's today to `daysAfter`
+ * days after it, with who stands in for them; its id.
+ */
+export async function seedAwayRange(row: {
+  id?: string
+  orgId: string
+  userId: string
+  nextInLineId: string | null
+  daysBefore: number
+  daysAfter: number
+  source?: "said" | "lead" | "calendar"
+  status?: "active" | "asked" | "declined"
+}): Promise<string> {
+  const [created] = await withSystemDb("seed-away-range", (db) =>
+    db
+      .insert(awayRanges)
+      .values({
+        ...(row.id ? { id: row.id } : {}),
+        orgId: row.orgId,
+        userId: row.userId,
+        startsOn: sql`(now() - make_interval(days => ${row.daysBefore}))::date`,
+        endsOn: sql`(now() + make_interval(days => ${row.daysAfter}))::date`,
+        nextInLineId: row.nextInLineId,
+        source: row.source ?? "said",
+        status: row.status ?? "active",
+      })
+      .returning({ id: awayRanges.id }),
   )
   return created?.id as string
 }

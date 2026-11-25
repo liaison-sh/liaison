@@ -1,0 +1,2 @@
+# What a read of a restricted record touches stays with its list (restricted taint).
+src/tests/integration/restricted-taint.integration.test.ts

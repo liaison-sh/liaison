@@ -50,11 +50,26 @@ beforeAll(async () => {
     [ORG, "test_nc", "broken_read"],
     tool("broken_read", { error: { code: "upstream_unavailable", message: "boom" } }) as any,
   )
+  // A send that found its mailbox disconnected: nothing left, so it is a refusal, not an answer.
+  toolRegistry.set([ORG, "test_nc", "send_document"], {
+    ...tool("send_document", {
+      error: { code: "connection_not_connected", message: "the mailbox is not connected" },
+    }),
+    writesToTable: "app_test_nc.sends",
+  } as any)
+  toolRegistry.set([ORG, "test_nc", "pause_campaign"], {
+    ...tool("pause_campaign", {
+      error: { code: "meta_not_connected", message: "no Meta connection" },
+    }),
+    writesToTable: "app_test_nc.campaigns",
+  } as any)
 })
 
 afterAll(async () => {
   toolRegistry.delete([ORG, "test_nc", "account_info"])
   toolRegistry.delete([ORG, "test_nc", "broken_read"])
+  toolRegistry.delete([ORG, "test_nc", "send_document"])
+  toolRegistry.delete([ORG, "test_nc", "pause_campaign"])
   await sql`DELETE FROM kernel.users WHERE id = ${USER}`
   await sql`DELETE FROM kernel.organizations WHERE id = ${ORG}`
 })
@@ -101,6 +116,38 @@ describe("a not-connected connector answers, it does not fail", () => {
     }
     expect(code).toBe("upstream_unavailable")
     expect(status).toBe(500)
+  })
+
+  it("refuses a write that found its connection gone: an error status, never a 200 answer", async () => {
+    let status: number | undefined
+    let code: string | undefined
+    try {
+      await executeTool({
+        toolName: "test_nc:send_document",
+        orgId: ORG,
+        actor,
+        params: {},
+        origin: "human-ui",
+      })
+      throw new Error("expected a throw")
+    } catch (err) {
+      status = (err as { status?: number }).status
+      code = (err as { code?: string }).code
+    }
+    expect(code).toBe("connection_not_connected")
+    expect(status).toBe(422)
+    // Any connector's not-connected code on a write is the same 422, never a 500.
+    const other = await executeTool({
+      toolName: "test_nc:pause_campaign",
+      orgId: ORG,
+      actor,
+      params: {},
+      origin: "human-ui",
+    }).then(
+      () => null,
+      (e: unknown) => e as { status?: number; code?: string },
+    )
+    expect(other).toMatchObject({ status: 422, code: "meta_not_connected" })
   })
 
   it("leaves the agent-facing core envelope alone", async () => {

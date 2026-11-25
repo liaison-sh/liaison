@@ -1,0 +1,12 @@
+Invite and shares are on the Contacts page -> apps/web/src/modules/contacts/CompanyPortalSection.tsx (CompanyPortalSection)
+Your organization decides who gets access, what each company sees and the notice -> apps/api/src/modules/portal/access.ts (invitePortalPerson, setPortalShare, setPortalSettings)
+An access rule, not encryption: portal reads run under the portal's own role and row rules -> apps/api/src/modules/portal/routes.ts (PORTAL_HOME_READS)
+Notice at first sign-in and again after a change, I have read it -> apps/api/src/modules/portal/access.ts (setPortalSettings) ; apps/web/src/modules/portal/Notice.tsx
+Access log kept 12 months, 6 to 36 with a reason -> apps/api/src/modules/org/audit-retention.ts ; apps/api/src/modules/portal/access.ts (setPortalSettings) ; apps/api/src/modules/portal/portal-log.integration.test.ts
+Access log for the named readers only -> apps/api/src/modules/portal/admin-routes.ts (portalAdminRoutes)
+Data export holds the portal account, its access log and the requests -> apps/api/src/modules/export/data-subject-export-tool.ts
+Ending access signs out, closes links and shares, keeps invoices and signed documents -> apps/api/src/modules/portal/access.ts (endPortalAccess)
+Erasure keeps what they signed, accepted or approved -> apps/api/src/modules/portal/access.ts (keptForPerson)
+No agent, chat or search on the portal -> apps/web/src/modules/portal/PortalShell.tsx
+DPA kind -> bundled-apps/agreements/app.manifest.json (agreements.kind)
+Starter data processing addendum in English and French, to review with a lawyer -> apps/api/src/modules/documents/legal-templates/services.ts (SERVICES_STARTER_KIND)

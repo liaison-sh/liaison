@@ -20,6 +20,7 @@ import { createAppSourceMethods } from "~/modules/apps/sandbox/bridge/app-source
 import { createApprovalsMethods } from "~/modules/apps/sandbox/bridge/approvals"
 import { createBatchMethods } from "~/modules/apps/sandbox/bridge/batch"
 import { createCalendarMethods } from "~/modules/apps/sandbox/bridge/calendar"
+import { createClientActionsMethods } from "~/modules/apps/sandbox/bridge/client-actions"
 import {
   type ActorType,
   createBridgeContext,
@@ -31,14 +32,17 @@ import { createConversionMethods } from "~/modules/apps/sandbox/bridge/conversio
 import { createDbMethods } from "~/modules/apps/sandbox/bridge/db"
 import { createEffectsMethods } from "~/modules/apps/sandbox/bridge/effects"
 import { createEgressMethods } from "~/modules/apps/sandbox/bridge/egress"
+import { createEvidenceMethods } from "~/modules/apps/sandbox/bridge/evidence"
 import { createFilesMethods } from "~/modules/apps/sandbox/bridge/files"
 import { createIdentityMethods } from "~/modules/apps/sandbox/bridge/identity"
 import { createKnowledgeMethods } from "~/modules/apps/sandbox/bridge/knowledge"
 import { createKnowledgeCurationMethods } from "~/modules/apps/sandbox/bridge/knowledge-curation"
 import { createMailMethods } from "~/modules/apps/sandbox/bridge/mail"
 import { createPagesMethods } from "~/modules/apps/sandbox/bridge/pages"
+import { createPdfUploadMethods } from "~/modules/apps/sandbox/bridge/pdf-upload"
 import { createPlatformMethods } from "~/modules/apps/sandbox/bridge/platform"
 import { createProjectsMethods } from "~/modules/apps/sandbox/bridge/projects"
+import { createRichTextMethods } from "~/modules/apps/sandbox/bridge/rich-text"
 import {
   forWorkersRun,
   markSecretConfigKeys,
@@ -51,6 +55,7 @@ import {
   bridgeTestHostMethods,
   withPgCause,
 } from "~/modules/apps/sandbox/bridge/shared"
+import { createSigningMethods } from "~/modules/apps/sandbox/bridge/signing"
 import { createSqlMethods } from "~/modules/apps/sandbox/bridge/sql"
 import { createStepsMethods } from "~/modules/apps/sandbox/bridge/steps"
 import { createStoreMethods } from "~/modules/apps/sandbox/bridge/store"
@@ -99,6 +104,7 @@ export function createRpcBridge(
   const { bridgeReadOnlyRun } = ctx
   // The run's end (runApp) flushes its log lines (modules/app-builder/logs.ts).
   if (ctx.appLogSink) attachRunLogSink(rpcBridge, ctx.appLogSink)
+  const filesMethods = createFilesMethods(ctx)
   Object.assign(
     rpcBridge,
     createIdentityMethods(ctx),
@@ -117,7 +123,7 @@ export function createRpcBridge(
     createProjectsMethods(ctx),
     createKnowledgeMethods(ctx),
     createKnowledgeCurationMethods(ctx),
-    createFilesMethods(ctx),
+    filesMethods,
     createContractsMethods(ctx),
     createEffectsMethods(ctx),
     createStoreMethods(ctx),
@@ -127,6 +133,11 @@ export function createRpcBridge(
     createApiConnectionMethods(ctx),
     createAccountsMethods(ctx),
     createAppSourceMethods(ctx),
+    createSigningMethods(ctx),
+    createClientActionsMethods(ctx),
+    createRichTextMethods(ctx),
+    createEvidenceMethods(ctx, filesMethods),
+    createPdfUploadMethods(ctx, filesMethods),
   )
 
   // A test's own host methods (SandboxBridgeTestAccess.setHostMethods); none in
@@ -243,8 +254,25 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "agent_run",
   "agent_spawn",
   "requestApproval",
+  "approvals_restagePayload",
+  "approvals_withdraw",
   "sequences_allocate",
   "pdf_render",
+  // The agreements app's seal and timestamp (bridge/signing.ts): part of a send's seal step,
+  // and the timestamp is an outside call.
+  "signing_seal",
+  "signing_timestamp",
+  // The agreements app's seal-time files and copy mail (bridge/evidence.ts).
+  "evidence_signed_pdf",
+  "evidence_package_files",
+  "evidence_mail_copy",
+  // An uploaded document stores its frozen file and page pictures (bridge/pdf-upload.ts).
+  "pdf_upload_freeze",
+  // Client action links (bridge/client-actions.ts): a send mints and mails, a void withdraws.
+  "client_actions_mint",
+  "client_actions_revoke",
+  "client_actions_signed_copy",
+  "client_actions_call_as_sender",
   "nextHandle",
   "invalidateIdempotency",
   "effects_claim",
@@ -273,6 +301,8 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "files_attachToParent",
   "files_reparent",
   "connections_disconnect",
+  "threads_deleteEntityDiscussion",
+  "threads_pruneEntityDiscussion",
   "accounts_setMetadata",
   "mcp_createConnection",
   "approval_recordStarted",
@@ -355,6 +385,7 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "calendar_restoreRefusedDelete",
   // Mail
   "mail_writePage",
+  "mail_commercialSent",
   "mail_completeIngest",
   "mail_purgeDisconnectedAccount",
   "mail_releaseForeignAccount",
@@ -365,11 +396,15 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   // Projects
   "projects_createProject",
   "projects_createTask",
+  "projects_clientReportCardClosed",
+  "projects_clientReportsRoutineOn",
   "projects_updateTask",
   "projects_moveTask",
   "projects_addStatus",
   "projects_updateStatus",
   "projects_updateProject",
+  "projects_dealsUpdate",
+  "projects_dealsPipelineCreate",
   "projects_deleteStatus",
   "projects_deleteTask",
   "projects_mergeTasks",
@@ -386,6 +421,27 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "projects_labelsUpdate",
   "projects_labelsArchive",
   "projects_labelsReorder",
+  "projects_taskTimeSet",
+  "projects_taskTimeCorrect",
+  "projects_timePlanSet",
+  "projects_billingTermsSet",
+  "projects_costRateSet",
+  "projects_periodTimeboxSet",
+  "projects_capacityMove",
+  "projects_daysOffSet",
+  "projects_daysOffRemove",
+  "projects_timeSettingsSet",
+  "projects_reconcilePropose",
+  "projects_reconcileLineUpdate",
+  "projects_reconcileGet",
+  // A reconciliation's claims after its invoice moved (the invoicing app's declared call).
+  "projects_reconcileMark",
+  // Create invoice and Undo on a reconcile card: claims, the card's state, its draft link.
+  "projects_reconcileCreate",
+  "projects_reconcileUndo",
+  // A client report's draft, and a person's send (it writes what went out, then mails it).
+  "projects_clientReportSaveDraft",
+  "projects_clientReportSend",
   // An app's own knowledge sources: ensure, sync now, purge an account's content.
   "knowledge_appSourceWrite",
 ])
@@ -412,6 +468,9 @@ const SESSION_TXLESS_METHOD_PREFIXES = [
   "limiter_",
   "sql_",
   "api_",
+  // `signing_*` (bridge/signing.ts) hash in memory and call the timestamp authority
+  // (up to 10 s): no database at all.
+  "signing_",
 ]
 // Exact-name tx-less methods. `fetch` is the workhorse external-HTTP surface
 // (domain-allowlist + pinned-host fetch, zero txDb use) — wrapping it would
@@ -594,10 +653,18 @@ export function createSessionRpcBridge(
       bridgeOptions?.writeParentFrameOverride !== undefined
         ? bridgeOptions.writeParentFrameOverride
         : captureSpawnParentFrame(),
+    // The run itself, for what a method reads from it at call time (the turn's
+    // live taint store above all): captured here, bound to this bridge only.
+    // Never the IPC callback's ambient context, which belongs to no run.
+    runFrameOverride:
+      bridgeOptions?.runFrameOverride !== undefined
+        ? bridgeOptions.runFrameOverride
+        : (currentRunContext() ?? null),
     bulkCursorStore:
       bridgeOptions?.bulkCursorStore ??
       new Map<string, { iterator: AsyncIterator<unknown[]> | null; done: boolean }>(),
     mailboxSnapshot: bridgeOptions?.mailboxSnapshot ?? { value: null },
+    commercialSend: bridgeOptions?.commercialSend ?? { value: null },
     attachmentBytesLedger: bridgeOptions?.attachmentBytesLedger ?? {
       importAttachment: { cumulative: 0 },
       getAttachmentBytes: { cumulative: 0 },

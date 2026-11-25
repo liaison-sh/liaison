@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import manifest from "../../app.manifest.json"
 import { InvoicingAppIcon } from "./icon"
-import { InvoicingSidebar, NEW_DOC_TYPES } from "./sidebar"
+import { InvoicingSidebar, isFeatureOffRefusal, NEW_DOC_TYPES } from "./sidebar"
 
 const sidebarSource = readFileSync(join(import.meta.dir, "sidebar.tsx"), "utf-8")
 
@@ -39,15 +39,17 @@ describe("InvoicingSidebar (Phase 17 F1)", () => {
     expect(sidebarSource).not.toContain("dashboards/customs")
   })
 
-  it("declares the Documents-list items and NO Drafts tab (draft is not a user-facing category)", () => {
+  it("declares the Documents-list items, with a Drafts entry counted by documents_search", () => {
     expect(sidebarSource).toContain("Invoices")
     expect(sidebarSource).toContain("Quotes")
     expect(sidebarSource).toContain("Proformas")
     expect(sidebarSource).toContain("Purchase Orders")
     expect(sidebarSource).toContain("Credit notes")
-    // The Drafts tab is gone: drafts never surface as their own category.
-    expect(sidebarSource).not.toContain("/invoicing/documents/drafts")
-    expect(sidebarSource).not.toContain('label: "Drafts"')
+    // Drafts made by an agent, a milestone or a month-end run are reached from the list, not
+    // only by a direct link: their own entry, with the count the agent's own read gives.
+    expect(sidebarSource).toContain('"/invoicing/documents/drafts"')
+    expect(sidebarSource).toContain('label: "Drafts"')
+    expect(sidebarSource).toMatch(/status: "draft",\s*countOnly: true/)
   })
 
   it("wires the sidebar search box to the shared document-search signal (no longer a dead input)", () => {
@@ -59,6 +61,13 @@ describe("InvoicingSidebar (Phase 17 F1)", () => {
     expect(sidebarSource).toContain("Pending Approval")
     expect(sidebarSource).not.toContain('href="/settings/invoicing"')
     expect(sidebarSource).not.toContain('tr("Settings")')
+  })
+
+  it("the footer opens this app's settings page for a viewer who may read them, and is plain text otherwise", () => {
+    expect(sidebarSource).toContain('SETTINGS_PATH = "/settings/apps/invoicing"')
+    expect(sidebarSource).toContain("onClick={() => navigate(SETTINGS_PATH)}")
+    expect(sidebarSource).toContain("when={access().settings_read}")
+    expect(sidebarSource).toContain('tr("Invoicing settings")')
   })
 
   it("the New-document menu offers exactly quote, proforma and purchase order", () => {
@@ -147,5 +156,49 @@ describe("InvoicingSidebar (Phase 17 F1)", () => {
   it("links the e-invoicing readiness tab from the Admin section", () => {
     expect(sidebarSource).toContain('href="/invoicing/readiness"')
     expect(sidebarSource).toContain('tr("E-invoicing readiness")')
+  })
+
+  it("puts a Recurring group with Schedules and its count before Views, and the three recurring tabs exist", () => {
+    const recurring = sidebarSource.indexOf('label={tr("Recurring")}')
+    const views = sidebarSource.indexOf('label={tr("Views")}')
+    expect(recurring).toBeGreaterThan(-1)
+    expect(recurring).toBeLessThan(views)
+    expect(sidebarSource).toContain('{ href: "/invoicing/recurring", label: "Schedules" }')
+    expect(sidebarSource).toContain("badge={scheduleCount() ?? undefined}")
+    // The count is the app's own list, the same the agent reads.
+    expect(sidebarSource).toContain('"recurring_list"')
+    const tabs = (manifest as any).views.tabTypes
+    expect(tabs.recurring).toMatchObject({
+      component: "InvoicingRecurringList",
+      urlPattern: "/invoicing/recurring",
+      singleton: true,
+    })
+    expect(tabs.schedule).toMatchObject({
+      component: "InvoicingScheduleEditor",
+      urlPattern: "/invoicing/schedule/:scheduleId",
+    })
+    expect(tabs.recurring_run).toMatchObject({
+      entity: "recurring_run",
+      component: "InvoicingRunDetail",
+      urlPattern: "/invoicing/run/:runId",
+    })
+  })
+
+  it("names recurring billing a feature that is off until an admin turns it on", () => {
+    const m = manifest as any
+    expect(m.features.recurring.adminScope).toBe("kernel:apps:admin")
+    for (const tab of ["recurring", "schedule", "recurring_run", "billing_plan"]) {
+      expect(m.views.tabTypes[tab].feature).toBe("recurring")
+    }
+    for (const tool of ["recurring_list", "recurring_schedule_create", "billing_plan_set"]) {
+      expect(m.tools[tool].feature).toBe("recurring")
+    }
+    // The documents themselves stay outside the switch.
+    expect(m.tools.documents_search.feature).toBeUndefined()
+    // Off, recurring_list is refused with feature_off and the Recurring section is not drawn.
+    expect(sidebarSource).toContain("<Show when={scheduleCount() !== null}>")
+    expect(isFeatureOffRefusal({ status: 409, code: "feature_off" })).toBe(true)
+    expect(isFeatureOffRefusal({ status: "error", error: { code: "feature_off" } })).toBe(true)
+    expect(isFeatureOffRefusal({ status: 403, code: "forbidden" })).toBe(false)
   })
 })

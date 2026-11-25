@@ -1,0 +1,3 @@
+A name word after from or for, or the record of a three-word name another tool names plainly, counts like a keyword when the query names none of the words that qualify it -> apps/api/src/modules/agent/tools/tool-rank.ts (qualifiedNameWord)
+acompte, jalon and avoir read as advance, milestone and credit -> apps/api/src/modules/agent/tools/tool-lexicon.ts (NAME_WORD_SYNONYMS)
+forfait reads as a retainer only beside a month -> apps/api/src/modules/agent/tools/tool-lexicon.ts (COMPANION_SYNONYMS)

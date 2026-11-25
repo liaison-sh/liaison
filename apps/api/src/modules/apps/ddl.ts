@@ -98,6 +98,26 @@ function renderColumnType(typeName: string, fieldDef: unknown): string {
   return base
 }
 
+/**
+ * The fields of a manifest's schema whose type the DDL generator has no column for. Registration
+ * throws on the first one when it builds the table (generateTableDdl, generateAlterTableDdl), so a
+ * manifest carrying one installs and never registers; this lists them all without building SQL.
+ */
+export function unknownFieldTypeErrors(manifest: {
+  schema?: Record<string, { fields?: Record<string, unknown> }>
+}): string[] {
+  const errors: string[] = []
+  for (const [table, spec] of Object.entries(manifest?.schema ?? {})) {
+    for (const [field, def] of Object.entries(spec?.fields ?? {})) {
+      const typeName =
+        typeof def === "string" ? def.replace("?", "") : (def as { type?: unknown })?.type
+      if (typeof typeName !== "string" || !renderColumnType(typeName, def))
+        errors.push(`schema.${table}.fields.${field}: unknown field type "${String(typeName)}"`)
+    }
+  }
+  return errors
+}
+
 function snake(s: string): string {
   return s.replace(/([A-Z])/g, "_$1").toLowerCase()
 }
@@ -379,6 +399,9 @@ export interface ImmutableTableSpec {
    *  identity columns fixed); the row stays undeletable within the retention period. Default:
    *  every column is write-once. */
   writeOnceColumns?: string[]
+  /** When set, no UPDATE at all: a column recorded empty stays empty (a signature's evidence,
+   *  complete when inserted). Cannot be combined with `writeOnceColumns`. */
+  insertOnly?: boolean
 }
 
 export const IMMUTABLE_TRIGGER_NAME = "kernel_immutable"
@@ -437,6 +460,19 @@ export function generateImmutableTriggerDdl(
   const only = spec.writeOnceColumns?.map((c) => validateIdentifier(c))
   if (only && only.length === 0)
     throw new Error(`immutable.writeOnceColumns for "${tableName}" must not be empty`)
+  if (spec.insertOnly === true && only)
+    throw new Error(
+      `immutable.insertOnly for "${tableName}" cannot be combined with writeOnceColumns`,
+    )
+  // An insert-only row refuses every UPDATE, a NULL filled later included.
+  const insertOnlyLine =
+    spec.insertOnly === true
+      ? [
+          "  IF TG_OP = 'UPDATE' THEN",
+          "    RAISE EXCEPTION 'immutable_row: % rows are never updated once recorded', TG_TABLE_NAME USING ERRCODE = 'P0001';",
+          "  END IF;",
+        ]
+      : []
   const columnFilter = only ? ` AND o.key IN (${only.map((c) => `'${c}'`).join(", ")})` : ""
   const body = [
     "DECLARE k text;",
@@ -460,6 +496,7 @@ export function generateImmutableTriggerDdl(
     "    END IF;",
     "    RETURN OLD;",
     "  END IF;",
+    ...insertOnlyLine,
     "  FOR k IN SELECT o.key FROM jsonb_each(to_jsonb(OLD)) o JOIN jsonb_each(to_jsonb(NEW)) n USING (key)",
     `           WHERE o.value <> 'null'::jsonb AND o.value IS DISTINCT FROM n.value AND o.key <> 'updated_at'${columnFilter} LOOP`,
     "    RAISE EXCEPTION 'immutable_row: %.% is immutable once set', TG_TABLE_NAME, k USING ERRCODE = 'P0001';",
@@ -494,6 +531,7 @@ export function immutableSpecFromTriggerBody(body: string): ImmutableTableSpec |
     retentionYears: Number(retention[2]),
     anchor: retention[1],
     ...(writeOnceColumns && writeOnceColumns.length > 0 ? { writeOnceColumns } : {}),
+    ...(body.includes("rows are never updated once recorded") ? { insertOnly: true } : {}),
   }
 }
 
@@ -584,6 +622,22 @@ export function generateNotNullTightenDdl(
     `UPDATE ${table} SET ${col} = ${value} WHERE ${col} IS NULL`,
     `ALTER TABLE ${table} ALTER COLUMN ${col} SET NOT NULL`,
   ]
+}
+
+/**
+ * The statement that lets a live column go NULL when a later app version makes its field
+ * nullable. Additive (expand-safe): code still running from the earlier version keeps writing
+ * the value, and every existing row keeps its own. Metadata only, no table rewrite. Returns null
+ * when the manifest still declares the field NOT NULL.
+ */
+export function generateNotNullLoosenDdl(
+  schemaName: string,
+  tableName: string,
+  fieldName: string,
+  fieldDef: any,
+): string | null {
+  if (!isFieldNullable(fieldDef)) return null
+  return `ALTER TABLE ${quoteIdent(schemaName)}.${quoteIdent(tableName)} ALTER COLUMN ${quoteIdent(snake(fieldName))} DROP NOT NULL`
 }
 
 function deepSortKeys(obj: unknown): unknown {

@@ -1,0 +1,12 @@
+{
+  "entry": "job:upload-freeze",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["agreement_drafts", "{\"where\":{\"upload_state\":\"checking\"},\"limit\":20}"],
+      "reply": "[]"
+    }
+  ]
+}

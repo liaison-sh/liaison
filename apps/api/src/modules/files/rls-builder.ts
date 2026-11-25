@@ -31,6 +31,15 @@ export interface FileParentRegistration {
    * even before (or if ever without) their rows being removed.
    */
   softDeleteColumn?: string
+  /**
+   * A scope the reader must hold on top of seeing the parent row: the parent's
+   * declared `readScope` when the parent table's own row policy does not already
+   * ask for it (an evidence file holding every signer's device sits on the
+   * evidence package, readable with the evidence scope, but asks for the device
+   * scope). Every file door reads `kernel.files` under the caller's context, so
+   * the scope holds on each of them.
+   */
+  requiredScope?: string
 }
 
 /**
@@ -97,6 +106,7 @@ export function buildFilesSelectPolicy(
       `AND ${k}.files.entity_type = ${lit(p.entityType)} ` +
       `AND ${k}.files.org_id = p.org_id` +
       (p.softDeleteColumn ? ` AND p.${ident(p.softDeleteColumn)} IS NULL` : "") +
+      (p.requiredScope ? ` AND ${k}.has_scope(${lit(p.requiredScope)})` : "") +
       `) )`
     )
   })

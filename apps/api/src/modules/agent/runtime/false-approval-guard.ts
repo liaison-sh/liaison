@@ -38,6 +38,7 @@
  * correction, and the stored row drops it.
  */
 
+import { closesReply } from "~/modules/agent/providers/answer-after-tools"
 import type { TurnTimelineEntry } from "~/modules/agent/runtime/agent-service"
 import { claimsFreshAction } from "~/modules/agent/runtime/announced-action-claim"
 import { claimedCards, type ThreadCards } from "~/modules/agent/runtime/card-claim"
@@ -46,6 +47,7 @@ import {
   claimsPendingApproval,
 } from "~/modules/agent/runtime/false-approval-claim"
 import { threadHasSecretRequest } from "~/modules/agent/runtime/open-cards"
+import { replyTextOfSteps } from "~/modules/agent/runtime/reply-flatten"
 import { isParkedForApproval } from "~/modules/agent/tools/tool-bridge"
 import {
   approvalHandlesRequestedSince,
@@ -241,7 +243,8 @@ export function falseApprovalLookups(params: {
 
 /** What the first run of the turn did, as its stream showed it. */
 export interface ObservedRun {
-  /** The text written after the run's last tool call. */
+  /** The text written after the run's last tool call that worked: a call that closes the reply
+   * (its next steps) leaves the answer it closes in place. */
   finalText: string
   /** Every text the run wrote, before and after its tool calls. */
   allText: string
@@ -261,7 +264,22 @@ export interface Retraction {
   text: string
 }
 
-type Chunk = { type?: string; text?: string; output?: unknown; finishReason?: string }
+type Chunk = {
+  type?: string
+  text?: string
+  toolName?: string
+  output?: unknown
+  finishReason?: string
+}
+/** A call that works, rather than closing the reply with its next steps. */
+const works = (chunk: Chunk): boolean => !closesReply(chunk.toolName ?? "")
+
+/** A step that ended a reply: the model stopped, or its only calls closed the reply. */
+const endedReply = (finishReason: string | undefined, closedReply: boolean): boolean =>
+  finishReason === undefined ||
+  finishReason === "stop" ||
+  (closedReply && finishReason === "tool-calls")
+
 type StreamLike = {
   fullStream: AsyncIterable<unknown>
   responseMessages?: PromiseLike<unknown[]>
@@ -322,6 +340,7 @@ export async function* withFalseApprovalGuard(opts: {
   let sawError = false
   let lastStepCalledTool = false
   let stepCalledTool = false
+  let closedReply = false
   let lastFinishReason: string | undefined
   let heldFinish: unknown = null
 
@@ -334,6 +353,8 @@ export async function* withFalseApprovalGuard(opts: {
         allText += chunk.text ?? ""
         break
       case "tool-call":
+        closedReply = !works(chunk)
+        if (closedReply) break
         stepCalledTool = true
         finalText = ""
         break
@@ -359,7 +380,7 @@ export async function* withFalseApprovalGuard(opts: {
   const eligible =
     !sawError &&
     !lastStepCalledTool &&
-    (lastFinishReason === undefined || lastFinishReason === "stop") &&
+    endedReply(lastFinishReason, closedReply) &&
     finalText.trim().length > 0 &&
     opts.first.responseMessages !== undefined
   const verdict = eligible ? await opts.shouldCorrect({ finalText, allText, toolOutputs }) : false
@@ -388,6 +409,7 @@ export async function* withFalseApprovalGuard(opts: {
     let contFinalText = ""
     let contStepCalledTool = false
     let contLastStepCalledTool = false
+    let contClosedReply = false
     let contFinishReason: string | undefined
     let contError = false
     // Turn text streamed so far, the separator included.
@@ -403,7 +425,10 @@ export async function* withFalseApprovalGuard(opts: {
           continue
         }
         streamedLength += chunk.text?.length ?? 0
+      } else if (chunk.type === "tool-call" && !works(chunk)) {
+        contClosedReply = true
       } else if (chunk.type === "tool-call") {
+        contClosedReply = false
         calledTool = true
         contStepCalledTool = true
         contFinalText = ""
@@ -430,7 +455,7 @@ export async function* withFalseApprovalGuard(opts: {
       opts.correctAgain &&
       !contError &&
       !contLastStepCalledTool &&
-      (contFinishReason === undefined || contFinishReason === "stop") &&
+      endedReply(contFinishReason, contClosedReply) &&
       contFinalText.trim().length > 0 &&
       continuation.responseMessages !== undefined &&
       (await opts.correctAgain.shouldCorrect({ finalText: contFinalText }))
@@ -484,12 +509,17 @@ export function retractFromText(text: string, r: Retraction): string {
   return text.slice(0, start) + text.slice(r.end)
 }
 
-/** The timeline without the retracted characters of its text entries. */
+/**
+ * The timeline without the retracted characters of its text entries, or
+ * unchanged when its text does not hold them where expected (as `retractFromText`).
+ */
 export function retractFromTimeline(
   timeline: TurnTimelineEntry[],
   r: Retraction,
 ): TurnTimelineEntry[] {
   const start = r.end - r.text.length
+  const streamed = timeline.map((e) => (e.kind === "text" ? e.text : "")).join("")
+  if (start < 0 || streamed.slice(start, r.end) !== r.text) return timeline
   let offset = 0
   const out: TurnTimelineEntry[] = []
   for (const entry of timeline) {
@@ -512,24 +542,60 @@ export function retractFromTimeline(
   return out
 }
 
+/** Each step's text without the retracted characters, counted on their concatenation. */
+export function retractFromSteps(steps: readonly string[], r: Retraction): string[] {
+  const start = r.end - r.text.length
+  if (start < 0 || steps.join("").slice(start, r.end) !== r.text) return [...steps]
+  let offset = 0
+  const out: string[] = []
+  for (const step of steps) {
+    const from = offset
+    offset += step.length
+    const cutFrom = Math.max(from, start)
+    const cutTo = Math.min(offset, r.end)
+    out.push(cutFrom >= cutTo ? step : step.slice(0, cutFrom - from) + step.slice(cutTo - from))
+  }
+  return out
+}
+
 /**
  * The turn's output without the retracted false text: the whole text, the
  * timeline, and the caller's final-step text (a suffix of the whole text).
+ * A retraction counts the text as streamed. When the caller joined its steps
+ * as paragraphs (`stepTexts`, reply-flatten.ts), the cut is made in the steps
+ * and the reply joined again from them.
  */
 export function retractTurnOutput(
-  out: { text: string; timeline?: TurnTimelineEntry[]; finalStepText?: string },
+  out: {
+    text: string
+    stepTexts?: readonly string[]
+    timeline?: TurnTimelineEntry[]
+    finalStepText?: string
+  },
   r: Retraction,
-): { text: string; timeline?: TurnTimelineEntry[]; finalStepText?: string } {
+): {
+  text: string
+  stepTexts?: readonly string[]
+  timeline?: TurnTimelineEntry[]
+  finalStepText?: string
+} {
+  const streamed = out.stepTexts ? out.stepTexts.join("") : out.text
   let finalStepText = out.finalStepText
-  if (finalStepText !== undefined && out.text.endsWith(finalStepText)) {
-    const suffixStart = out.text.length - finalStepText.length
+  if (finalStepText !== undefined && streamed.endsWith(finalStepText)) {
+    const suffixStart = streamed.length - finalStepText.length
     finalStepText = retractFromText(finalStepText, {
       end: r.end - suffixStart,
       text: r.text,
     })
   }
+  const stepTexts = out.stepTexts ? retractFromSteps(out.stepTexts, r) : undefined
   return {
-    text: retractFromText(out.text, r),
+    text: stepTexts
+      ? stepTexts.join("") === streamed
+        ? out.text
+        : replyTextOfSteps(stepTexts)
+      : retractFromText(out.text, r),
+    ...(stepTexts ? { stepTexts } : {}),
     ...(out.timeline ? { timeline: retractFromTimeline(out.timeline, r) } : {}),
     ...(finalStepText !== undefined ? { finalStepText } : {}),
   }

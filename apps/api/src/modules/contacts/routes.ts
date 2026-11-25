@@ -9,11 +9,16 @@ import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import { z } from "zod"
 import type { AppEnv } from "~/app"
-import { withRequestRls } from "~/lib/request-rls"
+import { extractRlsContext, withRequestRls } from "~/lib/request-rls"
 import { paginated, success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import { idParam } from "~/lib/validators"
 import { assertUnrestrictedSession } from "~/modules/auth/session-ceiling"
+import {
+  ACTIVITY_DEADLINE_MS,
+  activityQuerySchema,
+  readActivity,
+} from "~/modules/contacts/activity"
 import {
   ADDRESS_ROLES,
   addAddress,
@@ -26,6 +31,7 @@ import {
   verifyAddress,
   verifyAddressSchema,
 } from "~/modules/contacts/addresses"
+import { companyRoutes } from "~/modules/contacts/company-routes"
 import { openContactDiscussion } from "~/modules/contacts/discussion"
 import {
   addGroupMembers,
@@ -52,21 +58,28 @@ import { hasScope } from "~/modules/permissions/permissions"
 
 export const contacts = new Hono<AppEnv>()
 
+// Companies (company-routes.ts), before every "/:id" route below so
+// "companies" is never read as a contact id.
+contacts.route("/companies", companyRoutes)
+
 contacts.post("/resolve", zValidator("json", resolveContactSchema), async (c) => {
   const params = c.req.valid("json")
   const orgId = c.get("orgId")
   const userId = c.get("userId")
 
-  // Creating a contact FOR THE ORGANISATION is an explicit choice; the
-  // default is the caller's own contact, which they can share later.
+  // A person adding a contact by their own action adds it to the organisation, unless
+  // they choose "private". A restricted session (a device-flow client: a program acting
+  // for them) keeps it theirs, as an agent's create does (contacts_write).
   const { audience, ...fields } = params
+  const forOrg =
+    audience === "org" || (audience === undefined && c.get("sessionRestricted") !== true)
   const { contact } = await withRequestRls(c, async (tx) => {
     return resolveContact(
       tx,
       orgId,
       userId,
       fields,
-      audience === "org" ? { audience: "org" } : { audience: "owner", ownerUserId: userId },
+      forOrg ? { audience: "org" } : { audience: "owner", ownerUserId: userId },
     )
   })
   return success(c, contact)
@@ -342,6 +355,27 @@ contacts.post("/:id/discussion", zValidator("param", idParam), async (c) => {
   if (!opened) throw new HTTPException(404, { message: "Contact not found" })
   return success(c, opened)
 })
+
+// A contact's timeline page: only rows that involve this contact.
+contacts.get(
+  "/:id/activity",
+  zValidator("param", idParam),
+  zValidator("query", activityQuerySchema),
+  async (c) => {
+    const query = c.req.valid("query")
+    const result = await readActivity({
+      orgId: c.get("orgId"),
+      actor: extractRlsContext(c),
+      target: { contactId: c.req.valid("param").id },
+      before: query.before,
+      limit: query.limit,
+      source: query.source,
+      deadlineMs: ACTIVITY_DEADLINE_MS,
+    })
+    if (!result) throw new HTTPException(404, { message: "Contact not found" })
+    return success(c, result)
+  },
+)
 
 contacts.get("/:id", zValidator("param", idParam), async (c) => {
   const id = c.req.param("id")

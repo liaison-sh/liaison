@@ -247,6 +247,57 @@ export type AddedModel = z.infer<typeof addedModelSchema>
 export type ModelServer = z.infer<typeof modelServerSchema>
 export type AiModelsSettings = z.infer<typeof aiModelsSettingsSchema>
 
+/**
+ * What a commercial mail must state about its sender: the legal name and the
+ * postal address printed in its footer, and the country policy that decides
+ * whether a recipient's professional interest is enough (`optout`) or consent
+ * is needed (`consent`). Written by `config apply` (`email.commercialIdentity`)
+ * and the organization settings page.
+ */
+export const commercialIdentitySchema = z
+  .object({
+    legalName: z.string().trim().min(1).max(200),
+    postalAddress: z.string().trim().min(1).max(500),
+    countryPolicy: z.record(z.string(), z.enum(["optout", "consent"])).optional(),
+  })
+  .strict()
+export type CommercialIdentity = z.infer<typeof commercialIdentitySchema>
+
+/** What a client portal person sees and leaves behind (`settings.portal`). */
+export const PORTAL_LOG_RETENTION_DEFAULT_MONTHS = 12
+export const PORTAL_LOG_RETENTION_MIN_MONTHS = 6
+export const PORTAL_LOG_RETENTION_MAX_MONTHS = 36
+export const PORTAL_NOTICE_MAX_CHARS = 4000
+
+/**
+ * The portal's org settings: the access log keeps 12 months unless a person states why
+ * it keeps another length (6 to 36), and the notice a client reads at first sign-in.
+ */
+export const portalSettingsSchema = z
+  .object({
+    logRetentionMonths: z
+      .number()
+      .int()
+      .min(PORTAL_LOG_RETENTION_MIN_MONTHS)
+      .max(PORTAL_LOG_RETENTION_MAX_MONTHS)
+      .optional(),
+    logRetentionReason: z.string().trim().min(1).max(500).optional(),
+    notice: z.string().trim().max(PORTAL_NOTICE_MAX_CHARS).nullable().optional(),
+    noticeVersion: z.number().int().min(1).optional(),
+  })
+  .strict()
+  .refine(
+    (v) =>
+      v.logRetentionMonths === undefined ||
+      v.logRetentionMonths === PORTAL_LOG_RETENTION_DEFAULT_MONTHS ||
+      Boolean(v.logRetentionReason),
+    {
+      message: "Keeping the portal log other than 12 months needs a stated reason",
+      path: ["logRetentionReason"],
+    },
+  )
+export type PortalSettings = z.infer<typeof portalSettingsSchema>
+
 export const orgKernelSettingsSchema = z
   .object({
     rateLimitPerMinute: z.number().nullable().optional(),
@@ -327,6 +378,10 @@ export const orgKernelSettingsSchema = z
       })
       .partial()
       .optional(),
+    // The sender identity a commercial mail states (commercialIdentitySchema).
+    // Read-tolerant: a stored value that no longer parses reads as unset, so the
+    // send check refuses commercial mail until it is set again.
+    commercialIdentity: z.unknown().optional(),
     // Demo-instance marker (see demoOrgMarkerSchema above). Declared explicitly
     // rather than left to `.passthrough()` so it is typed, not `unknown`.
     demo: demoOrgMarkerSchema.nullable().optional(),

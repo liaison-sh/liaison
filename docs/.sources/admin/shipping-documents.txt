@@ -18,3 +18,4 @@ Operand missing, non-numeric or division by zero is a missing value -> apps/api/
 atLeast / atMost conditions -> apps/api/src/modules/documents/rich-text.ts:516
 Rule attribute condition -> apps/api/src/modules/documents/rules-store.ts:99
 Attribute matching, * any value -> apps/api/src/modules/documents/rules.ts:142
+A list prints a line per row of from, or its written items, one or the other -> apps/api/src/modules/documents/rich-text.ts:240 ; apps/api/src/modules/documents/rich-text.ts:552

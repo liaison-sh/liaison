@@ -1,0 +1,12 @@
+{
+  "key": {
+    "kernel.approvalRunGroup.title": "{{count}} validations de {{name}}",
+    "kernel.approvalRunGroup.titleNoName": "{{count}} validations d'une même exécution",
+    "kernel.approvalRunGroup.why": "Préparées ensemble par une même exécution. Chacune se décide à part.",
+    "kernel.approvalRunGroup.show": "Tout afficher",
+    "kernel.approvalRunGroup.hide": "Masquer",
+    "kernel.approvalRunGroup.batchTitle": "{{count}} validations : {{action}}",
+    "kernel.approvalRunGroup.batchTitleNoAction": "{{count}} validations du même type",
+    "kernel.approvalRunGroup.batchWhy": "La même action pour les mêmes personnes, préparées le même jour. Chacune se décide à part."
+  }
+}

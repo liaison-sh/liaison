@@ -227,6 +227,43 @@ describe("attention aggregator: one row per approval", () => {
     expect(out[0]?.metadata?.expiresInSeconds).toBe(600_000)
   })
 
+  // The card says it waits and when it ends: the reminder of the same request beside it says
+  // the same deadline a second time.
+  describe("a reminder that a request waits", () => {
+    const reminder = (id = approvalId): AttentionItem => ({
+      ...appItem(),
+      id: `reminder-${id}`,
+      app: "kernel",
+      entity: "agent_notification",
+      entityId: id,
+      kind: "agent_notification",
+      summary: "Waiting more than 24 hours for a decision: Issue 8 invoices",
+      action: { type: "open_entity", tabType: "thread", entityId: "t1" },
+      metadata: { routedReminder: { approvalId: id, hours: 24 } },
+    })
+    const card = (placement?: string): AttentionItem => ({
+      ...kernelItem(),
+      metadata: { ...kernelItem().metadata, ...(placement ? { placement } : {}) },
+    })
+
+    for (const placement of ["mine", "standing_in", undefined]) {
+      it(`folds into the reader's own card (placement ${placement})`, () => {
+        const out = dedupeByApproval([reminder(), card(placement)])
+        expect(out.map((i) => i.kind)).toEqual(["approval_pending"])
+      })
+    }
+
+    it("stays when the card is another person's: the closed group does not ask them", () => {
+      const out = dedupeByApproval([reminder(), card("others")])
+      expect(out.map((i) => i.kind)).toEqual(["agent_notification", "approval_pending"])
+    })
+
+    it("stays when its card is not in the feed, or another request's card is", () => {
+      expect(dedupeByApproval([reminder()])).toHaveLength(1)
+      expect(dedupeByApproval([reminder("other"), card("mine")])).toHaveLength(2)
+    })
+  })
+
   it("leaves other approvals and non-approval items alone", () => {
     const other: AttentionItem = {
       ...kernelItem(),

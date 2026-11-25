@@ -909,7 +909,12 @@ async function completeCallback(
           .select({ id: users.id, status: users.status })
           .from(users)
           .where(
-            and(eq(users.orgId, provider.orgId), eq(users.email, userinfo.email!.toLowerCase())),
+            and(
+              eq(users.orgId, provider.orgId),
+              eq(users.email, userinfo.email!.toLowerCase()),
+              // A client's row is never linked to a sign-in identity.
+              eq(users.userType, "member"),
+            ),
           )
           .for("update")
           .limit(1)
@@ -943,13 +948,15 @@ async function completeCallback(
   if (userinfo.email && userinfo.email_verified === true) {
     const [existingUser] = await withSystemDb("oauth-callback-email-check", (db) =>
       db
-        .select({ status: users.status })
+        .select({ status: users.status, userType: users.userType })
         .from(users)
         .where(and(eq(users.orgId, provider.orgId), eq(users.email, userinfo.email!.toLowerCase())))
         .limit(1),
     )
     if (existingUser) {
-      if (existingUser.status === "deactivated") {
+      // A client's address (user_type external) takes the same refusal as any
+      // existing account below, deactivated or not: no session, no new account.
+      if (existingUser.status === "deactivated" && existingUser.userType === "member") {
         return desktop
           ? failSignIn(c, "Account deactivated", returnState, desktop)
           : c.redirect("/login?error=Account+deactivated")

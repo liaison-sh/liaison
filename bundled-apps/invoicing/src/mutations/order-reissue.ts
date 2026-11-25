@@ -328,6 +328,9 @@ export async function orderReissueApply(
     ...(original.po_number ? { po_number: original.po_number } : {}),
   }
 
+  // The replacement of a paid invoice asks for nothing, so it is never due.
+  if (original.payment_status === "paid") invoice.issueInput.already_paid = true
+
   const issued = await issueTogetherWithFxRate(ctx, [
     ["credit", credit.credit.issueInput],
     ["replacement", invoice.issueInput],

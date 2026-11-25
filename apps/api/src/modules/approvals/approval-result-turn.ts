@@ -243,7 +243,8 @@ export async function runApprovalResultTurn(payload: ApprovalResultTurnPayload):
     undefined, // coordination: a person's turn, not an agent's ask
     // The person's message the proposing turn answered, so the answer this
     // turn gives is found as the answer to that question.
-    { askId: claim.askId },
+    // A card it parks counts as the person's ask (RunContext.answersApprovedCall).
+    { askId: claim.askId, answersApprovedCall: true },
   )
   return true
 }

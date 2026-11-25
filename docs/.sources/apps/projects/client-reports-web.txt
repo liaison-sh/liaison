@@ -1,0 +1,2 @@
+Client reports line on a client company's project, with the waiting count -> apps/web/src/modules/projects/ProjectWorkspace.tsx (ProjectWorkspace) ; apps/web/src/modules/projects/ClientReportsPanel.tsx (ClientReportsPanel)
+As the client will read it, left out and sources for the team only, Edit, Save the draft, Send to the client -> apps/web/src/modules/projects/ClientReportsPanel.tsx (ReportView)

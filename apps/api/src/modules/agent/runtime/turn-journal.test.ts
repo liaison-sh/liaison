@@ -8,6 +8,7 @@ import {
   type JournalStep,
   journalPayload,
   parseJournal,
+  stepView,
 } from "~/modules/agent/runtime/turn-journal"
 
 const prep = (over: Partial<JournalPrepState>): JournalPrepState => ({
@@ -69,6 +70,27 @@ function step(n: number): JournalStep {
 }
 
 describe("the turn journal (M7)", () => {
+  it("keeps which calls closed the reply, so a resumed turn's answer before them is kept", async () => {
+    const call = (toolCallId: string, toolName: string) => ({
+      type: "tool-call",
+      toolCallId,
+      toolName,
+      input: {},
+    })
+    const view = await stepView("00000000-0000-0000-0000-000000000b01", {
+      content: [
+        call("c1", "projects__get"),
+        { type: "text", text: "The answer." },
+        call("c2", "kernel__suggest_next_steps"),
+      ],
+    })
+    expect(view.timeline).toEqual([
+      { kind: "tool", toolCallId: "c1" },
+      { kind: "text", text: "The answer." },
+      { kind: "tool", toolCallId: "c2", closes: true },
+    ])
+  })
+
   it("stores a tool result the step's messages hold once, and gives it back on parse", () => {
     const s = step(1)
     const { json } = journalPayload(s)

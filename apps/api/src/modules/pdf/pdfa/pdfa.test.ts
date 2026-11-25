@@ -50,12 +50,12 @@ describe("native PDF/A-3B", () => {
   })
 
   test("a base-14 font that cannot be embedded is refused in PDF/A, accepted otherwise", async () => {
-    const withTimes: DrawCommand[] = [
+    const withCourier: DrawCommand[] = [
       ...PDFA_COMMANDS,
-      { op: "embedFont", ref: "t", standardFont: "TimesRoman" },
+      { op: "embedFont", ref: "t", standardFont: "Courier" },
     ]
-    await expect(renderSamplePdfA({ commands: withTimes })).rejects.toThrow(/cannot be embedded/)
-    await expect(replayDrawCommands(withTimes)).resolves.toBeInstanceOf(Uint8Array)
+    await expect(renderSamplePdfA({ commands: withCourier })).rejects.toThrow(/cannot be embedded/)
+    await expect(replayDrawCommands(withCourier)).resolves.toBeInstanceOf(Uint8Array)
   })
 
   test("a CMYK JPEG logo is skipped in PDF/A (it would be embedded as DeviceCMYK otherwise)", async () => {

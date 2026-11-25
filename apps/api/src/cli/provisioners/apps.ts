@@ -21,6 +21,8 @@
  *    (`app-config.ts`); a refused key is a usage error, an equal value unchanged.
  *  - `settings` → org fields of the app's settings page (`app-settings.ts`), the
  *    same checks as the settings page's own write.
+ *  - `features` → switches inside the app (`app-features.ts`), the same checks as
+ *    Settings > Apps > <app> > Features.
  *
  * Handles: `installCatalogApp` + `enableApp` (own withSystemDb); the connector
  * uses `ctx.rls` / `ctx.priv` internally.
@@ -30,6 +32,7 @@ import { ConfigError } from "~/cli/config/parse"
 import type { ProvisioningConfig } from "~/cli/config/schema"
 import { requireActor } from "~/cli/provisioners/admin"
 import { applyAppConfig, assertAppConfigAllowed } from "~/cli/provisioners/app-config"
+import { applyAppFeatures, planAppFeatures } from "~/cli/provisioners/app-features"
 import {
   applyAppProvision,
   assertProvisionValid,
@@ -147,6 +150,11 @@ export const appsProvisioner: Provisioner<ProvisioningConfig> = {
         }
         actions.push(`set app '${app.name}' settings: ${Object.keys(app.settings).join(", ")}`)
       }
+      if (app.features) {
+        for (const [name, on] of Object.entries(app.features)) {
+          actions.push(`turn ${on ? "on" : "off"} app '${app.name}' feature '${name}'`)
+        }
+      }
       if (app.provision) {
         // Checked here when the app is registered; one this run installs, in apply.
         if (ctx.orgId && appHasProvisioning(ctx.orgId, app.name)) {
@@ -254,6 +262,15 @@ async function planAppsAgainstStore(
         lines.push(...(await planAppSettings(ctx, app.name, app.settings)))
       } else {
         lines.push(`set app '${app.name}' settings: ${Object.keys(app.settings).join(", ")}`)
+      }
+    }
+    if (app.features) {
+      if (await isAppRegistered(ctx.orgId, app.name)) {
+        lines.push(...(await planAppFeatures(ctx, app.name, app.features)))
+      } else {
+        for (const [name, on] of Object.entries(app.features)) {
+          lines.push(`turn ${on ? "on" : "off"} app '${app.name}' feature '${name}'`)
+        }
       }
     }
     if (app.provision) lines.push(...(await planAppProvision(ctx, app.name, app.provision)))
@@ -395,6 +412,12 @@ async function applyApps(
 
     if (app.settings) {
       const r = await applyAppSettings(ctx, app.name, app.settings)
+      changed.push(...r.changed)
+      unchanged.push(...r.unchanged)
+    }
+
+    if (app.features) {
+      const r = await applyAppFeatures(ctx, app.name, app.features)
       changed.push(...r.changed)
       unchanged.push(...r.unchanged)
     }

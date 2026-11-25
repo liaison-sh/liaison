@@ -13,7 +13,9 @@
  *
  * A driver outside the seed reads `personas` and `namedRows`, never copies.
  */
+
 import type { DemoPerson, DemoRole } from "~/seed/world/fiction"
+import { SERVICES_DEMO_FEATURES } from "~/seed/worlds/services-features"
 import type { DemoWorldPack } from "../index"
 import { STUDIO_AGENT_NATIVE_SPECS } from "./agent-native"
 import { STUDIO_ROLE_AGENTS } from "./desk-prompts"
@@ -64,6 +66,7 @@ export const STUDIO_WORLD_PACK: DemoWorldPack & { plan: typeof studioPlan } = {
   threadSpecs: STUDIO_THREAD_SPECS,
   agentNative: STUDIO_AGENT_NATIVE_SPECS,
   layer: seedStudioLayer,
+  features: SERVICES_DEMO_FEATURES,
   people: STUDIO_TEAM,
   personas: personas(),
   namedRows: {

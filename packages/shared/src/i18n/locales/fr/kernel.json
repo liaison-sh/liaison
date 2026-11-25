@@ -7564,5 +7564,41 @@
     "batchTitle": "{{count}} validations : {{action}}",
     "batchTitleNoAction": "{{count}} validations du même type",
     "batchWhy": "La même action pour les mêmes personnes, préparées le même jour. Chacune se décide à part."
+  },
+  "appFeatures": {
+    "title": "Fonctionnalités",
+    "intro": "Des parties de cette app qui restent désactivées tant qu'un administrateur ne les active pas pour l'espace. Les désactiver les masque à nouveau ; rien n'est supprimé.",
+    "on": "Activé",
+    "off": "Désactivé",
+    "saveFailed": "Impossible de modifier {{feature}}. Réessayez.",
+    "noRight": "Seule une personne disposant de {{scope}} peut modifier ce réglage.",
+    "companies": {
+      "label": "Entreprises",
+      "description": "Des fiches entreprise à côté des personnes : l'annuaire des entreprises, les pages entreprise, le portail client et les outils entreprise des agents.",
+      "offMessage": "Les entreprises sont désactivées pour cet espace : cet outil n'a pas été exécuté et rien n'a changé.",
+      "offNext": "Dites que les entreprises sont désactivées. Un administrateur peut les activer dans Réglages > Apps > Contacts."
+    },
+    "deals": {
+      "label": "Affaires et pipelines",
+      "description": "Des pipelines de vente et des affaires dans Projets, avec leurs outils pour les agents (pipelines, relances, prévisions).",
+      "offMessage": "Les affaires sont désactivées pour cet espace : cet outil n'a pas été exécuté et rien n'a changé.",
+      "offNext": "Dites que les affaires sont désactivées. Un administrateur peut les activer dans Réglages > Apps > Projets."
+    },
+    "clientReports": {
+      "label": "Rapports client",
+      "description": "Des rapports hebdomadaires qu'un projet partage avec son client, rédigés à partir du travail du projet et envoyés par une personne.",
+      "offMessage": "Les rapports client sont désactivés pour cet espace : cet outil n'a pas été exécuté et rien n'a changé.",
+      "offNext": "Dites que les rapports client sont désactivés. Un administrateur peut les activer dans Réglages > Apps > Projets."
+    },
+    "recurring": {
+      "label": "Facturation récurrente",
+      "description": "Les échéanciers récurrents, la facturation de fin de mois, les plans de facturation, les forfaits, les jalons et les acomptes.",
+      "offMessage": "La facturation récurrente est désactivée pour cet espace : cet outil n'a pas été exécuté et rien n'a changé.",
+      "offNext": "Dites que la facturation récurrente est désactivée. Un administrateur peut l'activer dans Réglages > Apps > Facturation."
+    },
+    "corporateTemplates": {
+      "label": "Modèles juridiques de société",
+      "description": "Ajoute les modèles juridiques de société (documents du conseil et des associés) à la liste des modèles."
+    }
   }
 }

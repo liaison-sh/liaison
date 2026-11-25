@@ -328,6 +328,9 @@ export function registerPortalTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "portal_invite"], {
     appName: "kernel",
     name: "portal_invite",
+    // Off until an admin turns companies on (Settings > Apps > Contacts).
+    feature: "companies",
+    featureApp: "contacts",
     deferLoading: true,
     description:
       "Give a client's contact access to their company's portal: makes their portal account and mails them how to sign in. Opens nothing; a person approves it first.",
@@ -358,6 +361,9 @@ export function registerPortalTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "portal_share_set"], {
     appName: "kernel",
     name: "portal_share_set",
+    // Off until an admin turns companies on (Settings > Apps > Contacts).
+    feature: "companies",
+    featureApp: "contacts",
     deferLoading: true,
     description:
       "Show or hide one thing on a client company's portal: a project's progress, reports or hours, invoices, requests, an agreement, a file or one ticket. A person approves it first.",
@@ -397,6 +403,9 @@ export function registerPortalTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "portal_end_access"], {
     appName: "kernel",
     name: "portal_end_access",
+    // Off until an admin turns companies on (Settings > Apps > Contacts).
+    feature: "companies",
+    featureApp: "contacts",
     deferLoading: true,
     description:
       "End a client company's portal access at once: its people are signed out, open links withdrawn, shares closed. Invoices and agreements are kept. A person approves it first.",
@@ -423,6 +432,9 @@ export function registerPortalTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "portal_remove_person"], {
     appName: "kernel",
     name: "portal_remove_person",
+    // Off until an admin turns companies on (Settings > Apps > Contacts).
+    feature: "companies",
+    featureApp: "contacts",
     deferLoading: true,
     description:
       "Remove one person from their company's portal, and with erase: true erase their account (invoices and signed agreements are kept). Erasing always needs a person's approval.",
@@ -455,6 +467,9 @@ export function registerPortalTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "portal_access_log"], {
     appName: "kernel",
     name: "portal_access_log",
+    // Off until an admin turns companies on (Settings > Apps > Contacts).
+    feature: "companies",
+    featureApp: "contacts",
     deferLoading: true,
     readOnly: true,
     taintSource: true,

@@ -20,8 +20,16 @@ describe("contacts manifest", () => {
     )
   })
 
-  it("is version 0.1.3 (the companies list and the company page)", () => {
-    expect(contactsManifest.version).toBe("0.2.0")
+  it("is version 0.3.0 (companies are a feature an admin turns on)", () => {
+    expect(contactsManifest.version).toBe("0.3.0")
+  })
+
+  it("puts the companies list and the company page behind the companies switch", () => {
+    const m = contactsAppManifest as any
+    expect(m.features.companies.adminScope).toBe("kernel:apps:admin")
+    expect(m.views.tabTypes["company-list"].feature).toBe("companies")
+    expect(m.views.tabTypes["company-detail"].feature).toBe("companies")
+    expect(m.views.tabTypes["contact-list"].feature).toBeUndefined()
   })
 
   it("declares the companies list and the company page, labelled by the company's name", () => {

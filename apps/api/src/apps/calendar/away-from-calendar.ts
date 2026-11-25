@@ -25,6 +25,7 @@ import { privilegedFrom, withSystemDb } from "~/db/privileged"
 import { type ActorContext, withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
+import { readUserAppNamespace } from "~/lib/settings"
 import { type WorkHoursPrefs, wholeWorkingDays } from "~/modules/attention/work-hours"
 import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 import {
@@ -229,14 +230,26 @@ export async function applyAwayFromCalendar(
     const personId = await ownerOfPrimary(db, orgId, calendarId)
     if (!personId) return null
     return await db.transaction((savepoint) =>
-      privilegedFrom(savepoint, orgId, "away-calendar-apply", (ptx) =>
-        applyForPerson(savepoint, ptx, orgId, calendarId, personId, items, now),
+      privilegedFrom(savepoint, orgId, "away-calendar-apply", async (ptx) =>
+        (await awayFromCalendarOn(ptx, personId))
+          ? applyForPerson(savepoint, ptx, orgId, calendarId, personId, items, now)
+          : null,
       ),
     )
   } catch (err) {
     log.warn({ err, orgId, calendarId }, "could not read away days from the calendar")
     return null
   }
+}
+
+/**
+ * The person turned on "Read my away days from my calendar" (Settings > Apps > Calendar,
+ * `users.settings.calendar.awayFromCalendar`). Off by default: a calendar writes no away
+ * day, asks nothing and re-routes no approval until its owner turns it on.
+ */
+export async function awayFromCalendarOn(tx: PrivilegedDb, personId: string): Promise<boolean> {
+  const ns = await readUserAppNamespace(tx, personId, "calendar")
+  return ns.awayFromCalendar === true
 }
 
 /** The effects of `items` on `personId`'s calendar rows, read and written on `ptx`. */

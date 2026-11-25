@@ -1,7 +1,7 @@
 {
   "name": "contacts",
   "agentInstructions": "Contacts is the people-and-companies directory. Reach for it to resolve who someone is, or to look up a customer or dealer before acting. Key handles: contact id, handle, email, company, external ids. Resolve is idempotent — the same email always maps to the same contact, so resolve rather than create duplicates. Silent-failure gotcha: an unknown contact returns empty, not an error — say you could not find them rather than inventing details.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Contact registry: kernel-owned, manifest-registered UI surface",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -150,6 +150,15 @@
       }
     }
   },
+  "features": {
+    "companies": {
+      "adminScope": "kernel:apps:admin",
+      "labelKey": "kernel.appFeatures.companies.label",
+      "descriptionKey": "kernel.appFeatures.companies.description",
+      "offMessageKey": "kernel.appFeatures.companies.offMessage",
+      "offNextKey": "kernel.appFeatures.companies.offNext"
+    }
+  },
   "views": {
     "tabTypes": {
       "contact-list": {
@@ -173,6 +182,7 @@
         "referenceable": true
       },
       "company-list": {
+        "feature": "companies",
         "component": "CompanyList",
         "label": "Companies",
         "labelKey": "contacts.companies.title",
@@ -183,6 +193,7 @@
         "referenceable": false
       },
       "company-detail": {
+        "feature": "companies",
         "component": "CompanyDetail",
         "entity": "kernel:company",
         "label": "Company",

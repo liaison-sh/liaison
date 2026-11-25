@@ -440,10 +440,13 @@ export function isAppOffForOrg(orgId: string, app: string): boolean {
  */
 export function isFeatureOffForTool(
   orgId: string,
-  tool: { appName: string; feature?: string },
+  tool: { appName: string; feature?: string; featureApp?: string },
 ): boolean {
   if (!tool.feature) return false
-  return !cache.get(orgId)?.enabledFeatures.get(tool.appName)?.has(tool.feature)
+  return !cache
+    .get(orgId)
+    ?.enabledFeatures.get(tool.featureApp ?? tool.appName)
+    ?.has(tool.feature)
 }
 
 /**

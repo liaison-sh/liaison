@@ -465,6 +465,9 @@ export const toolRegistry = createTypedRegistry<
     pinnedOptionalOnRefs?: boolean
     /** Manifest `feature`: the app feature this tool belongs to. */
     feature?: string
+    /** A kernel tool that belongs to another app's feature names that app here (the
+     *  company tools follow the `contacts` app's `companies` switch). Absent: `appName`. */
+    featureApp?: string
     /** Manifest `focusCore`: `true` loads the tool on its app's hard focus, a string only when the
      *  focus verified that entity type. */
     focusCore?: boolean | string
@@ -1442,7 +1445,15 @@ export const manifestRegistry = createTypedRegistry<
     /** Manifest `features`: the switches inside the app (org-features.ts reads them). */
     features?: Record<
       string,
-      { adminScope: string; labelKey: string; offMessageKey?: string; offNextKey?: string }
+      {
+        adminScope: string
+        labelKey: string
+        descriptionKey?: string
+        offMessageKey?: string
+        offNextKey?: string
+        /** The app writes the row from its own data: no admin switch offers it. */
+        derived?: boolean
+      }
     >
     /** Manifest `legalStarterTemplates`: the app wants the kernel's legal starter templates. */
     legalStarterTemplates?: { corporateFeature?: string }

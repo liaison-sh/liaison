@@ -27,6 +27,7 @@ import {
 } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { primeOrgApps } from "~/modules/apps/org-apps"
 import { releaseErasedUserContacts } from "~/modules/contacts/erasure"
 import { deleteContact, mergeContacts } from "~/modules/contacts/service"
 import { buildDataSubjectBundle } from "~/modules/export/data-subject-export-tool"
@@ -34,6 +35,7 @@ import { MEMBER_SECTIONS, readMemberSections } from "~/modules/export/member-dat
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { resolveReferenceDisplay } from "~/modules/threads/reference-display"
 import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
+import { turnOnOrgFeatures } from "~/tests/helpers/org-features"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const ORG = crypto.randomUUID()
@@ -233,6 +235,8 @@ describe("company tools", () => {
     })
     await insertRow("kernel.user_thread_state", { user_id: ADMIN, thread_id: DM, org_id: ORG })
     await ensureAppsForOrg(ORG)
+    // Companies are off in a workspace until an admin turns them on.
+    await turnOnOrgFeatures(ORG)
   }, 120_000)
 
   afterAll(async () => {
@@ -264,6 +268,24 @@ describe("company tools", () => {
       name: "Fresh companies",
     })
     expect(created).toBe(true)
+    // A new workspace starts with companies off: no company tool until an admin turns it on.
+    await primeOrgApps(orgId, 0)
+    const before = Object.keys(
+      buildToolSet(
+        orgId,
+        {
+          actorType: "user",
+          userId: crypto.randomUUID(),
+          orgId,
+          scopes: ["*"],
+          dimensionGrants: {},
+        },
+        DM,
+        ALL_DEFERRED_TOOLS_UNLOCKED,
+      ),
+    )
+    expect(before).not.toContain("kernel__companies_search")
+    await turnOnOrgFeatures(orgId, [["contacts", "companies"]])
     const grants = await sql<{ name: string; scope: string }[]>`
       SELECT r.name, g.scope FROM kernel.roles r
         JOIN kernel.role_scope_grants g ON g.role_id = r.id

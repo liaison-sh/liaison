@@ -4,7 +4,9 @@
  * subscription. Its company, team, desks, support, knowledge and threads, the
  * agent native specs, and its own layer (companies, deals, away, routines).
  */
+
 import type { DemoPerson, DemoRole } from "~/seed/world/fiction"
+import { SERVICES_DEMO_FEATURES } from "~/seed/worlds/services-features"
 import type { DemoWorldPack } from "../index"
 import { SAAS_AGENT_NATIVE_SPECS } from "./agent-native"
 import {
@@ -41,6 +43,7 @@ export const SAAS_WORLD_PACK: DemoWorldPack = {
   threadSpecs: SAAS_THREAD_SPECS,
   agentNative: SAAS_AGENT_NATIVE_SPECS,
   layer: seedSaasLayer,
+  features: SERVICES_DEMO_FEATURES,
   people: SAAS_TEAM,
   personas: personas(),
   namedRows: {

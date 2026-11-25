@@ -27,6 +27,7 @@ import type {
 import type { DemoPerson, DemoRole, DemoRoleAgent, DemoWorld } from "~/seed/world/fiction"
 import { PRODUCTS_WORLD_PACK } from "./products"
 import { SAAS_WORLD_PACK } from "./saas"
+import type { DemoFeatureSwitch } from "./services-features"
 import { STUDIO_WORLD_PACK } from "./studio"
 
 /** What a world's own layer is handed: the org the shared layers seeded, at the seed's base time. */
@@ -58,6 +59,11 @@ export interface DemoWorldPack {
    * layers run as they always have.
    */
   layer?: (input: DemoWorldLayerInput) => Promise<void>
+  /**
+   * Switches inside apps the world turns on (they are off in every workspace until an
+   * admin turns them on). Only those of apps the seed's plan keeps On are written.
+   */
+  features?: readonly DemoFeatureSwitch[]
   /** The fictional staff, for an activity plan built on the world (`seed-lively`). */
   people: readonly DemoPerson[]
   /** The staff by role: what a driver outside the seed acts as. Read only. */

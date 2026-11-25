@@ -962,6 +962,9 @@ export function registerCompanyTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "companies_search"], {
     appName: "kernel",
     name: "companies_search",
+    // Off until an admin turns companies on (Settings > Apps > Contacts).
+    feature: "companies",
+    featureApp: "contacts",
     readOnly: true,
     // Company names and domains, often created in bulk from the company text
     // people carry (senders, shop customers): the turn that read them is marked.
@@ -987,6 +990,9 @@ export function registerCompanyTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "companies_read"], {
     appName: "kernel",
     name: "companies_read",
+    // Off until an admin turns companies on (Settings > Apps > Contacts).
+    feature: "companies",
+    featureApp: "contacts",
     readOnly: true,
     // People's names and emails, often from outside the org.
     taintSource: true,
@@ -1007,6 +1013,9 @@ export function registerCompanyTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "companies_write"], {
     appName: "kernel",
     name: "companies_write",
+    // Off until an admin turns companies on (Settings > Apps > Contacts).
+    feature: "companies",
+    featureApp: "contacts",
     deferLoading: true,
     description:
       "Create or change a company (omit companyId to create), or set its account manager with ownerUserId (null clears). To give accounts to someone, first list them with kernel__companies_search (ownerUserId), then call this once with companyIds and ownerUserId. Name the companies you are moving. GATED.",
@@ -1036,6 +1045,9 @@ export function registerCompanyTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "companies_link_contacts"], {
     appName: "kernel",
     name: "companies_link_contacts",
+    // Off until an admin turns companies on (Settings > Apps > Contacts).
+    feature: "companies",
+    featureApp: "contacts",
     deferLoading: true,
     description:
       "Link people to a company (their company name becomes the company's), or unlink them with unlink: true. GATED.",
@@ -1063,6 +1075,9 @@ export function registerCompanyTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "companies_link_batch"], {
     appName: "kernel",
     name: "companies_link_batch",
+    // Off until an admin turns companies on (Settings > Apps > Contacts).
+    feature: "companies",
+    featureApp: "contacts",
     deferLoading: true,
     description:
       "Create several companies and link their people in one approval, from kernel__companies_propose_from_contacts groups. GATED.",
@@ -1091,6 +1106,9 @@ export function registerCompanyTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "companies_propose_from_contacts"], {
     appName: "kernel",
     name: "companies_propose_from_contacts",
+    // Off until an admin turns companies on (Settings > Apps > Contacts).
+    feature: "companies",
+    featureApp: "contacts",
     readOnly: true,
     // Groups by the company text people carry, which senders and enrichment fill.
     taintSource: true,
@@ -1108,6 +1126,9 @@ export function registerCompanyTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "company_timeline"], {
     appName: "kernel",
     name: "company_timeline",
+    // Off until an admin turns companies on (Settings > Apps > Contacts).
+    feature: "companies",
+    featureApp: "contacts",
     readOnly: true,
     // Mail subjects and meeting titles are text people outside the org chose.
     taintSource: true,
@@ -1136,6 +1157,9 @@ export function registerCompanyTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "companies_find_duplicates"], {
     appName: "kernel",
     name: "companies_find_duplicates",
+    // Off until an admin turns companies on (Settings > Apps > Contacts).
+    feature: "companies",
+    featureApp: "contacts",
     readOnly: true,
     // Returns company names and domains, as companies_search does.
     taintSource: true,
@@ -1153,6 +1177,9 @@ export function registerCompanyTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "companies_mark_not_same"], {
     appName: "kernel",
     name: "companies_mark_not_same",
+    // Off until an admin turns companies on (Settings > Apps > Contacts).
+    feature: "companies",
+    featureApp: "contacts",
     deferLoading: true,
     description:
       "Mark two companies as not the same, so they are no longer suggested as duplicates; undo: true reverts it.",
@@ -1171,6 +1198,9 @@ export function registerCompanyTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "companies_merge"], {
     appName: "kernel",
     name: "companies_merge",
+    // Off until an admin turns companies on (Settings > Apps > Contacts).
+    feature: "companies",
+    featureApp: "contacts",
     deferLoading: true,
     description:
       "Merge a duplicate company into another: sourceId is deleted, targetId is kept and receives its people, deals and waiting items. GATED, cannot be undone.",

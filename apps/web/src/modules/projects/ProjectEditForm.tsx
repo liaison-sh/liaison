@@ -6,6 +6,7 @@
 // (the server refuses it then: every task key and link is built on it).
 
 import { type Component, createResource, createSignal, createUniqueId, For, Show } from "solid-js"
+import { isFeatureOff } from "~/framework/org-features"
 import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -302,7 +303,9 @@ export const ProjectEditForm: Component<{
           class="min-h-[4.5rem] rounded-sm border border-border bg-bg px-3 py-2 text-[13px] text-text outline-none transition-colors focus:border-accent-muted"
         />
       </label>
-      <ClientField api={props.api} value={client()} onChange={setClient} />
+      <Show when={!isFeatureOff("contacts", "companies")}>
+        <ClientField api={props.api} value={client()} onChange={setClient} />
+      </Show>
       <label class="flex flex-col gap-1">
         <span class="text-[12px] font-medium text-text-secondary">
           {i18n.t("projects.groupOptional")}

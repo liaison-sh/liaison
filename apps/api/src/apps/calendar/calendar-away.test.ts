@@ -16,6 +16,7 @@ import {
 } from "~/apps/calendar/sync"
 import { sql } from "~/db"
 import { PrivilegedDbTestAccess, withSystemDb } from "~/db/privileged"
+import { setUserAppSettingPath } from "~/lib/settings"
 import { wholeWorkingDays } from "~/modules/attention/work-hours"
 import { answerCalendarAway, dayLabel, endAwayRange, readAwayToday } from "~/modules/users/away"
 import { seedOrgRow, seedUserRow, setUserPreferences } from "~/seed/factories/org/rows"
@@ -55,8 +56,16 @@ afterAll(async () => {
   await releaseAppSchemaJsLock("app_calendar")
 })
 
-/** A person in Paris working 09:00 to 18:00, Monday to Friday, with their own calendar. */
-async function person(name = "Tom Martin", extraCalendars: string[] = []) {
+/**
+ * A person in Paris working 09:00 to 18:00, Monday to Friday, with their own calendar. They
+ * turned on "Read my away days from my calendar" unless `awayFromCalendar: false` (the
+ * default of every person is off).
+ */
+async function person(
+  name = "Tom Martin",
+  extraCalendars: string[] = [],
+  opts: { awayFromCalendar?: boolean } = {},
+) {
   const email = `p-${crypto.randomUUID()}@x.test`
   const connectionId = crypto.randomUUID()
   const userId = await seedUserRow({
@@ -75,6 +84,11 @@ async function person(name = "Tom Martin", extraCalendars: string[] = []) {
     workDays: [1, 2, 3, 4, 5],
     timezone: "Europe/Paris",
   })
+  if (opts.awayFromCalendar !== false) {
+    await withSystemDb("calendar-away-setting", (tx) =>
+      setUserAppSettingPath(tx, userId, "calendar", ["awayFromCalendar"], true),
+    )
+  }
   return withSystemDb("calendar-away-person", async (tx) => {
     const { accountId } = await onAccountConnected(
       tx as any,
@@ -261,6 +275,13 @@ describe("whole working days", () => {
 describe("calendar reading: what counts", () => {
   const mon = futureMonday()
   const fri = addDays(mon, 4)
+
+  it("a person who never turned on Read my away days from my calendar gets no row and no Home line", async () => {
+    const p = await person("Off By Default", [], { awayFromCalendar: false })
+    await syncInitial(p, [ooo("ooo-off", `${mon} 09:00`, `${fri} 18:00`, { summary: "Trip" })])
+    expect(await ranges(p.userId)).toHaveLength(0)
+    expect(await lines(p.userId)).toHaveLength(0)
+  })
 
   it("an out-of-office Mon 09:00 to Fri 18:00 is one active row Mon to Fri, one Home line, no title anywhere", async () => {
     const p = await person()

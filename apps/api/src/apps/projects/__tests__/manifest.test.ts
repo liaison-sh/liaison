@@ -148,7 +148,36 @@ describe("projects.manifest", () => {
     //   leave out messages stamped with a restricted record.
     // 1.46.2: report sources declare only the field both of their forms carry, so neither
     //   form is refused as an invalid result.
-    expect(projectsManifest.version).toBe("1.46.2")
+    // 1.47.0: deals and client reports are features an admin turns on (off by default), and
+    //   time and budgets is marked as derived from a project's own switch.
+    expect(projectsManifest.version).toBe("1.47.0")
+  })
+
+  it("puts deals and client reports behind admin switches, off until turned on", () => {
+    const m = projectsManifest as any
+    expect(m.features.deals.adminScope).toBe("kernel:apps:admin")
+    expect(m.features.client_reports.adminScope).toBe("kernel:apps:admin")
+    expect(m.features.time_budgets.derived).toBe(true)
+    for (const t of [
+      "deals_pipeline_create",
+      "deals_update",
+      "deals_search",
+      "deals_rollup",
+      "deals_followup_candidates",
+    ]) {
+      expect(m.tools[t].feature).toBe("deals")
+    }
+    for (const t of [
+      "client_reports_list",
+      "client_report_get",
+      "client_report_sources_get",
+      "client_report_save_draft",
+      "client_report_send",
+    ]) {
+      expect(m.tools[t].feature).toBe("client_reports")
+    }
+    // The send guard reads a deal's state for every mail: plumbing, never switched.
+    expect(m.tools.deal_send_state.feature).toBeUndefined()
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

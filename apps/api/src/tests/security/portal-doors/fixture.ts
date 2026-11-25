@@ -19,6 +19,7 @@ import { encryptionKey } from "~/lib/env"
 import { generateTotpSecret } from "~/modules/auth/totp"
 import { PORTAL_REFRESH_COOKIE } from "~/modules/portal/auth-routes"
 import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
+import { turnOnOrgFeatures } from "~/tests/helpers/org-features"
 import { clearRedisPatterns } from "~/tests/route-test-setup"
 
 export interface DoorPerson {
@@ -203,6 +204,8 @@ export async function createSignInWorld(): Promise<SignInWorld> {
   await sql`UPDATE ${k("users")} SET totp_enabled = true,
     totp_secret = ${encryptSecret(clientTotp.secret, encryptionKey, CryptoContext.totpSecret)}
     WHERE id = ${clientTotp.userId}`
+  // Companies (and the portal on a company page) are off until an admin turns them on.
+  await turnOnOrgFeatures(w.orgId)
   return { ...w, clientGone, clientTotp, twoOrgClient }
 }
 

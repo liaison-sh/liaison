@@ -139,7 +139,7 @@
       }
     ]
   },
-  "version": "1.46.2",
+  "version": "1.47.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1485,6 +1485,7 @@
       }
     },
     "deals_pipeline_create": {
+      "feature": "deals",
       "deferLoading": true,
       "description": "Create a sales pipeline: a board whose tasks are deals, with stages Lead, Qualified, Demo, Proposal, then Won and Lost. Add deals with create.",
       "searchKeywords": [
@@ -1526,6 +1527,7 @@
       }
     },
     "deals_update": {
+      "feature": "deals",
       "deferLoading": true,
       "description": "Change a deal: company, contact, amount, probability, next step, or its outcome (won, lost, open moves it to that stage).",
       "searchKeywords": [
@@ -1620,6 +1622,7 @@
       }
     },
     "deals_search": {
+      "feature": "deals",
       "deferLoading": true,
       "readOnly": true,
       "description": "Find deals by pipeline, company, contact, outcome or close date; taskId gives one deal. Amounts only with deal access.",
@@ -1693,6 +1696,7 @@
       }
     },
     "deals_rollup": {
+      "feature": "deals",
       "deferLoading": true,
       "readOnly": true,
       "description": "Deal counts and amounts per stage, owner or month, one sum per currency; weighted multiplies by probability.",
@@ -1757,6 +1761,7 @@
       }
     },
     "deals_followup_candidates": {
+      "feature": "deals",
       "deferLoading": true,
       "readOnly": true,
       "description": "Open deals quiet for at least quietDays, each with skip: null means a follow-up may be drafted, otherwise the reason not to.",
@@ -5652,6 +5657,7 @@
       }
     },
     "client_reports_list": {
+      "feature": "client_reports",
       "deferLoading": true,
       "description": "List the client reports of the projects you can read (drafts, waiting, sent), newest week first; optionally for one project or one status.",
       "searchKeywords": [
@@ -5709,6 +5715,7 @@
       }
     },
     "client_report_get": {
+      "feature": "client_reports",
       "deferLoading": true,
       "description": "Read one client report as staff see it: its sections, what was left out and why, and the sources it was written from.",
       "searchKeywords": [
@@ -5759,6 +5766,7 @@
       }
     },
     "client_report_sources_get": {
+      "feature": "client_reports",
       "deferLoading": true,
       "description": "What a project's client report is written from, for one week (without a projectId: the projects whose reports are shared): task titles and statuses, pull request titles and the messages of threads linked to the project. No task comments, notes, people or real time; hours only as the portal's totals when they are shared.",
       "searchKeywords": [
@@ -5804,6 +5812,7 @@
       }
     },
     "client_report_save_draft": {
+      "feature": "client_reports",
       "deferLoading": true,
       "description": "Save the draft of a project's client report for one week: its sections (each in a share the client has open), what was left out and why, and its sources. Nothing reaches the client.",
       "searchKeywords": [
@@ -5919,6 +5928,7 @@
       }
     },
     "client_report_send": {
+      "feature": "client_reports",
       "deferLoading": true,
       "description": "Send a project's client report to the client, by mail and on their portal, once a person approves it. No routine or policy sends one.",
       "searchKeywords": [
@@ -6969,7 +6979,22 @@
     }
   },
   "features": {
+    "deals": {
+      "adminScope": "kernel:apps:admin",
+      "labelKey": "kernel.appFeatures.deals.label",
+      "descriptionKey": "kernel.appFeatures.deals.description",
+      "offMessageKey": "kernel.appFeatures.deals.offMessage",
+      "offNextKey": "kernel.appFeatures.deals.offNext"
+    },
+    "client_reports": {
+      "adminScope": "kernel:apps:admin",
+      "labelKey": "kernel.appFeatures.clientReports.label",
+      "descriptionKey": "kernel.appFeatures.clientReports.description",
+      "offMessageKey": "kernel.appFeatures.clientReports.offMessage",
+      "offNextKey": "kernel.appFeatures.clientReports.offNext"
+    },
     "time_budgets": {
+      "derived": true,
       "adminScope": "projects:projects:write",
       "labelKey": "projects.timeBudgets.label",
       "offMessageKey": "projects.timeBudgets.offMessage",

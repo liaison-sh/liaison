@@ -55,6 +55,8 @@ export interface LadderTool {
    * (`isFeatureOffForTool`), so a world counts it only when it turns it on.
    */
   feature?: string
+  /** The app whose feature it is, when not its own (the kernel's company tools: `contacts`). */
+  featureApp?: string
 }
 
 interface ManifestTool {
@@ -81,6 +83,7 @@ interface RegistryTool {
   agentVisible?: boolean
   routineOnly?: boolean
   feature?: string
+  featureApp?: string
 }
 
 /** One tool as the provider is sent it, measured by the product's meter. */
@@ -101,6 +104,7 @@ function ladderTool(app: string, name: string, def: RegistryTool, guide?: string
     }),
     ...(guide ? { guide } : {}),
     ...(def.feature ? { feature: def.feature } : {}),
+    ...(def.featureApp ? { featureApp: def.featureApp } : {}),
   }
 }
 
@@ -212,7 +216,7 @@ export function measureLadder(tools: readonly LadderTool[], world: LadderWorld):
   const usable = tools.filter(
     (t) =>
       t.agentVisible &&
-      (!t.feature || featuresOn.has(`${t.app}:${t.feature}`)) &&
+      (!t.feature || featuresOn.has(`${t.featureApp ?? t.app}:${t.feature}`)) &&
       (!on || on.has(t.app) || t.app === "kernel") &&
       checkToolScopes({ requiredScopes: t.requiredScopes }, [...world.scopes]).authorized,
   )

@@ -492,6 +492,8 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
     items: SlashBlock[]
     active: number
     anchor: SuggestAnchor
+    /** An arrow key chose the block: Enter picks it even after a word. */
+    chosen?: boolean
   } | null>(null)
   let slashDismissed: number | null = null
   const slashContext = () => ({
@@ -522,7 +524,13 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
     const open = slash()
     const same = open && open.from === query.from
     const active = same ? Math.min(open.active, items.length - 1) : 0
-    setSlash({ from: query.from, items, active, anchor: caretAnchor(ed.view, query.from) })
+    setSlash({
+      from: query.from,
+      items,
+      active,
+      anchor: caretAnchor(ed.view, query.from),
+      chosen: same ? open.chosen : false,
+    })
   }
   const pickSlash = (ed: Editor, block: SlashBlock) => {
     const open = slash()
@@ -538,8 +546,20 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
     const open = slash()
     const ed = editor()
     if (!ed) return false
+    // After a word (`50 km /h`), Enter and Tab stay prose unless an arrow chose a
+    // block: only a slash at the start of its block picks on Enter at once.
+    if (
+      open &&
+      !open.chosen &&
+      (event.key === "Enter" || event.key === "Tab") &&
+      ed.state.doc.resolve(open.from).parentOffset > 0
+    ) {
+      slashDismissed = open.from
+      setSlash(null)
+      return false
+    }
     return suggestKey(event, open, {
-      move: (active) => open && setSlash({ ...open, active }),
+      move: (active) => open && setSlash({ ...open, active, chosen: true }),
       pick: (item) => pickSlash(ed, item),
       dismiss: () => {
         slashDismissed = open?.from ?? null
@@ -547,10 +567,13 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
       },
     })
   }
-  /** Mod-Enter on a checklist item ticks it (or unticks it), where the caret is. */
+  /**
+   * Mod-Enter on a checklist item ticks it (or unticks it), where the caret is: in a
+   * page only. Elsewhere (a task discussion, a ticket note) Mod-Enter sends.
+   */
   const taskKey = (event: KeyboardEvent): boolean => {
     const ed = editor()
-    if (!ed?.isEditable || event.key !== "Enter" || event.shiftKey || event.altKey) return false
+    if (props.preset !== "document" || !ed?.isEditable || event.key !== "Enter" || event.shiftKey || event.altKey) return false
     if (!(event.metaKey || event.ctrlKey)) return false
     const { $from } = ed.state.selection
     for (let depth = $from.depth; depth > 0; depth--) {

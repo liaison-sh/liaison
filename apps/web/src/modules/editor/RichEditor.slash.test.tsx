@@ -154,6 +154,34 @@ describe("the keyboard and screen readers", () => {
     expect(handle.markdown()).toBe("# Title")
   })
 
+  it("after a word, Enter stays prose: `km /h` then Enter is a new line, not a heading", () => {
+    const { editor, field, handle } = mount()
+    typeInto(editor, "50 km /h")
+    expect(menu()).not.toBeNull()
+    key(field, "Enter")
+    expect(menu()).toBeNull()
+    expect(handle.markdown()).toContain("50 km /h")
+    expect(handle.markdown()).not.toMatch(/^#/)
+    expect(editor.state.doc.firstChild?.type.name).toBe("paragraph")
+  })
+
+  it("after a word, Enter picks once an arrow chose the block", () => {
+    const { editor, field, handle } = mount()
+    typeInto(editor, "Note /")
+    key(field, "ArrowDown")
+    key(field, "Enter")
+    expect(menu()).toBeNull()
+    expect(handle.markdown()).toBe("# Note")
+  })
+
+  it("at the start of a block, Enter picks what was typed", () => {
+    const { editor, field, handle } = mount()
+    typeInto(editor, "/heading 2")
+    key(field, "Enter")
+    typeInto(editor, "Plan")
+    expect(handle.markdown()).toBe("## Plan")
+  })
+
   it("Escape closes it and it stays closed for that slash", () => {
     const { editor, field, handle } = mount()
     typeInto(editor, "/he")
@@ -236,6 +264,16 @@ describe("checklists tick in place", () => {
     expect(onEdit).toHaveBeenCalledTimes(1)
     expect(handle.markdown()).toBe("- [x] Call the carrier\n- [ ] Pack the order")
     key(field, "Enter", { metaKey: true })
+    expect(handle.markdown()).toBe(LIST)
+  })
+
+  it("outside a page, Mod-Enter sends: a task discussion or ticket note never ticks", () => {
+    const onSubmit = vi.fn()
+    const { editor, field, onEdit, handle } = mount({ preset: "full", value: LIST, onSubmit })
+    editor.commands.setTextSelection(6)
+    key(field, "Enter", { ctrlKey: true })
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onEdit).not.toHaveBeenCalled()
     expect(handle.markdown()).toBe(LIST)
   })
 

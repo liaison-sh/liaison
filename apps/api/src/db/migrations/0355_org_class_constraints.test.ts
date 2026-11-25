@@ -13,6 +13,7 @@ import { join } from "node:path"
 import postgres from "postgres"
 import { markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
 import { seedOrgRow } from "~/seed/factories/org/rows"
+import { withRoleCatalogLock } from "~/tests/helpers/role-catalog-lock"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const MIGRATION = join(import.meta.dir, "0355_org_class_constraints.sql")
@@ -184,11 +185,15 @@ describe("0355 across the upgrade", () => {
   })
 
   it("stops when liaison_admin is held to row security, instead of reading no org", async () => {
-    await rolledBack(async (tx) => {
-      await before(tx)
-      await tx.unsafe("ALTER ROLE liaison_admin NOBYPASSRLS")
-      const err = await tx.savepoint(async (sp) => migrate(sp)).catch((e: Error) => e)
-      expect(String(err)).toMatch(/liaison_admin is held to row security/)
-    })
+    // liaison_admin is a cluster-wide row that migration replays in other test
+    // processes also write: held until the rollback, under their lock.
+    await withRoleCatalogLock(privilegedUrl(), () =>
+      rolledBack(async (tx) => {
+        await before(tx)
+        await tx.unsafe("ALTER ROLE liaison_admin NOBYPASSRLS")
+        const err = await tx.savepoint(async (sp) => migrate(sp)).catch((e: Error) => e)
+        expect(String(err)).toMatch(/liaison_admin is held to row security/)
+      }),
+    )
   })
 })

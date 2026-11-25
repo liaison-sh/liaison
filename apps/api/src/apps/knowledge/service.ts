@@ -10,7 +10,12 @@ import {
   normalizePageRefs,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
-import { adoptForeignFiles, adoptionFields, type FileAdoption } from "~/apps/knowledge/body-tokens"
+import {
+  adoptForeignFiles,
+  adoptionFields,
+  type FileAdoption,
+  resolveImportedPageRefs,
+} from "~/apps/knowledge/body-tokens"
 import {
   markEventPending,
   stampEventNow,
@@ -1292,6 +1297,8 @@ export async function updateKnowledgeDocument(
   // is compared and written (body-tokens.ts).
   let adoption: FileAdoption = { fileIdMap: {}, notCopied: [] }
   if (parsed.body !== undefined) {
+    // An imported page's text may still name its import's links (body-tokens.ts).
+    parsed.body = await resolveImportedPageRefs(tx, actor.orgId, row.id, parsed.body)
     const adopted = await adoptForeignFiles(tx, row.id, parsed.body, actor)
     parsed.body = adopted.body
     adoption = adopted

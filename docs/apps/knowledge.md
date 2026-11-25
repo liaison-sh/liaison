@@ -117,6 +117,20 @@ Each search, link or read goes through your own connection to the app, so you on
 
 Use **Archive** to retire a document and **Restore** to bring it back.
 
+## Trash
+
+Archiving a document moves it to Trash. It leaves the knowledge base and search at once, and it is deleted for good 30 days later, with its history, its files, its links, its sharing and its place in folders. An agent's `archive` does the same and starts the same 30 days.
+
+- Anyone who can edit a document can see it in Trash and restore it until then. A restored document goes back to its folders, or to Unfiled when none of them is left.
+- Documents archived before Trash existed are listed as kept, with no date: they are never deleted automatically.
+- Synced documents (Google Drive, GitLab, a database) cannot be moved to Trash. Manage them in their source.
+- An administrator (`knowledge:documents:admin`) who can edit a document in Trash can delete it for good at once. A document archived before Trash is restored and moved to Trash first.
+- Links to a deleted document and images from its files stay in other documents' text and show as unavailable.
+
+Through the API: `GET /api/knowledge/trash` lists what you can restore, with `daysLeft` (null when kept); `POST /api/knowledge/documents/:id/trash` moves a document to Trash; `POST /api/knowledge/documents/:id/restore` restores it; `DELETE /api/knowledge/documents/:id` deletes it for good.
+
+Stored versions of a document are kept for a year.
+
 ## Import collections and documents
 
 Collections import as the `knowledge.collection` kind and documents as the `knowledge.document` kind, each matched on its `externalRef`: one imported before is skipped, never updated. In a run with both, collections go first, so a document can be filed in a collection the same run creates (`collectionRefs`). A collection is shared with the organization unless its record says `shared: false`.
@@ -131,7 +145,7 @@ Knowledge ships three roles. See [roles](../admin/roles.md).
 
 | Role | Scopes |
 |---|---|
-| `member` | `knowledge:documents:read`, `knowledge:documents:create`, `knowledge:documents:update`, `knowledge:collections:manage`, `knowledge:links:create`, `knowledge:sources:read`, `knowledge:attachments:download`, `knowledge:attachments:upload` |
+| `member` | `knowledge:documents:read`, `knowledge:documents:create`, `knowledge:documents:update`, `knowledge:collections:manage`, `knowledge:documents:archive`, `knowledge:links:create`, `knowledge:sources:read`, `knowledge:attachments:download`, `knowledge:attachments:upload` |
 | `curator` | `knowledge:tags:manage`, `knowledge:documents:archive`, `knowledge:documents:assign-owner`, `knowledge:sources:manage` |
 | `admin` | `knowledge:documents:admin`, `knowledge:cache:manage` |
 
@@ -148,7 +162,7 @@ Knowledge ships three roles. See [roles](../admin/roles.md).
 | `create` | Create a document | `knowledge:documents:create` |
 | `update` | Update a document | `knowledge:documents:update` |
 | `verify` | Mark a document verified | `knowledge:documents:update` |
-| `archive`, `restore` | Archive or restore a document | `knowledge:documents:archive` |
+| `archive`, `restore` | Move a document to Trash (deleted after 30 days) or restore it | `knowledge:documents:archive` |
 | `collection_create`, `collection_update`, `collection_delete` | Create, change or delete a folder. A created folder is shared unless the user asks for a personal one | `knowledge:collections:manage` |
 | `add_to_collection`, `remove_from_collection` | File a document in a folder or take it out | `knowledge:collections:manage` |
 | `add_folder_source` | Import a Drive folder, a GitLab repository path or the database knowledge base, once or on a schedule | `knowledge:sources:manage` |

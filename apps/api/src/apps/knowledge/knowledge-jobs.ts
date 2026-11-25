@@ -25,6 +25,11 @@ import {
   type SyncedSourceDbRow,
   rowFromDb as syncedSourceRowFromDb,
 } from "~/apps/knowledge/synced-sources"
+import {
+  checkTrashResidue,
+  runTrashPurge,
+  type TrashResidueJobPayload,
+} from "~/apps/knowledge/trash"
 import { extractRows } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import {
@@ -338,6 +343,26 @@ export async function registerKnowledgeJobs(opts: RunSyncWorkerDeps = {}): Promi
   // page's last event is a minute old.
   await registerScheduledJob("knowledge", "update-event-flush", "*/1 * * * *", async () => {
     await flushPendingUpdateEvents()
+  })
+
+  // Trash (trash.ts): pages in Trash for 30 days are deleted at night, and page
+  // versions older than a year go. Each purge's index entry and stored objects are
+  // checked ten minutes after it (trash-residue).
+  await registerScheduledJob("knowledge", "trash-purge", "17 3 * * *", async () => {
+    const report = await runTrashPurge()
+    if (report.purged.length > 0 || report.failed.length > 0 || report.versionsPruned > 0) {
+      log.info(
+        {
+          purged: report.purged.length,
+          failed: report.failed.length,
+          versionsPruned: report.versionsPruned,
+        },
+        "Knowledge Trash purge ran",
+      )
+    }
+  })
+  registerJobWorker<TrashResidueJobPayload>("knowledge", "trash-residue", async (payload) => {
+    await checkTrashResidue(payload)
   })
 
   registerJobWorker<SyncJobPayload>("knowledge", "sync-source", async (payload) => {

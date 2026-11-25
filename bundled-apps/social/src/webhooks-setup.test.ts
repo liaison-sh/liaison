@@ -31,8 +31,14 @@ interface Call {
   method: string
   path: string
   auth?: string
+  /** The connection the host token came from (`auth.connection`), when one is named. */
+  authConnection?: string
   body?: Record<string, unknown>
 }
+
+/** The Instagram professional account a Unified-login connection holds. */
+const IG_ID = "17841400000000101"
+const IG_FIELDS = ["comments", "messages"]
 
 /** A stateful fake of the Graph endpoints the tool touches. */
 function fakeGraph(
@@ -43,6 +49,10 @@ function fakeGraph(
     cell?: { callback: string; verifyToken: string }
     /** The app-level callback Meta already holds. */
     currentCallback?: string
+    /** The app's Instagram subscription, set in the App Dashboard (never by the API). */
+    igAppSub?: { callback_url: string; fields: string[] }
+    /** Meta refuses the Instagram account's subscribed_apps call. */
+    failIg?: boolean
   } = {},
 ) {
   const pages = opts.pages ?? [
@@ -57,6 +67,7 @@ function fakeGraph(
       active: boolean
     },
     pageSubs: {} as Record<string, string[]>,
+    igSubs: null as string[] | null,
     verifyTokenAtSubscribe: null as unknown,
   }
   if (opts.currentCallback) {
@@ -77,7 +88,7 @@ function fakeGraph(
       method?: string
       headers?: Record<string, string>
       body?: unknown
-      auth?: { grant?: string; identifier?: string }
+      auth?: { connection?: string; grant?: string; identifier?: string }
       configSecrets?: Record<string, string>
     },
   ) => {
@@ -94,9 +105,11 @@ function fakeGraph(
     const auth = init?.auth
       ? init.auth.grant === "client_credentials"
         ? `Bearer ${APP_ID}|${SECRET}`
-        : "Bearer user-tok"
+        : init.auth.connection === "instagram_unified"
+          ? `Bearer ig-${init.auth.identifier}`
+          : "Bearer user-tok"
       : init?.headers?.Authorization
-    calls.push({ method, path, auth, body })
+    calls.push({ method, path, auth, authConnection: init?.auth?.connection, body })
     const ok = (b: unknown) => ({ status: 200, headers: {}, body: JSON.stringify(b) })
     if (method === "GET" && path === "/app") return ok({ id: APP_ID })
     if (path === `/${APP_ID}/subscriptions`) {
@@ -107,7 +120,27 @@ function fakeGraph(
           headers: {},
           body: JSON.stringify({ error: { code: 190, message: "bad app token" } }),
         }
-      if (method === "GET") return ok({ data: state.appSub ? [state.appSub] : [] })
+      if (method === "GET") {
+        const ig = opts.igAppSub
+          ? [
+              {
+                object: "instagram",
+                callback_url: opts.igAppSub.callback_url,
+                fields: opts.igAppSub.fields.map((name) => ({ name })),
+                active: true,
+              },
+            ]
+          : []
+        return ok({ data: [...(state.appSub ? [state.appSub] : []), ...ig] })
+      }
+      // Meta's /{app-id}/subscriptions takes no `instagram` object (App Dashboard only).
+      if (body?.object === "instagram") {
+        return {
+          status: 400,
+          headers: {},
+          body: JSON.stringify({ error: { code: 100, message: "Instagram is not supported" } }),
+        }
+      }
       // Meta checks the callback with the hub.challenge handshake before it accepts.
       state.verifyTokenAtSubscribe = config[VERIFY_TOKEN_KEY] ?? null
       if (body?.verify_token !== (config[CELL_VERIFY_TOKEN_KEY] ?? config[VERIFY_TOKEN_KEY])) {
@@ -129,6 +162,26 @@ function fakeGraph(
     }
     if (method === "GET" && path === "/me/accounts") {
       return ok({ data: pages.map((p) => ({ ...p, access_token: `tok-${p.id}` })) })
+    }
+    if (path === `/${IG_ID}/subscribed_apps`) {
+      if (auth !== `Bearer ig-${IG_ID}`)
+        return {
+          status: 400,
+          headers: {},
+          body: JSON.stringify({ error: { code: 190, message: "wrong token" } }),
+        }
+      if (opts.failIg)
+        return {
+          status: 400,
+          headers: {},
+          body: JSON.stringify({
+            error: { code: 100, message: "Unsupported post request", error_subcode: 33 },
+          }),
+        }
+      if (method === "GET")
+        return ok({ data: state.igSubs ? [{ id: APP_ID, subscribed_fields: state.igSubs }] : [] })
+      state.igSubs = String(body?.subscribed_fields).split(",")
+      return ok({ success: true })
     }
     const m = /^\/([^/]+)\/subscribed_apps$/.exec(path)
     if (m) {
@@ -308,7 +361,7 @@ describe("webhooks_setup", () => {
     if (!("pages" in r)) throw new Error(JSON.stringify(r))
     expect(writes(g.calls)).toEqual([])
     expect(r.status).toBe("completed")
-    expect(r.app.status).toBe("unchanged")
+    expect(r.app?.status).toBe("unchanged")
     expect(r.pages.every((p) => p.status === "unchanged")).toBe(true)
     expect(g.getConfig()[VERIFY_TOKEN_KEY]).toBe(token)
   })
@@ -350,6 +403,184 @@ describe("webhooks_setup", () => {
     const pre = await webhooksSetupPreflight({}, ctx)
     expect("error" in pre && pre.error.code).toBe("not_connected")
     expect(g.calls).toEqual([])
+  })
+})
+
+// Instagram API with Unified login: Meta's app-level Instagram webhook is set in the App
+// Dashboard only (`/{app-id}/subscriptions` takes no `instagram` object), so the tool subscribes
+// each Unified-login account (`/{ig-id}/subscribed_apps`), reports whether the dashboard
+// subscription points here, and shows the callback URL and verify token to type in.
+describe("webhooks_setup with an Instagram account (Unified login)", () => {
+  async function connectUnified(ctx: SocialToolCtx, base: string | undefined = BASE) {
+    await onConnectionEstablished(
+      {
+        app: "kernel",
+        entity: "connected_account",
+        action: "create",
+        orgId: "org-1",
+        data: {
+          id: "ca-2",
+          appName: "social",
+          connectionName: "instagram_unified",
+          identifier: IG_ID,
+          kernelPublicBaseUrl: base,
+        },
+      } as never,
+      ctx,
+    )
+  }
+  const unifiedConnections = {
+    getAccounts: async (name: string) =>
+      name === "instagram_unified"
+        ? [{ identifier: IG_ID, status: "active" }]
+        : connectedAccountList(name),
+  }
+
+  /** A workspace with only the Unified-login account and seeded Facebook rows with no token. */
+  async function unifiedOnly(g: ReturnType<typeof fakeGraph>) {
+    const db = createMockDb()
+    const ctx = {
+      orgId: "org-1",
+      db,
+      fetch: g.fetch,
+      connections: unifiedConnections,
+      config: g.cfg,
+      enqueueJob: async () => {},
+      logger: { warn() {}, info() {}, error() {}, debug() {} },
+    } as unknown as SocialToolCtx & { config: typeof g.cfg }
+    for (const source_type of ["discovery", "watch", "dm"]) {
+      await db.insert("sync_state", {
+        platform: "facebook",
+        account_external_id: "seeded-fb-user",
+        source_type,
+        active: true,
+      })
+    }
+    await connectUnified(ctx)
+    return ctx
+  }
+
+  test("a unified-only workspace subscribes /{ig-id}/subscribed_apps and sends nothing naming page", async () => {
+    const g = fakeGraph()
+    const ctx = await unifiedOnly(g)
+    expect(await webhooksSetupPreflight({}, ctx)).toEqual({ ok: true })
+    const r = await webhooksSetup({}, ctx)
+    if (!("pages" in r)) throw new Error(JSON.stringify(r))
+    // No Facebook step at all: no Page listing, no app-level write.
+    expect(g.calls.some((c) => c.path === "/me/accounts")).toBe(false)
+    expect(g.calls.some((c) => c.body?.object === "page")).toBe(false)
+    expect(writes(g.calls).some((c) => c.path === `/${APP_ID}/subscriptions`)).toBe(false)
+    expect(r.app).toBeNull()
+    expect(r.pages).toEqual([])
+    // The app token comes from the Unified-login connection's client.
+    const appRead = g.calls.find((c) => c.path === `/${APP_ID}/subscriptions`)
+    expect(appRead?.authConnection).toBe("instagram_unified")
+    const post = writes(g.calls).find((c) => c.path === `/${IG_ID}/subscribed_apps`)
+    expect(post?.auth).toBe(`Bearer ig-${IG_ID}`)
+    expect(post?.body).toEqual({ subscribed_fields: "comments,messages" })
+    expect(r.instagram?.accounts).toEqual([
+      { ig_account_id: IG_ID, status: "subscribed", subscribed_fields: IG_FIELDS },
+    ])
+    // The dashboard subscription is missing: the admin is told what to type in.
+    expect(r.instagram?.app_subscription).toEqual({
+      status: "missing",
+      callback_url: null,
+      fields: [],
+    })
+    expect(r.instagram?.callback_url).toBe(CALLBACK)
+    expect(r.instagram?.verify_token).toBe(g.getConfig()[VERIFY_TOKEN_KEY] as string)
+    expect(String(r.instagram?.verify_token)).toMatch(/^[0-9a-f]{48}$/)
+    expect(r.instagram?.dashboard_step).toContain("Configure webhooks")
+    expect(r.status).toBe("partial")
+  })
+
+  test("a matching dashboard subscription and account subscription are left unchanged", async () => {
+    const g = fakeGraph({ igAppSub: { callback_url: CALLBACK, fields: IG_FIELDS } })
+    g.state.igSubs = [...IG_FIELDS]
+    const ctx = await unifiedOnly(g)
+    const r = await webhooksSetup({}, ctx)
+    if (!("pages" in r)) throw new Error(JSON.stringify(r))
+    expect(writes(g.calls)).toEqual([])
+    expect(r.instagram?.app_subscription.status).toBe("configured")
+    expect(r.instagram?.dashboard_step).toBeNull()
+    expect(r.instagram?.accounts.map((a) => a.status)).toEqual(["unchanged"])
+    expect(r.status).toBe("completed")
+  })
+
+  test("a dashboard subscription pointing elsewhere is reported, never changed", async () => {
+    const other = "https://other.example.com/webhooks/org-9/social/meta"
+    const g = fakeGraph({ igAppSub: { callback_url: other, fields: IG_FIELDS } })
+    const ctx = await unifiedOnly(g)
+    const r = await webhooksSetup({}, ctx)
+    if (!("pages" in r)) throw new Error(JSON.stringify(r))
+    expect(r.instagram?.app_subscription).toEqual({
+      status: "other_callback",
+      callback_url: other,
+      fields: IG_FIELDS,
+    })
+    expect(writes(g.calls).every((c) => c.path === `/${IG_ID}/subscribed_apps`)).toBe(true)
+  })
+
+  test("an account Meta refuses is reported with its Graph error", async () => {
+    const g = fakeGraph({ failIg: true })
+    const ctx = await unifiedOnly(g)
+    const r = await webhooksSetup({}, ctx)
+    if (!("pages" in r)) throw new Error(JSON.stringify(r))
+    expect(r.status).toBe("partial")
+    expect(r.failed_instagram_accounts).toBe(1)
+    const [acct] = r.instagram?.accounts ?? []
+    expect(acct?.status).toBe("failed")
+    expect(acct?.error).toContain("(#100) Unsupported post request")
+  })
+
+  test("with Facebook connected too, the Page steps run as before and the account subscribes", async () => {
+    const g = fakeGraph()
+    const { ctx } = await seededCtx(g)
+    ;(ctx as { connections: unknown }).connections = unifiedConnections
+    await connectUnified(ctx)
+    const r = await webhooksSetup({}, ctx)
+    if (!("pages" in r)) throw new Error(JSON.stringify(r))
+    expect(r.app?.status).toBe("subscribed")
+    expect(r.pages.map((p) => [p.page_id, p.status])).toEqual([
+      ["P1", "subscribed"],
+      ["P2", "subscribed"],
+    ])
+    expect(r.instagram?.accounts.map((a) => a.status)).toEqual(["subscribed"])
+    // The app token stays the Facebook connection's when it is there.
+    const appWrite = writes(g.calls).find((c) => c.path === `/${APP_ID}/subscriptions`)
+    expect(appWrite?.authConnection).toBe("facebook")
+    expect(appWrite?.body?.object).toBe("page")
+  })
+
+  test("an Instagram-login (older apps) account is not part of it", async () => {
+    const g = fakeGraph()
+    const db = createMockDb()
+    const ctx = {
+      orgId: "org-1",
+      db,
+      fetch: g.fetch,
+      connections: { getAccounts: async (name: string) => connectedAccountList(name) },
+      config: g.cfg,
+      enqueueJob: async () => {},
+    } as unknown as SocialToolCtx & { config: typeof g.cfg }
+    await onConnectionEstablished(
+      {
+        app: "kernel",
+        entity: "connected_account",
+        action: "create",
+        orgId: "org-1",
+        data: {
+          id: "ca-3",
+          appName: "social",
+          connectionName: "instagram",
+          identifier: "ig-1",
+          kernelPublicBaseUrl: BASE,
+        },
+      } as never,
+      ctx,
+    )
+    const pre = await webhooksSetupPreflight({}, ctx)
+    expect("error" in pre && pre.error.code).toBe("not_connected")
   })
 })
 
@@ -404,7 +635,7 @@ describe("webhooks_setup on a managed cell", () => {
     const { ctx } = await seededCtx(g)
     const r = await webhooksSetup({}, ctx)
     if (!("pages" in r)) throw new Error(JSON.stringify(r))
-    expect(r.app.status).toBe("subscribed")
+    expect(r.app?.status).toBe("subscribed")
     expect(g.state.appSub?.callback_url).toBe(CELL.callback)
   })
 

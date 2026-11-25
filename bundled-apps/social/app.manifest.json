@@ -527,7 +527,7 @@
   "outsideTextFields": ["text", "author", "messages", "title"],
   "tools": {
     "webhooks_setup": {
-      "description": "Point Meta's Facebook Page webhooks at this instance, so new comments and Messenger DMs arrive in real time instead of on the next poll. Makes the Meta app's page subscription (fields feed and messages) target this instance's social webhook, provisioning the verify token it checks, then subscribes every managed Page of each connected Facebook account to the app. Needs the pages_manage_metadata permission on the Facebook connection: if a Page fails with '(#200) Requires pages_manage_metadata permission', reconnect Facebook and run it again. Idempotent: what already matches is left alone and reported unchanged. Gated: a person approves. Returns the callback URL, the app subscription status and one result per Page (subscribed, unchanged or failed with Meta's error).",
+      "description": "Point Meta's Facebook Page and Instagram webhooks at this instance, so new comments and direct messages arrive in real time instead of on the next poll. Facebook (when a Facebook account is connected): makes the Meta app's page subscription (fields feed and messages) target this instance's social webhook, provisioning the verify token it checks, then subscribes every managed Page of each connected Facebook account to the app; needs the pages_manage_metadata permission (on '(#200) Requires pages_manage_metadata permission', reconnect Facebook and run it again). Instagram (accounts connected with the Unified login): subscribes each account to the app (fields comments and messages) and reports whether the app's Instagram webhook, which Meta only lets you set in the App Dashboard, points here; when it does not, the result gives the dashboard step with the callback URL and the verify token to enter. Idempotent: what already matches is left alone and reported unchanged. Gated: a person approves. Returns the callback URL, the app subscription status, one result per Page and per Instagram account (subscribed, unchanged or failed with Meta's error).",
       "requiredScopes": ["social:admin:connection", "social:findings:read"],
       "handler": "webhooksSetupHandler",
       "preflight": "webhooksSetupPreflightHandler",
@@ -542,13 +542,13 @@
         "properties": {
           "callback_base_url": {
             "type": "string",
-            "description": "The public HTTPS address Liaison is reached at; only needed when the Facebook connection did not record it."
+            "description": "The public HTTPS address Liaison is reached at; only needed when the Facebook or Instagram connection did not record it."
           }
         },
         "additionalProperties": false
       },
       "approvalCard": {
-        "summary": "Subscribe Facebook Page webhooks (comments and Messenger) to this instance"
+        "summary": "Subscribe Facebook Page and Instagram webhooks (comments and messages) to this instance"
       }
     },
     "findings_list": {

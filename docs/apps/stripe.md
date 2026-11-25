@@ -9,6 +9,10 @@ Stripe is an app with its own page: **Stripe** in the activity bar opens **Home*
 
 This page grows as the app does. Today it stores its connection, checks its key, keeps its mirror current from Stripe's webhook events, and shows the Stripe Home.
 
+## Install Stripe
+
+Stripe is not installed in a workspace until an admin installs it: an existing workspace that upgrades does not get it. Open **Settings › App store**, find **Stripe** and choose **Install** (needs `kernel:apps:admin`), or list it in a config file: `apps: [{ name: stripe, enable: true }]` with `liaison config apply` ([the provisioning CLI](../provisioning-cli.md)). Its page, **Settings › Apps › Stripe**, appears once it is installed.
+
 ## The Stripe Home
 
 Home reads Liaison's mirror, never Stripe, so it says when it last heard from Stripe.

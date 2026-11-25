@@ -219,6 +219,20 @@ An app's page with changes you have not saved asks before you leave it, and befo
 
 In a desktop or phone app older than the server, a setting the app cannot show yet says **This setting needs a newer version of Liaison. Update Liaison to change it.** Update the app, or change it from the browser.
 
+### Switch an app's features
+
+Some parts of an app stay off in a workspace until an admin turns them on. Their switches are under **Features** at the top of the app's page, for an admin holding `kernel:apps:admin`:
+
+| App | Feature | What it adds |
+|---|---|---|
+| **Contacts** | **Companies** | The Companies directory and company pages, the client portal invited from them, and the company tools of agents ([Companies](../sales/companies.md)) |
+| **Projects** | **Deals and pipelines** | Sales pipelines, deals and their agent tools ([Deals](../sales/deals.md)) |
+| **Projects** | **Client reports** | A project's weekly reports to its client ([Projects](../apps/projects.md#send-a-client-report)) |
+| **Invoicing** | **Recurring billing** | Recurring schedules, the month-end run, billing plans, retainers, milestones and advances ([Recurring invoices](../apps/recurring.md)) |
+| **Agreements** | **Corporate templates** | The corporate legal starter templates |
+
+Turning one off hides its tabs, sidebar entries and agent tools again; it deletes nothing, and data already written stays readable. The same switches are `features` in a config file ([the provisioning CLI](../provisioning-cli.md)), and `GET` / `PUT /api/apps/<app>/features/<feature>` (body `{ "enabled": true }`). Time and budgets has no switch here: it follows each project's own setting.
+
 ## Connect outside services (Connectors)
 
 The **Connectors** heading opens one page with a card for each connector you administer, and the organization's MCP servers for org admins. A card that has nothing connected yet shows **No account connected yet.** with one **Connect**; once connected it shows the connection's health with **Check again**, then each account with **Disconnect** and, for an account you may manage (your own, or the organization's when you administer the connector), **Reconnect** for a signed-in account, whatever its health, or **Replace** for a credential. **Reconnect** signs that same account in again, which picks up scopes an app added since; for a per-store connector it goes straight to that account's store. An app with several accounts of one connection (the API connector's, one per system) opens the same credential dialog for one account and only the fields it needs. See [Connecting apps](../connecting-apps.md) and [MCP servers](../agents/mcp-servers.md). An admin can also send a member a one-time link that connects the member's own account: the link opens a **Connect your account** page that works only for that member, signed in as themselves, once, within 30 minutes (for a mailbox it asks **Transparent or private mailbox?**). If the connect is refused, the member comes back to that page, which says **Nothing was connected.** and why. Each organization MCP server's page has **Who can use it**, the same choice as an app's access: **Everyone in the workspace** or **Only selected roles and people**.

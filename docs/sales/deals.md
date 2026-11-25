@@ -5,6 +5,10 @@ description: "Keep deals on a board with stages, an amount, a company and a next
 
 Liaison keeps deals in [Projects](../apps/projects.md): a sales pipeline is a project whose board shows deals, and a deal is a task with an amount, a company and a contact. This page shows how to set up a pipeline, what a deal holds and who may see its amount.
 
+## Turn deals on
+
+Deals are off in a workspace until an admin turns them on: **Settings › Apps › Projects**, under **Features**, switch on **Deals and pipelines** (needs `kernel:apps:admin`). In a config file: `apps: [{ name: projects, enable: true, features: { deals: true } }]` ([Switch an app's features](../admin/settings.md#switch-an-apps-features)). Off, agents have no deal tools. A deal's client is a company, so turn **Companies** on too ([Companies](companies.md#turn-companies-on)).
+
 ## Set up a pipeline
 
 Ask the agent: "create a sales pipeline called Partners". It uses `deals_pipeline_create` and makes a board with the stages **Lead**, **Qualified**, **Demo**, **Proposal**, then **Won** and **Lost**. A deal import creates a missing pipeline the same way (see [Import companies and deals](importing-companies-and-deals.md)). A pipeline's closing stages, Won and Lost, stay in place.

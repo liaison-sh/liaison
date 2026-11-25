@@ -95,6 +95,14 @@ Section `accounts`, scope `user`.
 |  | (every connection) | connections |
 |  | CalendarChoices | custom |
 
+### Away days
+
+Section `away`, scope `user`.
+
+| Key | Label | Type |
+| --- | --- | --- |
+| `awayFromCalendar` | Read my away days from my calendar | toggle |
+
 ## calls
 
 Turn call transcripts into searchable knowledge linked to contacts and deals.

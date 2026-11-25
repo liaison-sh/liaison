@@ -5,6 +5,10 @@ description: "Draft proposals, statements of work, contracts and any PDF, keep t
 
 The Agreements app keeps your proposals, statements of work, contracts and any PDF you upload as drafts, checks them before they go out for a simple electronic signature, and keeps the templates they come from.
 
+## Install Agreements
+
+Agreements is not installed in a workspace until an admin installs it: an existing workspace that upgrades does not get it. Open **Settings › App store**, find **Agreements** and choose **Install** (needs `kernel:apps:admin`), or list it in a config file: `apps: [{ name: agreements, enable: true }]` with `liaison config apply` ([the provisioning CLI](../provisioning-cli.md)). Its page, **Settings › Apps › Agreements**, appears once it is installed.
+
 ## What a signature here is
 
 Simple electronic signature: the signer reads the document, confirms with a code sent by email, and types their name. You keep the proof.

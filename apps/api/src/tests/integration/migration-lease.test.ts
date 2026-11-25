@@ -17,6 +17,7 @@ import {
   runMigrations,
   withMigrationLease,
 } from "~/db/migrate"
+import { withRoleCatalogLock } from "~/tests/helpers/role-catalog-lock"
 import { keepClusterRoleMemberships } from "../../../test-support/role-memberships"
 
 const ADMIN_URL =
@@ -75,7 +76,8 @@ const quiet = { log: () => {}, migrationsFolder: MIGRATIONS }
 describe("migrations under the lease", () => {
   test("runMigrations on an empty database succeeds with the lease", async () => {
     const url = await emptyDatabase()
-    await runMigrations(url, quiet)
+    // A replay writes cluster-wide role rows (ALTER ROLE liaison_admin).
+    await withRoleCatalogLock(ADMIN_URL, () => runMigrations(url, quiet))
     expect(await ledgerCount(url)).toBe(JOURNAL_ENTRIES)
     await withDb(url, async (sql) => {
       const [kernel] = await sql<{ n: number }[]>`
@@ -92,10 +94,12 @@ describe("migrations under the lease", () => {
     const url = await emptyDatabase()
     const order: string[] = []
     const log = (line: string) => order.push(line)
-    const results = await Promise.allSettled([
-      runMigrations(url, { ...quiet, holder: "runner-a", pollMs: 100, log }),
-      runMigrations(url, { ...quiet, holder: "runner-b", pollMs: 100, log }),
-    ])
+    const results = await withRoleCatalogLock(ADMIN_URL, () =>
+      Promise.allSettled([
+        runMigrations(url, { ...quiet, holder: "runner-a", pollMs: 100, log }),
+        runMigrations(url, { ...quiet, holder: "runner-b", pollMs: 100, log }),
+      ]),
+    )
     expect(results.map((r) => (r.status === "rejected" ? String(r.reason) : "ok"))).toEqual([
       "ok",
       "ok",

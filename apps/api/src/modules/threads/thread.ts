@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { MENTION_SEAT_ORIGIN, normalizeChannelTitle } from "@liaison/shared"
+import { MENTION_SEAT_ORIGIN, maskWithNote, normalizeChannelTitle } from "@liaison/shared"
 import { and, asc, desc, sql as drizzleSql, eq, inArray, isNotNull, isNull } from "drizzle-orm"
 import { HTTPException } from "hono/http-exception"
 import type { PrivilegedDb, RlsClient, RlsTx } from "~/db"
@@ -317,12 +317,18 @@ export async function insertThreadWithParticipants(
     title: params.hiddenFromList ? null : title,
   })
 
-  // Verify all participants belong to this org and are active
+  // Verify all participants are active members of this org (a client's portal account never
+  // takes part in a conversation, whatever the caller can see)
   const validUsers = await tx
     .select({ id: users.id })
     .from(users)
     .where(
-      and(inArray(users.id, participantIds), eq(users.orgId, orgId), eq(users.status, "active")),
+      and(
+        inArray(users.id, participantIds),
+        eq(users.orgId, orgId),
+        eq(users.status, "active"),
+        eq(users.userType, "member"),
+      ),
     )
   if (validUsers.length !== participantIds.length) {
     throw new HTTPException(400, {
@@ -411,7 +417,8 @@ export async function insertThreadWithParticipants(
         authorId: userId,
         authorType: initialAuthorType,
         authorAgentId: initialAuthorType === "agent" ? initialAuthorAgentId : null,
-        content: initialMessage.content,
+        // Masked before the row and the thread-created event read it.
+        content: maskWithNote(initialMessage.content).text,
         mentions: mentionsList.length > 0 ? mentionsList : null,
         metadata: agentPostMetadata(
           initialAuthorType,

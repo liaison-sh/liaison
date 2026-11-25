@@ -153,9 +153,9 @@ async function agentReply(threadId: string, content: string) {
 }
 
 /** The agent's gated call, made inside the run's frame as a turn makes it. */
-async function gatedFetch(threadId: string, url: string): Promise<string> {
+async function gatedFetch(threadId: string, url: string, tool = "fetch"): Promise<string> {
   const res = await executeTool({
-    toolName: `${APP}:fetch`,
+    toolName: `${APP}:${tool}`,
     orgId,
     actor: owner,
     params: { url },
@@ -166,8 +166,8 @@ async function gatedFetch(threadId: string, url: string): Promise<string> {
   return res.blocked!.approvalRequestId!
 }
 
-/** A tick whose turn makes `urls.length` gated calls, then says it waits. */
-async function tickWithGates(routineId: string, urls: string[]) {
+/** A tick whose turn makes `urls.length` gated calls (of `tools[i]`, default fetch), then says it waits. */
+async function tickWithGates(routineId: string, urls: string[], tools: string[] = []) {
   const approvalIds: string[] = []
   let outputThreadId = ""
   const result = await runRoutineTick({
@@ -178,7 +178,9 @@ async function tickWithGates(routineId: string, urls: string[]) {
     checkCredits: async () => null,
     agentInvoker: async (input) => {
       outputThreadId = input.threadId
-      for (const url of urls) approvalIds.push(await gatedFetch(input.threadId, url))
+      for (const [i, url] of urls.entries()) {
+        approvalIds.push(await gatedFetch(input.threadId, url, tools[i]))
+      }
       await agentReply(input.threadId, "Fetching the site; waiting for the approval.")
       return { turnsAdded: 1 }
     },
@@ -186,16 +188,29 @@ async function tickWithGates(routineId: string, urls: string[]) {
   return { result, approvalIds, outputThreadId }
 }
 
+/** Decides as the card does: an approve names the version shown, and every later step's. */
 async function decide(approvalId: string, decision: "approve" | "deny") {
   const [row] =
-    await sql`SELECT tool_name, current_payload FROM kernel.approval_requests WHERE id = ${approvalId}`
+    await sql`SELECT tool_name, current_payload, bundle_id FROM kernel.approval_requests WHERE id = ${approvalId}`
+  const steps = row!.bundle_id
+    ? await sql`SELECT id, tool_name, current_payload FROM kernel.approval_requests
+        WHERE bundle_id = ${row!.bundle_id} AND status = 'deferred'`
+    : []
   await decideApproval({
     orgId,
     requestId: approvalId,
     actor: owner,
     decision,
     ...(decision === "approve"
-      ? { payloadHash: approvalPayloadHash(row!.tool_name as string, row!.current_payload) }
+      ? {
+          payloadHash: approvalPayloadHash(row!.tool_name as string, row!.current_payload),
+          stepPayloadHashes: Object.fromEntries(
+            steps.map((s) => [
+              s.id as string,
+              approvalPayloadHash(s.tool_name as string, s.current_payload),
+            ]),
+          ),
+        }
       : {}),
   } as never)
 }
@@ -270,16 +285,18 @@ beforeAll(async () => {
     getOrCreatePersonalAgentId(tx, { orgId, userId }),
   )
   owner = { actorType: "user", userId, orgId, scopes: ["*"], dimensionGrants: { "*": ["*"] } }
-  toolRegistry.set([orgId, APP, "fetch"], {
-    appName: APP,
-    name: "fetch",
-    description: "Fetch a page (gated)",
-    requiredScopes: [`${APP}:pages:read`],
-    gated: true,
-    // A read: what it returns is what the run waits for.
-    readOnly: true,
-    handler: async (params: { url: string }) => ({ text: PAGE(params.url) }),
-  } as never)
+  for (const name of ["fetch", "lookup"]) {
+    toolRegistry.set([orgId, APP, name], {
+      appName: APP,
+      name,
+      description: "Fetch a page (gated)",
+      requiredScopes: [`${APP}:pages:read`],
+      gated: true,
+      // A read: what it returns is what the run waits for.
+      readOnly: true,
+      handler: async (params: { url: string }) => ({ text: PAGE(params.url) }),
+    } as never)
+  }
   WebToolsTestAccess.setWebFetchMockHosts((host) => host.endsWith(".example"))
   WebToolsTestAccess.setWebFetch((async (input: string | URL | Request) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
@@ -379,14 +396,16 @@ describe("a routine run waits for its held call and resumes with the result", ()
     expect(reports[0]!.content).toBe("Could not read the site: the fetch was refused.")
   })
 
-  it("two gated calls in one turn: only the last decision resumes, once", async () => {
+  it("gated calls of two tools in one turn: only the last decision resumes, once", async () => {
     const conversation = await minimal.thread(orgId, userId)
     const routine = await makeRoutine(conversation)
-    const { result, approvalIds } = await tickWithGates(routine.id, [
-      "https://one.example",
-      "https://two.example",
-    ])
+    const { result, approvalIds } = await tickWithGates(
+      routine.id,
+      ["https://one.example", "https://two.example"],
+      ["fetch", "lookup"],
+    )
     const runId = result.runId!
+    expect(new Set(approvalIds).size).toBe(2)
     expect((await runRow(runId)).pauseState?.approvalIds).toHaveLength(2)
 
     await decide(approvalIds[0]!, "approve")
@@ -402,6 +421,42 @@ describe("a routine run waits for its held call and resumes with the result", ()
     expect(second.content).toContain(PAGE("https://two.example"))
     expect(second.result.status).toBe("succeeded")
     expect(await reportsIn(conversation)).toHaveLength(1)
+  })
+
+  it("two calls of one gated tool in one turn: one request, one decision, one resume with both results", async () => {
+    const conversation = await minimal.thread(orgId, userId)
+    const routine = await makeRoutine(conversation)
+    const { result, approvalIds } = await tickWithGates(routine.id, [
+      "https://one.example",
+      "https://two.example",
+    ])
+    const runId = result.runId!
+    const [head, step] = approvalIds as [string, string]
+    // The second call joined the first as its step: the run waits on both.
+    const rows =
+      await sql`SELECT id, status, bundle_id FROM kernel.approval_requests WHERE id IN (${head}, ${step})`
+    expect(new Map(rows.map((r) => [r.id as string, r.status as string]))).toEqual(
+      new Map([
+        [head, "pending"],
+        [step, "deferred"],
+      ]),
+    )
+    expect(new Set(rows.map((r) => r.bundle_id as string))).toEqual(new Set([head]))
+    expect((await runRow(runId)).pauseState?.approvalIds).toEqual([head, step])
+
+    // One decision on the request runs both calls; only its last step hands the run back.
+    await decide(head, "approve")
+    expect(decisionJobs(head)).toHaveLength(0)
+    expect(decisionJobs(step)).toHaveLength(1)
+    const resumed = await resume(step, async ({ threadId }) => {
+      await agentReply(threadId, "Both pages read; CRM updated.")
+    })
+    expect(resumed.content).toContain(PAGE("https://one.example"))
+    expect(resumed.content).toContain(PAGE("https://two.example"))
+    expect(resumed.result.status).toBe("succeeded")
+    expect(await reportsIn(conversation)).toHaveLength(1)
+    // Once: the same job again does nothing.
+    expect((await resume(step)).result.status).toBe("no_run")
   })
 
   it("a resumed turn that hits another gate waits again; a late job for the first approval never resumes it twice", async () => {

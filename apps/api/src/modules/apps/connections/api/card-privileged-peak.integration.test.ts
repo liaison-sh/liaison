@@ -34,8 +34,9 @@ import {
   installDemoApiConnectorConnection,
 } from "~/modules/demo/api-connector"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 /** Upstream latency of the plain-HTTP CRM: a card's calls overlap as they do against a real API. */
@@ -164,7 +165,7 @@ beforeAll(async () => {
   const d = await viewer("demo")
   demo = { ...d.view, email: "jane.doe@acme-instruments.example" }
   await registerApiConnectorApp(d.orgId)
-  await markOrgAsDemo(d.orgId, visitorMarker(24))
+  await markDemoOrgForTest(d.orgId, visitorMarker(24))
   DemoModeTestAccess.set(true)
   invalidateDemoMarker()
   await installDemoApiConnectorConnection({ orgId: d.orgId, createdByUserId: d.userId })
@@ -241,6 +242,12 @@ describe("two views at once on the api's privileged pool", () => {
   })
 
   async function twoViewsOn(pool: ReturnType<typeof createPool>, size: number) {
+    // Every connection of the pool is open before the views start. A fresh pool connects on
+    // first use, one login (and its SCRAM proof, worked out on this event loop) per slot, so a
+    // busy process staggers the first transactions by its connect times, and the peak measured
+    // how fast it logs in rather than what the two views ask for at once.
+    const warm = await Promise.all(Array.from({ length: size }, () => pool.client.reserve()))
+    for (const conn of warm) conn.release()
     await forgetLookups()
     PrivilegedDbTestAccess.usePool({ db: pool.db, acquireTimeoutMs: env.DB_ACQUIRE_TIMEOUT_MS })
     PrivilegedDbTestAccess.resetPeak()

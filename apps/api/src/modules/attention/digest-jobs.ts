@@ -200,7 +200,7 @@ export async function defaultLoadUser(userId: string): Promise<DigestUser | null
         FROM ${K}.users u
         JOIN ${K}.organizations o ON o.id = u.org_id
         LEFT JOIN ${K}.user_preferences p ON p.user_id = u.id
-        WHERE u.id = ${userId} LIMIT 1`)) as unknown as Array<{
+        WHERE u.id = ${userId} AND u.user_type = 'member' LIMIT 1`)) as unknown as Array<{
         user_id: string
         org_id: string
         email: string
@@ -311,14 +311,14 @@ async function defaultEmitDigestFailureAlert(args: {
       JOIN ${K}.user_roles ur ON ur.user_id = u.id
       JOIN ${K}.role_scope_grants rs ON rs.role_id = ur.role_id
       WHERE u.org_id = ${args.orgId}
-        AND u.status = 'active'
+        AND u.status = 'active' AND u.user_type = 'member'
         AND rs.scope IN ('*', 'kernel', 'kernel:users', 'kernel:users:admin', 'kernel:org', 'kernel:org:admin')
       UNION
       SELECT DISTINCT u.id::text AS id
       FROM ${K}.users u
       JOIN ${K}.user_scope_grants usg ON usg.user_id = u.id AND usg.org_id = u.org_id
       WHERE u.org_id = ${args.orgId}
-        AND u.status = 'active'
+        AND u.status = 'active' AND u.user_type = 'member'
         AND usg.scope IN ('*', 'kernel', 'kernel:users', 'kernel:users:admin', 'kernel:org', 'kernel:org:admin')
     `)) as unknown as Array<{ id: string }>,
   )

@@ -12,6 +12,7 @@ import { resetKnowledgeStore } from "./knowledge-store"
 vi.mock("~/modules/auth/auth-store", () => ({
   onAuthCleared: () => () => {},
   userFromToken: () => ({ userId: "u1", name: "Test" }),
+  hasScope: () => false,
 }))
 
 const mocks = vi.hoisted(() => ({

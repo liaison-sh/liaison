@@ -184,3 +184,12 @@ describe("approval summary ref", () => {
     ).toBe("x".repeat(500))
   })
 })
+
+describe("a reply sent with a change request", () => {
+  it("is kept whole on its card, not cut at the ordinary line length", () => {
+    const reply = `Reply:\n${"A long answer to the client. ".repeat(40)}Best regards`
+    const card = { kind: "change_request_send", title: "Reply and change request", lines: [reply] }
+    expect(approvalSummarySchema.safeParse(card).success).toBe(true)
+    expect(truncateApprovalSummary(card).lines[0]).toBe(reply)
+  })
+})

@@ -101,6 +101,18 @@ export function requestLoginPasswordSql(password: string): string {
 }
 
 /**
+ * The same statement for the portal login (migration 0313's `liaison_portal`),
+ * with the request login's password and the same verifier rule. The portal
+ * pool (db/connection.ts) logs in as it, so a portal transaction's session is
+ * the portal role itself and cannot step back to any other role's rights.
+ */
+export function portalLoginPasswordSql(password: string): string {
+  const verifier = scramSha256Verifier(password)
+  if (!SCRAM_VERIFIER.test(verifier)) throw new Error("malformed SCRAM verifier")
+  return `ALTER ROLE liaison_portal WITH LOGIN PASSWORD '${verifier}'`
+}
+
+/**
  * The migration lease: one row in drizzle's own schema, which the migrator
  * creates itself with IF NOT EXISTS and which no numbered migration owns, so
  * the lease can be taken on an empty database before `0000` creates `kernel`.
@@ -390,6 +402,14 @@ export async function runMigrations(
                 "The migration login needs CREATEROLE (or superuser); otherwise run the ALTER ROLE yourself, or unset DATABASE_REQUEST_PASSWORD.",
             )
           }
+          try {
+            await sql.unsafe(portalLoginPasswordSql(opts.requestPassword))
+          } catch (err) {
+            throw new Error(
+              `could not give the portal login (liaison_portal) LOGIN and its password: ${(err as Error).message}. ` +
+                "The migration login needs CREATEROLE (or superuser); otherwise run the ALTER ROLE yourself, or unset DATABASE_REQUEST_PASSWORD.",
+            )
+          }
         }
       } finally {
         await sql.end()
@@ -420,5 +440,6 @@ if (import.meta.main) {
     process.exit(1)
   }
   console.log("Migrations applied successfully.")
-  if (requestPassword) console.log("Request login liaison_request can sign in.")
+  if (requestPassword)
+    console.log("Request login liaison_request and portal login liaison_portal can sign in.")
 }

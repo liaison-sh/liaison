@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "modules/agent/tools/model-times.ts": "The zone an agent reads tool results' times in: the acting person's own timezone column and their org's timezone, one row read per turn, pinned to that org."
+  }
+}

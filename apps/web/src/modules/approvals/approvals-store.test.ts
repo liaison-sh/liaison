@@ -222,6 +222,44 @@ describe("approvals store", () => {
   })
 })
 
+describe("a card this person reads by its records' names", () => {
+  const named = (over: Partial<any> = {}) =>
+    baseRow({
+      payloadHash: "h1",
+      summary: { kind: "k", title: "Move: Harbour portal", lines: ["Task: Harbour portal"] },
+      ...over,
+    })
+  const held = (over: Partial<any> = {}) =>
+    baseRow({
+      payloadHash: "h1",
+      summary: { kind: "k", title: "Move", lines: ["Task: a task"], namesHeld: true },
+      ...over,
+    })
+
+  it("keeps them when a live event, which names nobody's record, says the same request moved on", () => {
+    handleWsUpdate(named())
+    handleWsUpdate(held({ status: "approved" }))
+    expect(approvalsStore.byId["ar-1"]?.status).toBe("approved")
+    expect(approvalsStore.byId["ar-1"]?.summary.title).toBe("Move: Harbour portal")
+  })
+
+  it("takes the event's words once the request itself changed", () => {
+    handleWsUpdate(named())
+    handleWsUpdate(held({ payloadHash: "h2" }))
+    expect(approvalsStore.byId["ar-1"]?.summary.title).toBe("Move")
+  })
+
+  it("is read for this person when a live event alone made it known", async () => {
+    handleWsCreate(held(), "u-1")
+    const get = vi.fn(async () => named())
+    await ensureLoaded({ get } as unknown as ApiClient, "ar-1")
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(approvalsStore.byId["ar-1"]?.summary.title).toBe("Move: Harbour portal")
+    await ensureLoaded({ get } as unknown as ApiClient, "ar-1")
+    expect(get).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe("approve binds to the version the person saw", () => {
   const ok = {
     id: "ar-1",

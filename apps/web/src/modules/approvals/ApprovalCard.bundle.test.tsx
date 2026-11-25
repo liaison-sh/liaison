@@ -196,6 +196,25 @@ describe("ApprovalCard — bundle", () => {
     )
   })
 
+  it("declines one independent step of a request on its own", async () => {
+    DecisionQueueTestAccess.reset()
+    apiMocks.get.mockResolvedValue([head(), stepEditable])
+    handleWsCreate(head(), "u-approver")
+    render(() => <ApprovalCard requestId="11111111-1111-4111-8111-111111111111" />)
+    fireEvent.click(await screen.findByTestId("approval-bundle-step-1-decline"))
+    await waitFor(() => expect(decisionToastItems()).toHaveLength(1))
+    expect(decisionToastItems()[0]?.id).toBe(STEP_EDITABLE_ID)
+    DecisionQueueTestAccess.reset()
+  })
+
+  it("a step that reads an earlier step's result has no decline of its own", async () => {
+    apiMocks.get.mockResolvedValue([head(), stepTokenLocked])
+    handleWsCreate(head(), "u-approver")
+    render(() => <ApprovalCard requestId="11111111-1111-4111-8111-111111111111" />)
+    await screen.findByTestId("approval-bundle-step-1")
+    expect(screen.queryByTestId("approval-bundle-step-1-decline")).toBeNull()
+  })
+
   it("keeps an open step editor, and what was typed into it, across a store refresh", async () => {
     // Every store write replaces the row object, and the step rows used to be
     // reconciled by that object's identity: a WS update on a step that had not

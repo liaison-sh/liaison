@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Knowledge domain store — manages view state, search results, and home data
 import type { KnowledgeSearchHit, KnowledgeSourceStatus } from "@liaison/shared"
+import { createSignal } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { subscribeResync } from "~/framework/resync"
 import type { ApiClient } from "~/lib/api-client"
 import { onSessionTeardown } from "~/lib/session-lifecycle"
+import { userFromToken } from "~/modules/auth/auth-store"
 import type {
   CollectionTreeNode,
   KnowledgeHomeData,
@@ -15,12 +17,20 @@ import {
   runKnowledgeSearch as apiRunKnowledgeSearch,
   fetchKnowledgeHome,
   getCollectionsTree,
+  getKnowledgeDocument,
   listKnowledgeDocuments,
 } from "./knowledge-api"
 
 export type { KnowledgeSourceStatus } from "@liaison/shared"
 
-export type KnowledgeView = "home" | "search" | "collection" | "tag" | "review" | "unfiled"
+export type KnowledgeView =
+  | "home"
+  | "search"
+  | "collection"
+  | "tag"
+  | "review"
+  | "unfiled"
+  | "trash"
 
 export interface KnowledgeDocListItem {
   id: string
@@ -172,8 +182,15 @@ export async function loadDocuments(api: ApiClient): Promise<void> {
   }
 }
 
+// Whether this session has drawn the tree: only then do events reload it.
+let collectionsTreeLoaded = false
+export function isCollectionsTreeLoaded(): boolean {
+  return collectionsTreeLoaded
+}
+
 export async function loadCollectionsTree(api: ApiClient): Promise<void> {
   _knowledgeApi = api
+  collectionsTreeLoaded = true
   try {
     const tree = await getCollectionsTree(api)
     setKnowledgeStore("collectionsTree", tree)
@@ -204,6 +221,13 @@ export function subscribeKnowledgeResync(): void {
 export function resetKnowledgeStore(): void {
   for (const t of pulseTimers.values()) clearTimeout(t)
   pulseTimers.clear()
+  if (treeReloadTimer) clearTimeout(treeReloadTimer)
+  treeReloadTimer = null
+  setOpenFolders({})
+  openFoldersOwner = null
+  setTreeDrag(null)
+  setTreeDropTarget(null)
+  collectionsTreeLoaded = false
   setKnowledgeStore({
     view: "home",
     homeData: null,
@@ -224,6 +248,138 @@ export function resetKnowledgeStore(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Tree: which folders are open, what is being dragged, live reloads
+// ---------------------------------------------------------------------------
+
+/** Tree reloads asked within this window become one request. */
+export const TREE_RELOAD_DEBOUNCE_MS = 1000
+let treeReloadTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Reload the folder tree once for a burst of changes: every folder, page and
+ * membership event asks for it (the reader's own included), and a move or a
+ * delete sends several.
+ */
+export function scheduleCollectionsTreeReload(api: ApiClient): void {
+  if (!collectionsTreeLoaded) return
+  if (treeReloadTimer) clearTimeout(treeReloadTimer)
+  treeReloadTimer = setTimeout(() => {
+    treeReloadTimer = null
+    void loadCollectionsTree(api)
+  }, TREE_RELOAD_DEBOUNCE_MS)
+}
+
+// Open folders, per person, kept in this browser. Storage can be absent or
+// refuse (private window, blocked site data): the tree then starts closed.
+const [openFolders, setOpenFolders] = createSignal<Record<string, true>>({})
+let openFoldersOwner: string | null = null
+
+function openFoldersKey(userId: string): string {
+  return `liaison:knowledge:open-folders:${userId}`
+}
+
+function syncOpenFoldersOwner(): void {
+  const userId = userFromToken()?.userId ?? null
+  if (userId === openFoldersOwner) return
+  openFoldersOwner = userId
+  let restored: Record<string, true> = {}
+  if (userId) {
+    try {
+      const raw = localStorage.getItem(openFoldersKey(userId))
+      const ids = raw ? (JSON.parse(raw) as unknown) : []
+      if (Array.isArray(ids)) {
+        for (const id of ids) if (typeof id === "string") restored[id] = true
+      }
+    } catch {
+      restored = {}
+    }
+  }
+  setOpenFolders(restored)
+}
+
+function persistOpenFolders(next: Record<string, true>): void {
+  if (!openFoldersOwner) return
+  try {
+    localStorage.setItem(openFoldersKey(openFoldersOwner), JSON.stringify(Object.keys(next)))
+  } catch {
+    /* the tree still works, it just starts closed next time */
+  }
+}
+
+export function isFolderOpen(id: string): boolean {
+  syncOpenFoldersOwner()
+  return openFolders()[id] === true
+}
+
+export function setFolderOpen(id: string, open: boolean): void {
+  syncOpenFoldersOwner()
+  const current = openFolders()
+  if ((current[id] === true) === open) return
+  const next = { ...current }
+  if (open) next[id] = true
+  else delete next[id]
+  setOpenFolders(next)
+  persistOpenFolders(next)
+}
+
+export function toggleFolder(id: string): void {
+  setFolderOpen(id, !isFolderOpen(id))
+}
+
+/** Where a page sits in the tree: the folders from the top down to it. */
+export interface TreePlace {
+  /** The top-level node holding it (a folder or a virtual bucket). */
+  top: CollectionTreeNode
+  /** The real folders from the top down to the page; empty in a bucket. */
+  folders: CollectionTreeNode[]
+}
+
+/** The first place the tree shows a page, depth first, as the sidebar draws it. */
+export function findDocumentPlace(
+  tree: readonly CollectionTreeNode[],
+  docId: string,
+): TreePlace | null {
+  const walk = (node: CollectionTreeNode, trail: CollectionTreeNode[]): TreePlace | null => {
+    const here = [...trail, node]
+    for (const child of node.children) {
+      const found = walk(child, here)
+      if (found) return found
+    }
+    if (node.documents.some((d) => d.id === docId)) {
+      return { top: here[0], folders: here.filter((n) => !n.virtual) }
+    }
+    return null
+  }
+  for (const node of tree) {
+    const found = walk(node, [])
+    if (found) return found
+  }
+  return null
+}
+
+/** Open every folder above a page, so the open page's row is in sight. */
+export function revealDocument(docId: string): void {
+  const place = findDocumentPlace(knowledgeStore.collectionsTree, docId)
+  if (!place) return
+  if (place.top.virtual) setFolderOpen(place.top.id, true)
+  for (const folder of place.folders) setFolderOpen(folder.id, true)
+}
+
+/** A row being dragged. One for both trees, so a drag can cross sections. */
+export interface TreeDragItem {
+  kind: "doc" | "folder"
+  id: string
+  /** The folder a page is dragged out of; null from a bucket. */
+  fromCollectionId: string | null
+}
+
+const [treeDrag, setTreeDrag] = createSignal<TreeDragItem | null>(null)
+/** The folder (or section root, `__root__:<section>`) under the dragged row. */
+const [treeDropTarget, setTreeDropTarget] = createSignal<string | null>(null)
+
+export { setTreeDrag, setTreeDropTarget, treeDrag, treeDropTarget }
+
+// ---------------------------------------------------------------------------
 // Document cache + WS-driven live update path (T-7)
 // ---------------------------------------------------------------------------
 
@@ -232,6 +388,38 @@ const PULSE_MS = 3000
 
 export function setKnowledgeStoreDocument(doc: KnowledgeDocument): void {
   setKnowledgeStore("documentsById", doc.id, doc)
+}
+
+/** The pages open in a view (a page open in two views counts twice), with the API they read through. */
+const openPages = new Map<string, { views: number; api: ApiClient }>()
+
+/** A view shows this page; the returned function is its close. */
+export function noteKnowledgePageOpen(id: string, api: ApiClient): () => void {
+  const held = openPages.get(id)
+  openPages.set(id, { views: (held?.views ?? 0) + 1, api })
+  return () => {
+    const now = openPages.get(id)
+    if (!now) return
+    if (now.views <= 1) openPages.delete(id)
+    else openPages.set(id, { ...now, views: now.views - 1 })
+  }
+}
+
+/**
+ * The socket's first connect. A save made between a page's first read and the socket's
+ * hello never replays (frames are not kept), and the resync bus skips that first connect:
+ * a tab reloaded while someone typed kept the text it read. Each open page is read again
+ * once; its view takes the newer revision as it takes any save that arrives.
+ */
+export async function knowledgeSocketConnected(): Promise<void> {
+  await Promise.all(
+    [...openPages].map(async ([id, { api }]) => {
+      const fresh = (await getKnowledgeDocument(api, id).catch(
+        () => null,
+      )) as KnowledgeDocument | null
+      if (fresh && openPages.has(id)) setKnowledgeStore("documentsById", id, fresh)
+    }),
+  )
 }
 
 export function getPulseUpdated(id: string): boolean {

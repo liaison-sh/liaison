@@ -699,7 +699,13 @@ describe("processIndexerJob — indexFilter (kernel user status)", () => {
   const USER_ID = "99999999-9999-9999-9999-999999999999"
 
   it("indexes an active user normally", async () => {
-    currentReadRow = { id: USER_ID, name: "Alice", email: "alice@example.com", status: "active" }
+    currentReadRow = {
+      id: USER_ID,
+      name: "Alice",
+      email: "alice@example.com",
+      status: "active",
+      user_type: "member",
+    }
     const indexer = await loadIndexer()
     await indexer.processIndexerJob({
       action: "upsert",
@@ -733,6 +739,26 @@ describe("processIndexerJob — indexFilter (kernel user status)", () => {
     expect(meiliAddDocuments).not.toHaveBeenCalled()
     expect(meiliDeleteDocument).toHaveBeenCalledTimes(1)
     expect(meiliDeleteDocument.mock.calls[0][0]).toBe(`${ORG}_kernel_user_${USER_ID}`)
+  })
+
+  it("treats an active client portal account upsert as a document delete", async () => {
+    currentReadRow = {
+      id: USER_ID,
+      name: "Client",
+      email: "client@example.com",
+      status: "active",
+      user_type: "external",
+    }
+    const indexer = await loadIndexer()
+    await indexer.processIndexerJob({
+      action: "upsert",
+      orgId: ORG,
+      app: "kernel",
+      entityType: "user",
+      entityId: USER_ID,
+    })
+    expect(meiliAddDocuments).not.toHaveBeenCalled()
+    expect(meiliDeleteDocument).toHaveBeenCalledTimes(1)
   })
 
   it("treats a suspended user upsert as a document delete", async () => {

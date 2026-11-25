@@ -969,6 +969,16 @@ export const COMMANDS = [
     ],
   },
   {
+    name: "knowledge links-backfill",
+    usage: "liaison knowledge links-backfill [--org <uuid>] [--dry-run]",
+    summary:
+      "Remove the linked page's title from Knowledge page links stored before links held only the page id (bodies, summaries, page history) and record each page's links, as the daily job does. Only link tokens change: no new revision, no event, review status kept. Every org, or only `--org`; idempotent.",
+    flags: [
+      { name: "--org", arg: "<uuid>", summary: "Only this org." },
+      { name: "--dry-run", summary: "Only count." },
+    ],
+  },
+  {
     name: "routines reconcile",
     usage:
       "liaison routines reconcile [--since <iso date>] [--days <n>] [--org <slug>] [--routine <uuid>] [--max-per-routine <n>] [--execute]",
@@ -1069,7 +1079,8 @@ export const COMMANDS = [
       { name: "--locale", arg: "<locale>", summary: "The language the world is written in." },
       {
         name: "--reset",
-        summary: "Clear the org's seeded content first (the default for `reserved`).",
+        summary:
+          "Clear the reserved org's seeded content first (its default). With `--variant visitor`, delete the demo org under the slug and seed it fresh instead; refused on a public demo box and for any org that is not of class demo.",
       },
       { name: "--no-reset", summary: "Top up: adopt what is there, clear nothing." },
       {
@@ -1082,7 +1093,7 @@ export const COMMANDS = [
         name: "--passwords-env",
         arg: "<VAR>",
         summary:
-          "`lively` and `load`: read that password from this environment variable, so it never shows in a process list.",
+          "`demo`, `lively` and `load`: read that password from this environment variable, so it never shows in a process list.",
       },
       {
         name: "--replace",

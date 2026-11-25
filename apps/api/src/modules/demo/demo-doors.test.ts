@@ -28,9 +28,10 @@ import { sql } from "~/db"
 import { redis } from "~/lib/redis"
 import { requestMagicLink } from "~/modules/auth/magic-link"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 const OWNER_PASSWORD = "Visitor-Owner-1!"
@@ -76,7 +77,7 @@ describe("a demo workspace has exactly one door", () => {
     await acquireTestLock()
     demoOrgId = (await ensureOrg({ slug: "doors-demo", name: "Doors Demo" })).orgId
     normalOrgId = (await ensureOrg({ slug: "doors-normal", name: "Doors Normal" })).orgId
-    await markOrgAsDemo(demoOrgId, visitorMarker(24))
+    await markDemoOrgForTest(demoOrgId, visitorMarker(24))
 
     ownerEmail = "visitor.owner@doors.test"
     ownerId = (

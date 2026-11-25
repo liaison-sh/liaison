@@ -24,10 +24,11 @@ import { sql } from "~/db"
 import { withRlsContext } from "~/db/rls"
 import { preCheck, usableDefaultModel } from "~/modules/agent/credits/credit-meter"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { aiKeysRoutes } from "~/modules/settings/ai-keys-routes"
 import { getThread } from "~/modules/threads/thread"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 const ANTHROPIC_MODEL = "usable-default-anthropic"
@@ -70,7 +71,7 @@ describe("an agent's default model", () => {
     await acquireTestLock()
     visitorOrgId = (await ensureOrg({ slug: "usable-default-visitor", name: "Visitor" })).orgId
     normalOrgId = (await ensureOrg({ slug: "usable-default-normal", name: "Normal" })).orgId
-    await markOrgAsDemo(visitorOrgId, visitorMarker(24))
+    await markDemoOrgForTest(visitorOrgId, visitorMarker(24))
     // Both auto-eligible and the cheapest in the catalog, so auto mode's pick
     // is one of these two and the assertion says which provider it chose.
     await sql`

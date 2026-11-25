@@ -29,12 +29,7 @@ import { redis } from "~/lib/redis"
 import { checkMidStep, preCheck, resolveKey } from "~/modules/agent/credits/credit-meter"
 import { registerDemoAlertMailer } from "~/modules/demo/demo-alerts"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import {
-  invalidateDemoMarker,
-  markOrgAsDemo,
-  reservedMarker,
-  visitorMarker,
-} from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker, visitorMarker } from "~/modules/demo/demo-org"
 import {
   checkDemoSpendCeiling,
   DemoKeyRequiredError,
@@ -44,6 +39,7 @@ import {
 } from "~/modules/demo/demo-spend"
 import { RESERVED_MODEL_DEFAULT } from "~/modules/demo/demo-spend-ceiling"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 const MODEL = "demo-cheap-model"
@@ -75,8 +71,8 @@ describe("demo spend", () => {
     visitorOrgId = (await ensureOrg({ slug: "spend-visitor", name: "Spend Visitor" })).orgId
     reservedOrgId = (await ensureOrg({ slug: "spend-reserved", name: "Spend Reserved" })).orgId
     normalOrgId = (await ensureOrg({ slug: "spend-normal", name: "Spend Normal" })).orgId
-    await markOrgAsDemo(visitorOrgId, visitorMarker(24))
-    await markOrgAsDemo(reservedOrgId, reservedMarker())
+    await markDemoOrgForTest(visitorOrgId, visitorMarker(24))
+    await markDemoOrgForTest(reservedOrgId, reservedMarker())
     await sql`
       INSERT INTO kernel.model_pricing
         (model_id, provider, display_name, input_cost_per_m, output_cost_per_m,

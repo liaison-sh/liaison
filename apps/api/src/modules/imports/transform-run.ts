@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Transform sources for the import runner: a saved (or, from the CLI, a
- * shipped reference) transform run over uploaded files or an API connection.
+ * shipped reference) transform run over uploaded files or an API connection,
+ * or a built-in transform the product ships (`builtin/registry.ts`).
  *
  * The runner reads its source once per kind level (parents before children),
  * so a transform is STAGED first: it runs once, its validated records are
@@ -25,10 +26,21 @@
  *
  * Staged objects are copies the handlers read; they are deleted with the
  * spool when the run ends. A preview (dry run) parses and calls the transform
- * on its first batches or pages only, and downloads and extracts nothing.
+ * on its first batches or pages only (a built-in: on everything, for at most
+ * its time limit), and downloads and extracts nothing.
+ *
+ * File rules may also ask for a listing (`as: "listing"`: every entry name
+ * and size, handed first, 500 to a record) and skip a text file over the
+ * record cap instead of failing the run (`oversize: "skip"`: the file is
+ * named in the report). A built-in reads zips inside the upload one level
+ * deep (`nestedZips`), each copied to the spool folder and read in one
+ * namespace with the upload's own entries, and refuses before any work an
+ * upload past its size, an entry that leaves its folder, a symbolic link, a
+ * likely bomb, or archives declaring more than its decompressed limit.
  */
 import { createHash, randomUUID } from "node:crypto"
 import { mkdirSync, readdirSync, rmSync, statSync } from "node:fs"
+import { open as openFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { z } from "zod"
@@ -42,15 +54,22 @@ import {
   loadOrgSettings,
   orgQuotaBytes,
 } from "~/modules/files/service"
+import {
+  type BuiltinTransform,
+  builtinCode,
+  builtinParams,
+  builtinTransform,
+} from "~/modules/imports/builtin/registry"
 import { kindRecordError } from "~/modules/imports/kind-schema"
 import type { ImportKindInfo } from "~/modules/imports/kinds"
-import type { ByteSource } from "~/modules/imports/parsers/common"
+import { type ByteSource, ParserError } from "~/modules/imports/parsers/common"
 import { parseCsv } from "~/modules/imports/parsers/csv"
 import { parseJson } from "~/modules/imports/parsers/json"
 import { parseJsonl } from "~/modules/imports/parsers/jsonl"
 import { parseXlsx } from "~/modules/imports/parsers/xlsx"
 import { parseXml } from "~/modules/imports/parsers/xml"
 import {
+  assertSafeArchive,
   DEFAULT_ZIP_CAPS,
   fileRangeSource,
   objectRangeSource,
@@ -58,6 +77,7 @@ import {
   readZipDirectory,
   readZipEntry,
   ZipBudget,
+  type ZipCaps,
   type ZipEntry,
 } from "~/modules/imports/parsers/zip"
 import { resolveImportFile } from "~/modules/imports/source"
@@ -92,20 +112,26 @@ import {
 } from "~/modules/imports/transforms/store"
 import { ImportError } from "~/modules/imports/types"
 
-export type FileFormat = UploadFileInfo["kind"]
+export type FileFormat = Exclude<UploadFileInfo["kind"], "listing">
 
 /** Which files of an upload a run reads, in what order, parsed how. */
 export interface FileRule {
   /** A glob on the file name or zip entry path: `*` within a folder, `**` across folders. */
   match: string
-  /** The parser; default from the extension. `skip` reads nothing (a file only declared). */
-  as?: FileFormat | "skip"
+  /**
+   * The parser; default from the extension. `skip` reads nothing (a file only
+   * declared). `listing` reads no file: the matching entry names and sizes
+   * come first, as records `{entries: [{path, size}]}` of 500 (file `(listing)`).
+   */
+  as?: FileFormat | "skip" | "listing"
   /** CSV: the field delimiter (detected when absent). */
   delimiter?: string
   /** XML: every outermost element of this name is a record. */
   recordElement?: string
   /** XML: elements at this depth are records (default 2, the root's children). */
   recordDepth?: number
+  /** Text: a file over the 1 MB record cap is named in the report and skipped, not a failed run. */
+  oversize?: "skip"
 }
 
 export type TransformInput =
@@ -114,14 +140,27 @@ export type TransformInput =
   | { type: "paths"; paths: string[] }
   | { type: "api"; connection: string }
 
+/** A built-in transform by its registry key, with its settings and, once previewed, its code's pin. */
+export interface BuiltinPin {
+  builtin: string
+  params?: Record<string, unknown>
+  sha256?: string
+}
+
 export interface TransformSource {
   type: "transform"
-  /** A saved version (every API run), or code given inline (a CLI run of a shipped reference). */
-  transform: { id: string; version: number; sha256?: string } | { inline: string; name: string }
+  /**
+   * A saved version (every API run), code given inline (a CLI run of a
+   * shipped reference), or a built-in the product ships.
+   */
+  transform:
+    | { id: string; version: number; sha256?: string }
+    | { inline: string; name: string }
+    | BuiltinPin
   input: TransformInput
   files?: FileRule[]
-  /** A preview: stop after this many transform calls. */
-  limit?: { batches?: number; pages?: number }
+  /** A preview: stop after this many transform calls, or after this long. */
+  limit?: { batches?: number; pages?: number; timeMs?: number }
 }
 
 /** The bound side of an API connection a run pulls through (a test seam). */
@@ -162,6 +201,12 @@ export interface StagedFile {
 export const DOWNLOAD_MAX_BYTES = 2 * 1024 * 1024 * 1024
 export const DOWNLOAD_TIMEOUT_MS = 10 * 60_000
 const MAX_MISSING_LISTED = 50
+/** A built-in names every file it could not carry, up to this many, then counts (S16). */
+export const NAMED_MAX = 20_000
+/** Entry names a listing record holds. */
+export const LISTING_PER_RECORD = 500
+/** The file name a listing's batches carry. */
+export const LISTING_FILE = "(listing)"
 const MAX_DOWNLOAD_RETRIES = 3
 const SPOOL_DIR = "liaison-import-spool"
 const SPOOL_STALE_MS = 24 * 3600_000
@@ -192,15 +237,18 @@ export interface PreparedTransform {
   sourceType: "upload" | "api"
   kinds: string[]
   connection: string | null
+  /** A built-in: its registry entry and parsed settings (file rules and limits come from it). */
+  builtin: { key: string; def: BuiltinTransform; params: Record<string, unknown> } | null
 }
 
 const fileRuleSchema = z
   .object({
     match: z.string().min(1).max(256),
-    as: z.enum(["csv", "json", "jsonl", "xml", "xlsx", "text", "skip"]).optional(),
+    as: z.enum(["csv", "json", "jsonl", "xml", "xlsx", "text", "skip", "listing"]).optional(),
     delimiter: z.string().min(1).max(4).optional(),
     recordElement: z.string().min(1).max(128).optional(),
     recordDepth: z.number().int().min(1).max(64).optional(),
+    oversize: z.literal("skip").optional(),
   })
   .strict()
 
@@ -215,31 +263,62 @@ export const transformInputSchema = z.discriminatedUnion("type", [
     .strict(),
 ])
 
+const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/)
+
+const savedPinSchema = z.object({
+  id: z.string().uuid(),
+  version: z.number().int().positive(),
+  sha256: sha256Schema.optional(),
+})
+
+const builtinPinSchema = z
+  .object({
+    builtin: z.string().min(1).max(64),
+    params: z.record(z.string(), z.unknown()).optional(),
+    sha256: sha256Schema.optional(),
+    name: z.string().max(64).optional(),
+  })
+  .strict()
+
 const runSourceSchema = z.object({
-  transform: z.object({
-    id: z.string().uuid(),
-    version: z.number().int().positive(),
-    sha256: z
-      .string()
-      .regex(/^[0-9a-f]{64}$/)
-      .optional(),
-  }),
+  transform: z.union([builtinPinSchema, savedPinSchema]),
   input: transformInputSchema,
   files: fileRulesSchema.optional(),
 })
 
 /**
  * The transform source a queued run's row records, or null when the row names
- * none. Only a saved version and an upload or API input are accepted: a
- * server path or inline code never comes from a row.
+ * none. Only a saved version or a built-in by its registry key, over an upload
+ * or API input, is accepted: a server path or inline code never comes from a
+ * row, and a built-in's file rules are its registry's, never the row's.
  */
 export function transformSourceOfRun(source: Record<string, unknown>): TransformSource | null {
   if (!("transform" in source)) return null
+  const named = source.transform as { builtin?: unknown } | null
+  if (named && typeof named === "object" && "builtin" in named) {
+    // A key, never a path: anything not in the registry is refused by name.
+    builtinTransform(typeof named.builtin === "string" ? named.builtin : "")
+  }
   const parsed = runSourceSchema.safeParse(source)
   if (!parsed.success) {
     throw new ImportError("invalid_source", "the run's transform source is malformed")
   }
   const { transform, input, files } = parsed.data
+  if ("builtin" in transform) {
+    if (input.type !== "files") {
+      throw new ImportError("invalid_source", "a built-in import reads uploaded files")
+    }
+    return {
+      type: "transform",
+      transform: {
+        builtin: transform.builtin,
+        ...(transform.params ? { params: transform.params } : {}),
+        ...(transform.sha256 ? { sha256: transform.sha256 } : {}),
+      },
+      input,
+      files: builtinTransform(transform.builtin).files,
+    }
+  }
   return {
     type: "transform",
     transform: {
@@ -291,7 +370,28 @@ export async function prepareTransform(
   runKinds: string[],
 ): Promise<PreparedTransform> {
   let prepared: PreparedTransform
-  if ("inline" in source.transform) {
+  if ("builtin" in source.transform) {
+    const pin = source.transform
+    const def = builtinTransform(pin.builtin)
+    const params = builtinParams(pin.builtin, pin.params)
+    const code = builtinCode(pin.builtin, params)
+    prepared = {
+      code,
+      name: pin.builtin,
+      version: null,
+      sha256: sha256Of(code),
+      sourceType: "upload",
+      kinds: def.kinds,
+      connection: null,
+      builtin: { key: pin.builtin, def, params },
+    }
+    if (pin.sha256 && pin.sha256 !== prepared.sha256) {
+      throw new ImportError(
+        "invalid_request",
+        `The built-in import "${pin.builtin}" changed since its preview; preview again.`,
+      )
+    }
+  } else if ("inline" in source.transform) {
     prepared = {
       code: source.transform.inline,
       name: source.transform.name,
@@ -300,6 +400,7 @@ export async function prepareTransform(
       sourceType: source.input.type === "api" ? "api" : "upload",
       kinds: runKinds,
       connection: source.input.type === "api" ? source.input.connection : null,
+      builtin: null,
     }
   } else {
     const pin = source.transform
@@ -325,6 +426,7 @@ export async function prepareTransform(
       sourceType: row.sourceType === "api" ? "api" : "upload",
       kinds: row.kinds,
       connection: row.connectionIdentifier ?? null,
+      builtin: null,
     }
     if (pin.sha256 && pin.sha256 !== prepared.sha256) {
       throw new ImportError(
@@ -507,6 +609,8 @@ export function planFiles<T>(
   const taken = new Set<string>()
   const out: Array<PlannedFile<T>> = []
   for (const rule of rules) {
+    // A listing reads no file: it takes none from the rules after it.
+    if (rule.as === "listing") continue
     const matches = globMatcher(rule.match)
     const hits = items
       .filter(({ name }) => !taken.has(name) && matches(name))
@@ -867,10 +971,22 @@ export async function stageTransformSource(input: StageInput): Promise<StagedRun
   const report: Record<string, unknown> = { transform: prepared.name }
   if (prepared.version !== null) report.transformVersion = prepared.version
   const abort = new AbortController()
+  const builtin = prepared.builtin?.def ?? null
+  // A built-in's file rules are its registry's, never the caller's.
+  const fileRules = builtin ? builtin.files : source.files
+  const maxMissingListed = builtin ? NAMED_MAX : MAX_MISSING_LISTED
+  // Nested-zip copies: local files next to the spool, removed with it.
+  const temps: string[] = []
+  const tempPath = (n: number) => {
+    const path = `${spoolPath.replace(/\.ndjson$/, "")}.nested-${n}.zip`
+    temps.push(path)
+    return path
+  }
 
   const cleanup = async () => {
     await writer.end()
     rmSync(spoolPath, { force: true })
+    for (const t of temps.splice(0)) rmSync(t, { force: true })
     if (ownedKeys.length > 0) await deleteObjects(ownedKeys.splice(0))
     await noteStagedBytes(orgId, runId, null)
   }
@@ -883,7 +999,7 @@ export async function stageTransformSource(input: StageInput): Promise<StagedRun
 
   const noteMissing = (path: string, reason: string) => {
     missingCount++
-    if (missing.length < MAX_MISSING_LISTED) missing.push({ path, reason })
+    if (missing.length < maxMissingListed) missing.push({ path, reason })
   }
 
   const quotaLeft = async (): Promise<number | null> => {
@@ -1122,12 +1238,31 @@ export async function stageTransformSource(input: StageInput): Promise<StagedRun
         report.pages = page
       }
     } else {
-      const units = await uploadUnits(input, source.input)
+      let units: UploadUnit[]
+      try {
+        units = await uploadUnits(input, source.input, { builtin, tempPath })
+      } catch (err) {
+        // A built-in's refusals are the person's to read: why, before any work.
+        if (builtin && err instanceof ParserError) {
+          throw new ImportError("invalid_source", err.message, 400, err.code)
+        }
+        throw err
+      }
       const planned = planFiles(
         units.map((u) => ({ name: u.name, item: u })),
-        source.files,
+        fileRules,
       )
       report.filesRead = planned.map((p) => p.name)
+      // What a built-in's upload holds, by type: a screen tells an export of the
+      // wrong format (HTML instead of Markdown) by it.
+      if (builtin) report.entryTypes = entryTypesOf(units.map((u) => u.name))
+      const listingRules = (fileRules ?? []).filter((r) => r.as === "listing")
+      const listed = listingRules.length
+        ? units
+            .filter((u) => listingRules.some((r) => globMatcher(r.match)(u.name)))
+            .map((u) => ({ path: u.name, size: u.sizeBytes }))
+            .sort((a, b) => a.path.localeCompare(b.path))
+        : []
       const byName = new Map(units.map((u) => [u.name.replace(/^\.?\//, ""), u]))
       const pendingDeclared = new Map<string, string>()
       let nextRef = 0
@@ -1196,18 +1331,64 @@ export async function stageTransformSource(input: StageInput): Promise<StagedRun
         pendingDeclared.set(ref, path)
         return ref
       }
-      const files = planned.map((p) => ({ name: p.name, kind: p.format }))
+      const files: UploadFileInfo[] = [
+        ...(listingRules.length ? [{ name: LISTING_FILE, kind: "listing" as const }] : []),
+        ...planned.map((p) => ({ name: p.name, kind: p.format })),
+      ]
       let label = ""
+      const startedAt = Date.now()
+      async function* listingRecords(): AsyncGenerator<ParsedRecord> {
+        for (let i = 0; i < listed.length; i += LISTING_PER_RECORD) {
+          yield {
+            number: i / LISTING_PER_RECORD + 1,
+            value: { entries: listed.slice(i, i + LISTING_PER_RECORD) },
+          }
+        }
+      }
       async function* batches(): AsyncGenerator<TransformBatch> {
         let n = 0
-        for (const plan of planned) {
-          for await (const b of batchRecords(plan.name, await parse(plan.item, plan))) {
+        const sources: Array<{
+          name: string
+          records: () => Promise<AsyncIterable<ParsedRecord>>
+        }> = [
+          ...(listingRules.length
+            ? [{ name: LISTING_FILE, records: async () => listingRecords() }]
+            : []),
+          ...planned.flatMap((plan) => {
+            if (
+              plan.format === "text" &&
+              plan.rule?.oversize === "skip" &&
+              plan.item.sizeBytes > TRANSFORM_RECORD_MAX_BYTES
+            ) {
+              return [
+                {
+                  name: plan.name,
+                  records: async () => {
+                    noteMissing(
+                      plan.name,
+                      `the file is ${plan.item.sizeBytes} bytes; a file over 1 MB (${TRANSFORM_RECORD_MAX_BYTES} bytes) is not read`,
+                    )
+                    return (async function* () {})()
+                  },
+                },
+              ]
+            }
+            return [{ name: plan.name, records: () => parse(plan.item, plan) }]
+          }),
+        ]
+        for (const src of sources) {
+          for await (const b of batchRecords(src.name, await src.records())) {
             n++
             if (source.limit?.batches && n > source.limit.batches) {
               report.cutAtLimit = true
               return
             }
-            label = `batch ${n} (${plan.name})`
+            if (source.limit?.timeMs && Date.now() - startedAt > source.limit.timeMs) {
+              report.cutAtLimit = true
+              report.previewTimedOut = true
+              return
+            }
+            label = `batch ${n} (${src.name})`
             yield b
           }
         }
@@ -1275,10 +1456,59 @@ export async function stageTransformSource(input: StageInput): Promise<StagedRun
   }
 }
 
-/** The files of an upload input: each uploaded file, and each entry of an uploaded zip. */
+/** How a built-in reads an upload (`BuiltinLimits`), and where its nested-zip copies go. */
+interface UnitRules {
+  builtin: BuiltinTransform | null
+  /** A fresh local path for the n-th nested zip copy; every path handed out is the caller's to remove. */
+  tempPath?: (n: number) => string
+}
+
+/** Copy one zip entry to a local file (bounded by the upload's budget) and return its size. */
+async function copyEntryToFile(
+  src: RangeSource,
+  entry: ZipEntry,
+  budget: ZipBudget,
+  caps: ZipCaps,
+  path: string,
+): Promise<number> {
+  const handle = await openFile(path, "wx", 0o600)
+  let size = 0
+  try {
+    for await (const chunk of readZipEntry(src, entry, budget, caps)) {
+      await handle.write(chunk)
+      size += chunk.byteLength
+    }
+  } finally {
+    await handle.close()
+  }
+  return size
+}
+
+/**
+ * The files of an upload input: each uploaded file, and each entry of an
+ * uploaded zip. A built-in's upload is held to its limits first, and with
+ * `nestedZips` a zip entry ending in `.zip` is read too (one level), its
+ * entries in the same namespace as the upload's (the first of a name wins).
+ */
+/** How many of these names are Markdown, CSV, HTML or anything else. */
+export function entryTypesOf(
+  names: string[],
+): Record<"markdown" | "csv" | "html" | "other", number> {
+  const out = { markdown: 0, csv: 0, html: 0, other: 0 }
+  for (const raw of names) {
+    const name = raw.toLowerCase()
+    if (name.endsWith(".md")) out.markdown++
+    else if (name.endsWith(".csv")) out.csv++
+    else if (name.endsWith(".html") || name.endsWith(".htm")) out.html++
+    else out.other++
+  }
+  return out
+}
+
 async function uploadUnits(
   input: { actor: UserContext; mode: "api" | "cli" },
   src: TransformInput,
+  rules: UnitRules = { builtin: null },
 ): Promise<UploadUnit[]> {
   const units: UploadUnit[] = []
   const tops: Array<{
@@ -1306,6 +1536,46 @@ async function uploadUnits(
       tops.push({ name: basename(p), sizeBytes: Bun.file(p).size, mimeType: mimeOf(p), path: p })
     }
   }
+  const builtin = rules.builtin
+  if (builtin) {
+    const total = tops.reduce((n, t) => n + t.sizeBytes, 0)
+    if (total > builtin.limits.maxUploadBytes) {
+      throw new ImportError(
+        "invalid_source",
+        `The upload is ${total} bytes; this import reads at most ${builtin.limits.maxUploadBytes} bytes.`,
+
+        400,
+        "upload_too_large",
+      )
+    }
+  }
+  const caps: ZipCaps = builtin
+    ? { ...DEFAULT_ZIP_CAPS, maxTotalBytes: builtin.limits.maxDecompressedBytes }
+    : DEFAULT_ZIP_CAPS
+  const strict = builtin
+    ? {
+        maxDecompressedBytes: builtin.limits.maxDecompressedBytes,
+        maxEntryRatio: caps.maxEntryRatio,
+        ratioFloorBytes: caps.ratioFloorBytes,
+      }
+    : null
+  let declared = 0
+  const checkDeclared = (entries: ZipEntry[], what: string) => {
+    if (!strict) return
+    declared += assertSafeArchive(entries, strict, what)
+    if (declared > strict.maxDecompressedBytes) {
+      throw new ImportError(
+        "invalid_source",
+        `The upload's archives declare more than ${strict.maxDecompressedBytes} decompressed bytes; refused.`,
+
+        400,
+        "zip_decompressed_too_large",
+      )
+    }
+  }
+  const seen = new Set<string>()
+  const isZip = (name: string) => name.toLowerCase().endsWith(".zip")
+  let nested = 0
   for (const top of tops) {
     const range = async (): Promise<RangeSource> =>
       top.storageKey ? objectRangeSource(top.storageKey) : fileRangeSource(top.path!, top.sizeBytes)
@@ -1316,17 +1586,53 @@ async function uploadUnits(
       }
       return webStream(Bun.file(top.path!).stream())
     }
-    if (top.name.toLowerCase().endsWith(".zip")) {
+    if (isZip(top.name)) {
       const zsrc = await range()
-      const budget = new ZipBudget(zsrc.size, DEFAULT_ZIP_CAPS)
-      for (const entry of await readZipDirectory(zsrc, DEFAULT_ZIP_CAPS)) {
+      const budget = new ZipBudget(zsrc.size, caps)
+      const entries = await readZipDirectory(zsrc, caps)
+      checkDeclared(entries, `The archive ${top.name}`)
+      for (const entry of entries) {
         if (entry.isDirectory) continue
+        if (builtin?.limits.nestedZips && isZip(entry.name)) {
+          if (!rules.tempPath) throw new Error("nested zips need a temp path")
+          const path = rules.tempPath(++nested)
+          const size = await copyEntryToFile(zsrc, entry, budget, caps, path)
+          const inner = fileRangeSource(path, size)
+          const innerEntries = await readZipDirectory(inner, caps)
+          checkDeclared(innerEntries, `The archive ${entry.name}`)
+          for (const e of innerEntries) {
+            if (e.isDirectory) continue
+            if (isZip(e.name)) {
+              throw new ImportError(
+                "invalid_source",
+                `${entry.name} holds ${e.name}: zips are read at most one level deep, never more than one level inside the upload.`,
+
+                400,
+                "zip_nested_too_deep",
+              )
+            }
+            if (seen.has(e.name)) continue
+            seen.add(e.name)
+            units.push({
+              name: e.name,
+              sizeBytes: e.uncompressedSize,
+              mimeType: mimeOf(e.name),
+              zip: { src: inner, entry: e, budget },
+              open: async () => readZipEntry(inner, e, budget, caps),
+            })
+          }
+          continue
+        }
+        if (builtin) {
+          if (seen.has(entry.name)) continue
+          seen.add(entry.name)
+        }
         units.push({
           name: entry.name,
           sizeBytes: entry.uncompressedSize,
           mimeType: mimeOf(entry.name),
           zip: { src: zsrc, entry, budget },
-          open: async () => readZipEntry(zsrc, entry, budget, DEFAULT_ZIP_CAPS),
+          open: async () => readZipEntry(zsrc, entry, budget, caps),
         })
       }
       continue

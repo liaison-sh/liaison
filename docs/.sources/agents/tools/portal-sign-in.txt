@@ -1,0 +1,1 @@
+invite_user refused with EMAIL_IS_PORTAL_USER for a client's portal address -> apps/api/src/modules/agent/tools/admin-tools.ts (handleInviteUser, inviteUserStagingRefusal)

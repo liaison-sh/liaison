@@ -7,6 +7,7 @@ import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
+import { captureActingAgentId } from "~/modules/agent/runtime/run-context"
 import { enqueueRoutineDecisionTurn } from "~/modules/approvals/approval-result-turn"
 import {
   cancelDeferredBundleSiblings,
@@ -14,6 +15,7 @@ import {
   lockedUpdateApproval,
   postDualSystemMessages,
 } from "~/modules/approvals/event-data"
+import { resolveAgentAuthorName } from "~/modules/threads/message"
 
 const K = drizzleSql.raw(schemaRef("kernel"))
 
@@ -207,6 +209,17 @@ export async function withdrawApproval(
     // anything. If a human withdraw surface is ever added, it must pass a
     // positive null the way the edit route does.
     try {
+      // Who withdrew it. An agent's turn retracting its own request is the agent's act: the
+      // notice names that agent ("{Owner}'s agent") and carries no person as its decider, so
+      // it never shows under the human it acts for. A person's own withdraw names the person.
+      const actingAgentId = captureActingAgentId()
+      const agentName = actingAgentId
+        ? await resolveAgentAuthorName(tx, {
+            orgId: args.orgId,
+            authorAgentId: actingAgentId,
+          })
+        : null
+      const by = agentName ?? "the requester"
       await postDualSystemMessages(tx, {
         // The requester's own reason, posted back where they asked, stamped with what the
         // withdrawing turn read (nothing for a person's or an untainted turn's withdraw).
@@ -216,13 +229,13 @@ export async function withdrawApproval(
         originatingThreadId: updated.originating_thread_id,
         requesterId: row.requested_by,
         actorUserId: args.actor.userId,
-        content: reason
-          ? `Withdrawn by the requester. Reason: ${reason}.`
-          : "Withdrawn by the requester.",
+        content: reason ? `Withdrawn by ${by}. Reason: ${reason}.` : `Withdrawn by ${by}.`,
         metadata: {
           type: "approval-decision",
           decision: "withdrawn",
-          actorId: args.actor.userId,
+          ...(actingAgentId
+            ? { actorAgentId: actingAgentId, actorAgentName: agentName }
+            : { actorId: args.actor.userId }),
           reason,
         },
       })

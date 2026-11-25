@@ -24,13 +24,9 @@ import { hashToken } from "~/lib/crypto"
 import { redis } from "~/lib/redis"
 import { stepUpCodeKey } from "~/modules/auth/step-up"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import {
-  invalidateDemoMarker,
-  markOrgAsDemo,
-  reservedMarker,
-  visitorMarker,
-} from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker, visitorMarker } from "~/modules/demo/demo-org"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -269,7 +265,7 @@ describe("the step-up code in the response body (demo reviewer)", () => {
   test("absent in demo mode for a visitor demo org", async () => {
     const { member } = await memberSession()
     DemoModeTestAccess.set(true)
-    await markOrgAsDemo(member.orgId, visitorMarker(24))
+    await markDemoOrgForTest(member.orgId, visitorMarker(24))
     try {
       const res = await requestCode(member.bearer)
       const body = (await res.json()) as { data: Record<string, unknown> }
@@ -281,7 +277,7 @@ describe("the step-up code in the response body (demo reviewer)", () => {
 
   test("absent for the reserved org when the box is not in demo mode", async () => {
     const { member } = await memberSession()
-    await markOrgAsDemo(member.orgId, reservedMarker())
+    await markDemoOrgForTest(member.orgId, reservedMarker())
     DemoModeTestAccess.set(false)
     try {
       const res = await requestCode(member.bearer)
@@ -295,7 +291,7 @@ describe("the step-up code in the response body (demo reviewer)", () => {
   test("absent for another purpose even in the reserved org", async () => {
     const { member } = await memberSession()
     DemoModeTestAccess.set(true)
-    await markOrgAsDemo(member.orgId, reservedMarker())
+    await markDemoOrgForTest(member.orgId, reservedMarker())
     try {
       const res = await app.request("/api/auth/totp/step-up", {
         method: "POST",
@@ -315,7 +311,7 @@ describe("the step-up code in the response body (demo reviewer)", () => {
   test("no email is attempted for the reserved org's deletion code on a demo box", async () => {
     const { member } = await memberSession()
     DemoModeTestAccess.set(true)
-    await markOrgAsDemo(member.orgId, reservedMarker())
+    await markDemoOrgForTest(member.orgId, reservedMarker())
     // A demo box refuses every outgoing mail; a refused send is the attempt.
     const before = demoProvider().refused.length
     try {
@@ -331,7 +327,7 @@ describe("the step-up code in the response body (demo reviewer)", () => {
   test("the email is still attempted for a visitor demo org", async () => {
     const { member } = await memberSession()
     DemoModeTestAccess.set(true)
-    await markOrgAsDemo(member.orgId, visitorMarker(24))
+    await markDemoOrgForTest(member.orgId, visitorMarker(24))
     const before = demoProvider().refused.length
     try {
       const res = await requestCode(member.bearer)
@@ -345,7 +341,7 @@ describe("the step-up code in the response body (demo reviewer)", () => {
   test("present for the reserved org on a demo box, and it confirms the deletion", async () => {
     const { member } = await memberSession()
     DemoModeTestAccess.set(true)
-    await markOrgAsDemo(member.orgId, reservedMarker())
+    await markDemoOrgForTest(member.orgId, reservedMarker())
     try {
       const res = await requestCode(member.bearer)
       const body = (await res.json()) as { data: { demoCode?: string } }

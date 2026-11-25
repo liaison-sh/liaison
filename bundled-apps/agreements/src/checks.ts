@@ -1,0 +1,511 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// What makes an agreement unfit for this signature, and what a person must look at first.
+// Pure functions over the agreement row and its draft source.
+
+/** Kinds of document this simple electronic signature never takes. */
+export const UNFIT_TAGS = ["guarantee", "real_estate", "family", "employment"] as const
+
+/** Kinds whose document prints a price a person set. */
+export const PRICED_KINDS = ["proposal", "sow", "retainer"] as const
+
+/** A money amount for the card and the text: "1,234.50 EUR", from minor units, no float. */
+export function moneyText(minor: bigint, currency: string | null | undefined): string {
+  const whole = (minor / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+  const cents = (minor % 100n).toString().padStart(2, "0")
+  return `${whole}.${cents}${currency ? ` ${currency}` : ""}`
+}
+
+/** Placeholders a document prints its price through. */
+const PRICE_FIELDS = ["{{fees.total}}", "{{agreement.price}}"]
+
+/**
+ * The source as it is frozen for a priced kind: the person's price is the document's price.
+ * It fills `fees.total` and `agreement.price` (a template's price clause prints it there),
+ * and a body that prints neither gets a "Price" section of its own, before its signature
+ * block, so what is read, frozen and signed always holds the amount. No price, or a kind
+ * that is not priced: the source unchanged.
+ */
+export function priceInSource(
+  row: {
+    kind?: string | null
+    price_minor?: string | number | null
+    currency?: string | null
+    language?: string | null
+  },
+  source: AgreementSource,
+): AgreementSource {
+  if (!(PRICED_KINDS as readonly string[]).includes(row.kind ?? "")) return source
+  if (row.price_minor === null || row.price_minor === undefined) return source
+  const raw = String(row.price_minor)
+  if (!/^\d{1,15}$/.test(raw)) return source
+  const price = moneyText(BigInt(raw), row.currency)
+  const data = { ...(source.data ?? {}) } as Record<string, unknown>
+  data.fees = { ...((data.fees as Record<string, unknown> | undefined) ?? {}), total: price }
+  data.agreement = { ...((data.agreement as Record<string, unknown> | undefined) ?? {}), price }
+  const blocks = [...(source.body?.blocks ?? [])]
+  const printed = JSON.stringify(blocks)
+  if (!PRICE_FIELDS.some((f) => printed.includes(f))) {
+    const fr = row.language === "fr"
+    const section: SourceBlock[] = [
+      { type: "heading", level: 2, text: fr ? "Prix" : "Price" },
+      { type: "paragraph", text: price },
+    ]
+    const at = blocks.findIndex((b) => (b as { type?: unknown }).type === "signature_block")
+    blocks.splice(at === -1 ? blocks.length : at, 0, ...section)
+  }
+  return { ...source, data, body: { ...(source.body ?? {}), blocks } }
+}
+
+/** Words that make a document look like a personal guarantee or another unfit act. */
+export const GUARANTEE_WORDS = [
+  "caution",
+  "cautionnement",
+  "hypothèque",
+  "hypotheque",
+  "donation",
+  "contrat de travail",
+  "guarantee",
+  "guaranty",
+  "garantie personnelle",
+  "mortgage",
+  "employment contract",
+]
+
+/** Words naming a corporate act some readers need a higher signature level for. */
+export const LAWYER_WORDS = [
+  "minutes",
+  "procès-verbal",
+  "proces-verbal",
+  "assemblée générale",
+  "assemblee generale",
+  "consultation écrite",
+  "consultation ecrite",
+  "general meeting",
+  "filing",
+  "dépôt au greffe",
+]
+
+export const PERSONAL_GUARANTEE_TEXT =
+  "This looks like a personal guarantee or another act this signature does not fit. A person changes its kind, or says it is not one."
+
+export const CHECK_WITH_LAWYER_TEXT =
+  "Check with your lawyer first: some of these acts can need a higher signature level, which Liaison does not offer; another service can provide it."
+
+/**
+ * The classic legal layout prints words of its own (clause, page X of Y, signed electronically):
+ * they follow the agreement's language, never the page setting the editor wrote in the language
+ * of whoever chose the layout.
+ */
+export function inDocumentLanguage(
+  row: { language?: string | null },
+  source: AgreementSource,
+): AgreementSource {
+  const page = (source.body as { page?: Record<string, unknown> } | undefined)?.page
+  if (page?.layout !== "legal") return source
+  const lang = row.language === "fr" ? "fr" : "en"
+  if (page.lang === lang) return source
+  return { ...source, body: { ...source.body, page: { ...page, lang } } }
+}
+
+export interface SourceBlock {
+  type?: string
+  text?: string
+  agent_draft?: boolean
+  [k: string]: unknown
+}
+
+export interface AgreementSource {
+  body?: { blocks?: SourceBlock[]; [k: string]: unknown }
+  data?: Record<string, unknown>
+}
+
+/**
+ * The fields each text block takes, as the renderer's block shapes declare them. The tool
+ * schema names the block types and requires `text`; the rest of each shape is checked here so
+ * the schema stays short.
+ */
+type FieldRule = [ok: (v: unknown) => boolean, takes: string]
+const isString: FieldRule = [(v) => typeof v === "string", "a string"]
+const isBoolean: FieldRule = [(v) => typeof v === "boolean", "true or false"]
+const TEXT_BLOCK_FIELDS: Record<string, Record<string, FieldRule>> = {
+  heading: { level: [(v) => v === 1 || v === 2 || v === 3, "1, 2 or 3"] },
+  paragraph: { size: [(v) => typeof v === "number", "a number"] },
+  article: {
+    id: isString,
+    level: [(v) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 5, "1 to 5"],
+    heading: isString,
+    citation: isBoolean,
+  },
+}
+const ANY_TEXT_BLOCK: Record<string, FieldRule> = {
+  type: [() => true, ""],
+  text: isString,
+  when: [() => true, ""],
+  agent_draft: isBoolean,
+}
+/**
+ * A list prints its written `items` (each a text like a paragraph's), or one `line` per row
+ * of the record list `from`: one shape or the other, never both.
+ */
+const LIST_FIELDS: Record<string, FieldRule> = {
+  type: [() => true, ""],
+  items: [
+    (v) => Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string"),
+    "a list of texts",
+  ],
+  from: isString,
+  line: isString,
+  where: [() => true, ""],
+  when: [() => true, ""],
+  agent_draft: isBoolean,
+}
+
+const isText = (v: unknown) => typeof v === "string"
+const isTexts = (v: unknown) => Array.isArray(v) && v.length > 0 && v.every(isText)
+const isObjects = (v: unknown) =>
+  Array.isArray(v) && v.length > 0 && v.every((x) => !!x && typeof x === "object")
+const isNumber = (v: unknown) => typeof v === "number" && Number.isFinite(v)
+const any: FieldRule = [() => true, ""]
+/**
+ * The other blocks the renderer prints, by their fields, and the fields each one needs. Checked
+ * here, at the tool boundary, so a block the layout would refuse is refused when it is written,
+ * naming its path, instead of when the document is prepared.
+ */
+const OTHER_BLOCKS: Record<string, { fields: Record<string, FieldRule>; needs: string[] }> = {
+  signature_block: {
+    fields: {
+      place: isString,
+      lines: [
+        (v) =>
+          isObjects(v) &&
+          (v as Record<string, unknown>[]).every(
+            (l) => isText(l.party) && isText(l.name) && isText(l.capacity),
+          ),
+        "a list of { party, name, capacity } texts",
+      ],
+    },
+    needs: ["place", "lines"],
+  },
+  parties: {
+    fields: {
+      lead: isString,
+      groups: [isObjects, "a list of { items: [parties] } groups"],
+      in_presence: isString,
+    },
+    needs: ["groups"],
+  },
+  recitals: {
+    fields: { items: [isTexts, "a list of texts"], closing: isString },
+    needs: ["items"],
+  },
+  definitions: {
+    fields: { items: [isObjects, "a list of { term, text }"] },
+    needs: ["items"],
+  },
+  annex: {
+    fields: { id: isString, title: isString, blocks: [isObjects, "a list of blocks"] },
+    needs: ["title", "blocks"],
+  },
+  toc: { fields: {}, needs: [] },
+  table: {
+    fields: {
+      columns: [isObjects, "a list of columns"],
+      from: isString,
+      where: any,
+      rows: [Array.isArray, "a list of rows"],
+      size: [isNumber, "a number"],
+      total: any,
+    },
+    needs: ["columns"],
+  },
+  image: {
+    fields: { fileId: isString, width: [isNumber, "a number"], align: isString },
+    needs: ["fileId"],
+  },
+  spacer: { fields: { height: [isNumber, "a number"] }, needs: ["height"] },
+  repeat: {
+    fields: { from: isString, where: any, blocks: [isObjects, "a list of blocks"] },
+    needs: ["from", "blocks"],
+  },
+}
+
+function listShapeProblem(b: SourceBlock, at: string): string | null {
+  const items = b.items !== undefined
+  const fromLine = b.from !== undefined || b.line !== undefined || b.where !== undefined
+  if (items && fromLine)
+    return `"${at}" takes its written items (items), or from and line, never both.`
+  if (!items && (b.from === undefined || b.line === undefined))
+    return `"${at}" takes its written items (items), or from and line.`
+  return null
+}
+
+/**
+ * What is wrong with the headings, paragraphs, clauses and lists of a source an agent sent, one line
+ * per field, each naming its path (`source.body.blocks.0.content`); empty when the editor can
+ * show them all.
+ */
+export function sourceBlockProblems(source: unknown, root = "source.body"): string[] {
+  const blocks = (source as AgreementSource | undefined)?.body?.blocks
+  if (!Array.isArray(blocks)) return []
+  const out: string[] = []
+  blocks.forEach((b, i) => {
+    if (!b || typeof b !== "object") return
+    const type = String((b as SourceBlock).type)
+    const own = TEXT_BLOCK_FIELDS[type]
+    const other = OTHER_BLOCKS[type]
+    if (!own && !other && type !== "list") return
+    const fields = own
+      ? { ...ANY_TEXT_BLOCK, ...own }
+      : other
+        ? { type: any, when: any, agent_draft: isBoolean, ...other.fields }
+        : LIST_FIELDS
+    const at = `${root}.blocks.${i}`
+    const missing = (other?.needs ?? []).filter((k) => (b as SourceBlock)[k] === undefined)
+    if (missing.length > 0)
+      out.push(
+        `"${at}" is a ${type} without ${missing.join(" and ")}; a ${type} takes ${Object.keys(other?.fields ?? {}).join(", ")}.`,
+      )
+    for (const [k, v] of Object.entries(b)) {
+      const rule = fields[k]
+      if (!rule)
+        out.push(
+          `"${at}.${k}" is not a recognised field of a ${(b as SourceBlock).type}; use one of: ${Object.keys(fields).join(", ")}.`,
+        )
+      else if (!rule[0](v)) out.push(`"${at}.${k}" must be ${rule[1]}.`)
+    }
+    const shape = type === "list" ? listShapeProblem(b as SourceBlock, at) : null
+    if (shape) out.push(shape)
+  })
+  return out
+}
+
+/** Every text an agreement's source prints, joined (headings, paragraphs, list lines, cells). */
+export function sourceText(source: AgreementSource | null | undefined): string {
+  const out: string[] = []
+  const walk = (v: unknown): void => {
+    if (typeof v === "string") out.push(v)
+    else if (Array.isArray(v)) for (const x of v) walk(x)
+    else if (v && typeof v === "object") {
+      for (const [k, x] of Object.entries(v)) if (k !== "type" && k !== "fileId") walk(x)
+    }
+  }
+  walk(source?.body?.blocks ?? [])
+  return out.join("\n")
+}
+
+function holdsWord(text: string, words: readonly string[]): string | null {
+  const t = text.toLowerCase()
+  for (const w of words) {
+    const re = new RegExp(
+      `(^|[^\\p{L}])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\p{L}]|$)`,
+      "u",
+    )
+    if (re.test(t)) return w
+  }
+  return null
+}
+
+export interface Check {
+  code: string
+  ok: boolean
+  blocking: boolean
+  message: string
+}
+
+export interface AgreementRowLike {
+  number?: string | null
+  kind?: string | null
+  fit_tag?: string | null
+  title?: string | null
+  what_it_is?: string | null
+  price_minor?: string | number | null
+  not_a_guarantee_by_user_id?: string | null
+  /** A retainer that names its project renews that project's retainer. */
+  project_id?: string | null
+  hours_minutes?: number | null
+  /** A stored date reads back as a Date or as its text. */
+  starts_on?: string | Date | null
+}
+
+/**
+ * What a retainer renewal still lacks to roll into its retainer when signed: its included
+ * hours, its monthly price and its first day, as the fields that hold them. Empty for anything
+ * that is not a renewal (a retainer naming its project).
+ */
+export function renewalTermsMissing(row: AgreementRowLike): string[] {
+  if (row.kind !== "retainer" || !row.project_id) return []
+  const missing: string[] = []
+  if (!(typeof row.hours_minutes === "number" && row.hours_minutes > 0))
+    missing.push("its included hours (hours_minutes)")
+  if (
+    row.price_minor === null ||
+    row.price_minor === undefined ||
+    !/^\d+$/.test(String(row.price_minor))
+  )
+    missing.push("its monthly price (a person sets the price on its page)")
+  const day = row.starts_on instanceof Date ? row.starts_on.toISOString() : row.starts_on
+  if (!(typeof day === "string" && /^\d{4}-\d{2}-\d{2}/.test(day)))
+    missing.push("its first day (starts_on)")
+  return missing
+}
+
+/** The clauses an agent wrote that no person has read yet: their positions (1-based). */
+export function agentDraftClauses(source: AgreementSource | null | undefined): number[] {
+  const blocks = source?.body?.blocks ?? []
+  return blocks.flatMap((b, i) => (b.agent_draft === true ? [i + 1] : []))
+}
+
+/** Positions as ranges: [1, 2, 3, 5] reads "1-3, 5". */
+export function positionRanges(positions: readonly number[]): string {
+  const out: string[] = []
+  let start: number | null = null
+  let prev: number | null = null
+  for (const n of [...positions, Number.NaN]) {
+    if (start !== null && prev !== null && n === prev + 1) {
+      prev = n
+      continue
+    }
+    if (start !== null && prev !== null) out.push(start === prev ? `${start}` : `${start}-${prev}`)
+    start = n
+    prev = n
+  }
+  return out.join(", ")
+}
+
+/**
+ * What a person must do about the clauses an agent wrote, in one short sentence: how many,
+ * where, and where to read them. Null when every clause was read by a person.
+ */
+export function agentDraftSentence(source: AgreementSource | null | undefined): string | null {
+  const at = agentDraftClauses(source)
+  if (at.length === 0) return null
+  return at.length === 1
+    ? `A person must read the clause an agent wrote (${positionRanges(at)}) in the agreement's editor and clear it.`
+    : `A person must read the ${at.length} clauses an agent wrote (${positionRanges(at)}) in the agreement's editor and clear them.`
+}
+
+/** The checks prepare runs, in order. A failed blocking check refuses the freeze. */
+export function prepareChecks(
+  row: AgreementRowLike,
+  source: AgreementSource | null,
+  opts: { upload: boolean } = { upload: false },
+): Check[] {
+  const checks: Check[] = []
+  const unfit = (UNFIT_TAGS as readonly string[]).includes(row.fit_tag ?? "")
+  checks.push({
+    code: "SIGNATURE_DOES_NOT_FIT",
+    ok: !unfit,
+    blocking: true,
+    message: unfit
+      ? `This document is tagged ${row.fit_tag}: a simple electronic signature does not fit it, so it cannot be sent for signature here.`
+      : "The kind of document fits a simple electronic signature.",
+  })
+  if (row.kind === "other") {
+    const said = (row.what_it_is ?? "").trim() !== ""
+    checks.push({
+      code: "WHAT_IT_IS_REQUIRED",
+      ok: said,
+      blocking: true,
+      message: said
+        ? `A person said what it is: ${row.what_it_is}.`
+        : "A person must say what this document is before it can be sent (what_it_is).",
+    })
+  }
+  const text = [row.title ?? "", row.what_it_is ?? "", sourceText(source)].join("\n")
+  const word = holdsWord(text, GUARANTEE_WORDS)
+  const cleared = !!row.not_a_guarantee_by_user_id
+  checks.push({
+    code: "PERSONAL_GUARANTEE",
+    ok: word === null || cleared,
+    blocking: true,
+    message:
+      word === null
+        ? "No word of a personal guarantee or another unfit act."
+        : cleared
+          ? `The text holds "${word}"; a person said it is not a personal guarantee.`
+          : `${PERSONAL_GUARANTEE_TEXT} (found "${word}")`,
+  })
+  const lawyer = holdsWord(text, LAWYER_WORDS)
+  if (lawyer !== null) {
+    checks.push({
+      code: "CHECK_WITH_LAWYER",
+      ok: true,
+      blocking: false,
+      message: `${CHECK_WITH_LAWYER_TEXT} (found "${lawyer}")`,
+    })
+  }
+  if ((PRICED_KINDS as readonly string[]).includes(row.kind ?? "")) {
+    const priced = row.price_minor !== null && row.price_minor !== undefined
+    checks.push({
+      code: "PRICE_NOT_SET",
+      ok: priced,
+      blocking: true,
+      message: priced
+        ? "A person set the price."
+        : "No price yet: a person sets it in the agreement's page; an agent never does.",
+    })
+  }
+  const renewalMissing = renewalTermsMissing(row)
+  if (row.kind === "retainer" && row.project_id) {
+    checks.push({
+      code: "RENEWAL_TERMS_MISSING",
+      ok: renewalMissing.length === 0,
+      blocking: true,
+      message:
+        renewalMissing.length === 0
+          ? "The renewal has its included hours, monthly price and first day."
+          : `This retainer renews an existing one: once signed, its terms replace the retainer's from its first day, so it needs ${renewalMissing.join(", ")}.`,
+    })
+  }
+  // A draft saved before its blocks were checked at the tool boundary is refused here, by path.
+  const shapes = sourceBlockProblems(source)
+  checks.push({
+    code: "INVALID_SOURCE",
+    ok: shapes.length === 0,
+    blocking: true,
+    message:
+      shapes.length === 0
+        ? "Every block can be laid out."
+        : `${shapes.join(" ")} Fix it with agreement_update.`,
+  })
+  const unread = agentDraftSentence(source)
+  checks.push({
+    code: "AGENT_TEXT_UNREAD",
+    ok: unread === null,
+    blocking: true,
+    message: unread ?? "Every clause was read by a person.",
+  })
+  if (!opts.upload) {
+    // Only source.body.blocks is printed: a document with no text there is never frozen.
+    const written = sourceText(source).trim() !== ""
+    checks.push({
+      code: "DOCUMENT_EMPTY",
+      ok: written,
+      blocking: true,
+      message: written
+        ? "The document has text."
+        : "The document has no text: its clauses go in source.body.blocks (agreement_update); nothing else in source is printed.",
+    })
+  }
+  return checks
+}
+
+/**
+ * Marks the blocks an agent wrote or changed: every block of `next` that is not, word for word,
+ * a block of `prev` carries `agent_draft: true`. A person's own save keeps the blocks as sent.
+ */
+export function markAgentBlocks(
+  prev: AgreementSource | null | undefined,
+  next: AgreementSource,
+): AgreementSource {
+  const key = (b: SourceBlock) => {
+    const { agent_draft: _drop, ...rest } = b
+    return JSON.stringify(rest)
+  }
+  const before = new Set((prev?.body?.blocks ?? []).filter((b) => b.agent_draft !== true).map(key))
+  const blocks = (next.body?.blocks ?? []).map((b) =>
+    before.has(key(b)) ? b : { ...b, agent_draft: true },
+  )
+  return { ...next, body: { ...(next.body ?? {}), blocks } }
+}

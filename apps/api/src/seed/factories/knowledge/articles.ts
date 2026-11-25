@@ -87,7 +87,8 @@ export async function findOrCreateCollection(
       {
         name: spec.name,
         description: spec.description,
-        ownerUserId: spec.ownerUserId,
+        // A team's folder: shared, kept by the person named.
+        ownerUserId: null,
         maintainerUserIds: [spec.ownerUserId],
       },
       author,

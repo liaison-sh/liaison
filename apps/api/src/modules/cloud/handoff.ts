@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // `POST /api/cloud/orgs/:id/handoff`: a one-time sign-in link for the org's
-// owner, on the org's own host (`<base>/login/magic?challengeId&token`, the
+// owner (never a demo org's, which is not found here), on the org's own host (`<base>/login/magic?challengeId&token`, the
 // same page an emailed link opens). The challenge is bound to the owner, the
 // org and that host, has no code, lives 10 minutes, and signs in only after the
 // person clicks "Continue" (modules/auth/magic-link.ts). Idempotent on the
@@ -37,7 +37,14 @@ async function findOwner(orgId: string) {
       .from(users)
       .innerJoin(userRoles, and(eq(userRoles.userId, users.id), eq(userRoles.orgId, users.orgId)))
       .innerJoin(roles, and(eq(roles.id, userRoles.roleId), eq(roles.orgId, users.orgId)))
-      .where(and(eq(users.orgId, orgId), eq(users.status, "active"), eq(roles.name, "admin")))
+      .where(
+        and(
+          eq(users.orgId, orgId),
+          eq(users.status, "active"),
+          eq(users.userType, "member"),
+          eq(roles.name, "admin"),
+        ),
+      )
       .orderBy(asc(users.createdAt), asc(users.id))
       .limit(1),
   )
@@ -59,7 +66,7 @@ export async function cloudHandoff(orgId: string, messageId: string): Promise<Ha
       db
         .select({ id: organizations.id })
         .from(organizations)
-        .where(eq(organizations.id, orgId))
+        .where(and(eq(organizations.id, orgId), eq(organizations.class, "standard")))
         .limit(1),
     )
     const owner = org ? await findOwner(org.id) : null

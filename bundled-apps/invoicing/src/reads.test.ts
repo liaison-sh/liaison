@@ -595,6 +595,49 @@ describe("documentsGet (E5)", () => {
     expect(String(result!.grand_total_minor)).toBe("12000")
   })
 
+  // A draft stores no totals until it issues: its page shows what it would charge, priced as
+  // preview_totals prices a card (the issuer's country, the recipient's country and VAT number).
+  test("a draft with no stored totals shows what its lines would charge", async () => {
+    const draft = {
+      ...sampleDocs[0],
+      id: "00000000-0000-4000-8000-000000000001",
+      number: null,
+      status: "draft",
+      issued_at: null,
+      counterparty_country: "FR",
+      counterparty_vat_id: null,
+      subtotal_minor: "0",
+      tax_total_minor: "0",
+      grand_total_minor: "0",
+    }
+    const line = (id: string, position: number, unit: string, quantity: string) => ({
+      id,
+      document_id: draft.id,
+      position,
+      description: "Consulting",
+      quantity,
+      unit_price_minor: unit,
+      tax_rate_bp: null,
+      subtotal_minor: String(Number(unit) * Number(quantity)),
+      tax_minor: "0",
+      total_minor: String(Number(unit) * Number(quantity)),
+    })
+    const { ctx } = makeCtx({
+      documents: [draft],
+      document_lines: [line("l1", 1, "93000", "3"), line("l2", 2, "93000", "4")],
+      issuer_profiles: [{ id: "issuer-1", country: "FR", is_default: true }],
+    })
+    const result = await documentsGet(ctx, { id: draft.id })
+    expect(String(result?.subtotal_minor)).toBe("651000")
+    expect(String(result?.tax_total_minor)).toBe("130200")
+    expect(String(result?.grand_total_minor)).toBe("781200")
+    // An issued document keeps the totals it issued at.
+    const issued = await documentsGet(makeCtx({ documents: sampleDocs }).ctx, {
+      id: "00000000-0000-4000-8000-000000000001",
+    })
+    expect(String(issued?.grand_total_minor)).toBe("12000")
+  })
+
   // red: drop the po_number field from toDocumentHeader -> documents_get can no longer show
   // an operator where a document's PO reference came from without a raw DB query.
   test("returns po_number", async () => {
@@ -602,6 +645,17 @@ describe("documentsGet (E5)", () => {
     const { ctx } = makeCtx({ documents: [withPo] })
     const result = await documentsGet(ctx, { id: "00000000-0000-4000-8000-000000000001" })
     expect(result?.po_number).toBe("PO-4471")
+  })
+
+  test("returns the project a document bills, for its billing plan", async () => {
+    const billed = { ...sampleDocs[0], billing_project_id: "7a000000-0000-4000-8000-00000000b1a1" }
+    const { ctx } = makeCtx({ documents: [billed] })
+    const result = await documentsGet(ctx, { id: "00000000-0000-4000-8000-000000000001" })
+    expect(result?.billing_project_id).toBe("7a000000-0000-4000-8000-00000000b1a1")
+    const bare = await documentsGet(makeCtx({ documents: sampleDocs }).ctx, {
+      id: "00000000-0000-4000-8000-000000000001",
+    })
+    expect(bare?.billing_project_id).toBeNull()
   })
 
   // The Editor reopens a draft with its e-invoicing fields; a missing one would be saved back as
@@ -772,6 +826,40 @@ describe("pendingApprovalsList (E5)", () => {
     const [row] = await pendingApprovalsList(ctx, { limit: 10 })
     expect(row!.requested_by_user_id).toBe("u-42")
     expect(row!.summary).toBe("Issue invoice F-2026-0042")
+  })
+
+  test("a row names the document its request acts on, or none for typed lines", async () => {
+    const at = new Date().toISOString()
+    const { ctx } = makeCtx({
+      approvals: [
+        {
+          id: "a-1",
+          toolName: "invoicing:invoice_issue",
+          summary: { title: "x" },
+          createdAt: at,
+          requestedBy: { id: "u" },
+          currentPayload: { draft_id: "d-1" },
+        },
+        {
+          id: "a-2",
+          toolName: "invoicing:credit_note_create_and_issue",
+          summary: { title: "y" },
+          createdAt: at,
+          requestedBy: { id: "u" },
+          currentPayload: { original_document_id: "inv-1", items: [] },
+        },
+        {
+          id: "a-3",
+          toolName: "invoicing:quote_create_and_issue",
+          summary: { title: "z" },
+          createdAt: at,
+          requestedBy: { id: "u" },
+          currentPayload: { items: [] },
+        },
+      ],
+    })
+    const rows = await pendingApprovalsList(ctx, { limit: 10 })
+    expect(rows.map((r) => r.document_id)).toEqual(["d-1", "inv-1", null])
   })
 })
 
@@ -1144,6 +1232,38 @@ describe("deferredList fills a missing order number from the same order's other 
     })
     const { items } = await deferredList({ db } as unknown as ReadsCtx)
     expect(items.map((i) => i.order_number)).toEqual(["#3280", "#3280"])
+  })
+})
+
+describe("deferredList names a park about one of the app's documents by its number", () => {
+  test("a render owed after an interrupted issue reads as that document, not as an order", async () => {
+    const doc = "00000000-0000-4000-8000-00000000d201"
+    const db = createBridgeMockDb(
+      {
+        seed: {
+          documents: [{ id: doc, type: "invoice", number: "F-2026-0042", status: "issued" }],
+          deferred_events: [
+            {
+              id: "00000000-0000-4000-8000-00000000d202",
+              event_id: doc,
+              event_payload_json: { document_id: doc },
+              status: "render_failed",
+              reason: "issue_interrupted",
+              blocked_on: { kind: "pdf_render", document_id: doc },
+              retry_count: 0,
+            },
+          ],
+        },
+      },
+      { bridgeWhereOperators: true },
+    )
+    const { items } = await deferredList({ db } as unknown as ReadsCtx)
+    expect(items[0]).toMatchObject({
+      order_id: null,
+      order_number: null,
+      document_number: "F-2026-0042",
+      reason: "issue_interrupted",
+    })
   })
 })
 

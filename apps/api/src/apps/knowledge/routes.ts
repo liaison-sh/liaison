@@ -21,9 +21,11 @@ import {
   addCollectionMembership,
   archiveKnowledgeCollection,
   createKnowledgeCollection,
+  FolderScopeError,
   listKnowledgeCollections,
   listKnowledgeCollectionTree,
   removeCollectionMembership,
+  requireCollectionsScope,
   updateKnowledgeCollection,
 } from "~/apps/knowledge/collections"
 import {
@@ -33,6 +35,7 @@ import {
 } from "~/apps/knowledge/federated-search"
 import { requestForceOnOpenSync } from "~/apps/knowledge/force-on-open"
 import { searchLocalKnowledge } from "~/apps/knowledge/local-search"
+import { autosaveOptions, mountPageRoutes } from "~/apps/knowledge/page-routes"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import {
   archiveKnowledgeDocument,
@@ -75,7 +78,6 @@ import {
 } from "~/apps/knowledge/synced-sources"
 import { listKnowledgeTags, upsertKnowledgeTag } from "~/apps/knowledge/tags"
 import { extractRows } from "~/db"
-import { schemaRef } from "~/db/schema-ref"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
 import { qaSeedRoutesEnabled } from "~/lib/env"
 import { withRequestRls } from "~/lib/request-rls"
@@ -85,8 +87,6 @@ import { knowledgeItemsRegistry } from "~/modules/apps/app-registries"
 import { hasScope } from "~/modules/permissions/permissions"
 
 import { listShareMembers, listShareRoles } from "~/modules/sharing/targets"
-
-const K = () => sql.raw(schemaRef("kernel"))
 
 const idParamSchema = z.object({ id: z.string().min(1) })
 
@@ -125,7 +125,16 @@ function knowledgeErrorResponse(c: KnowledgeContext, err: unknown) {
   }
   // All other codes (incl. SOURCE_NOT_ENABLED → 422) pass the actionable message
   // through. SOURCE_NOT_ENABLED is a client precondition, not a server fault.
-  return c.json({ error: { message: err.message, code: err.code } }, status)
+  return c.json(
+    {
+      error: {
+        message: err.message,
+        code: err.code,
+        ...(err.reason ? { details: { reason: err.reason } } : {}),
+      },
+    },
+    status,
+  )
 }
 
 /**
@@ -134,12 +143,33 @@ function knowledgeErrorResponse(c: KnowledgeContext, err: unknown) {
  * spec §72-76, this collapse must apply to *every* document endpoint that
  * touches a row by id (reads, writes, archive, restore, verify, backlinks).
  */
-export function zeroKnowledgeResponse(c: KnowledgeContext, err: unknown) {
+export function zeroKnowledgeResponse(
+  c: KnowledgeContext,
+  err: unknown,
+  message = "Knowledge item not found",
+) {
   if (err instanceof KnowledgeError && (err.code === "FORBIDDEN" || err.code === "NOT_FOUND")) {
-    return c.json({ error: { message: "Knowledge item not found", code: "NOT_FOUND" } }, 404)
+    return c.json({ error: { message, code: "NOT_FOUND" } }, 404)
   }
   return knowledgeErrorResponse(c, err)
 }
+
+/**
+ * A refused write by id. Missing and forbidden stay one answer, but a readable
+ * one: the person clicked something and it did not happen. Lacking the folder
+ * scope is said as such (403): it depends on no row.
+ */
+function writeRefusal(c: KnowledgeContext, err: unknown, what: "page" | "folder") {
+  if (err instanceof FolderScopeError) return knowledgeErrorResponse(c, err)
+  return zeroKnowledgeResponse(c, err, `You cannot do this on this ${what}`)
+}
+
+mountPageRoutes(knowledgeRoutes, {
+  getActor: (c) => getActor(c),
+  pageWriteRefusal: (c, err) => writeRefusal(c, err, "page"),
+  pageNotFound: (c, err) => zeroKnowledgeResponse(c, err),
+  folderWriteRefusal: (c, err) => writeRefusal(c, err, "folder"),
+})
 
 // ---------------------------------------------------------------------------
 // Documents
@@ -157,76 +187,13 @@ knowledgeRoutes.post("/documents", zValidator("json", knowledgeCreateDocumentSch
   try {
     const actor = getActor(c)
     const input = c.req.valid("json")
+    if (input.collectionIds.length > 0) requireCollectionsScope(actor)
     // A human creating a document through the Knowledge UI reads nothing
     // scoped into it: the empty array is the positive assertion (D5).
     const doc = await withRequestRls(c, (tx) => createKnowledgeDocument(tx, input, actor, []))
     return success(c, doc, undefined, 201)
   } catch (err) {
     return knowledgeErrorResponse(c, err)
-  }
-})
-
-/**
- * Backlinks for a Knowledge document. The backend filters to references the
- * caller is authorized to see — never expose redacted counts or unauthorized
- * titles (spec §72-76). Currently returns an empty array; the indexer that
- * populates real backlinks lands in a follow-up task that registers Knowledge
- * documents as reference targets across the mention/reference system.
- */
-knowledgeRoutes.get("/documents/:id/backlinks", zValidator("param", idParamSchema), async (c) => {
-  try {
-    const actor = getActor(c)
-    const { id } = c.req.valid("param")
-    const backlinks = await withRequestRls(c, async (tx) => {
-      const row = await loadKnowledgeDocument(tx, id, actor)
-      if (!row) throw new KnowledgeError("NOT_FOUND", "Knowledge item not found")
-      const shareRole = await loadDocumentShareRole(tx, row.id, actor)
-      assertCanReadDocumentRow(row, actor, shareRole)
-      // Backlinks come from kernel.thread_references — every entity (thread,
-      // doc, mail, etc.) that referenced this Knowledge document. RLS on
-      // thread_references already filters to threads the caller can see, so
-      // we only need to scope to (app='knowledge', entityType='document', id).
-      const result = await tx.execute(sql`
-          SELECT
-            tr.thread_id AS "threadId",
-            tr.app AS "app",
-            tr.entity_type AS "entityType",
-            tr.entity_id AS "entityId",
-            t.title AS "title",
-            tr.last_visited_at AS "lastVisitedAt"
-          FROM ${K()}.thread_references tr
-          JOIN ${K()}.threads t ON t.id = tr.thread_id
-          WHERE tr.app = 'knowledge'
-            AND tr.entity_type = 'document'
-            AND tr.entity_id = ${id}
-            AND tr.org_id = ${actor.orgId}::uuid
-            -- Exclude private 1:1 Liaison assistant chats (type 'agent_chat').
-            -- They accumulate incidental entity references for the assistant's
-            -- own context strip and must never surface as public document
-            -- backlinks. Mirrors listBacklinks() in modules/threads/reference.ts.
-            AND t.type <> 'agent_chat'
-          ORDER BY tr.last_visited_at DESC
-          LIMIT 100
-        `)
-      const rows = extractRows<{
-        threadId: string
-        app: string
-        entityType: string
-        entityId: string
-        title: string | null
-        lastVisitedAt: string | Date
-      }>(result)
-      return rows.map((r) => ({
-        app: "kernel",
-        entityType: "thread",
-        entityId: r.threadId,
-        title: r.title ?? "Thread",
-        url: `/threads/${r.threadId}`,
-      }))
-    })
-    return success(c, { backlinks })
-  } catch (err) {
-    return zeroKnowledgeResponse(c, err)
   }
 })
 
@@ -278,13 +245,19 @@ knowledgeRoutes.patch(
       const actor = getActor(c)
       const { id } = c.req.valid("param")
       const input = { ...c.req.valid("json"), id }
+      // `?autosave=1&session=<uuid>[&fresh=1]`: the page editor's own saves. Its update
+      // events are coalesced and its edits in one session form one version; from the
+      // query only, so no body field (and no agent) reaches it.
+      const autosave = autosaveOptions((name) => c.req.query(name))
       // A human edit asserts [] and the union leaves any tag an agent turn put
       // on the document intact.
-      const doc = await withRequestRls(c, (tx) => updateKnowledgeDocument(tx, input, actor, []))
+      const doc = await withRequestRls(c, (tx) =>
+        updateKnowledgeDocument(tx, input, actor, [], autosave ?? {}),
+      )
       return success(c, doc)
     } catch (err) {
       // Writes against rows the actor cannot read must also zero-knowledge.
-      return zeroKnowledgeResponse(c, err)
+      return writeRefusal(c, err, "page")
     }
   },
 )
@@ -296,7 +269,7 @@ knowledgeRoutes.post("/documents/:id/archive", zValidator("param", idParamSchema
     const doc = await withRequestRls(c, (tx) => archiveKnowledgeDocument(tx, id, actor))
     return success(c, doc)
   } catch (err) {
-    return zeroKnowledgeResponse(c, err)
+    return writeRefusal(c, err, "page")
   }
 })
 
@@ -307,7 +280,7 @@ knowledgeRoutes.post("/documents/:id/restore", zValidator("param", idParamSchema
     const doc = await withRequestRls(c, (tx) => restoreKnowledgeDocument(tx, id, actor))
     return success(c, doc)
   } catch (err) {
-    return zeroKnowledgeResponse(c, err)
+    return writeRefusal(c, err, "page")
   }
 })
 
@@ -330,7 +303,7 @@ knowledgeRoutes.post(
       })
       return success(c, doc)
     } catch (err) {
-      return zeroKnowledgeResponse(c, err)
+      return writeRefusal(c, err, "page")
     }
   },
 )
@@ -755,7 +728,7 @@ knowledgeRoutes.patch(
       )
       return success(c, row)
     } catch (err) {
-      return zeroKnowledgeResponse(c, err)
+      return writeRefusal(c, err, "folder")
     }
   },
 )
@@ -767,7 +740,7 @@ knowledgeRoutes.post("/collections/:id/archive", zValidator("param", idParamSche
     const row = await withRequestRls(c, (tx) => archiveKnowledgeCollection(tx, id, actor))
     return success(c, row)
   } catch (err) {
-    return zeroKnowledgeResponse(c, err)
+    return writeRefusal(c, err, "folder")
   }
 })
 
@@ -784,7 +757,7 @@ knowledgeRoutes.post(
       )
       return success(c, row, undefined, 201)
     } catch (err) {
-      return zeroKnowledgeResponse(c, err)
+      return writeRefusal(c, err, "page")
     }
   },
 )
@@ -802,7 +775,7 @@ knowledgeRoutes.delete(
       )
       return success(c, { ok: true })
     } catch (err) {
-      return zeroKnowledgeResponse(c, err)
+      return writeRefusal(c, err, "page")
     }
   },
 )
@@ -833,13 +806,11 @@ knowledgeRoutes.get("/home", async (c) => {
     const recent = await listKnowledgeDocuments(tx, actor, { limit: 20 })
     // IC-3: needsReview is a separate query — not a filter of recent — so
     // review-needing entries that fell off the recency window still surface.
-    const needsReview = await listKnowledgeDocuments(tx, actor, { limit: 50 })
+    const needsReview = await listKnowledgeDocuments(tx, actor, { limit: 50, needsReview: true })
     const unfiled = await listKnowledgeDocuments(tx, actor, { limit: 200, unfiled: true })
     return {
       recent,
-      needsReview: needsReview.filter(
-        (d) => d.reviewStatus === "needs_review" || d.reviewStatus === "stale",
-      ),
+      needsReview,
       unfiledCount: unfiled.length,
     }
   })
@@ -915,7 +886,8 @@ knowledgeRoutes.get("/synced-sources", async (c) => {
   }
 })
 
-// The knowledge source kinds installed apps declare that the caller may add.
+// The knowledge source kinds installed apps declare that the caller may add. Adding any
+// source takes at least the knowledge reader floor, so a caller below it gets no list.
 knowledgeRoutes.get("/synced-sources/kinds", async (c) => {
   try {
     const actor = getActor(c)

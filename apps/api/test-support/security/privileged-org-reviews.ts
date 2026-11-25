@@ -71,8 +71,6 @@ export const TRUSTED_SOURCES: Record<string, string> = {
     "the pooled org the demo pool's refill itself just created (createVisitorOrgShell on a slug the pool generated, demo-pool.ts createPooledShell)",
   acquireVisitorWorkspace:
     "the workspace this request just made the visitor's (demo/routes.ts acquireVisitorWorkspace): a ready pooled org claimPooledOrg handed over in one locked transaction, or the shell createVisitorOrgShell just created; reached from a signup and from POST /start-over, whose own org is requireVisitorOrg's",
-  pooledRows:
-    "the demo pool's own visitor orgs: kernel.organizations rows its marker names as pooled (demo-pool.ts pooledRows)",
   provisionOrgShell:
     "the org the seed engine's org factory just created, or found under the slug its caller chose, through the provisioning CLI's org provisioner (seed/factories/org/org.ts); the demo tier writes into it only once it carries the demo marker or this run created it (seed/tiers/demo/seed-org.ts demoMarkRefusal)",
   requireVisitorOrg:
@@ -95,6 +93,16 @@ export const REVIEWED_DISPATCH: Record<string, string> = {
  * follow to a trusted source, could not be traced, or is a literal: `file#enclosing` → why.
  */
 export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
+  "apps/api/src/apps/knowledge/links.ts#countOrg":
+    "daily page-links backfill (dry-run count): orgId comes from the scheduled job's own org scan (withSystemDb listing the orgs that hold unindexed pages) and is re-checked by writeUnlessMoving; every read is pinned to that org_id",
+  "apps/api/src/apps/knowledge/links.ts#backfillOrg":
+    "daily page-links backfill: orgId comes from the scheduled job's own org scan (withSystemDb listing the orgs that hold unindexed pages), run under writeUnlessMoving; every write is pinned to that org_id",
+  "apps/api/src/apps/knowledge/page-file-sweep.ts#sweepUnparentedPageCopies":
+    "scheduled sweep of unparented page-file copies: orgId is read from the files rows the job's own system query listed (not moving), and the delete is pinned to that org_id",
+  "apps/api/src/modules/files/origin.ts#fileIsFromOutside":
+    "file origin check: callers pass the org of the file's own request or job context (attach, media analysis, import); the read is pinned to that org_id and the file id",
+  "apps/api/src/seed/factories/knowledge/document-version.ts#seedDocumentVersion":
+    "test-only seed factory (no product caller): the org a test seeded itself, writing a version row for its own page",
   "apps/api/src/modules/agent/scopes/taint-approval-audience.ts#loadOrgMemberGrants":
     "readers' grants for a message post (rule 14): sendMessage passes the org of the message it writes, which every caller binds to its own context (a request's org, or the routine_runs row's own org_id on the waiting-run sweep); the read is pinned to that org_id and to the listed user ids",
   "apps/api/src/apps/knowledge/app-sources.ts#beginAppSourcePass":
@@ -256,11 +264,25 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
 }
 
 /**
+ * Entries above reviewed for having no product caller: the product files that use each function,
+ * pinned. src/db/privileged-org-source.test.ts fails on a new caller, so no caller can pass
+ * unreviewed: rewrite the entry for that caller's org id, then add it here.
+ */
+export const REVIEWED_CALLERS: Record<string, readonly string[]> = {
+  "apps/api/src/modules/agent/runtime/tool-card-store.ts#clearToolCardsByKey": [],
+  "apps/api/src/modules/apps/org-features.ts#setOrgAppFeature": [
+    "apps/api/src/modules/apps/org-features.ts",
+  ],
+}
+
+/**
  * Functions whose calls hand on an org id that was reviewed here (a boot or job sweep over
  * every org, an operator command, a row the function just claimed): `file#enclosing` → why.
  * The caller trace stops at a call made from one of them.
  */
 export const REVIEWED_ORIGINS: Record<string, string> = {
+  "apps/api/src/apps/knowledge/trash.ts#runTrashPurge":
+    "the nightly Trash purge (knowledge jobs): each org id is read by the system pool from app_knowledge.documents rows in Trash past 30 days, and purgeOrg selects and deletes only that org's pages (every statement pinned to that org_id), in writeUnlessMoving",
   "apps/api/src/modules/approvals/summary-backfill.ts#backfillApprovalSummaryBatch":
     "the approval summary backfill job (queued by the leader, boot-phase10.ts registerApprovalSummaryBackfill): each org id is read from pending kernel.approval_requests rows that lack a summary, and only that org's rows are read and written, in writeUnlessMoving",
   "apps/api/src/modules/apps/attention-store.ts#processAttentionRefreshJob":
@@ -315,8 +337,8 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "the demo tier's commerce layer: every write goes to opts.org.orgId, the org seedDemoOrg (a reviewed origin) returned after provisioning it and stamping its demo marker; the commerce factories receive it through the layer's SeedContext",
   "apps/api/src/seed/tiers/demo/seed-org.ts#seedDemoOrg":
     "the demo tier's org entry: an org already under the caller's slug is only read (its demo marker, fresh) to refuse it unless it is a demo org (demoMarkRefusal); every write uses the org the org factory's provisioning pass returns (provisionOrgShell), stamped with the demo marker before any account exists",
-  "apps/api/src/seed/tiers/lively/seed-lively.ts#replaceLivelyOrg":
-    "an operator's `liaison seed --tier lively --replace` (a private box, refused in demo mode): the org under the slug the operator named is purged only when its row carries the demo marker, re-read fresh before the purge and again by purgeOrg's assertAllowed before every destructive step",
+  "apps/api/src/seed/tiers/demo/replace-demo-org.ts#replaceSeededDemoOrg":
+    "an operator's `liaison seed --tier lively --replace` or `seed --tier demo --variant visitor --reset` (refused on a public demo box): the org under the slug the operator named is purged only when its row is of class demo, carries the demo marker and is no customer's or the operator's, re-read fresh before the purge and again by purgeOrg's assertAllowed before every destructive step",
   "apps/api/src/seed/tiers/lively/seed-lively.ts#seedLivelyLayers":
     "the lively tier's entry: every activity write goes to world.orgId, the org seedDemoWorld (whose seedDemoOrg is a reviewed origin) just provisioned or adopted under the caller's slug and stamped with the demo marker",
   "apps/api/src/seed/tiers/standard/seed-standard.ts#seedStandardWorld":
@@ -326,7 +348,7 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
   "apps/api/src/seed/tiers/load/seed-load.ts#seedOneLoadOrg":
     "the load tier's per-org entry: every write (the synthetic marker, the bulk volume and its read-back) goes to world.orgId, the org seedDemoWorld (whose seedDemoOrg is a reviewed origin) just provisioned or adopted under the slug `<prefix><i>` and stamped with the demo marker",
   "apps/api/src/seed/tiers/demo/seed-org.ts#clearInterruptedOrg":
-    "the org under the slug the seeder itself claimed (claimOrgSlug) before creating it, still unmarked: purged only while the claim is there and no demo marker is, re-checked by purgeOrg's assertAllowed before every destructive step",
+    "the org under the slug the seeder itself claimed (claimOrgSlug) before creating it, still unmarked: purged only while the claim is there, no demo marker is and the row is of class demo, re-checked by purgeOrg's assertAllowed before every destructive step",
   "apps/api/src/cli/provisioners/liaison-team.ts#verifyRequest":
     "asks whether the org of the config run may decide the server-wide Liaison team switches (canManageInstanceApps): the CLI's org (resolved by the operator's own command) or the org of the agent tool call (ctx.orgId from the kernel); the answer is one boolean about that same org",
   "apps/api/src/app.ts#GET /api/connections/callback":

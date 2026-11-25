@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { validateAppManifest } from "~/modules/apps/contract"
+import {
+  firstPartyOnlyToolKeyErrors,
+  ownsTransactionsHolds,
+  validateAppManifest,
+} from "~/modules/apps/contract"
 
 describe("manifest schema: bulk", () => {
   it("requires perItemParam when dispatchMode=perItem", () => {
@@ -770,5 +774,58 @@ describe("manifest schema: connection multiInstance", () => {
       allowedDomains: ["x.example"],
     })
     expect(r.success).toBe(false)
+  })
+})
+
+describe("manifest schema: where a call may run", () => {
+  const withKeys = () => ({
+    name: "x",
+    version: "1.0.0",
+    tools: {
+      mine: {
+        description: "m",
+        requiredScopes: ["x:y:read"],
+        handler: "h",
+        readOnly: true,
+        humanTurnOnly: true,
+      },
+      private_read: {
+        description: "p",
+        requiredScopes: ["x:y:read"],
+        handler: "h",
+        readOnly: true,
+        dmOnly: true,
+      },
+    },
+  })
+
+  it("the schema accepts both keys as booleans and refuses another type", () => {
+    expect(validateAppManifest(withKeys()).success).toBe(true)
+    const wrong = withKeys()
+    ;(wrong.tools.mine as Record<string, unknown>).humanTurnOnly = "yes"
+    expect(validateAppManifest(wrong).success).toBe(false)
+  })
+
+  it("a third-party manifest cannot declare the two keys", () => {
+    const errors = firstPartyOnlyToolKeyErrors(withKeys())
+    expect(errors).toHaveLength(2)
+    expect(errors[0]).toContain("tools.mine.humanTurnOnly: only a first-party app may declare it")
+    expect(errors[1]).toContain("tools.private_read.dmOnly: only a first-party app may declare it")
+  })
+
+  it("only a vouched app takes a tool off whole-run rollback (ownsTransactions); anyone else's is ignored", () => {
+    const manifest = withKeys()
+    for (const tool of Object.values(manifest.tools) as Array<Record<string, unknown>>) {
+      delete tool.humanTurnOnly
+      delete tool.dmOnly
+    }
+    ;(manifest.tools.mine as Record<string, unknown>).ownsTransactions = true
+    // Declarable, and never a reason to refuse the app.
+    expect(validateAppManifest(manifest).success).toBe(true)
+    expect(firstPartyOnlyToolKeyErrors(manifest)).toEqual([])
+    expect(ownsTransactionsHolds({ ownsTransactions: true }, true)).toBe(true)
+    expect(ownsTransactionsHolds({ ownsTransactions: true }, false)).toBe(false)
+    expect(ownsTransactionsHolds({ ownsTransactions: true, atomic: true }, true)).toBe(false)
+    expect(ownsTransactionsHolds({}, true)).toBe(false)
   })
 })

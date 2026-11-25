@@ -9,6 +9,7 @@
 //  * Drop the down flag after 3 failures: the state stays "on".
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { sql } from "~/db"
+import { isDemoSystemMailConfigured, registerDemoAlertChannel } from "~/infra/email"
 import { isLeader, LeadershipTestAccess, startLeadership, stopLeadership } from "~/infra/leadership"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
@@ -25,12 +26,13 @@ import {
 } from "~/modules/demo/demo-alerts"
 import { DemoBudgetTestAccess, reserveStep, settleStep } from "~/modules/demo/demo-budget"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, reservedMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker } from "~/modules/demo/demo-org"
 import {
   RESERVED_MODEL_DEFAULT,
   VISITOR_MODEL_UPSTREAM_DEFAULT,
 } from "~/modules/demo/demo-spend-ceiling"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 type EnvKey = keyof typeof env
@@ -57,7 +59,7 @@ describe("the demo owner alert", () => {
     await sql`DELETE FROM kernel.demo_spend`
     await clearRedisPatterns(["demo:*"])
     reservedOrg = (await ensureOrg({ slug: "alerts-reserved", name: "Reserved" })).orgId
-    await markOrgAsDemo(reservedOrg, reservedMarker())
+    await markDemoOrgForTest(reservedOrg, reservedMarker())
     await sql`
       INSERT INTO kernel.model_pricing
         (model_id, provider, display_name, input_cost_per_m, output_cost_per_m,
@@ -140,6 +142,18 @@ describe("the demo owner alert", () => {
     restores.push(setEnv("LIAISON_DEMO_MAIL_CAPTURE", true))
     expect(await demoVisitorSpendState()).toBe("no_mail") // no sender registered
     registerDemoAlertMailer(async () => {})
+    expect(await demoVisitorSpendState()).toBe("on")
+  })
+
+  it("a box that sends mail over SMTP only has a demo channel, so visitor spend can be on", async () => {
+    DemoModeTestAccess.set(true)
+    restores.push(setEnv("LIAISON_DEMO_ALERT_EMAIL", "owner@example.com"))
+    restores.push(setEnv("LIAISON_DEMO_MAIL_CAPTURE", false))
+    restores.push(setEnv("LIAISON_DEMO_MAIL_RESEND_API_KEY", undefined))
+    restores.push(setEnv("SYSTEM_RESEND_API_KEY", ""))
+    restores.push(setEnv("SMTP_HOST", "smtp.example.test"))
+    registerDemoAlertChannel()
+    expect(isDemoSystemMailConfigured()).toBe(true)
     expect(await demoVisitorSpendState()).toBe("on")
   })
 

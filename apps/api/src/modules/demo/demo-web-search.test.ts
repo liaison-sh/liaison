@@ -19,12 +19,7 @@ import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { byokEncryptionKey, env } from "~/lib/env"
 import { registerDemoAlertMailer } from "~/modules/demo/demo-alerts"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import {
-  invalidateDemoMarker,
-  markOrgAsDemo,
-  reservedMarker,
-  visitorMarker,
-} from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker, visitorMarker } from "~/modules/demo/demo-org"
 import {
   checkDemoSpendCeiling,
   demoOrgTokensReserved,
@@ -35,6 +30,7 @@ import {
 import { WEB_SEARCH_TOKEN_EQUIVALENT } from "~/modules/demo/demo-spend-ceiling"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 /** Every Exa client constructed, and every query that reached one. */
@@ -105,9 +101,9 @@ describe("demo web_search policy", () => {
     frenchDemoOrgId = (await ensureOrg({ slug: "search-demo-fr", name: "Search Demo FR" })).orgId
     normalOrgId = (await ensureOrg({ slug: "search-normal", name: "Search Normal" })).orgId
     reservedOrgId = (await ensureOrg({ slug: "search-reserved", name: "Search Reserved" })).orgId
-    await markOrgAsDemo(reservedOrgId, reservedMarker())
+    await markDemoOrgForTest(reservedOrgId, reservedMarker())
     for (const id of [demoOrgId, byokDemoOrgId, frenchDemoOrgId]) {
-      await markOrgAsDemo(id, visitorMarker(24))
+      await markDemoOrgForTest(id, visitorMarker(24))
     }
     await setByokExaKey(byokDemoOrgId, VISITOR_KEY)
     await setOrgLocale(frenchDemoOrgId, "fr-FR")

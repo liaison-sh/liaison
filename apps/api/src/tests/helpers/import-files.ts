@@ -15,15 +15,15 @@ const K = () => drizzleSql.raw(schemaRef("kernel"))
 export async function uploadPrivateImportFile(
   orgId: string,
   ownerId: string,
-  ndjson: string,
+  ndjson: string | Uint8Array,
+  /** Another name than `import.ndjson` (a `.zip` is read as an archive). */
+  filename = "import.ndjson",
 ): Promise<string> {
   const fileId = crypto.randomUUID()
   const storageKey = `${orgId}/imports-test/${fileId}.ndjson`
-  await putObject({
-    key: storageKey,
-    body: Buffer.from(ndjson),
-    contentType: "application/x-ndjson",
-  })
+  const body = Buffer.from(ndjson)
+  const mime = filename.endsWith(".zip") ? "application/zip" : "application/x-ndjson"
+  await putObject({ key: storageKey, body, contentType: mime })
   await withPrivilegedDb(orgId, "test-import-file", async (tx) => {
     const threadId = crypto.randomUUID()
     await tx.execute(drizzleSql`
@@ -37,8 +37,8 @@ export async function uploadPrivateImportFile(
     await tx.execute(drizzleSql`
       INSERT INTO ${K()}.files (id, org_id, app, entity_type, entity_id, filename, mime_type,
                                 size_bytes, storage_key, uploaded_by)
-      VALUES (${fileId}::uuid, ${orgId}::uuid, 'kernel', 'thread', ${threadId}, 'import.ndjson',
-              'application/x-ndjson', ${Buffer.byteLength(ndjson)}, ${storageKey}, ${ownerId}::uuid)
+      VALUES (${fileId}::uuid, ${orgId}::uuid, 'kernel', 'thread', ${threadId}, ${filename},
+              ${mime}, ${body.byteLength}, ${storageKey}, ${ownerId}::uuid)
     `)
   })
   return fileId

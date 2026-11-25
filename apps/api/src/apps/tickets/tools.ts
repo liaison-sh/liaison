@@ -275,6 +275,9 @@ export type LoadedTicket = {
   team: string | null
   sensitivity: string | null
   language?: string | null
+  /** `portal` for a client's portal request: replies stay on the portal. */
+  channel?: string | null
+  requester_email?: string | null
 }
 
 /**
@@ -294,7 +297,7 @@ async function loadTicket(
     SELECT id, handle, subject, status, reply_token, source_inbox_id, source_account_id,
            last_outbound_at, last_inbound_at, nudge_sent_at, ack_sent_at,
            closed_reason, merged_into_ticket_id, converted_to_mail_conversation_id,
-           team, sensitivity, language
+           team, sensitivity, language, channel, requester_email
     FROM ${ticketsRel("tickets")}
     WHERE id = ${ticketId} AND org_id = ${orgId}
     LIMIT 1
@@ -1055,6 +1058,37 @@ export function outboundLoopSuppressionHeaders(
   return { "Auto-Submitted": "auto-replied", Precedence: "bulk" }
 }
 
+/**
+ * A reply on a client's portal request: nothing is mailed and no mailbox is read.
+ * The message is stored as written, from the person answering, for the portal to
+ * show; the client is told by a separate notice that carries none of it.
+ */
+async function portalReplyRecord(
+  db: PrivilegedDb,
+  ctx: ToolCtx,
+  ticket: LoadedTicket,
+  body: { htmlBody?: string; textBody?: string },
+): Promise<{
+  messageId: null
+  subject: string
+  from: { email: string; name: string | null }
+  authorName: string
+  htmlBody: string
+  to: string[]
+  cc: string[]
+}> {
+  const agent = await loadActor(db, ctx.orgId, ctx.actor.userId)
+  return {
+    messageId: null,
+    subject: ticket.subject,
+    from: { email: "", name: agent.name },
+    authorName: agent.name,
+    htmlBody: body.htmlBody ?? "",
+    to: ticket.requester_email ? [ticket.requester_email] : [],
+    cc: [],
+  }
+}
+
 async function renderAndSend(
   db: PrivilegedDb,
   ctx: ToolCtx,
@@ -1643,7 +1677,21 @@ export async function preflightTicketsReplyParams(
   params = { ...params, ticketId: ticket.id }
   const pf = preflightCommon(ticket)
   if (!pf.ok) return { ok: false, error: pf.error }
-  if (!ticket.source_inbox_id) {
+  // A client's portal request is answered on the portal, never by mail, so it needs
+  // no inbox and copies nobody.
+  const onPortal = ticket.channel === "portal"
+  if (onPortal && params.cc?.length) {
+    return {
+      ok: false,
+      error: {
+        code: "invalid_params",
+        retryable: false,
+        message:
+          "this ticket is a client's portal request: the reply is read on the portal, so nobody can be copied. Send it without cc.",
+      },
+    }
+  }
+  if (!ticket.source_inbox_id && !onPortal) {
     return {
       ok: false,
       error: { code: "no_inbox", retryable: false, message: "ticket has no source inbox" },
@@ -1743,7 +1791,8 @@ export async function ticketsReply(params: TicketsReplyParams, ctx: ToolCtx): Pr
   const loaded = await loadTicket(ctx.tx, ctx.orgId, params.ticketId)
   if (!loaded.ok) return { error: loaded.error }
   const ticket = loaded.ticket
-  if (!ticket.source_inbox_id) {
+  const onPortal = ticket.channel === "portal"
+  if (!ticket.source_inbox_id && !onPortal) {
     return {
       error: {
         code: "no_inbox",
@@ -1792,9 +1841,11 @@ export async function ticketsReply(params: TicketsReplyParams, ctx: ToolCtx): Pr
       cc: string[]
     }
     try {
-      send = await renderAndSend(db, ctx, ticket, params, "reply", outboundAttachments, {
-        cc: params.cc,
-      })
+      send = onPortal
+        ? await portalReplyRecord(db, ctx, ticket, params)
+        : await renderAndSend(db, ctx, ticket, params, "reply", outboundAttachments, {
+            cc: params.cc,
+          })
     } catch (err) {
       return sendErrorResult(err)
     }
@@ -1998,6 +2049,20 @@ export async function ticketsReply(params: TicketsReplyParams, ctx: ToolCtx): Pr
         "tickets.reply: attachment live update failed after send",
       )
     }
+  }
+  // Post-commit: a portal request's client learns a reply waits, by one system mail
+  // that holds none of it. Not awaited: the reply is saved either way.
+  if ("ok" in result && result.ok && onPortal && ticket.requester_email) {
+    const notice = {
+      orgId: ctx.orgId,
+      requesterEmail: ticket.requester_email,
+      subject: ticket.subject,
+    }
+    void import("~/modules/portal/auth-service")
+      .then((m) => m.sendPortalReplyNotice(notice))
+      .catch((err) =>
+        log.error({ err, ticketId: params.ticketId }, "tickets.reply: portal reply notice failed"),
+      )
   }
   return result
 }

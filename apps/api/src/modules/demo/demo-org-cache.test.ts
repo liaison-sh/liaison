@@ -8,14 +8,15 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
+import { redis } from "~/lib/redis"
 import {
   DemoOrgTestAccess,
   invalidateDemoMarker,
   loadDemoMarker,
-  markOrgAsDemo,
   visitorMarker,
 } from "~/modules/demo/demo-org"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 let orgId: string
@@ -33,7 +34,7 @@ afterAll(async () => {
 describe("the demo marker cache", () => {
   it("re-reads the marker another process wrote, at once", async () => {
     const first = visitorMarker(24)
-    await markOrgAsDemo(orgId, first)
+    await markDemoOrgForTest(orgId, first)
     expect((await loadDemoMarker(orgId))?.expiresAt).toBe(first.expiresAt)
 
     // Another process writes the row and bumps the version; this process's
@@ -47,8 +48,21 @@ describe("the demo marker cache", () => {
     expect((await loadDemoMarker(orgId))?.expiresAt).toBe(later)
   })
 
+  it("drops a marker read while the org was being purged once the purge ends", async () => {
+    await markDemoOrgForTest(orgId, visitorMarker(24))
+    // The purge sweeps the org's Redis keys, its version counter among them,
+    // before it deletes the row: a read in between caches the marker.
+    await redis.del(`demo:marker-version:${orgId}`)
+    expect(await loadDemoMarker(orgId)).not.toBeNull()
+    // Then the row goes (here: its marker), and the purging process says so.
+    await sql`UPDATE kernel.organizations SET settings = settings - 'demo' WHERE id = ${orgId}`
+    await DemoOrgTestAccess.endPurgeAsAnotherProcess(orgId)
+
+    expect(await loadDemoMarker(orgId)).toBeNull()
+  })
+
   it("keeps answering from the cache while nothing changed", async () => {
-    await markOrgAsDemo(orgId, visitorMarker(24))
+    await markDemoOrgForTest(orgId, visitorMarker(24))
     const cached = await loadDemoMarker(orgId)
     // A row change nobody announced is not seen before the TTL: the cache hit.
     await sql`UPDATE kernel.organizations

@@ -41,10 +41,11 @@ function openCreateRoutine(label: string) {
 }
 
 /**
- * P4c-T36: the same list, filtered to ONE agent, is the agent page's Routines
- * tab. `ownerAgentId` replaces the Mine/Shared split (ownership is the filter
- * now) and hides the app-template section, which is an org-level offer rather
- * than something this agent owns.
+ * The same list, filtered to ONE agent, is the agent page's Routines tab.
+ * `ownerAgentId` replaces the Mine/Shared split (ownership is the filter now).
+ * The app-template section shows there only with `showTemplates`: an enabled
+ * template's routine belongs to the enabling person's personal agent, so the
+ * owner's own personal agent page offers them.
  */
 interface Props {
   ownerAgentId?: string
@@ -54,6 +55,8 @@ interface Props {
   onNew?: () => void
   /** The row the master/detail pane is showing, so the list marks it. */
   selectedId?: string | null
+  /** Offer the apps' routine templates on an agent's list (the viewer's own personal agent). */
+  showTemplates?: boolean
 }
 
 const RoutinesList: Component<Props> = (props) => {
@@ -67,6 +70,7 @@ const RoutinesList: Component<Props> = (props) => {
     const owner = scoped()
     if (owner) {
       void loadRoutines(api, { ownerAgentId: owner })
+      if (props.showTemplates) void loadRoutineTemplates(api)
       return
     }
     // Load both buckets once on mount; sub-tabs filter client-side from the
@@ -85,6 +89,8 @@ const RoutinesList: Component<Props> = (props) => {
   async function onEnableTemplate(appName: string, templateKey: string) {
     try {
       await enableRoutineTemplate(api, appName, templateKey)
+      const owner = scoped()
+      if (owner) await loadRoutines(api, { ownerAgentId: owner })
     } catch (err) {
       console.error("Enable routine template failed", err)
     }
@@ -375,9 +381,9 @@ const RoutinesList: Component<Props> = (props) => {
           </For>
         </Show>
 
-        {/* App-provided routine templates (Component A §3.5). An org-level
-            offer, not something this agent owns, so the agent tab has none. */}
-        <Show when={!scoped() && routinesStore.templates.length > 0}>
+        {/* App-provided routine templates: on the flat list, and on the
+            viewer's own personal agent, which owns what they enable. */}
+        <Show when={(!scoped() || props.showTemplates) && routinesStore.templates.length > 0}>
           <div data-testid="routine-templates-section">
             <div class="border-y border-border-subtle bg-surface px-4 py-1.5 text-[11px] font-medium uppercase tracking-wide text-text-tertiary">
               {i18n.t("kernel.agents.appTemplates")}
@@ -390,7 +396,9 @@ const RoutinesList: Component<Props> = (props) => {
                 >
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
-                      <span class="text-[13px] font-medium text-text">{t.templateKey}</span>
+                      <span class="text-[13px] font-medium text-text">
+                        {t.title ?? t.templateKey}
+                      </span>
                       {/* A kernel template is the platform's own, not an app's (S28). */}
                       <Chip>
                         {t.appName === "kernel"

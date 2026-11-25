@@ -4,6 +4,7 @@ import type { RlsClient } from "~/db"
 import type { ActorContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
 import { appsLogger as log } from "~/lib/logger"
+import { readStandingInFor } from "~/modules/approvals/route-world"
 import { attentionItemsRegistry } from "~/modules/apps/app-registries"
 import {
   compareAttentionItems,
@@ -27,6 +28,8 @@ interface RegistryEntry {
   scope?: string
   bundlePath: string
   core: boolean
+  /** Declared `passesOn`: also returns the items of the people the viewer stands in for. */
+  passesOn?: boolean
 }
 
 /**
@@ -39,6 +42,10 @@ interface RegistryEntry {
  * week to go. Items routed to the same approval collapse onto the kernel's
  * item when there is one, else onto the first; a merged-away kind is noted in
  * `alsoKinds` as in `dedupeByEntity`.
+ *
+ * A reminder that a request waits (approvals/routed-reminders.ts) folds into the reader's own card
+ * of it, which already says how long is left. Beside a card filed under someone else it stays:
+ * that card is in a closed group, and the reminder is what shows it.
  */
 export function dedupeByApproval(sorted: AttentionItem[]): AttentionItem[] {
   const keeper = new Map<string, AttentionItem>()
@@ -52,6 +59,10 @@ export function dedupeByApproval(sorted: AttentionItem[]): AttentionItem[] {
   const out: AttentionItem[] = []
   for (const item of sorted) {
     if (item.action?.type !== "decide_approval") {
+      const reminded = (item.metadata?.routedReminder as { approvalId?: string } | undefined)
+        ?.approvalId
+      const card = reminded === undefined ? undefined : keeper.get(reminded)
+      if (card && card.metadata?.placement !== "others") continue
       out.push(item)
       continue
     }
@@ -67,7 +78,12 @@ export function dedupeByApproval(sorted: AttentionItem[]): AttentionItem[] {
   return out
 }
 
-type KernelHandler = (tx: RlsClient, orgId: string, userId: string) => Promise<AttentionItem[]>
+type KernelHandler = (
+  tx: RlsClient,
+  orgId: string,
+  userId: string,
+  forUserIds?: readonly string[],
+) => Promise<AttentionItem[]>
 
 /**
  * One trusted in-process kernel provider (no sandbox), in its own savepoint of
@@ -79,13 +95,16 @@ async function invokeKernelProvider(
   reg: RegistryEntry,
   orgId: string,
   userId: string,
+  forUserIds: readonly string[],
 ): Promise<AttentionItem[]> {
   const mod = await import(reg.bundlePath)
   const handler = mod[reg.handler] as KernelHandler | undefined
   if (typeof handler !== "function") {
     throw new Error(`Kernel attention handler "${reg.handler}" not exported from ${reg.bundlePath}`)
   }
-  return tx.transaction((sp) => handler(sp as unknown as RlsClient, orgId, userId))
+  // Only a provider that declared `passesOn` hears of anyone but the viewer.
+  const passOn = reg.passesOn === true && forUserIds.length > 0 ? [forUserIds] : []
+  return tx.transaction((sp) => handler(sp as unknown as RlsClient, orgId, userId, ...passOn))
 }
 
 /**
@@ -127,6 +146,22 @@ export async function aggregateAttentionItems(args: {
   }
 
   const callerScopes = args.actor.actorType === "user" ? args.actor.scopes : ["*"]
+
+  // The people away today who name the viewer next in line, read once and only when a kernel
+  // provider passes items on (an app's stored list was built with them, attention-store.ts).
+  // Unreadable means nobody: the viewer's own feed never waits on it.
+  let forUserIds: string[] = []
+  if (
+    viewerId &&
+    [...byApp.values()].some(({ entryOrgId, reg }) => entryOrgId === "*" && reg.passesOn === true)
+  ) {
+    forUserIds = await withRlsContext(args.actor, (tx) =>
+      readStandingInFor(tx, args.orgId, viewerId),
+    ).catch((err: unknown) => {
+      log.warn({ err, orgId: args.orgId }, "could not read whom the viewer stands in for")
+      return []
+    })
+  }
 
   // The kernel providers share ONE RLS transaction, one after the other, each
   // in its own savepoint: a transaction each held up to eight request-pool
@@ -200,7 +235,7 @@ export async function aggregateAttentionItems(args: {
           }
         }
         for (const { appName, reg } of kernelProviders) {
-          const run = invokeKernelProvider(tx, reg, orgId, userId)
+          const run = invokeKernelProvider(tx, reg, orgId, userId, forUserIds)
           await runProvider(appName, run)
           // A provider that timed out may still be running on this connection:
           // the next savepoint starts only once it has settled.
@@ -217,6 +252,10 @@ export async function aggregateAttentionItems(args: {
       }
     }
   }
+
+  // A calendar question shows its event's title, read now under the viewer's own access.
+  const { withLiveCalendarTitles } = await import("~/apps/calendar/away-from-calendar")
+  await withLiveCalendarTitles(args.actor, items)
 
   items.sort(compareAttentionItems)
   return { items: dedupeByEntity(dedupeByApproval(items)), errors }

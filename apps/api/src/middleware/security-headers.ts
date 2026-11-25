@@ -24,6 +24,19 @@ export interface SecurityHeadersOptions {
    * store exactly when the delivery decision sends the browser there.
    */
   storageOrigin?: string | null
+  /**
+   * Path prefixes of the public client surfaces (the portal API): their
+   * responses never leave a referrer, are never indexed, never stored by a
+   * cache, and are never framed, whatever the route set.
+   */
+  publicPrefixes?: readonly string[]
+}
+
+/** What every response under a public prefix carries. */
+export const PUBLIC_SURFACE_HEADERS: Readonly<Record<string, string>> = {
+  "Referrer-Policy": "no-referrer",
+  "X-Robots-Tag": "noindex, nofollow",
+  "Cache-Control": "no-store",
 }
 
 export interface ContentSecurityPolicyOptions extends SecurityHeadersOptions {
@@ -45,6 +58,23 @@ export interface ContentSecurityPolicyOptions extends SecurityHeadersOptions {
    * LIAISON_PAY_FRAME_ORIGIN in the managed edition (read per call), else none.
    */
   payFrameOrigin?: string | null
+  /**
+   * A public page a client opens (the token page `/a`, the portal): nothing may frame it, not
+   * even this origin.
+   */
+  publicPage?: boolean
+}
+
+/**
+ * The web pages a client outside the organization opens: the token page and the
+ * client portal (its sign-in page and shell). They are served by the SPA fallback
+ * like any route, with the public surface's headers on top (no referrer, no
+ * index, never framed).
+ */
+export const PUBLIC_PAGE_PATHS: readonly string[] = ["/a", "/portal"]
+
+export function isPublicPagePath(pathname: string): boolean {
+  return PUBLIC_PAGE_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
 }
 
 function payFrameOrigin(explicit: string | null | undefined): string | null {
@@ -98,7 +128,7 @@ export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}
     // itself: under 'none' the frame stayed empty there. So the web shell says 'self': another
     // origin still cannot frame it, an app's frame is a sandbox with an opaque origin, and the
     // file routes never serve HTML inline. Everything else keeps 'none'.
-    `frame-ancestors ${shell ? "'self'" : "'none'"}`,
+    `frame-ancestors ${shell && !options.publicPage ? "'self'" : "'none'"}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -140,20 +170,33 @@ export function inlineScriptHashes(html: string | Uint8Array): string[] {
 export function webShellHeaders(options: {
   html: string | Uint8Array | null
   storageOrigin?: string | null
+  /** The document answers a public page's path (`isPublicPagePath`). */
+  publicPage?: boolean
 }): Record<string, string> {
   const headers: Record<string, string> = { ...BASE_SECURITY_HEADERS }
   if (options.html !== null) {
     headers["Content-Security-Policy"] = contentSecurityPolicy({
       storageOrigin: options.storageOrigin,
       scriptHashes: inlineScriptHashes(options.html),
+      publicPage: options.publicPage,
     })
+  }
+  if (options.publicPage) {
+    headers["Referrer-Policy"] = PUBLIC_SURFACE_HEADERS["Referrer-Policy"] as string
+    headers["X-Robots-Tag"] = PUBLIC_SURFACE_HEADERS["X-Robots-Tag"] as string
   }
   return headers
 }
 
 export function securityHeaders(options: SecurityHeadersOptions = {}): MiddlewareHandler {
+  const { publicPrefixes = [], ...cspOptions } = options
   return async (c, next) => {
     await next()
+    if (publicPrefixes.some((p) => c.req.path.startsWith(p))) {
+      for (const [name, value] of Object.entries(PUBLIC_SURFACE_HEADERS)) c.header(name, value)
+      c.header("X-Frame-Options", BASE_SECURITY_HEADERS["X-Frame-Options"] as string)
+      c.header("Content-Security-Policy", contentSecurityPolicy(cspOptions))
+    }
     c.header("X-Content-Type-Options", BASE_SECURITY_HEADERS["X-Content-Type-Options"] as string)
     c.header(
       "Strict-Transport-Security",
@@ -178,6 +221,6 @@ export function securityHeaders(options: SecurityHeadersOptions = {}): Middlewar
       c.header("Referrer-Policy", BASE_SECURITY_HEADERS["Referrer-Policy"] as string)
     c.header("Permissions-Policy", BASE_SECURITY_HEADERS["Permissions-Policy"] as string)
     if (own.has("Content-Security-Policy")) return
-    c.header("Content-Security-Policy", contentSecurityPolicy(options))
+    c.header("Content-Security-Policy", contentSecurityPolicy(cspOptions))
   }
 }

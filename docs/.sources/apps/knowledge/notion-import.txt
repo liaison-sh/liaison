@@ -1,0 +1,19 @@
+Import from Notion opens its own tab, from the Knowledge home and the sidebar -> apps/web/src/modules/knowledge/KnowledgeHome.tsx (openNotionImport), KnowledgeSidebar.tsx (knowledge-sidebar-import), apps/api/src/apps/knowledge/app.manifest.json (views.tabTypes.import)
+How to export from Notion (Settings, Export all workspace content, Markdown & CSV) -> packages/shared/src/i18n/locales/en/knowledge.json (notionImport.how1, how2, how3)
+Choose the zip or drop it; a PDF, a web page or a file that is not a zip is refused before upload -> apps/web/src/modules/knowledge/notion-import.ts (precheckFile), KnowledgeImportView.tsx (UploadStep)
+One zip or a zip of zips, up to 1 GB -> apps/api/src/modules/imports/builtin/registry.ts (limits.nestedZips, maxUploadBytes)
+The preview creates nothing and reads the whole upload -> apps/api/src/modules/imports/preview.ts (previewBuiltinImport, dryRun)
+Preview counts folders, pages, files and already-here items -> apps/web/src/modules/knowledge/KnowledgeImportView.tsx (PreviewStep), apps/api/src/apps/knowledge/import-kind.ts (checkDocument filesToCopy)
+Storage left shown to administrators -> apps/web/src/modules/knowledge/KnowledgeImportView.tsx (/org/usage, kernel:org:admin)
+Every item that will not come across, by kind -> apps/api/src/modules/imports/preview.ts (namedLossesOf), apps/web/src/modules/knowledge/notion-import.ts (classifyLoss, GROUP_ORDER)
+Who can see these pages: Only me (default), Everyone can view, Everyone can edit -> apps/api/src/modules/imports/builtin/registry.ts (params.access default private), apps/web/src/modules/knowledge/KnowledgeImportView.tsx (ACCESS)
+Changing it checks again; private pages match the person's own imports, shared pages everyone's -> apps/api/src/modules/imports/builtin/registry.ts (builtinSourceLabel), KnowledgeImportView.tsx (chooseAccess)
+The tab can be closed; the import keeps going and the tab finds it again -> apps/web/src/modules/knowledge/notion-import.ts (pickResumableRun), KnowledgeImportView.tsx (onMount recentRuns, POLL_MS)
+Report with search and Copy the list; items past 20,000 counted in the total -> apps/web/src/modules/knowledge/notion-import.ts (summarizeLosses), apps/api/src/modules/imports/runner.ts (addCounters NAMED_MAX)
+What becomes what: folders with folder pages, page links, files, databases as tables of 200 rows -> apps/api/src/modules/imports/builtin/notion-export.js, apps/api/src/apps/knowledge/import-kind.ts
+Importing again creates nothing twice and names what is already here -> apps/api/src/apps/knowledge/import-kind.ts (skipReason)
+Refusals: HTML export, no pages, password, zip bomb, nested too deep -> apps/web/src/modules/knowledge/notion-import.ts (previewRefusal, refusalOfError), apps/api/src/modules/imports/transform-run.ts (reasons), parsers/zip.ts
+Undo the import, Remove them; a changed page and its folder are kept and named with why -> apps/web/src/modules/knowledge/KnowledgeImportView.tsx (RunStep onUndo, keptOf, UndoneReport), apps/api/src/modules/imports/undo.ts (UndoRefusal)
+Permissions kernel:imports:run, kernel:imports:read, kernel:imports:undo; without them the tab says to ask an administrator -> apps/web/src/modules/knowledge/KnowledgeImportView.tsx (canImport, noScope, undoNoScope), apps/api/src/modules/imports/routes.ts
+The run appears under Settings, Organization, Imports -> apps/web/src/modules/settings/imports/ImportsSettings.tsx
+Import from Notion shown only with kernel:imports:run and kernel:imports:read -> apps/web/src/modules/knowledge/notion-import.ts (canImportNotion), KnowledgeHome.tsx, KnowledgeSidebar.tsx

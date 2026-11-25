@@ -78,6 +78,13 @@ export interface HostImportContext {
   checkDimension(dimension: string, value: string): boolean
 }
 
+/** A preview's check of one record, with what the run would report for it
+ *  (the items it would not carry, a skip's reason). */
+export interface HostCheckOutcome {
+  status: "created" | "skipped"
+  report?: Record<string, unknown>
+}
+
 /** What `afterKind` created. */
 export interface HostAfterKindOutcome {
   rows: ImportRowRef[]
@@ -111,7 +118,8 @@ export interface HostImportHandler {
   afterKind?(tx: PrivilegedDb, ctx: HostImportContext): Promise<HostAfterKindOutcome>
   /**
    * A preview's check of one record: what importRecord would do, writing
-   * nothing ("created" or "skipped"; a refusal throws, as importRecord's does).
+   * nothing ("created" or "skipped", alone or with the record's report; a refusal
+   * throws, as importRecord's does).
    * Called in a READ ONLY privileged transaction pinned to the run's org, with
    * the run's context; share the refusals with importRecord so a preview
    * refuses what the run would.
@@ -121,7 +129,7 @@ export interface HostImportHandler {
     ctx: HostImportContext,
     record: Record<string, unknown>,
     dedupValue: string,
-  ): Promise<"created" | "skipped">
+  ): Promise<"created" | "skipped" | HostCheckOutcome>
   /** Runs after a batch committed (search indexing); returns report counters. */
   afterCommit?(
     ctx: HostImportContext,
@@ -170,6 +178,8 @@ export class ImportError extends Error {
         : code === "not_final" || code === "locked" || code === "already_undone"
           ? 409
           : 400,
+    /** A finer reason a screen translates (a zip parser's code: `zip_encrypted`, ...). */
+    readonly reason?: string,
   ) {
     super(message)
     this.name = "ImportError"

@@ -177,4 +177,6 @@ company knowledge goes to the skill covering the task or a Knowledge document, n
 memory is read by that agent only -> apps/api/src/modules/agent/prompts/agent-charter.md:15
 skill and knowledge writes wait for approval -> apps/api/src/modules/agent/prompts/agent-charter.md:15
 agent asks where first when it could go in more than one place -> apps/api/src/modules/agent/prompts/agent-charter.md:15
+agent reads and tells times in the person's timezone, else the workspace's; tool results stay stored in UTC -> apps/api/src/modules/agent/tools/model-times.ts:1 ; apps/api/src/modules/agent/tools/tool-bridge.ts (toModelOutput) ; apps/api/src/modules/agent/context/context.ts (replayedToolResultPart)
 A shared agent never reads a person's own mailbox -> apps/api/src/modules/agent/runtime/run-context.ts:302 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:324 ; apps/api/src/modules/agent/media/mail-attachment-read.ts:150
+Days off are recorded with set_away (loaded every turn), never kept as a memory -> apps/api/src/modules/agent/prompts/system.md:128 ; apps/api/src/modules/agent/tools/kernel-tools.ts:3815

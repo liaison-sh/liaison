@@ -19,15 +19,11 @@ import path from "node:path"
 import { sql } from "drizzle-orm"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import {
-  invalidateDemoMarker,
-  loadDemoMarker,
-  markOrgAsDemo,
-  reservedMarker,
-} from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, loadDemoMarker, reservedMarker } from "~/modules/demo/demo-org"
 import { resetDemoOrgContent } from "~/modules/demo/demo-reset"
 import { computeUnreadMessageCount } from "~/modules/push/badge-count"
 import { messagesListShows } from "~/modules/threads/thread"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { DEMO_UNREAD_CONVERSATIONS, seedDemoAccounts } from "./seed-accounts"
 import { type SeedDemoOrgResult, seedDemoOrg } from "./seed-org"
 import { seedDemoSupport } from "./seed-support"
@@ -109,7 +105,7 @@ beforeAll(async () => {
   if (typeof leftoverId === "string") {
     invalidateDemoMarker(leftoverId)
     if ((await loadDemoMarker(leftoverId)) === null) {
-      await markOrgAsDemo(leftoverId, reservedMarker())
+      await markDemoOrgForTest(leftoverId, reservedMarker())
     }
   }
   org = await seedDemoOrg({

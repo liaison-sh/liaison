@@ -190,18 +190,25 @@ test("projects.checklist: levels, fail note, counters, non-blocking drop, card o
   await expect(counter(card, "Dev")).toHaveClass(/\btext-error\b/)
   await expect(counter(card, "Beta")).not.toHaveClass(/\btext-(error|success)\b/)
   // The error token resolves to a real colour, distinct from the neutral one.
-  const colours = await card.evaluate((el) => {
-    const pick = (lvl: string) =>
-      getComputedStyle(
-        el.querySelector(`[data-testid="checklist-counter"][data-level="${lvl}"]`) as Element,
-      ).color
+  // Resolved and read in one evaluate: `card.evaluate` resolves the element,
+  // then runs the function in a second round trip, and a board refetch in
+  // between re-renders the card, leaving a detached node whose computed
+  // colour is "".
+  const colours = await page.evaluate((id) => {
+    const el = document.querySelector(`[data-testid="project-kanban-card"][data-task-id="${id}"]`)
+    if (!el) throw new Error(`card ${id} is not on the board`)
+    const pick = (lvl: string) => {
+      const counter = el.querySelector(`[data-testid="checklist-counter"][data-level="${lvl}"]`)
+      if (!counter) throw new Error(`card ${id} has no ${lvl} counter`)
+      return getComputedStyle(counter).color
+    }
     const probe = document.createElement("span")
     probe.style.color = "var(--color-error)"
     document.body.appendChild(probe)
     const errorToken = getComputedStyle(probe).color
     probe.remove()
     return { ai: pick("AI"), dev: pick("Dev"), beta: pick("Beta"), errorToken }
-  })
+  }, taskId)
   expect(colours.dev).toBe(colours.errorToken)
   expect(colours.dev).not.toBe(colours.beta)
   expect(colours.dev).not.toBe(colours.ai)

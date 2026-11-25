@@ -14,13 +14,9 @@ import { sql } from "~/db"
 import { errorHandler } from "~/middleware/error-handler"
 import { demoExpiryMiddleware, listExpiredDemoOrgs } from "~/modules/demo/demo-expiry"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import {
-  invalidateDemoMarker,
-  markOrgAsDemo,
-  reservedMarker,
-  visitorMarker,
-} from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 /** A one-route app whose only middleware is the one under test. */
@@ -50,10 +46,10 @@ describe("demo visitor expiry", () => {
     expiredOrgId = (await ensureOrg({ slug: "expiry-gone", name: "Expiry Gone" })).orgId
     reservedOrgId = (await ensureOrg({ slug: "expiry-reserved", name: "Expiry Reserved" })).orgId
     normalOrgId = (await ensureOrg({ slug: "expiry-normal", name: "Expiry Normal" })).orgId
-    await markOrgAsDemo(liveOrgId, visitorMarker(72))
+    await markDemoOrgForTest(liveOrgId, visitorMarker(72))
     // A marker minted 72 hours in the past, i.e. one that expired an hour ago.
-    await markOrgAsDemo(expiredOrgId, visitorMarker(72, new Date(Date.now() - 73 * HOUR)))
-    await markOrgAsDemo(reservedOrgId, reservedMarker())
+    await markDemoOrgForTest(expiredOrgId, visitorMarker(72, new Date(Date.now() - 73 * HOUR)))
+    await markDemoOrgForTest(reservedOrgId, reservedMarker())
   })
 
   afterAll(async () => {
@@ -128,7 +124,11 @@ describe("demo visitor expiry", () => {
 
     it("skips a hand-mangled marker instead of failing the whole sweep", async () => {
       DemoModeTestAccess.set(true)
-      const { orgId } = await ensureOrg({ slug: "expiry-mangled", name: "Expiry Mangled" })
+      const { orgId } = await ensureOrg({
+        slug: "expiry-mangled",
+        name: "Expiry Mangled",
+        class: "demo",
+      })
       await sql`
         UPDATE kernel.organizations
         SET settings = COALESCE(settings, '{}'::jsonb) ||

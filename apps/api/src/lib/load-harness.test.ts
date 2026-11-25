@@ -21,7 +21,8 @@ import {
 } from "~/lib/load-harness"
 import { LOAD_SCRIPT_REPLIES, loadScriptFor } from "~/modules/agent/providers/load-scripts"
 import { resolveModelFromCredit } from "~/modules/agent/providers/provider"
-import { markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { visitorMarker } from "~/modules/demo/demo-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 
 const KEY = crypto.randomBytes(32).toString("hex")
 const LOAD_ORG = crypto.randomUUID()
@@ -225,12 +226,12 @@ describe("flagging an org", () => {
     try {
       LoadHarnessTestAccess.setKey(null)
       const marker = visitorMarker(24)
-      await expect(markOrgAsDemo(org, marker, { loadHarness: true })).rejects.toThrow(/off/)
+      await expect(markDemoOrgForTest(org, marker, { loadHarness: true })).rejects.toThrow(/off/)
       const [untouched] = await sql<{ settings: Record<string, unknown> }[]>`
         SELECT settings FROM kernel.organizations WHERE id = ${org}`
       expect(untouched!.settings).toEqual({ keep: 1 })
       LoadHarnessTestAccess.setKey(KEY)
-      await markOrgAsDemo(org, marker, { loadHarness: true })
+      await markDemoOrgForTest(org, marker, { loadHarness: true })
       const [row] = await sql<{ settings: Record<string, unknown> }[]>`
         SELECT settings FROM kernel.organizations WHERE id = ${org}`
       expect(row!.settings).toEqual({ keep: 1, demo: marker, loadHarness: true })

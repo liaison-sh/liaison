@@ -1,0 +1,1 @@
+A sub-agent reads times in the person's zone, else the workspace's -> apps/api/src/modules/agent/subruns/subrun-worker.ts (runSubRun) ; apps/api/src/modules/agent/tools/model-times.ts (modelTimeZoneOf)

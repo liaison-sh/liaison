@@ -1,0 +1,6 @@
+portal access log kept apart from the audit purge -> apps/api/src/modules/org/audit-retention.ts (purgeExpiredAuditLog)
+portal access log 12 months by default, 6 to 36 with a reason -> apps/api/src/modules/org/audit-retention.ts (purgeExpiredPortalLog)
+portal settings validation: length and reason -> packages/shared/src/validation/org-kernel-settings.ts (portalSettingsSchema)
+PUT /api/contacts/portal-settings, portal admin scope -> apps/api/src/modules/portal/admin-routes.ts (portalSettingsRoutes)
+notice shown on the sign-in page -> apps/api/src/modules/portal/auth-service.ts (portalBranding)
+log read with the portal log scope only -> apps/api/src/modules/portal/access.ts (readPortalAccessLog)

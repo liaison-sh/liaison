@@ -40,6 +40,7 @@ import {
 } from "~/db/schema/kernel/apps-installed"
 import { organizations } from "~/db/schema/kernel/organizations"
 import { unregisterAppJobHandlers } from "~/infra/jobs/jobs"
+import { isTestEnv } from "~/lib/env"
 import { appsLogger as log } from "~/lib/logger"
 import { publishRedis, REDIS_PREFIX, redisSub } from "~/lib/redis"
 import { appOwnerOrg, appVisibleToOrg } from "~/modules/apps/app-org-scope"
@@ -1193,6 +1194,9 @@ export async function initAppActivationSync(): Promise<void> {
   } catch (err) {
     log.warn({ err }, "Reading the installed apps at startup failed; the upkeep will")
   }
+  // A test process holds apps registered from source, with no install row: the upkeep would
+  // unregister them ten minutes in, in the middle of whatever file runs then.
+  if (isTestEnv()) return
   const upkeep = setInterval(() => {
     void runInstalledAppsUpkeep().catch((err) => log.warn({ err }, "Installed apps upkeep failed"))
   }, APP_UPKEEP_INTERVAL_MS)

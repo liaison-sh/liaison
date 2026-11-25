@@ -16,9 +16,10 @@ import { createEgressMethods } from "~/modules/apps/sandbox/bridge/egress"
 import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { DemoRestrictionError } from "~/modules/demo/demo-egress"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const CREDS = {
@@ -75,7 +76,7 @@ describe("demo egress lockdown", () => {
         role: "admin",
       })
     ).userId
-    await markOrgAsDemo(demoOrgId, visitorMarker(24))
+    await markDemoOrgForTest(demoOrgId, visitorMarker(24))
     SandboxBridgeTestAccess.setSmtpSend(async (_c, _i, message) => {
       onTheWire.push(message)
       return { messageId: "delivered", deliveryState: "sent" }
@@ -116,6 +117,24 @@ describe("demo egress lockdown", () => {
     expect(err.message).toContain("demo instance")
     // A silent sink would have looked like success and recorded nothing.
     expect(onTheWire).toEqual([])
+  })
+
+  it("records a demo org's mail to its fictional people as captured, and nothing reaches the transport", async () => {
+    DemoModeTestAccess.set(true)
+    const send = smtpBridge(demoOrgId, demoUserId)
+    const result = JSON.parse(
+      await send({ to: ["noor@brasserie.example"], subject: "Hi", textBody: "Hi" }),
+    )
+    expect(result).toMatchObject({ deliveryState: "delivered", captured: true })
+    expect(typeof result.messageId).toBe("string")
+    expect(onTheWire).toEqual([])
+  })
+
+  it("a normal org's send is not marked captured", async () => {
+    DemoModeTestAccess.set(true)
+    const send = smtpBridge(normalOrgId, normalUserId)
+    const result = JSON.parse(await send({ to: ["customer@example.com"], subject: "Hi" }))
+    expect(result.captured).toBeUndefined()
   })
 
   it("leaves a normal org on the same box sending, so the check is keyed on the org", async () => {

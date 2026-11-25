@@ -27,6 +27,9 @@ export const ATTENTION_KINDS = [
   // A routine run waiting for its owner's private mailbox: an item of the
   // owner's approvals list (Run now, Dismiss).
   "routine_mailbox_wait",
+  // A request sent outside the organization to sign, accept or approve: news
+  // for its sender (decided, opened, asked, locked), and a staff signer's turn.
+  "client_action",
 ] as const
 
 export type AttentionKind = (typeof ATTENTION_KINDS)[number]

@@ -9,6 +9,7 @@ import {
   canSeeInList,
   decidingScope,
   decidingScopeForToolDef,
+  decidingScopeOfRow,
   factsFromSummary,
   holdsDecidingScope,
   isNotified,
@@ -43,6 +44,17 @@ describe("decidingScope (Q1)", () => {
 
   it("falls back to <app>:approve only when the row carries no override", () => {
     expect(decidingScope(facts({ toolName: "knowledge:update" }))).toBe("knowledge:approve")
+  })
+
+  it("reads the same from a row's two columns, and refuses one a SELECT left out", () => {
+    for (const approveScope of [null, "", "kernel:skills:approve"]) {
+      expect(decidingScopeOfRow("tickets:reply", approveScope)).toBe(
+        decidingScope(facts({ approveScope })),
+      )
+    }
+    expect(() => decidingScopeOfRow("tickets:reply", undefined as unknown as null)).toThrow(
+      "approveScope",
+    )
   })
 
   it("never asks for admin-grade kernel:approve on a domain (custom-scope) approval", () => {

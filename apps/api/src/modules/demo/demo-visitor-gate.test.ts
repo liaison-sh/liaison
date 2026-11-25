@@ -71,7 +71,7 @@ import {
   snapshot,
 } from "~/modules/demo/demo-budget"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { DemoReservationRequiredError } from "~/modules/demo/demo-spend"
 import {
   microEurOfUsd,
@@ -82,6 +82,7 @@ import {
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { invalidateOrgEmbedder, resolveOrgEmbedder } from "~/modules/search/message-indexer"
 import { aiModelsRoutes } from "~/modules/settings/ai-models-routes"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 /**
@@ -140,8 +141,8 @@ describe("the box key is a capability for demo visitor orgs", () => {
     visitorOrg = (await ensureOrg({ slug: "visitor-gate-v", name: "Visitor" })).orgId
     unverifiedOrg = (await ensureOrg({ slug: "visitor-gate-u", name: "Unverified" })).orgId
     normalOrg = (await ensureOrg({ slug: "visitor-gate-n", name: "Normal" })).orgId
-    await markOrgAsDemo(visitorOrg, visitorMarker(24))
-    await markOrgAsDemo(unverifiedOrg, visitorMarker(24))
+    await markDemoOrgForTest(visitorOrg, visitorMarker(24))
+    await markDemoOrgForTest(unverifiedOrg, visitorMarker(24))
     await sql`
       INSERT INTO kernel.model_pricing
         (model_id, provider, display_name, input_cost_per_m, output_cost_per_m,

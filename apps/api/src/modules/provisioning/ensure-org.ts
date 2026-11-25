@@ -26,7 +26,7 @@
  */
 import { eq } from "drizzle-orm"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
-import { organizations, roleDimensionGrants } from "~/db/schema/kernel"
+import { type OrgClass, organizations, roleDimensionGrants } from "~/db/schema/kernel"
 import { initOrgCredits } from "~/modules/agent/credits/credit-service"
 import { ensureBaseAgentTx } from "~/modules/agent/directory/base-agent"
 import { ensureAppsForOrg } from "~/modules/apps/init"
@@ -42,6 +42,27 @@ export interface EnsureOrgInput {
   timezone?: string
   locale?: string
   credits?: { currency?: string; initial?: string }
+  /**
+   * The class a CREATED org gets (default `standard`), written with the row and
+   * never changed. Given, an org that exists under the slug with another class
+   * is refused (`OrgClassMismatchError`); left out, an existing org's class is
+   * not looked at.
+   */
+  class?: OrgClass
+}
+
+/** An org exists under the slug, and it is not of the class the caller makes. */
+export class OrgClassMismatchError extends Error {
+  constructor(
+    readonly slug: string,
+    readonly expected: OrgClass,
+    readonly found: OrgClass,
+  ) {
+    super(
+      `org '${slug}' exists and is a ${found} org, not a ${expected} one: an org's class never changes`,
+    )
+    this.name = "OrgClassMismatchError"
+  }
 }
 
 export interface EnsureOrgResult {
@@ -66,12 +87,16 @@ export async function ensureOrg(input: EnsureOrgInput): Promise<EnsureOrgResult>
         name: organizations.name,
         timezone: organizations.timezone,
         defaultLocale: organizations.defaultLocale,
+        class: organizations.class,
       })
       .from(organizations)
       .where(eq(organizations.slug, slug))
       .limit(1)
 
     if (existing) {
+      if (input.class !== undefined && existing.class !== input.class) {
+        throw new OrgClassMismatchError(slug, input.class, existing.class)
+      }
       // Update only the fields that changed — leave `updated_at` untouched
       // when nothing differs so a no-op re-run is observably idempotent.
       const patch: { name?: string; timezone?: string; defaultLocale?: string } = {}
@@ -92,6 +117,7 @@ export async function ensureOrg(input: EnsureOrgInput): Promise<EnsureOrgResult>
         slug,
         ...(timezone !== undefined ? { timezone } : {}),
         ...(locale !== undefined ? { defaultLocale: locale } : {}),
+        ...(input.class !== undefined ? { class: input.class } : {}),
       })
       .returning({ id: organizations.id })
 

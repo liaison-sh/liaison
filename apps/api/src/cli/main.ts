@@ -865,6 +865,12 @@ async function filesPurgeDeletedMessageAttachments(argv: string[]): Promise<numb
   return await runPurgeDeletedMessageAttachmentsCli(argv.slice(2))
 }
 
+// Removes linked pages' titles from Knowledge texts stored before links held only ids.
+async function knowledgeLinksBackfill(argv: string[]): Promise<number> {
+  const { runKnowledgeLinksBackfillCli } = await import("~/cli/knowledge-links-backfill")
+  return await runKnowledgeLinksBackfillCli(argv.slice(2))
+}
+
 // Fire event routines again for the events they never handled (a dry run
 // unless --execute): the scheduled reconciler's one shot backfill.
 async function routinesReconcile(argv: string[]): Promise<number> {
@@ -989,6 +995,7 @@ export const HANDLERS: Record<CommandName, Handler> = {
   "org transfer probe-clear": orgTransfer,
   "org transfer agent": orgTransfer,
   "files purge-deleted-message-attachments": filesPurgeDeletedMessageAttachments,
+  "knowledge links-backfill": knowledgeLinksBackfill,
   "routines reconcile": routinesReconcile,
   "approval-reminders run": approvalReminders,
   "tour start": tour,

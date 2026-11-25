@@ -7,7 +7,7 @@ Every Liaison process opens a few PostgreSQL connection pools. With a connection
 
 ## The pools
 
-A process has up to five pools:
+A process has up to six pools:
 
 | Pool | What uses it |
 |---|---|
@@ -16,8 +16,9 @@ A process has up to five pools:
 | privileged | Short privileged reads and writes: auth checks, connection tokens, system queries. Agent and cron jobs run their privileged work here too. |
 | jobs | Background jobs, webhook retries and app event handlers. |
 | privileged-jobs | Privileged transactions of background work. |
+| portal | Reads of the client portal, as its own login `liaison_portal`. Split logins only; api and single-container processes. |
 
-The request and jobs pools log in as a separate, unprivileged login when `DATABASE_REQUEST_PASSWORD` is set (split logins). Without it there are three pools: request is the main pool, and privileged-jobs is the jobs pool.
+The request and jobs pools log in as a separate, unprivileged login when `DATABASE_REQUEST_PASSWORD` is set (split logins). The portal pool logs in as `liaison_portal` with the same password: the migration step gives that login its password, as it does for the request login. Without `DATABASE_REQUEST_PASSWORD` there are three pools: request is the main pool, privileged-jobs is the jobs pool, and there is no portal pool, so every client portal route answers 503.
 
 ## Set the budget
 
@@ -38,10 +39,10 @@ Without `DB_CELL_MAX_CONNECTIONS` nothing is planned: the pools keep their old s
 
 Each role starts from a floor:
 
-| Role | main | request | privileged | jobs | privileged-jobs |
-|---|---|---|---|---|---|
-| api (split logins) | 5 | 6 | 10 | 3 | 2 |
-| worker (split logins) | 5 | 7 | 15 | 3 | 2 |
+| Role | main | request | privileged | jobs | privileged-jobs | portal |
+|---|---|---|---|---|---|---|
+| api (split logins) | 5 | 4 | 10 | 3 | 2 | 2 |
+| worker (split logins) | 5 | 7 | 15 | 3 | 2 | 0 |
 
 The api's privileged floor of 10 is room for two conversation views opening at once, each with its customer card, beside auth checks. Its jobs pool fits two app event handlers at once (they run in the process that published the event, usually an api) plus one connection for short work such as inbound webhooks. The worker's privileged pool is the kernel's job slots (cron 2, agent 4, media 2, bulk 1, webhook 1, plus one) and 4 for nested reads; the kernel never runs more job slots than the pool fits.
 
@@ -66,7 +67,7 @@ With `DB_CELL_ENDPOINT=direct` (the default), the process also reads the databas
 
 ## Behind PgBouncer
 
-Set `DB_CELL_ENDPOINT=pooler` when `DATABASE_URL` points at PgBouncer or a similar pooler. The process then skips the server check, and its `pool_plan` line adds `perLogin`: the connections it opens per login (the request login and the privileged one). Size each login's `pool_size` in the pooler for those numbers times the replicas.
+Set `DB_CELL_ENDPOINT=pooler` when `DATABASE_URL` points at PgBouncer or a similar pooler. The process then skips the server check, and its `pool_plan` line adds `perLogin`: the connections it opens per login (the request login, the privileged one and the portal login). Size each login's `pool_size` in the pooler for those numbers times the replicas, and add `liaison_portal` to the pooler's user list.
 
 ## Jobs wait for a slot
 

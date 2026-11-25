@@ -51,12 +51,7 @@ import { env } from "~/lib/env"
 import { describeDbError } from "~/lib/transient-db-error"
 import { listExpiredDemoOrgs } from "~/modules/demo/demo-expiry"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import {
-  invalidateDemoMarker,
-  markOrgAsDemo,
-  reservedMarker,
-  visitorMarker,
-} from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker, visitorMarker } from "~/modules/demo/demo-org"
 import {
   completeDemoOrgReset,
   DemoOrgGuardError,
@@ -70,8 +65,13 @@ import {
 } from "~/modules/demo/demo-reset"
 import { DemoSeederTestAccess, setDemoSeeder } from "~/modules/demo/demo-seeder"
 import { DEMO_WAREHOUSE_DSN_ENV } from "~/modules/demo/warehouse"
+import { installDemoGithubConnection } from "~/modules/demo/worlds/studio/github/connection"
 import { OrgPurgeIncompleteError } from "~/modules/org/purge/rows"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { seedContext } from "~/seed/context"
+import { upsertAppRow } from "~/seed/factories/app-tables"
+import { seedPortalPerson } from "~/seed/factories/people/portal-people"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
 import { seedDemoOrg } from "./seed-org"
 
@@ -100,9 +100,9 @@ function setReviewerPassword(value: string): void {
   ;(env as { LIAISON_DEMO_REVIEWER_PASSWORD: string }).LIAISON_DEMO_REVIEWER_PASSWORD = value
 }
 
-async function makeOrg(key: string): Promise<Fixture> {
+async function makeOrg(key: string, orgClass: "standard" | "demo" = "demo"): Promise<Fixture> {
   const slug = `${PREFIX}-${key}`
-  const { orgId } = await ensureOrg({ slug, name: `Demo reset ${key}` })
+  const { orgId } = await ensureOrg({ slug, name: `Demo reset ${key}`, class: orgClass })
   const fixture = { key, slug, orgId }
   fixtures[key] = fixture
   return fixture
@@ -278,22 +278,28 @@ beforeAll(async () => {
     process.env.LIAISON_APPS_DIR = ownAppsDir
   }
   await installFromDist("invoicing", crypto.randomUUID())
+  // Agreements, for the services world's signed records (versions and signature events are legal
+  // records, write-once like a legal original).
+  await installFromDist("agreements", crypto.randomUUID())
 
   const expiredVisitor = await makeOrg("expired-visitor")
   await populate(expiredVisitor.orgId)
   // Two days past its own TTL.
-  await markOrgAsDemo(
+  await markDemoOrgForTest(
     expiredVisitor.orgId,
     visitorMarker(24, new Date(NOW.getTime() - 72 * 3600_000)),
   )
 
   const liveVisitor = await makeOrg("live-visitor")
-  await markOrgAsDemo(liveVisitor.orgId, visitorMarker(48, NOW))
+  await markDemoOrgForTest(liveVisitor.orgId, visitorMarker(48, NOW))
 
   const reserved = await makeOrg("reserved")
-  await markOrgAsDemo(reserved.orgId, reservedMarker(new Date(NOW.getTime() - 90 * 86_400_000)))
+  await markDemoOrgForTest(
+    reserved.orgId,
+    reservedMarker(new Date(NOW.getTime() - 90 * 86_400_000)),
+  )
 
-  await makeOrg("plain")
+  await makeOrg("plain", "standard")
 
   const malformed = await makeOrg("malformed")
   // Hand written into the jsonb, exactly the way an operator's SQL would get it
@@ -308,25 +314,26 @@ beforeAll(async () => {
   })
   invalidateDemoMarker(malformed.orgId)
 
-  // The pair the content reset runs against: two marked demo orgs holding the
-  // SAME rows, so "it cleared the right one" is an assertion and not a hope.
+  // The pair the content reset runs against (it takes reserved orgs alone): two
+  // holding the SAME rows, so "it cleared the right one" is an assertion and not a hope.
   const target = await makeOrg("reset-target")
   await populate(target.orgId)
-  await markOrgAsDemo(target.orgId, visitorMarker(72, NOW))
+  await markDemoOrgForTest(target.orgId, reservedMarker(NOW))
 
   const bystander = await makeOrg("reset-bystander")
   await populate(bystander.orgId)
-  await markOrgAsDemo(bystander.orgId, visitorMarker(72, NOW))
+  await markDemoOrgForTest(bystander.orgId, reservedMarker(NOW))
 }, 300_000)
 
 afterAll(async () => {
   DemoSeederTestAccess.reset()
   DemoModeTestAccess.set(true)
   // Leave nothing behind: every fixture still standing is force expired as a
-  // visitor org and collected through the same path under test.
+  // visitor org (a demo org first: `markDemoOrgForTest` gives it the class) and
+  // collected through the same path under test.
   for (const fixture of Object.values(fixtures)) {
     if (!(await orgExists(fixture.orgId))) continue
-    await markOrgAsDemo(fixture.orgId, visitorMarker(1, new Date(Date.now() - 48 * 3600_000)))
+    await markDemoOrgForTest(fixture.orgId, visitorMarker(1, new Date(Date.now() - 48 * 3600_000)))
     await purgeDemoOrg(fixture.orgId)
   }
   DemoModeTestAccess.set(null)
@@ -592,7 +599,7 @@ describe("legal records and honest refusals", () => {
   it("purges a demo org holding a legal original entirely", async () => {
     const org = await makeOrg("legal-visitor")
     await populate(org.orgId)
-    await markOrgAsDemo(org.orgId, visitorMarker(1, new Date(NOW.getTime() - 48 * 3600_000)))
+    await markDemoOrgForTest(org.orgId, visitorMarker(1, new Date(NOW.getTime() - 48 * 3600_000)))
     expect(await rowCount("app_invoicing.legal_originals", org.orgId)).toBe(1)
 
     const result = await purgeDemoOrg(org.orgId, NOW)
@@ -636,7 +643,7 @@ describe("legal records and honest refusals", () => {
     const schema = `app_purge_refusal_${process.pid}`
     const org = await makeOrg("refusing-visitor")
     await populate(org.orgId)
-    await markOrgAsDemo(org.orgId, visitorMarker(1, new Date(NOW.getTime() - 48 * 3600_000)))
+    await markDemoOrgForTest(org.orgId, visitorMarker(1, new Date(NOW.getTime() - 48 * 3600_000)))
     await withSystemDb("demo-reset-test-refusal-setup", async (tx) => {
       await tx.execute(sql.raw(`CREATE SCHEMA ${schema}`))
       await tx.execute(
@@ -682,5 +689,102 @@ describe("legal records and honest refusals", () => {
     }
     // With the refusing table gone, the next run collects the org.
     expect((await purgeDemoOrg(org.orgId, NOW)).purged).toBe(true)
+  }, 300_000)
+})
+
+/** Every table with an `org_id` column that still holds a row of `orgId`, with its count. */
+async function rowsLeftAnywhere(orgId: string): Promise<Record<string, number>> {
+  return withSystemDb("demo-reset-test-residue", async (tx) => {
+    const result = await tx.execute(sql`
+      SELECT c.table_schema || '.' || c.table_name AS t,
+        (xpath('/row/n/text()', query_to_xml(format('SELECT count(*) AS n FROM %I.%I WHERE org_id = %L',
+          c.table_schema, c.table_name, ${orgId}::text), false, true, '')))[1]::text::int AS n
+      FROM information_schema.columns c
+      JOIN information_schema.tables t
+        ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'
+      WHERE c.column_name = 'org_id' AND (c.table_schema = 'kernel' OR c.table_schema LIKE 'app\\_%')
+    `)
+    const rows = (
+      Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? [])
+    ) as Array<{
+      t: string
+      n: number
+    }>
+    return Object.fromEntries(rows.filter((r) => r.n > 0).map((r) => [r.t, r.n]))
+  })
+}
+
+describe("a services world visitor org", () => {
+  it("the reaper leaves nothing of its agreements, its repository stand-in connection or its portal people", async () => {
+    const org = await makeOrg("services-visitor")
+    const userId = await someUserId(org.orgId)
+    const ctx = seedContext({ orgId: org.orgId, now: NOW })
+    const companyId = crypto.randomUUID()
+    const contactId = crypto.randomUUID()
+    const agreementId = crypto.randomUUID()
+    const versionId = crypto.randomUUID()
+    await withSystemDb("demo-reset-test-services", async (tx) => {
+      await tx.execute(sql`
+        INSERT INTO kernel.companies (id, org_id, handle, name) VALUES (${companyId}::uuid, ${org.orgId}::uuid, 'client-company', 'Client company')
+      `)
+      await tx.execute(sql`
+        INSERT INTO kernel.contacts (id, org_id, handle, name, company_id)
+        VALUES (${contactId}::uuid, ${org.orgId}::uuid, 'client-person', 'Client person', ${companyId}::uuid)
+      `)
+      await upsertAppRow(tx, "agreements", "agreements", {
+        id: agreementId,
+        org_id: org.orgId,
+        number: "AG-1",
+        kind: "change_request",
+        title: "Change request",
+        status: "accepted",
+      })
+      await upsertAppRow(tx, "agreements", "agreement_versions", {
+        id: versionId,
+        org_id: org.orgId,
+        agreement_id: agreementId,
+        number: 1,
+        frozen_at: NOW.toISOString(),
+      })
+      await upsertAppRow(tx, "agreements", "signature_events", {
+        id: crypto.randomUUID(),
+        org_id: org.orgId,
+        version_id: versionId,
+        client_action_id: crypto.randomUUID(),
+        invited_email: "client@example.com",
+        invited_by: "Owner",
+        typed_name: "Client person",
+        capacity: "client",
+        consent_words: "I accept",
+        consent_lang: "en",
+        level: "demo",
+        document_sha256: "0".repeat(64),
+        signed_at: NOW.toISOString(),
+      })
+    })
+    await installDemoGithubConnection({ orgId: org.orgId, createdByUserId: userId, anchor: NOW })
+    await seedPortalPerson(ctx, {
+      companyId,
+      contactId,
+      email: "client@example.com",
+      name: "Client person",
+      invitedByUserId: userId,
+    })
+    await markDemoOrgForTest(
+      org.orgId,
+      visitorMarker(1, new Date(NOW.getTime() - 48 * 3600_000), undefined, { worldId: "studio" }),
+    )
+    const before = await rowsLeftAnywhere(org.orgId)
+    expect(before["app_agreements.signature_events"]).toBe(1)
+    expect(before["kernel.connected_accounts"]).toBe(1)
+    expect(before["kernel.portal_people"]).toBe(1)
+
+    const result = await purgeDemoOrg(org.orgId, NOW)
+
+    expect(result.purged).toBe(true)
+    expect(await orgExists(org.orgId)).toBe(false)
+    // No row of the ended org in any kernel or app table (the residue query's check, over every
+    // table rather than only the linked ones).
+    expect(await rowsLeftAnywhere(org.orgId)).toEqual({})
   }, 300_000)
 })

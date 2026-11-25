@@ -81,6 +81,12 @@
     "accounts": {
       "title": "Calendar accounts",
       "description": "The Google calendars you, or the whole organization, import into Calendar."
+    },
+    "away": {
+      "title": "Away days",
+      "description": "Whether your own calendar tells Liaison when you are away.",
+      "fromCalendar": "Read my away days from my calendar",
+      "fromCalendarHelp": "When on, an out-of-office on your primary Google calendar marks you away, and a leave-like all-day event asks you once on Home. While you are away, approvals waiting on you go to the next person in line. Off, your calendar changes nothing."
     }
   }
 }

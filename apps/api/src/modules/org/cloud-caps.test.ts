@@ -161,6 +161,22 @@ describe("audit retention as sold", () => {
     expect(org.settings.auditRetentionDaysChosen).toBeUndefined()
   })
 
+  it("one org's malformed retention setting never stops the purge for the others", async () => {
+    for (const edition of ["self_hosted", "managed"] as const) {
+      _setEdition(edition)
+      const odd = await minimal.secondOrg()
+      await setSettings(odd.orgId, { auditRetentionDays: 6.5, auditRetentionDaysChosen: "abc" })
+      const fine = await minimal.secondOrg()
+      await setSettings(fine.orgId, { auditRetentionDays: 30 })
+      const fineGone = await auditRow(fine.orgId, 31)
+      const oddKept = await auditRow(odd.orgId, 5)
+      const oddGone = await auditRow(odd.orgId, 7)
+      await purgeExpiredAuditLog()
+      // 6.5 days reads as 6; the string is ignored; the other org's purge ran.
+      expect(await surviving([fineGone, oddKept, oddGone])).toEqual(new Set([oddKept]))
+    }
+  })
+
   it("self-hosted unchanged: an uncapped org keeps its 90-day setting, the PATCH writes the setting", async () => {
     _setEdition("self_hosted")
     const { orgId, adminUserId } = await minimal.secondOrg()

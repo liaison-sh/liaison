@@ -38,8 +38,11 @@ This only tidies their sidebar: they keep every access, the hidden apps still op
 
 1. In the users list, click **Deactivate** in the person's row.
 2. Confirm in the **Deactivate user** dialog.
+3. If the person is the account manager of companies, the dialog asks who takes them over. Pick a person, or **Leave them without an account manager**, then confirm again.
 
-A deactivated user cannot sign in, and their open sessions end at once: the access tokens they hold are refused within seconds and their open real-time connections close. Their phones and browsers stop receiving push notifications. Their routines pause with the reason (**Paused: missing access**) and do not run while the account is deactivated; when you reactivate them, each routine runs again at its next scheduled run or event (see [Routines](../agents/routines.md#fix-a-paused-routine)). Nothing they own is deleted, and you can reactivate them later.
+A company the new manager cannot see stays without one: share it with them, then give it to them. Companies left without a manager show on **Home** for people who hold both `kernel:users:admin` and `kernel:companies:write`, as one row per person who left ("6 companies have no account manager since Léa Fontaine left"). The row goes once every one of them has a manager, or when the person is reactivated. **Ask agent to reassign** on the row asks your Personal agent to give those companies to someone; it proposes the change for you to approve.
+
+A deactivated user cannot sign in, and their open sessions end at once: the access tokens they hold are refused within seconds and their open real-time connections close. Their phones and browsers stop receiving push notifications. Their routines pause with the reason (**Paused: missing access**) and do not run while the account is deactivated; when you reactivate them, each routine runs again at its next scheduled run or event (see [Routines](../agents/routines.md#fix-a-paused-routine)). Nothing they own is deleted, except the days they had said they would be away (or that their own calendar showed), and you can reactivate them later.
 
 You cannot deactivate:
 
@@ -48,7 +51,7 @@ You cannot deactivate:
 
 To deactivate several people at once, tick their checkboxes and use the bulk action **Deactivate users**.
 
-When an agent tries to deactivate a user (tool `kernel:deactivateUser`, or `bulkDeactivateUsers`), the action waits for a person to approve it. See [Approve what agents do](../agents/approvals.md).
+When an agent tries to deactivate a user (tool `kernel:deactivateUser`, or `bulkDeactivateUsers`), the action waits for a person to approve it. For someone who manages companies the tool needs `accountsTo` (a person's id, or `null`); without it nothing changes and the agent is told how many companies they manage. See [Approve what agents do](../agents/approvals.md).
 
 ## Reactivate a user
 
@@ -60,6 +63,26 @@ The user can sign in again.
 ## When the organization has a seat limit
 
 Whoever runs the server can limit how many people are active in the organization (**Settings › Organization › Usage and limits** shows it). Agents and deactivated people take no seat. Once every seat is taken, sending an invitation, accepting one, a first sign-in with the organization's single sign-on and reactivating someone are refused with **SEAT_LIMIT_REACHED**, which gives the limit and how many seats are used. Deactivate someone to free a seat, or ask whoever runs the server to raise the limit (see [Limit an organization](../provisioning-cli.md#limit-an-organization)).
+
+## Clients with a portal account
+
+A client can have a portal account: a separate kind of sign-in for people outside the organization. A portal account is not a member. It takes no seat, and it cannot reach any of the organization's data on its own; the database refuses it.
+
+A portal account signs in only through the client portal, with a one-use link mailed to its address that works for 15 minutes. The member sign-in (password, emailed code, single sign-on, password reset) never signs it in and sends it nothing. An invitation to an address that belongs to a portal account is refused with **EMAIL_IS_PORTAL_USER**: the same person cannot be both a member and a client.
+
+A portal account never appears where you pick a colleague, for an administrator too: the people list, share dialogs, mentions, assignee menus, the agent's colleague search (`users_search`), approver lists and notification targets list members only. A client holds no role, no scope and no dimension value: `assign_role`, `grant_user_scope` and `grant_dimension_value` refuse one with **USER_IS_EXTERNAL** and change nothing, and the database refuses such a grant too.
+
+These scopes cover clients:
+
+| Scope | What it allows |
+|---|---|
+| `kernel:portal:admin` | See and manage clients' portal accounts |
+| `kernel:portal:share` | Choose what a client company sees in its portal |
+| `kernel:portal:logs` | Read what clients did in the portal |
+| `kernel:client_actions:read` | See the requests sent to clients to sign, accept or approve |
+| `kernel:client_actions:write` | Send and withdraw requests to clients to sign, accept or approve |
+
+`kernel:portal:admin` is an administration scope, like `kernel:users:admin`: it can be given to a person, but never to a role agent's scope ceiling. None of these scopes is in the **member** role or in Full Member: give them by name. Without `kernel:portal:logs`, the audit log shows no portal row.
 
 ## When the managed subscription is suspended
 
@@ -77,7 +100,7 @@ Imports (for example a Slack import) create accounts for the authors of imported
 2. Click **Link to a person** in the row.
 3. Pick the **Person** and click **Link and merge**.
 
-Everything the imported author holds moves to that person: messages, mentions, reactions, files and conversations. The imported account is then removed. This cannot be undone.
+Everything the imported author holds moves to that person: messages, mentions, reactions, files, conversations and the dates they are away. The imported account is then removed. This cannot be undone.
 
 To give one of these people their own access, invite them with their real email.
 

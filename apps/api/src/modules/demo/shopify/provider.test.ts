@@ -19,9 +19,10 @@ import { createEgressMethods } from "~/modules/apps/sandbox/bridge/egress"
 import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { DemoRestrictionError } from "~/modules/demo/demo-egress"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { installDemoShopifyConnection } from "./connection"
 import { resetDemoShopifyOverlay } from "./overlay"
@@ -106,7 +107,7 @@ describe("the demo Shopify provider's gate", () => {
         role: "admin",
       })
     ).userId
-    await markOrgAsDemo(demoOrgId, visitorMarker(24))
+    await markDemoOrgForTest(demoOrgId, visitorMarker(24))
     // The recorder stands exactly where the real transport stands, and claims
     // both hosts so a call that is NOT intercepted still lands somewhere this
     // test can see rather than hitting the network.
@@ -257,7 +258,7 @@ describe("the demo store's writes, across processes", () => {
         role: "admin",
       })
     ).userId
-    await markOrgAsDemo(orgId, visitorMarker(24))
+    await markDemoOrgForTest(orgId, visitorMarker(24))
     await forgetDemoShopifyStore(orgId)
   })
 
@@ -320,7 +321,7 @@ describe("the demo Shopify connection cannot be upgraded by a visitor", () => {
         role: "admin",
       })
     ).userId
-    await markOrgAsDemo(demoOrgId, visitorMarker(24))
+    await markDemoOrgForTest(demoOrgId, visitorMarker(24))
     DemoModeTestAccess.set(true)
   })
 

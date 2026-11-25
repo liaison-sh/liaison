@@ -50,6 +50,12 @@ import {
   catalogVersions,
   currentCatalog,
 } from "~/modules/apps/catalog-derivations"
+import {
+  describeInstallError,
+  type InstallFailure,
+  type InstallFailureKind,
+  reconcileFailureReport,
+} from "~/modules/apps/install-failure"
 import { materialiseActiveVersions } from "~/modules/apps/package-store"
 import type { AppDescriptor } from "~/modules/apps/runtime"
 import { backfillWorkerModules } from "~/modules/apps/workers/worker-module-backfill"
@@ -100,12 +106,22 @@ async function underMigrationLease<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+/** What the reconcile ended with: `ok` false when anything below failed. */
+export interface ReconcileBootOutcome {
+  ok: boolean
+  failed: InstallFailure[]
+  derivationsOk: boolean
+  /** The reconcile itself threw, with its cause classified. */
+  threw: { kind: InstallFailureKind; error: string } | null
+}
+
 /**
  * Run the reconcile and say whether every catalog app ended on this image's
- * version (or was left alone because a newer release moved it ahead). False when
- * an app failed or the reconcile itself threw; both are logged here.
+ * version (or was left alone because a newer release moved it ahead). Not ok
+ * when an app failed or the reconcile itself threw; both are logged here, and
+ * the outcome carries each cause for the `--strict` report.
  */
-export async function runReconcileCatalogBoot(): Promise<boolean> {
+export async function runReconcileCatalogBoot(): Promise<ReconcileBootOutcome> {
   try {
     const { result, derivationsOk } = await underMigrationLease(async () => {
       // A fresh container's install root is empty: every active version this
@@ -140,14 +156,14 @@ export async function runReconcileCatalogBoot(): Promise<boolean> {
       }
       return { result, derivationsOk: await applyCatalogDerivations() }
     })
-    if (!derivationsOk) return false
     if (result.failed.length > 0) {
       log.error(
         { failed: result.failed, repaired: result.repaired, ok: result.ok },
         "Boot catalog reconcile: some app install(s) failed and stay on their previous version",
       )
-      return false
+      return { ok: false, failed: result.failed, derivationsOk, threw: null }
     }
+    if (!derivationsOk) return { ok: false, failed: [], derivationsOk, threw: null }
     if (result.repaired.length > 0) {
       log.warn(
         { repaired: result.repaired, ok: result.ok },
@@ -156,10 +172,10 @@ export async function runReconcileCatalogBoot(): Promise<boolean> {
     } else {
       log.info({ ok: result.ok }, "Boot catalog reconcile: all enabled catalog apps consistent")
     }
-    return true
+    return { ok: true, failed: [], derivationsOk, threw: null }
   } catch (err) {
     log.error({ err }, "Boot catalog reconcile failed — continuing startup without it")
-    return false
+    return { ok: false, failed: [], derivationsOk: false, threw: describeInstallError(err) }
   }
 }
 
@@ -236,9 +252,9 @@ export async function applyCatalogDerivations(
  * whatever happened, so one broken app never keeps the API down. The `migrate`
  * one-shot of a deploy passes `--strict` and exits 1 when an app failed: the
  * deploy stops there, before any new process starts, instead of rolling out an
- * image whose apps stay on files the new kernel may refuse. The usual cause is a
- * bundled app rebuilt with other files under a version already installed; a
- * version directory is never rewritten, so the fix is to raise the app's version.
+ * image whose apps stay on files the new kernel may refuse. What it prints names
+ * each cause (install-failure.ts): only a bundled app rebuilt with other files
+ * under a version already installed is fixed by raising the app's version.
  */
 export function reconcileExitCode(ok: boolean, strict: boolean): number {
   return ok || !strict ? 0 : 1
@@ -248,15 +264,13 @@ export function reconcileExitCode(ok: boolean, strict: boolean): number {
 // run the reconcile. Mirrors db/migrate.ts's import.meta.main pattern.
 if (import.meta.main) {
   const strict = process.argv.includes("--strict")
-  const ok = await runReconcileCatalogBoot()
+  const outcome = await runReconcileCatalogBoot()
   // Stored copies of the common agent base catch up with the constant on every
   // start (reconcile-base-ceilings.ts). Fail-soft in both modes: a stale
   // ceiling narrows an agent, it breaks nothing, so it never stops a deploy.
   await runAgentBaseCeilingReconcile()
-  if (!ok && strict) {
-    console.error(
-      "[reconcile-catalog-boot] a catalog app did not install (log above). If it says a version directory already holds different files, the image carries a changed app under a version already installed: raise that app's version and rebuild the image.",
-    )
+  if (!outcome.ok && strict) {
+    for (const line of reconcileFailureReport(outcome)) console.error(line)
   }
-  process.exit(reconcileExitCode(ok, strict))
+  process.exit(reconcileExitCode(outcome.ok, strict))
 }

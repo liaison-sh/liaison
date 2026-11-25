@@ -207,6 +207,11 @@ void checkSandboxAtBoot().catch(() => undefined)
 // The orchestrator's stop grace period must exceed hardDeadlineMs (+ 5 s), or
 // it kills the process mid-drain (docs/self-hosting/docker.md).
 rootLogger.info(shutdownBudgets(), "Shutdown budgets (ms from SIGTERM)")
+if (!env.MAIL_SEND_GUARD_ENFORCE) {
+  rootLogger.error(
+    "MAIL_SEND_GUARD_ENFORCE=0: staged mail is checked for opt-outs only, a reply no longer stops it",
+  )
+}
 // From here a SIGTERM runs the shutdown phases: boot halts at each step below.
 await haltBootIfShuttingDown()
 
@@ -393,6 +398,21 @@ try {
   await haltBootIfShuttingDown()
   await runPhase10Boot()
   rootLogger.info("Phase 10 boot complete")
+
+  // Legal records: a trigger body an older release wrote is rewritten now (its
+  // demo exception trusted a jsonb marker), not only once its app registers
+  // again or an org is purged. One catalog query when every body is current. A
+  // body that cannot be read back is logged; the server still starts.
+  if (hostsJobs(role)) {
+    try {
+      const { ensureImmutableTriggersCurrent } = await import(
+        "~/modules/org/purge/immutable-triggers"
+      )
+      await ensureImmutableTriggersCurrent()
+    } catch (err) {
+      rootLogger.error({ err }, "Immutability triggers could not all be brought up to date")
+    }
+  }
 
   // Phase 15: inbound MCP-client kernel module: the engine and its reap timer
   // only. An org's connections are projected at its first touch.

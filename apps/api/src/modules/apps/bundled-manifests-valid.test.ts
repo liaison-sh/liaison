@@ -23,7 +23,12 @@ import { describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { runsForErrors } from "~/infra/jobs/fanout-runs-for"
-import { appIconErrors, validateAppManifest } from "~/modules/apps/contract"
+import {
+  appIconErrors,
+  firstPartyOnlyToolKeyErrors,
+  validateAppManifest,
+} from "~/modules/apps/contract"
+import { unknownFieldTypeErrors } from "~/modules/apps/ddl"
 
 const BUNDLED_DIR = join(import.meta.dir, "..", "..", "..", "..", "..", "bundled-apps")
 
@@ -70,6 +75,22 @@ function enqueuedJobArgs(app: string): Array<{ file: string; arg: string }> {
   return out
 }
 
+/**
+ * What registration refuses in a manifest, beyond its schema: a first-party-only tool key on an app
+ * nobody vouched for (runtime.ts, firstPartyOnlyToolKeyErrors: a bundled app is vouched only while
+ * its artifact matches the image's own catalog, so an uploaded copy or a version off the catalog
+ * is refused for it), and a field type the DDL generator has no column for (ddl.ts throws when it
+ * builds the table). Both leave the app installed and never registered.
+ */
+function registrationErrors(manifest: unknown): string[] {
+  const result = validateAppManifest(manifest)
+  return [
+    ...(result.success ? [] : [result.error ?? "invalid manifest"]),
+    ...firstPartyOnlyToolKeyErrors(manifest),
+    ...unknownFieldTypeErrors(manifest as Parameters<typeof unknownFieldTypeErrors>[0]),
+  ]
+}
+
 describe("bundled app manifests", () => {
   const apps = bundledApps()
 
@@ -82,13 +103,24 @@ describe("bundled app manifests", () => {
   for (const app of apps) {
     it(`${app}: validates against the runtime's own manifest schema`, () => {
       const manifest = JSON.parse(readFileSync(join(BUNDLED_DIR, app, "app.manifest.json"), "utf8"))
-      const result = validateAppManifest(manifest)
-      // Print the actual error: "invalid" alone sends you hunting through a
+      // Print the actual errors: "invalid" alone sends you hunting through a
       // 2 600-line manifest.
-      expect(result.error ?? null).toBeNull()
-      expect(result.success).toBe(true)
+      expect(registrationErrors(manifest)).toEqual([])
     })
   }
+
+  it("refuses what registration refuses: a first-party-only tool key, an unknown field type", () => {
+    const manifest = JSON.parse(
+      readFileSync(join(BUNDLED_DIR, "invoicing", "app.manifest.json"), "utf8"),
+    )
+    const [toolName] = Object.keys(manifest.tools)
+    manifest.tools[toolName!].humanTurnOnly = true
+    const [table] = Object.keys(manifest.schema)
+    manifest.schema[table!].fields.sent_on = { type: "timestamptz", required: false }
+    const errors = registrationErrors(manifest)
+    expect(errors.some((e) => e.startsWith(`tools.${toolName}.humanTurnOnly:`))).toBe(true)
+    expect(errors).toContain(`schema.${table}.fields.sent_on: unknown field type "timestamptz"`)
+  })
 
   // A framed app (the desktop or phone shell, or a browser tab, when its UI cannot run in the
   // page) is drawn by the host from its manifest's icon data, never from its icon component
@@ -99,6 +131,23 @@ describe("bundled app manifests", () => {
       const manifest = JSON.parse(readFileSync(join(BUNDLED_DIR, app, "app.manifest.json"), "utf8"))
       expect(manifest.iconName !== undefined || manifest.iconSvg !== undefined).toBe(true)
       expect(appIconErrors(manifest)).toEqual([])
+    })
+  }
+
+  // The kernel opens an entity's discussion only when the kind has a page: a `views.tabTypes`
+  // entry named for the entity (entity-discussion.ts `isDiscussionEntity`). A kind that declares
+  // `discussion: true` with no such page passes the schema, and every open of its discussion is
+  // refused as `discussion_not_declared`, so the page shows "The discussion could not be opened"
+  // for every record.
+  for (const app of apps) {
+    it(`${app}: every entity with a discussion has a page named for it`, () => {
+      const manifest = JSON.parse(readFileSync(join(BUNDLED_DIR, app, "app.manifest.json"), "utf8"))
+      const entities = (manifest.entities ?? {}) as Record<string, { discussion?: unknown }>
+      const tabTypes = (manifest.views?.tabTypes ?? {}) as Record<string, unknown>
+      const pageless = Object.entries(entities)
+        .filter(([type, decl]) => decl?.discussion === true && !(type in tabTypes))
+        .map(([type]) => type)
+      expect(pageless).toEqual([])
     })
   }
 
@@ -155,6 +204,26 @@ describe("bundled app manifests", () => {
           )
       }
       expect(problems).toEqual([])
+    })
+  }
+
+  // Registration skips a cross-app subscription whose source app the manifest does not name in
+  // `dependencies` (runtime.ts, a warn line in the boot log and no handler). The handler's unit
+  // tests call it directly and pass, so only a later sweep or nothing at all does the work: a
+  // milestone moved to done was drafted hours later by the hourly sweep, never by its event.
+  for (const app of apps) {
+    it(`${app}: every cross-app event it subscribes to names its source app as a dependency`, () => {
+      const manifest = JSON.parse(readFileSync(join(BUNDLED_DIR, app, "app.manifest.json"), "utf8"))
+      const deps = new Set<string>([
+        ...((manifest.dependencies?.required ?? []) as string[]),
+        ...((manifest.dependencies?.optional ?? []) as string[]),
+      ])
+      const subscribes = Object.keys(manifest.events?.subscribes ?? {})
+      const skipped = subscribes.filter((event) => {
+        const source = event.includes("/") ? event.split("/")[0] : null
+        return source !== null && source !== "kernel" && !deps.has(source)
+      })
+      expect(skipped).toEqual([])
     })
   }
 

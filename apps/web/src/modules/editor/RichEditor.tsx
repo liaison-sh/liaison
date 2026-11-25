@@ -8,15 +8,23 @@
 // `value` is the field's markdown. While nothing has been edited, `onChange`
 // hands back that exact string rather than the editor's own spelling of it,
 // so opening a field and leaving it never rewrites what was stored.
-import { type EmojiSuggestion, emojiForShortcode, searchEmojiShortcodes } from "@liaison/shared"
+import {
+  type EmojiSuggestion,
+  emojiForShortcode,
+  fileIdsOf,
+  replaceFileIds,
+  searchEmojiShortcodes,
+} from "@liaison/shared"
 import { Editor, type JSONContent } from "@tiptap/core"
 import { CharacterCount } from "@tiptap/extensions"
 import { closeHistory } from "@tiptap/pm/history"
-import { type EditorState, Selection } from "@tiptap/pm/state"
+import { Slice } from "@tiptap/pm/model"
+import { type EditorState, NodeSelection, Selection, TextSelection } from "@tiptap/pm/state"
 import {
   type Component,
   createEffect,
   createSignal,
+  createUniqueId,
   on,
   onCleanup,
   onMount,
@@ -26,12 +34,21 @@ import {
 import { Portal } from "solid-js/web"
 import { cn } from "~/lib/cn"
 import type { MentionTrigger } from "~/lib/mention-service"
+import { useI18n } from "~/modules/i18n/i18n-context"
 import { ownEntityLink, pastedAddressText } from "~/modules/shell/entity-link"
 import { EditorToolbar, LinkRow } from "./EditorToolbar"
 import { EmojiSuggest } from "./EmojiSuggest"
 import { emojiNameBeforeColon, emojiQueryAt } from "./emoji-trigger"
 import { type EditorPreset, editorExtensions, insertedTintKey } from "./extensions"
+import type { FileViewDeps } from "./file-view"
+import { fileIdsInFragment, isEmptySlice, withFileIds, withoutFiles } from "./liaison-file"
+import { PageSuggest, type PickedPage, pageOptionId } from "./PageSuggest"
+import { isPageId, type PageLinkDeps } from "./page-link-view"
+import { pageQueryAt } from "./page-trigger"
+import { SlashSuggest } from "./SlashSuggest"
+import { type SlashBlock, slashBlocks, slashQueryAt } from "./slash"
 import { mapSource, type SourceMap, spliceMarkdown } from "./source-map"
+import { caretAnchor, type SuggestAnchor, suggestKey } from "./suggest"
 
 export interface RichEditorHandle {
   /** The editable field itself (the magic wand proofreads what it shows). */
@@ -55,7 +72,53 @@ export interface RichEditorHandle {
   replaceText: (range: TextRange, text: string) => TextRange
   /** Tint a range for a moment (the text dictation just wrote). */
   tint: (range: TextRange) => void
+  /** The field's markdown now, serialized on demand (the stored text while nothing changed). */
+  markdown: () => string
+  /**
+   * Whether the text loaded last is written back byte for byte by this editor: each
+   * block tied to its source, and the whole spliced back equal to it (line endings
+   * aside). A page that does not is edited as source instead (SourceEditor).
+   */
+  readonly roundTrips: boolean
+  /**
+   * Show a newer text from elsewhere (another person's save) in place of this one:
+   * only the range that differs is replaced, the caret and selection are mapped
+   * through it, nothing is emitted and nothing lands in the undo history. The text
+   * becomes the one loaded.
+   */
+  applyRemote: (markdown: string) => void
+  /** Upload files and put each where the caret is, as the page's image or file. */
+  insertFiles: (files: File[]) => void
+  /**
+   * The server stored its own copies of files of other pages: their ids become the
+   * copies' ids (old id to new id). Not an edit: nothing is emitted, nothing lands in
+   * the undo history, the caret stays, and the text becomes the one the server holds.
+   */
+  replaceFileIds: (map: Readonly<Record<string, string>>) => void
 }
+
+/** A page's files: how they are drawn, stored and refused (document preset). */
+export interface EditorFiles {
+  view: FileViewDeps
+  /** Store a file on the page; answers the new file's id. Rejects with a readable message. */
+  upload: (file: File) => Promise<string>
+  /** A file was not added: the reason, said to the writer. */
+  onRefused: (message: string) => void
+  /** Said when a pasted file is one the writer cannot read (it is not inserted). */
+  unreadable: string
+  /** The chip of a file on its way. */
+  uploading: (name: string) => string
+}
+
+/** A page's links to other pages (document preset): their chips and the `@` / `[[` picker. */
+export interface EditorPages {
+  link: PageLinkDeps
+  /** Pages the writer may read whose title holds `query` (most relevant first). */
+  pick: (query: string) => Promise<PickedPage[]>
+}
+
+/** How long the picker waits for typing to pause before it asks for pages. */
+const PAGE_PICK_DEBOUNCE_MS = 120
 
 /** How long text written by dictation stays tinted (the CSS fade's length). */
 export const INSERTED_TINT_MS = 1600
@@ -126,6 +189,8 @@ export interface MentionQuery {
 export interface RichEditorProps {
   value: string
   onChange?: (markdown: string) => void
+  /** The text was edited (called without serializing it; `markdown()` reads it). */
+  onEdit?: () => void
   preset: EditorPreset
   /** `focus`: the toolbar shows under the text while the field has focus;
    *  `none`: hidden (the chat's Aa shows it). Default `always`. */
@@ -152,6 +217,10 @@ export interface RichEditorProps {
   onBlur?: () => void
   /** Called first; a handler that calls `preventDefault` keeps the paste (pasted files). */
   onPaste?: (event: ClipboardEvent) => void
+  /** A page's files (document preset): pasted, dropped and picked files are uploaded. */
+  files?: EditorFiles
+  /** A page's links to other pages (document preset): `@` and `[[` pick a page. */
+  pages?: EditorPages
   ref?: (handle: RichEditorHandle) => void
   class?: string
   editorClass?: string
@@ -231,6 +300,7 @@ function linkHref(input: string): string {
 }
 
 export const RichEditor: Component<RichEditorProps> = (props) => {
+  const i18n = useI18n()
   const [editor, setEditor] = createSignal<Editor>()
   const [version, setVersion] = createSignal(0)
   const [focused, setFocused] = createSignal(false)
@@ -268,6 +338,8 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
   let loaded = ""
   let baseline = ""
   let emitted: string | undefined
+  // Whether the text loaded last is written back as it was read.
+  let roundTrips = false
   // Each block's source, so blocks not edited are written back as they were read.
   let sourceMap: SourceMap | null = null
   const serialize = (ed: Editor) =>
@@ -299,13 +371,7 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
       if (emoji()) setEmoji(null)
       return
     }
-    let anchor = { left: 0, top: 0, bottom: 0 }
-    try {
-      const at = ed.view.coordsAtPos(ed.state.selection.from)
-      anchor = { left: at.left, top: at.top, bottom: at.bottom }
-    } catch {
-      // No layout (a test environment): the list opens at the corner.
-    }
+    const anchor = caretAnchor(ed.view, ed.state.selection.from)
     const same = emoji()
     const active = same && same.from === query.from ? Math.min(same.active, items.length - 1) : 0
     setEmoji({ items, from: query.from, active, anchor })
@@ -322,33 +388,252 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
   const emojiKey = (event: KeyboardEvent): boolean => {
     const open = emoji()
     const ed = editor()
-    if (!open || !ed || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) {
+    if (!ed) return false
+    return suggestKey(event, open, {
+      move: (active) => open && setEmoji({ ...open, active }),
+      pick: (item) => pickEmoji(ed, item),
+      dismiss: () => {
+        emojiDismissed = open?.from ?? null
+        setEmoji(null)
+      },
+    })
+  }
+  // The page picker (document preset with `pages`): `@` or `[[` being typed, and the
+  // one Escape closed (it stays closed until the trigger it belongs to is gone).
+  const pickerId = `page-suggest-${createUniqueId()}`
+  const [pagePick, setPagePick] = createSignal<{
+    from: number
+    query: string
+    items: PickedPage[]
+    active: number
+    loading: boolean
+    anchor: { left: number; top: number; bottom: number }
+  } | null>(null)
+  let pageDismissed: number | null = null
+  let pickSeq = 0
+  let pickTimer: ReturnType<typeof setTimeout> | undefined
+  const closePages = () => {
+    pickSeq++
+    clearTimeout(pickTimer)
+    if (pagePick()) setPagePick(null)
+  }
+  const syncPages = (ed: Editor) => {
+    const pages = props.pages
+    const query =
+      pages && props.preset === "document" && ed.isEditable && ed.view.hasFocus()
+        ? pageQueryAt(ed.state)
+        : null
+    if (!query || !pages) {
+      pageDismissed = null
+      return closePages()
+    }
+    if (pageDismissed === query.from) return closePages()
+    const open = pagePick()
+    if (open && open.from === query.from && open.query === query.text) return
+    const anchor = caretAnchor(ed.view, query.from)
+    const same = open && open.from === query.from
+    setPagePick({
+      from: query.from,
+      query: query.text,
+      items: same ? open.items : [],
+      active: 0,
+      loading: true,
+      anchor,
+    })
+    const seq = ++pickSeq
+    clearTimeout(pickTimer)
+    pickTimer = setTimeout(() => {
+      void pages.pick(query.text.trim()).then(
+        (items) => {
+          const now = pagePick()
+          if (seq !== pickSeq || !now) return
+          // Words after `@` that name no page are just text: the list goes away.
+          if (!items.length && /\s/.test(query.text)) return closePages()
+          setPagePick({ ...now, items, active: 0, loading: false })
+        },
+        () => {
+          const now = pagePick()
+          if (seq === pickSeq && now) setPagePick({ ...now, items: [], loading: false })
+        },
+      )
+    }, PAGE_PICK_DEBOUNCE_MS)
+  }
+  const pickPage = (ed: Editor, item: PickedPage) => {
+    const open = pagePick()
+    if (!open || !isPageId(item.id)) return
+    const { to } = ed.state.selection
+    closePages()
+    ed.view.focus()
+    ed.chain()
+      .insertContentAt({ from: open.from, to }, [
+        { type: "pageLink", attrs: { id: item.id } },
+        { type: "text", text: " " },
+      ])
+      .run()
+  }
+  const pageKey = (event: KeyboardEvent): boolean => {
+    const open = pagePick()
+    const ed = editor()
+    if (!ed) return false
+    return suggestKey(event, open, {
+      move: (active) => open && setPagePick({ ...open, active }),
+      pick: (item) => pickPage(ed, item),
+      dismiss: () => {
+        pageDismissed = open?.from ?? null
+        closePages()
+      },
+    })
+  }
+  // The block menu (document preset): `/` being typed, and the one Escape closed (it
+  // stays closed until the slash it belongs to is gone).
+  const slashId = `slash-suggest-${createUniqueId()}`
+  const [slash, setSlash] = createSignal<{
+    from: number
+    items: SlashBlock[]
+    active: number
+    anchor: SuggestAnchor
+    /** An arrow key chose the block: Enter picks it even after a word. */
+    chosen?: boolean
+  } | null>(null)
+  let slashDismissed: number | null = null
+  const slashContext = () => ({
+    pickFile: props.files ? pick : undefined,
+    pages: !!props.pages,
+  })
+  const slashWords = (block: SlashBlock) => ({
+    title: i18n.t(`kernel.editor.${block.key}`),
+    words: i18n.t(`kernel.editor.slashWords.${block.key}`),
+  })
+  const syncSlash = (ed: Editor) => {
+    const query =
+      props.preset === "document" && ed.isEditable && ed.view.hasFocus()
+        ? slashQueryAt(ed.state)
+        : null
+    if (!query) {
+      slashDismissed = null
+      if (slash()) setSlash(null)
+      return
+    }
+    // Escape closed it, or nothing is called that: the slash is just text.
+    const items =
+      slashDismissed === query.from ? [] : slashBlocks(query.text, slashContext(), slashWords)
+    if (!items.length) {
+      if (slash()) setSlash(null)
+      return
+    }
+    const open = slash()
+    const same = open && open.from === query.from
+    const active = same ? Math.min(open.active, items.length - 1) : 0
+    setSlash({
+      from: query.from,
+      items,
+      active,
+      anchor: caretAnchor(ed.view, query.from),
+      chosen: same ? open.chosen : false,
+    })
+  }
+  const pickSlash = (ed: Editor, block: SlashBlock) => {
+    const open = slash()
+    if (!open) return
+    const { to } = ed.state.selection
+    setSlash(null)
+    ed.view.focus()
+    // The `/` and what follows it go; the block takes their place.
+    ed.view.dispatch(ed.state.tr.delete(open.from, to))
+    block.run(ed, slashContext())
+  }
+  const slashKey = (event: KeyboardEvent): boolean => {
+    const open = slash()
+    const ed = editor()
+    if (!ed) return false
+    // After a word (`50 km /h`), Enter and Tab stay prose unless an arrow chose a
+    // block: only a slash at the start of its block picks on Enter at once.
+    if (
+      open &&
+      !open.chosen &&
+      (event.key === "Enter" || event.key === "Tab") &&
+      ed.state.doc.resolve(open.from).parentOffset > 0
+    ) {
+      slashDismissed = open.from
+      setSlash(null)
       return false
     }
-    const n = open.items.length
-    switch (event.key) {
-      case "ArrowDown":
-      case "ArrowUp": {
-        const step = event.key === "ArrowDown" ? 1 : n - 1
-        setEmoji({ ...open, active: (open.active + step) % n })
-        break
-      }
-      case "Enter":
-      case "Tab": {
-        if (event.shiftKey) return false
-        pickEmoji(ed, open.items[open.active]!)
-        break
-      }
-      case "Escape":
-        emojiDismissed = open.from
-        setEmoji(null)
-        break
-      default:
-        return false
+    return suggestKey(event, open, {
+      move: (active) => open && setSlash({ ...open, active, chosen: true }),
+      pick: (item) => pickSlash(ed, item),
+      dismiss: () => {
+        slashDismissed = open?.from ?? null
+        setSlash(null)
+      },
+    })
+  }
+  /**
+   * Mod-Enter on a checklist item ticks it (or unticks it), where the caret is: in a
+   * page only. Elsewhere (a task discussion, a ticket note) Mod-Enter sends.
+   */
+  const taskKey = (event: KeyboardEvent): boolean => {
+    const ed = editor()
+    if (
+      props.preset !== "document" ||
+      !ed?.isEditable ||
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return false
+    if (!(event.metaKey || event.ctrlKey)) return false
+    const { $from } = ed.state.selection
+    for (let depth = $from.depth; depth > 0; depth--) {
+      const node = $from.node(depth)
+      if (node.type.name !== "taskItem") continue
+      event.preventDefault()
+      ed.view.dispatch(
+        ed.state.tr.setNodeMarkup($from.before(depth), undefined, {
+          ...node.attrs,
+          checked: !node.attrs.checked,
+        }),
+      )
+      return true
     }
+    return false
+  }
+  /** Enter on a selected page chip opens the page (a writer may open it). */
+  const pageChipKey = (event: KeyboardEvent): boolean => {
+    const ed = editor()
+    if (!ed || event.key !== "Enter" || !props.pages) return false
+    const sel = ed.state.selection
+    if (!(sel instanceof NodeSelection) || sel.node.type.name !== "pageLink") return false
+    const dom = ed.view.nodeDOM(sel.from)
+    if (!(dom instanceof HTMLElement) || dom.dataset.state !== "open") return false
     event.preventDefault()
+    props.pages.link.open(String(sel.node.attrs.id), dom.textContent ?? "")
     return true
   }
+  // The text field points screen readers at the open list and its active option.
+  createEffect(() => {
+    const ed = editor()
+    if (!ed || ed.isDestroyed) return
+    const dom = ed.view.dom
+    const page = pagePick()
+    const block = slash()
+    const open = page
+      ? { id: pickerId, n: page.items.length, active: page.active }
+      : block
+        ? { id: slashId, n: block.items.length, active: block.active }
+        : null
+    if (!open) {
+      for (const a of ["aria-controls", "aria-activedescendant", "aria-expanded"]) {
+        dom.removeAttribute(a)
+      }
+      return
+    }
+    dom.setAttribute("aria-controls", open.id)
+    dom.setAttribute("aria-expanded", "true")
+    if (open.n) dom.setAttribute("aria-activedescendant", pageOptionId(open.id, open.active))
+    else dom.removeAttribute("aria-activedescendant")
+  })
+  onCleanup(() => clearTimeout(pickTimer))
+
   // The caret right after the space a picked mention adds: a space typed
   // there first is that space (people type one after a name anyway, and the
   // message went out as "@Tobias Braun  please").
@@ -376,10 +661,174 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
         return true
       })
       .run()
+    settle(ed, markdown)
+  }
+
+  /** `markdown` is now the text the editor shows: what an unedited field hands back. */
+  const settle = (ed: Editor, markdown: string) => {
     loaded = markdown
     sourceMap = props.preset === "inline" ? null : mapSource(ed, markdown)
     baseline = serialize(ed)
     emitted = markdown
+    roundTrips =
+      sourceMap !== null && spliceMarkdown(ed, sourceMap) === markdown.replace(/\r\n?/g, "\n")
+  }
+
+  /** The current text: the loaded one, byte for byte, while it is unchanged. */
+  const current = (ed: Editor) => {
+    const markdown = serialize(ed)
+    return markdown === baseline ? loaded : markdown
+  }
+
+  /** Replace only what differs between the shown document and `markdown`'s. */
+  const applyRemote = (ed: Editor, markdown: string) => {
+    const manager = ed.markdown
+    if (!manager) return load(ed, markdown)
+    const next = ed.schema.nodeFromJSON(manager.parse(editorSource(markdown, props.preset)))
+    const doc = ed.state.doc
+    const start = doc.content.findDiffStart(next.content)
+    if (start !== null) {
+      const end = doc.content.findDiffEnd(next.content)
+      let endA = end?.a ?? doc.content.size
+      let endB = end?.b ?? next.content.size
+      // Both ends overlap when the change repeats text around it: widen to the start.
+      const overlap = start - Math.min(endA, endB)
+      if (overlap > 0) {
+        endA += overlap
+        endB += overlap
+      }
+      const tr = ed.state.tr
+        .replace(start, endA, next.slice(start, endB))
+        .setMeta("addToHistory", false)
+        .setMeta("preventUpdate", true)
+      ed.view.dispatch(tr)
+    }
+    settle(ed, markdown)
+  }
+
+  // ── A page's files ─────────────────────────────────────────────────────────
+  let uploadSeq = 0
+  const chipAt = (ed: Editor, key: string): number => {
+    let at = -1
+    ed.state.doc.descendants((node, pos) => {
+      if (at >= 0) return false
+      if (node.type.name === "uploadingFile" && node.attrs.key === key) at = pos
+      return true
+    })
+    return at
+  }
+  /** Each file: a chip where it goes now, the file's token once it is stored. */
+  const startUploads = (ed: Editor, files: File[], at?: number) => {
+    const files_ = props.files
+    if (!files_ || props.preset !== "document" || !files.length || ed.isDestroyed) return
+    if (at !== undefined) {
+      const pos = Math.max(0, Math.min(at, ed.state.doc.content.size))
+      ed.commands.setTextSelection(pos)
+    }
+    for (const file of files) {
+      const key = `upload-${++uploadSeq}`
+      ed.chain()
+        .focus()
+        .insertContent({ type: "uploadingFile", attrs: { key, name: file.name } })
+        .run()
+      const settleChip = (id: string | null, error?: unknown) => {
+        if (ed.isDestroyed) return
+        const pos = chipAt(ed, key)
+        if (pos >= 0) {
+          const tr = ed.state.tr.setMeta("addToHistory", false)
+          if (id) tr.replaceWith(pos, pos + 1, ed.schema.nodes.liaisonFile!.create({ id }))
+          else tr.delete(pos, pos + 1)
+          ed.view.dispatch(tr)
+        }
+        if (!id) files_.onRefused(error instanceof Error ? error.message : String(error ?? ""))
+      }
+      void files_.upload(file).then(
+        (id) => settleChip(id),
+        (err) => settleChip(null, err),
+      )
+    }
+  }
+  /**
+   * Insert what was pasted or dropped once every file it names is one the writer can
+   * read: an unreadable file is left out (edge 8) and the writer is told.
+   */
+  const insertChecked = (
+    ed: Editor,
+    ids: string[],
+    range: { from: number; to: number },
+    insert: (readable: (id: string) => boolean) => void,
+  ) => {
+    const files_ = props.files
+    if (!files_) return
+    const held: HeldPlace = { ...range, selection: range.from !== range.to }
+    anchors.add(held)
+    const unique = [...new Set(ids.map((id) => id.toLowerCase()))]
+    void Promise.all(
+      unique.map((id) =>
+        files_.view.resolve(id).then(
+          (file) => [id, !!file] as const,
+          () => [id, false] as const,
+        ),
+      ),
+    ).then((answers) => {
+      anchors.delete(held)
+      if (ed.isDestroyed) return
+      const ok = new Set(answers.filter(([, readable]) => readable).map(([id]) => id))
+      if (ok.size < unique.length) files_.onRefused(files_.unreadable)
+      const size = ed.state.doc.content.size
+      const from = Math.max(0, Math.min(held.selection ? held.from : held.to, size))
+      const to = Math.max(from, Math.min(held.to, size))
+      ed.view.dispatch(ed.state.tr.setSelection(TextSelection.create(ed.state.doc, from, to)))
+      insert((id) => ok.has(id.toLowerCase()))
+    })
+  }
+  const pasteSliceChecked = (ed: Editor, slice: Slice, range: { from: number; to: number }) =>
+    insertChecked(ed, fileIdsInFragment(slice.content), range, (readable) => {
+      const kept = new Slice(withoutFiles(slice.content, readable), slice.openStart, slice.openEnd)
+      if (isEmptySlice(kept)) return
+      ed.view.dispatch(
+        ed.state.tr.replaceSelection(kept).scrollIntoView().setMeta("uiEvent", "paste"),
+      )
+    })
+  const pasteTokensChecked = (ed: Editor, text: string) => {
+    const { from, to } = ed.state.selection
+    insertChecked(ed, fileIdsOf(text), { from, to }, (readable) => {
+      const kept = text.replace(
+        /!\[(?:\\.|[^\]\\])*\]\(liaison-file:([0-9a-fA-F-]{36})\)/g,
+        (whole, id: string) => (readable(id) ? whole : ""),
+      )
+      if (!kept.trim()) return
+      // One paragraph goes into the line the caret is on, as typed text would.
+      const parsed = ed.markdown?.parse(kept)
+      const only = parsed?.content?.length === 1 ? parsed.content[0] : undefined
+      if (only?.type === "paragraph" && only.content) ed.commands.insertContent(only.content)
+      else ed.commands.insertContent(kept, { contentType: "markdown" })
+    })
+  }
+  const replaceIds = (ed: Editor, map: Readonly<Record<string, string>>) => {
+    const to = new Map(Object.entries(map).map(([from, id]) => [from.toLowerCase(), id]))
+    const lookup = (id: string) => to.get(id.toLowerCase())
+    if (!to.size || ed.isDestroyed) return
+    const tr = ed.state.tr
+    ed.state.doc.descendants((node, pos) => {
+      if (node.type.name !== "liaisonFile") return true
+      const next = lookup(String(node.attrs.id))
+      if (next) tr.setNodeMarkup(pos, undefined, { ...node.attrs, id: next })
+      return false
+    })
+    if (!tr.docChanged) return
+    ed.view.dispatch(tr.setMeta("addToHistory", false).setMeta("preventUpdate", true))
+    // The text as loaded, its blocks and its serialization take the new ids too, so
+    // an unedited page still hands back exactly what the server holds.
+    if (sourceMap) {
+      sourceMap = sourceMap.map((block) => ({
+        raw: replaceFileIds(block.raw, map),
+        nodes: block.nodes.map((node) => withFileIds(node, lookup)),
+      }))
+    }
+    loaded = replaceFileIds(loaded, map)
+    baseline = replaceFileIds(baseline, map)
+    if (emitted !== undefined) emitted = replaceFileIds(emitted, map)
   }
 
   onMount(() => {
@@ -388,6 +837,27 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
       extensions: [
         ...editorExtensions(props.preset, {
           placeholder: props.placeholder,
+          checkboxLabel: (text) =>
+            text.trim()
+              ? i18n.t("kernel.editor.checkboxLabel", { text: text.trim() })
+              : i18n.t("kernel.editor.checkboxEmpty"),
+          rawLabels: {
+            image: i18n.t("kernel.editor.remoteImage"),
+            link: i18n.t("kernel.editor.pageLink"),
+          },
+          pageLinks: {
+            deps: props.pages?.link ?? null,
+            labels: {
+              unavailable: i18n.t("kernel.editor.pageUnavailable"),
+              loading: i18n.t("kernel.editor.pageLink"),
+            },
+          },
+          files: {
+            view: props.files?.view ?? null,
+            label: i18n.t("kernel.editor.fileToken"),
+            uploading: (name) =>
+              props.files?.uploading(name) ?? i18n.t("kernel.editor.uploadingFile", { name }),
+          },
           keys: {
             onSubmit: props.onSubmit && (() => props.onSubmit?.()),
             enterSubmits: props.enterSubmits,
@@ -413,9 +883,39 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
           ...(props["data-testid"] ? { "data-testid": props["data-testid"] } : {}),
         },
         // Files dropped on the text go to the surface around it (the comment
-        // box's drop zone), never into the text.
-        handleDrop: (_view, event) => !!event.dataTransfer?.files.length,
-        handleKeyDown: (_view, event) => emojiKey(event) || (props.onKeyDown?.(event) ?? false),
+        // box's drop zone), never into the text; a page uploads them where they fell.
+        handleDrop: (view, event, slice, moved) => {
+          const dropped = Array.from(event.dataTransfer?.files ?? [])
+          const at = () => {
+            try {
+              return view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
+            } catch {
+              return undefined // no layout: where the caret is
+            }
+          }
+          if (dropped.length) {
+            if (props.files && props.preset === "document") {
+              event.preventDefault()
+              startUploads(ed, dropped, at())
+            }
+            return true
+          }
+          // Content naming files, dragged in from elsewhere: checked as a paste is.
+          if (!moved && props.files && slice && fileIdsInFragment(slice.content).length) {
+            event.preventDefault()
+            const pos = at() ?? ed.state.selection.from
+            pasteSliceChecked(ed, slice, { from: pos, to: pos })
+            return true
+          }
+          return false
+        },
+        handleKeyDown: (_view, event) =>
+          emojiKey(event) ||
+          pageKey(event) ||
+          slashKey(event) ||
+          taskKey(event) ||
+          pageChipKey(event) ||
+          (props.onKeyDown?.(event) ?? false),
         handleTextInput: (view, from, to, text) => {
           const at = softSpace
           softSpace = null
@@ -432,12 +932,30 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
           }
           return text === " " && from === at && to === at
         },
-        handlePaste: (_view, event) => {
+        handlePaste: (_view, event, slice) => {
           props.onPaste?.(event)
           if (event.defaultPrevented) return true
           // A file the surface did not take (an image, a document) is dropped
           // whole: never its name, a data URL or a stray character in the text.
-          if (Array.from(event.clipboardData?.items ?? []).some((item) => item.kind === "file")) {
+          // A page uploads it and shows it where the caret is.
+          const items = Array.from(event.clipboardData?.items ?? [])
+          if (items.some((item) => item.kind === "file")) {
+            const pasted = items
+              .filter((item) => item.kind === "file")
+              .map((item) => item.getAsFile())
+              .filter((file): file is File => !!file)
+            startUploads(ed, pasted)
+            return true
+          }
+          // HTML naming files of this app (another page's editor or reader): each
+          // file must be one the writer can read before it goes in.
+          if (
+            props.files &&
+            event.clipboardData?.types.includes("text/html") &&
+            fileIdsInFragment(slice.content).length
+          ) {
+            const { from, to } = ed.state.selection
+            pasteSliceChecked(ed, slice, { from, to })
             return true
           }
           // Plain text is read as markdown: it is what the field stores, and
@@ -457,6 +975,17 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
           // An address of an entity page on THIS server is a reference to that
           // entity: the chip every other mention is, not a bare link.
           const own = ed.isActive("codeBlock") ? null : ownEntityLink(text)
+          // In a page, another page's address is a link to it: its id, never a title.
+          const ownPage = own && /^knowledge:document:(.+)$/.exec(own.ref)?.[1]
+          if (ownPage && props.preset === "document" && props.pages && isPageId(ownPage)) {
+            ed.chain()
+              .insertContent([
+                { type: "pageLink", attrs: { id: ownPage } },
+                { type: "text", text: " " },
+              ])
+              .run()
+            return true
+          }
           if (own) {
             ed.chain()
               .insertContent([
@@ -464,6 +993,10 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
                 { type: "text", text: " " },
               ])
               .run()
+            return true
+          }
+          if (props.files && props.preset === "document" && fileIdsOf(text).length) {
+            pasteTokensChecked(ed, text)
             return true
           }
           const lines = text.replace(/\r\n?/g, "\n").replace(/\n+$/, "")
@@ -490,6 +1023,8 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
       }
       setVersion((v) => v + 1)
       syncEmoji(ed)
+      syncPages(ed)
+      syncSlash(ed)
       if (!props.onMention) return
       const query = mentionAt(ed.state)
       const key = query ? `${query.trigger}${query.text}` : ""
@@ -497,10 +1032,16 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
       mentioning = key
       props.onMention(query && { trigger: query.trigger, text: query.text })
     })
-    ed.on("blur", () => setEmoji(null))
-    ed.on("update", () => {
-      const markdown = serialize(ed)
-      const next = markdown === baseline ? loaded : markdown
+    ed.on("blur", () => {
+      setEmoji(null)
+      closePages()
+      setSlash(null)
+    })
+    ed.on("update", ({ transaction }) => {
+      // An edit of the text, not a change of state (setEditable also says "update").
+      if (transaction.docChanged) props.onEdit?.()
+      if (!props.onChange) return
+      const next = current(ed)
       if (next === emitted) return
       emitted = next
       props.onChange?.(next)
@@ -567,6 +1108,13 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
           if (!ed.isDestroyed) ed.view.dispatch(ed.state.tr.setMeta(insertedTintKey, null))
         }, INSERTED_TINT_MS)
       },
+      markdown: () => current(ed),
+      get roundTrips() {
+        return roundTrips
+      },
+      applyRemote: (markdown) => applyRemote(ed, markdown),
+      insertFiles: (files) => startUploads(ed, files),
+      replaceFileIds: (map) => replaceIds(ed, map),
     })
     onCleanup(() => {
       setEditor(undefined)
@@ -628,11 +1176,21 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
           version={version}
           disabled={props.disabled}
           onLink={() => setLinking(true)}
+          onPick={props.files && props.preset === "document" ? pick : undefined}
           overflow={props.toolbarOverflow}
           class={props.toolbarClass}
         />
       </Show>
     )
+  }
+  let imageInput: HTMLInputElement | undefined
+  let fileInput: HTMLInputElement | undefined
+  const pick = (kind: "image" | "file") => (kind === "image" ? imageInput : fileInput)?.click()
+  const picked = (input: HTMLInputElement) => {
+    const chosen = Array.from(input.files ?? [])
+    input.value = ""
+    const ed = editor()
+    if (ed && chosen.length) startUploads(ed, chosen)
   }
   const showToolbar = () =>
     !props.disabled &&
@@ -665,6 +1223,25 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
         )}
       </Show>
       <div ref={mount} class="min-w-0" />
+      <Show when={props.files && props.preset === "document"}>
+        <input
+          ref={imageInput}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          data-testid="rich-editor.pick-image"
+          onChange={(e) => picked(e.currentTarget)}
+        />
+        <input
+          ref={fileInput}
+          type="file"
+          multiple
+          hidden
+          data-testid="rich-editor.pick-file"
+          onChange={(e) => picked(e.currentTarget)}
+        />
+      </Show>
       <Show when={!props.toolbarMount && props.toolbar === "focus" && showToolbar()}>
         {toolbar()}
       </Show>
@@ -678,6 +1255,35 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
             onPick={(item) => {
               const ed = editor()
               if (ed) pickEmoji(ed, item)
+            }}
+          />
+        )}
+      </Show>
+      <Show when={slash()}>
+        {(open) => (
+          <SlashSuggest
+            id={slashId}
+            items={open().items}
+            active={open().active}
+            anchor={open().anchor}
+            onPick={(item) => {
+              const ed = editor()
+              if (ed) pickSlash(ed, item)
+            }}
+          />
+        )}
+      </Show>
+      <Show when={pagePick()}>
+        {(open) => (
+          <PageSuggest
+            id={pickerId}
+            items={open().items}
+            active={open().active}
+            loading={open().loading}
+            anchor={open().anchor}
+            onPick={(item) => {
+              const ed = editor()
+              if (ed) pickPage(ed, item)
             }}
           />
         )}

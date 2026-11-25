@@ -5,6 +5,7 @@ import { createMiddleware } from "hono/factory"
 import { z } from "zod"
 import type { AppEnv } from "~/app"
 import { projectsRel } from "~/apps/projects/schema-refs"
+import { archiveProject } from "~/apps/projects/service/archive-project"
 import {
   addItems,
   getChecklistStatus,
@@ -20,6 +21,7 @@ import {
   listProjects,
   loadProjectDetail,
 } from "~/apps/projects/service/create-project"
+import { dealBoard } from "~/apps/projects/service/deals"
 import { activeFields, readProjectFields, setFields } from "~/apps/projects/service/fields"
 import { moveTask } from "~/apps/projects/service/move-task"
 import {
@@ -43,6 +45,8 @@ import {
   restoreTask,
   updateTask,
 } from "~/apps/projects/service/tasks"
+import { awaitTimeFeatureSync, scheduleTimeBudgetsSync } from "~/apps/projects/service/time-feature"
+import { getTimePlan } from "~/apps/projects/service/time-plan"
 import { listTaskTransitions } from "~/apps/projects/service/transitions"
 import { updateProject } from "~/apps/projects/service/update-project"
 import { extractRows } from "~/db"
@@ -250,6 +254,8 @@ const createProjectSchema = z.object({
     .optional(),
   // Show the checklist summary on Kanban cards; default true.
   checklistOnCards: z.boolean().optional(),
+  // Time and budgets on the new project; off by default.
+  timeBudgets: z.boolean().optional(),
 })
 
 const patchProjectSchema = z.object({
@@ -262,6 +268,10 @@ const patchProjectSchema = z.object({
   // (checked in update-project.ts, code invalid_group).
   group: z.string().nullable().optional(),
   checklistOnCards: z.boolean().optional(),
+  // The project's client: a company the caller can read, or null to clear.
+  companyId: z.string().uuid().nullable().optional(),
+  // Time and budgets on this project (work projects only); the org's tools follow.
+  timeBudgets: z.boolean().optional(),
 })
 
 // Every `:projectId` / `:taskId` / `:statusId` below is interpolated with a
@@ -367,24 +377,23 @@ export const projectsRoutes = new Hono<AppEnv>()
     return success(c, result)
   })
   .post("/", scopeProjectsWrite, zValidator("json", createProjectSchema), async (c) => {
-    const input = c.req.valid("json")
+    const { timeBudgets, ...input } = c.req.valid("json")
     const orgId = c.get("orgId")
     const userId = c.get("userId")
     try {
-      const result = await withRequestRls(c, (tx) =>
-        createProject({
-          tx,
-          orgId,
-          actor: {
-            actorType: "user",
-            userId,
-            orgId,
-            scopes: c.get("scopes"),
-            dimensionGrants: c.get("dimensionGrants"),
-          } as never,
-          input,
-        }),
-      )
+      const actor = {
+        actorType: "user",
+        userId,
+        orgId,
+        scopes: c.get("scopes"),
+        dimensionGrants: c.get("dimensionGrants"),
+      } as never
+      const result = await withRequestRls(c, async (tx) => {
+        const created = await createProject({ tx, orgId, actor, input })
+        if (timeBudgets === undefined) return created
+        return updateProject({ tx, orgId, projectId: created.id, actor, patch: { timeBudgets } })
+      })
+      if (timeBudgets !== undefined) await awaitTimeFeatureSync(orgId)
       return success(c, result)
     } catch (err) {
       const message = String((err as Error)?.message ?? err)
@@ -416,6 +425,24 @@ export const projectsRoutes = new Hono<AppEnv>()
       throw err
     }
   })
+  // The project's time and budgets plan, read back for its edit form. The money keys only reach
+  // a holder of the money scope; a project that does not use it answers planning_off.
+  .get("/:projectId/time-plan", scopeProjectsRead, async (c) => {
+    const projectId = c.req.param("projectId")
+    const orgId = c.get("orgId")
+    const scopes = [...(c.get("scopes") ?? [])]
+    const result = await withRequestRls(c, (tx) => getTimePlan({ tx, orgId, scopes, projectId }))
+    return success(c, result)
+  })
+  // A pipeline's board: stages with their deals, each stage's sum per currency
+  // for a reader with deal access, and quiet for a reader who can read mail.
+  .get("/:projectId/deals/board", scopeProjectsRead, async (c) => {
+    const projectId = c.req.param("projectId")
+    const orgId = c.get("orgId")
+    const scopes = [...(c.get("scopes") ?? [])]
+    const result = await withRequestRls(c, (tx) => dealBoard(tx, orgId, scopes, projectId))
+    return success(c, result)
+  })
   .patch("/:projectId", scopeProjectsWrite, zValidator("json", patchProjectSchema), async (c) => {
     const projectId = c.req.param("projectId")
     const orgId = c.get("orgId")
@@ -424,39 +451,18 @@ export const projectsRoutes = new Hono<AppEnv>()
     const result = await withRequestRls(c, (tx) =>
       updateProject({ tx, orgId, projectId, actor, patch }),
     )
+    // The org's tools follow the projects once this commit is read (time-feature.ts).
+    if (patch.timeBudgets !== undefined) await awaitTimeFeatureSync(orgId)
     return success(c, result)
   })
   .post("/:projectId/archive", scopeProjectsWrite, async (c) => {
     const projectId = c.req.param("projectId")
     const orgId = c.get("orgId")
-    const result = await withRequestRls(c, async (tx) => {
-      const rows = extractRows<{ id: string }>(
-        await tx.execute(drizzleSql`
-          SELECT id FROM ${projectsRel("projects")}
-          WHERE id = ${projectId}::uuid AND org_id = ${orgId}::uuid
-          LIMIT 1
-        `),
-      )
-      if (rows.length === 0) {
-        throw new ProjectsHttpError(404, "not_found", "project not found")
-      }
-      await tx.execute(drizzleSql`
-        UPDATE ${projectsRel("projects")}
-        SET archived_at = now(), updated_at = now()
-        WHERE id = ${projectId}::uuid AND org_id = ${orgId}::uuid
-      `)
-      await tx.queueEvent({
-        app: "projects",
-        entity: "project",
-        action: "archived",
-        entityId: projectId,
-        data: { id: projectId },
-        actorId: c.get("userId"),
-        actorType: "user",
-        orgId,
-      })
-      return loadProjectDetail(tx, orgId, projectId)
-    })
+    const actorId = c.get("userId")
+    const result = await withRequestRls(c, (tx) =>
+      archiveProject({ tx, orgId, projectId, actorId }),
+    )
+    await awaitTimeFeatureSync(orgId)
     return success(c, result)
   })
   .post("/:projectId/restore", scopeProjectsWrite, async (c) => {
@@ -488,8 +494,11 @@ export const projectsRoutes = new Hono<AppEnv>()
         actorType: "user",
         orgId,
       })
+      // An archived project no longer counts for the org's time tools (time-feature.ts).
+      scheduleTimeBudgetsSync(orgId, c.get("userId"))
       return loadProjectDetail(tx, orgId, projectId)
     })
+    await awaitTimeFeatureSync(orgId)
     return success(c, result)
   })
   .post(

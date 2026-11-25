@@ -1,0 +1,1 @@
+contrat, avenant and portail read as agreement, change and portal; espace client and compte rendu only as the pair -> apps/api/src/modules/agent/tools/tool-lexicon.ts (NAME_WORD_SYNONYMS, COMPANION_SYNONYMS) ; apps/api/src/modules/agent/tools/tool-search.lexicon.test.ts

@@ -19,6 +19,7 @@ import { quoteIdent } from "~/lib/sql-utils"
 import { UUID_RE } from "~/lib/uuid"
 import { syncPersonalAgentCeilingsForEvent } from "~/modules/agent/directory/personal-agent"
 import { registerApprovalMaterializeConsumer } from "~/modules/approvals/prompt-materialize"
+import { handleWithdrawOnEvent } from "~/modules/approvals/withdraw-on-events"
 import { noteOrgPrincipalsChanged } from "~/modules/apps/org-apps"
 import {
   isApprovalAuditEntity,
@@ -27,6 +28,7 @@ import {
 } from "~/modules/audit/approval-redaction"
 import { type AuditEntry, isUnknownAgentFkError, writeAuditLog } from "~/modules/audit/service"
 import { generateTimelineEntries } from "~/modules/audit/timeline"
+import { handleCompanyOwnershipEvent } from "~/modules/contacts/company-unowned"
 import { registerDemoConnectionExtension } from "~/modules/demo/demo-connected-ttl"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import {
@@ -153,6 +155,11 @@ const PERMISSION_ENTITIES = new Set([
  *     but the user's raw email must NOT be retained indefinitely inside it.
  *     Redacting at ingestion keeps the event (who/when/why) without the PII.
  */
+const FOLDER_AUDIT_KEYS: Record<string, readonly string[] | undefined> = {
+  "knowledge:collection": ["id"],
+  "knowledge:collection_membership": ["collectionId", "targetType", "targetId"],
+}
+
 function stripMessageContentForAudit(event: AppEvent): unknown {
   if (isApprovalAuditEntity(event.entity)) {
     return redactApprovalAuditChanges(event.data)
@@ -171,6 +178,13 @@ function stripMessageContentForAudit(event: AppEvent): unknown {
   if (event.app === "kernel" && event.entity === "dashboard_table_row") {
     const d = (event.data ?? {}) as Record<string, unknown>
     return { tableId: d.tableId, rowId: d.rowId, changeId: d.changeId, changed: d.changed }
+  }
+  // Knowledge folders: ids only. A personal folder's name and owner are its
+  // owner's, and the audit log is read org-wide.
+  const folderKeys = FOLDER_AUDIT_KEYS[`${event.app}:${event.entity}`]
+  if (folderKeys) {
+    const d = (event.data ?? {}) as Record<string, unknown>
+    return Object.fromEntries(folderKeys.filter((k) => k in d).map((k) => [k, d[k]]))
   }
   if (event.entity !== "message" || (event.action !== "create" && event.action !== "update")) {
     return event.data
@@ -655,6 +669,14 @@ export function registerEventSubscribers(wsManager?: WebSocketManager): void {
   // (the inbound-mail path runs inside its caller's transaction, so it cannot
   // send it itself). It writes and sends mail: once, on the outbox's process.
   onEvent(acknowledgeCommittedTicket, { delivery: "once", name: "tickets-ack-after-commit" })
+
+  // A company's manager changed, or a person who left came back: the previous manager's Home
+  // row and the admins' unowned rows follow, once, after the change committed.
+  onEvent(handleCompanyOwnershipEvent, { delivery: "once", name: "company-ownership-follow-up" })
+
+  // An address opted out: the waiting commercial drafts to it are withdrawn, once, after the
+  // opt-out committed (the send check refuses them anyway; this takes them off Home).
+  onEvent(handleWithdrawOnEvent, { delivery: "once", name: "suppression-withdraw-drafts" })
 
   // An org server added or deleted: members' tokens and personal agent ceilings follow,
   // once, on the process that published the event (a peer's copy never reaches it).

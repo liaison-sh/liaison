@@ -31,6 +31,7 @@ vi.mock("~/modules/knowledge/knowledge-store", () => ({
   loadCollectionsTree: mocks.loadCollectionsTree,
 }))
 
+import { clearAuth, setTokens } from "~/modules/auth/auth-store"
 import KnowledgeHome, { formatUpdated } from "~/modules/knowledge/KnowledgeHome"
 import { setShellTier } from "~/tests/helpers/shell-tier"
 
@@ -127,11 +128,69 @@ describe("Knowledge home at phone width", () => {
     render(() => <KnowledgeHome />)
     expect(screen.getByTestId("knowledge-home").className).toContain("max-w-2xl")
   })
+  it("B7: nested folder is reachable on Home", () => {
+    mocks.store.collectionsTree = [
+      {
+        id: "top",
+        name: "Company",
+        parentId: null,
+        children: [
+          {
+            id: "inner",
+            name: "Policies",
+            parentId: "top",
+            children: [],
+            documents: [{ id: "deep", title: "Warranty policy" }],
+          },
+        ],
+        documents: [],
+      },
+    ]
+    setShellTier("phone")
+    render(() => <KnowledgeHome />)
+    fireEvent.click(screen.getByTestId("knowledge-collection-top"))
+    fireEvent.click(screen.getByTestId("knowledge-collection-inner"))
+    fireEvent.click(screen.getByTestId("knowledge-collection-doc-deep"))
+    expect(mocks.openTab).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "knowledge:document", entityId: "deep" }),
+    )
+  })
 })
 
 describe("formatUpdated", () => {
   it("is empty rather than 'Invalid Date' for an unusable value", () => {
     expect(formatUpdated(undefined)).toBe("")
     expect(formatUpdated("not-a-date")).toBe("")
+  })
+})
+
+describe("Import from Notion on the Knowledge home", () => {
+  const signIn = (scopes: string[]) => {
+    const enc = (o: unknown) => btoa(JSON.stringify(o))
+    setTokens(
+      `${enc({ alg: "HS256", typ: "JWT" })}.${enc({
+        userId: "user-1",
+        orgId: "org-1",
+        name: "Test User",
+        roles: [],
+        scopes,
+        dimensionGrants: {},
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      })}.sig`,
+    )
+  }
+  afterEach(() => {
+    cleanup()
+    clearAuth()
+  })
+
+  it("is offered only to whoever may run and read imports", () => {
+    signIn(["kernel:imports:run", "kernel:imports:read"])
+    render(() => <KnowledgeHome />)
+    expect(screen.getByTestId("knowledge-home-import")).toBeTruthy()
+    cleanup()
+    signIn([])
+    render(() => <KnowledgeHome />)
+    expect(screen.queryByTestId("knowledge-home-import")).toBeNull()
   })
 })

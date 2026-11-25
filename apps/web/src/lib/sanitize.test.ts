@@ -120,3 +120,36 @@ describe("sanitizeHtml classes", () => {
     expect(sanitizeHtml('<a class="lpmark-abc123-0">x</a>')).toContain('class="lpmark-abc123-0"')
   })
 })
+
+describe("sanitizeHtml: a page's file token and hostile content (S12)", () => {
+  const ID = "11111111-1111-4111-8111-111111111111"
+
+  it("keeps a file token's span with a uuid, and drops the attribute with anything else", () => {
+    expect(sanitizeHtml(`<span data-page-file="${ID}"></span>`)).toBe(
+      `<span data-page-file="${ID}"></span>`,
+    )
+    for (const bad of ["https://evil.example/x.png", `${ID}" onerror="x`, "", "../x", `${ID}x`]) {
+      expect(sanitizeHtml(`<span data-page-file="${bad.replace(/"/g, "&quot;")}">t</span>`)).toBe(
+        "<span>t</span>",
+      )
+    }
+    // Only on a span.
+    expect(sanitizeHtml(`<a data-page-file="${ID}" href="https://x.example">t</a>`)).not.toContain(
+      "data-page-file",
+    )
+  })
+
+  it("still strips a remote img, svg, picture, style url and srcset", () => {
+    const hostile = [
+      '<img src="https://evil.example/a.png">',
+      '<picture><source srcset="https://evil.example/b.png"><img src="https://evil.example/c.png"></picture>',
+      '<p style="background:url(https://evil.example/d.png)">x</p>',
+      '<svg><image href="https://evil.example/e.png"/></svg>',
+      '<span srcset="https://evil.example/f.png">y</span>',
+      '<video poster="https://evil.example/g.png"></video>',
+    ].join("")
+    const out = sanitizeHtml(hostile)
+    expect(out).not.toMatch(/evil\.example/)
+    expect(out).not.toMatch(/<(img|svg|picture|source|video)\b/)
+  })
+})

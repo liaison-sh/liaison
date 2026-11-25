@@ -19,6 +19,10 @@ import { manifestFileParentRegistry } from "~/modules/apps/app-registries"
 import type { AppDescriptor } from "~/modules/apps/runtime"
 import type { FileParentRegistration } from "~/modules/files/rls-builder"
 import {
+  rlsScopeEntityForTable,
+  scopeEntityReachableByGrant,
+} from "~/modules/permissions/rls-generator"
+import {
   type SettingsInputs,
   searchShapeFingerprintOf,
   settingsInputsOf,
@@ -77,7 +81,11 @@ export interface ManifestFileParentDecl {
   writeScope: string
   /** Delete: the uploader, or a holder of this scope. Absent: writeScope alone. */
   deleteScope?: string
+  /** A function of the parent's schema answering whether the caller may change one row's files. */
+  canWrite?: string
   retention?: { retentionYears: number; anchor: string }
+  /** `readScope`, when the parent table's own row policy does not ask for it. */
+  requiredScope?: string
 }
 
 /** A file parent of the policy; an app's carries its retention when its table is immutable. */
@@ -107,9 +115,22 @@ export function manifestFileParentOf(
     ...(typeof fp.deleteScope === "string" && fp.deleteScope
       ? { deleteScope: fp.deleteScope }
       : {}),
+    ...(typeof fp.canWrite === "string" && fp.canWrite ? { canWrite: fp.canWrite } : {}),
   }
   const schema = isRecord(desc.schema) ? desc.schema : undefined
   const table = schema?.[fileParent.tableName]
+  // A readScope the parent's row policy already asks for adds nothing; one it does not
+  // (a narrower scope on the same rows) goes into the files policy itself.
+  const tableScopeEntity = rlsScopeEntityForTable(
+    fileParent.tableName,
+    isRecord(table) ? (table as { rlsScope?: unknown }) : undefined,
+  )
+  if (
+    fileParent.schemaRef === `app_${desc.name}` &&
+    fileParent.readScope.startsWith(`${desc.name}:`) &&
+    !scopeEntityReachableByGrant(desc.name, tableScopeEntity, fileParent.readScope)
+  )
+    fileParent.requiredScope = fileParent.readScope
   const immutable = isRecord(table) && isRecord(table.immutable) ? table.immutable : undefined
   if (!immutable || typeof immutable.retentionYears !== "number") return fileParent
   return {
@@ -139,6 +160,7 @@ function fileParentsFrom(
       schemaRef: decl.schemaRef,
       tableName: decl.tableName,
       joinOn: decl.joinOn,
+      ...(decl.requiredScope ? { requiredScope: decl.requiredScope } : {}),
       ...(decl.retention ? { retention: decl.retention } : {}),
     })
   }

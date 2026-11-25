@@ -16,24 +16,36 @@ export * from "./app-signing/verify"
 export * from "./app-tab-routes"
 export type {
   ApprovalAuthorityFacts,
+  ApprovalRoute,
   AuthorityViewer,
+  AwayDays,
+  AwayRangeDays,
+  HomePlacement,
   PeerRequestFacts,
+  RoutingFacts,
+  RoutingWorld,
 } from "./approvals/authority"
 export {
+  awayRunEnd,
   canDecidePure,
   canEditPure,
   canSeeInFeed,
   canSeeInList,
   decidingScope,
   decidingScopeForToolDef,
+  decidingScopeOfRow,
   factsFromSummary,
   holdsDecidingScope,
+  homePlacement,
+  isAwayOn,
   isNotified,
   isOwnerRouted,
   isPeerSelfApprovable,
   isRequester,
   isSharedSurfaceFacts,
   MAIL_DRAFT_READ_SCOPE,
+  personLocalDate,
+  routeApproval,
   SHARED_SURFACE_APPROVAL_TOOLS,
   sharedSurfaceDraftReadScope,
   TICKET_DRAFT_READ_SCOPE,
@@ -66,6 +78,7 @@ export {
 export * from "./connect-failures"
 export { csvCell } from "./csv"
 export * from "./demo/needs"
+export * from "./demo/worlds"
 export * from "./emoji-shortcodes"
 export * from "./help-docs"
 export type { HtmlToTextOptions } from "./html-to-text"
@@ -81,6 +94,7 @@ export {
   importPlaceholderEmail,
   isImportPlaceholderEmail,
 } from "./import-placeholder"
+export * from "./knowledge-tokens"
 export * from "./label-skeleton"
 export * from "./line-diff"
 export * from "./mail-participant"
@@ -102,7 +116,9 @@ export * from "./node-session-paths"
 export * from "./node-session-protocol"
 export * from "./notifications/approval-reminder"
 export * from "./notifications/badge"
+export * from "./notifications/capacity-named"
 export * from "./notifications/groups"
+export * from "./pan-scan"
 export * from "./pdf/commands"
 export * from "./pdf/text-layout"
 export { isProviderCreditBlockError } from "./provider-errors"
@@ -212,6 +228,8 @@ export {
 } from "./threads/thread-kind"
 export type { OrgTier } from "./tier-allowance"
 export { TIER_ALLOWANCE, TIER_ORDER, tierAtLeast } from "./tier-allowance"
+export * from "./time/index"
+export * from "./tool-card"
 export * from "./tours/api"
 export * from "./tours/index"
 export * from "./tours/schema"

@@ -215,6 +215,7 @@ interface Entry {
   daysLeft: number | null
   trashedAt: string | null
   trashedBy: string | null
+  trashedByName: string | null
 }
 async function trashList(who = editor): Promise<Entry[]> {
   const res = await call(who, "GET", "/trash")
@@ -274,7 +275,11 @@ describe("Move to trash and restore", () => {
     expect(c).toMatchObject({ archived: true, trashed_by: editorId })
     expect(c.trashed_at).not.toBeNull()
     const entry = (await trashList()).find((e) => e.id === id)
-    expect(entry).toMatchObject({ daysLeft: TRASH_DAYS, trashedBy: editorId })
+    expect(entry).toMatchObject({
+      daysLeft: TRASH_DAYS,
+      trashedBy: editorId,
+      trashedByName: "Editor",
+    })
     const one = await call(editor, "GET", `/trash/${id}`)
     expect(one.status).toBe(200)
     expect(await call(editor, "POST", `/documents/${id}/restore`)).toMatchObject({ status: 200 })
@@ -291,7 +296,12 @@ describe("Move to trash and restore", () => {
     const id = await page()
     await oldArchive(id)
     const entry = (await trashList()).find((e) => e.id === id)
-    expect(entry).toMatchObject({ daysLeft: null, trashedAt: null, trashedBy: null })
+    expect(entry).toMatchObject({
+      daysLeft: null,
+      trashedAt: null,
+      trashedBy: null,
+      trashedByName: null,
+    })
     await runTrashPurge({ ...later(400), schedule: async () => {} })
     expect((await clock(id)).exists).toBe(true)
   })

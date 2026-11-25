@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
 import {
-  Archive,
   ChevronDown,
   ChevronRight,
   FilePlus,
@@ -60,9 +59,10 @@ export interface KnowledgeCollectionTreeProps {
   onRenameDoc?: (docId: string) => void
   /** Delete a folder (its content moves to its parent). */
   onArchive?: (id: string) => void
-  onArchiveDoc?: (docId: string) => void
-  /** Archive is offered only to holders of the archive scope. */
-  canArchiveDocs?: boolean
+  /** Move a page to Trash (with its Undo). */
+  onTrashDoc?: (docId: string, title: string) => void
+  /** Move to trash is offered only to holders of the archive scope. */
+  canTrashDocs?: boolean
   /** May the reader make, rename, move and delete folders, and file pages in
    *  them? The sidebar passes the reader's scopes; left out, it is allowed. */
   canManageFolders?: boolean
@@ -422,7 +422,7 @@ const DocRow: Component<{
   const [menuOpen, setMenuOpen] = createSignal(false)
   const active = () => props.tree.activeDocId === props.doc.id
   const synced = () => Boolean(props.doc.syncedSourceId)
-  /** Rename, move and archive need the right to edit the page (the server
+  /** Rename, move and Move to trash need the right to edit the page (the server
    *  says, per page); moving also needs the folder right. */
   const editable = () => !synced() && props.doc.canEdit !== false
   const movable = () => editable() && props.tree.canManageFolders !== false
@@ -460,14 +460,14 @@ const DocRow: Component<{
           ]
         : []),
       copy,
-      ...(t.canArchiveDocs
+      ...(t.canTrashDocs
         ? [
             {
-              id: "archive",
-              label: i18n.t("kernel.common.archive"),
-              icon: Archive,
+              id: "trash",
+              label: i18n.t("knowledge.trash.moveToTrash"),
+              icon: Trash2,
               separatorBefore: true,
-              onSelect: () => t.onArchiveDoc?.(id),
+              onSelect: () => t.onTrashDoc?.(id, props.doc.title),
             },
           ]
         : []),

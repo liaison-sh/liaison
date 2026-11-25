@@ -81,6 +81,8 @@ export interface TrashEntry {
   /** When it went to Trash; null for a page archived before Trash (kept). */
   trashedAt: string | null
   trashedBy: string | null
+  /** The name of who moved it to Trash, for the Trash list ("Amina Cherif"). */
+  trashedByName: string | null
   /** Whole days before the job deletes it; null when it is kept (never deleted automatically). */
   daysLeft: number | null
 }
@@ -91,6 +93,7 @@ interface TrashDbRow {
   archived_at: Date | string
   trashed_at: Date | string | null
   trashed_by: string | null
+  trashed_by_name: string | null
   clocked: boolean
 }
 
@@ -110,6 +113,7 @@ function entryFromDb(r: TrashDbRow, now: Date): TrashEntry {
     archivedAt: iso(r.archived_at),
     trashedAt,
     trashedBy: trashedAt ? r.trashed_by : null,
+    trashedByName: trashedAt ? r.trashed_by_name : null,
     daysLeft,
   }
 }
@@ -137,8 +141,9 @@ export async function listTrash(
   const rows = extractRows<TrashDbRow>(
     await tx.execute(drizzleSql`
       SELECT d.id::text AS id, d.title, d.archived_at, d.trashed_at, d.trashed_by::text AS trashed_by,
-             ${PURGEABLE} AS clocked
+             u.name AS trashed_by_name, ${PURGEABLE} AS clocked
         FROM ${knowledgeRel("documents")} d
+        LEFT JOIN ${kernelRel("users")} u ON u.id = d.trashed_by
        WHERE d.org_id = ${actor.orgId}::uuid
          AND d.archived_at IS NOT NULL
          AND d.synced_source_id IS NULL

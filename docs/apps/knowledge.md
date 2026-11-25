@@ -30,7 +30,7 @@ If someone else saves the page while you write, or you do in another tab, Liaiso
 The sidebar has two trees: **Personal** for your own notes and **Shared with org** for team documents. Any member can make, rename, move and delete the folders they see, and rename and move the documents they can edit.
 
 - **New page in a folder**: point at the folder and click its **+**. A page made in one of your personal folders is yours alone until you share it.
-- **Row menu**: every folder and document has a **…** button (or right click it). A folder offers **New page**, **New folder**, **Rename**, **Move to…** and **Delete folder**; a document offers **Rename**, **Move to…** and **Copy link**, and **Archive** if you hold `knowledge:documents:archive`. A document you can only read offers **Copy link** alone, and the folder actions and **+** buttons show only if your role lets you organise folders and make pages. The menu works with the mouse, the keyboard (Enter opens it, Escape closes it) and on touch.
+- **Row menu**: every folder and document has a **…** button (or right click it). A folder offers **New page**, **New folder**, **Rename**, **Move to…** and **Delete folder**; a document offers **Rename**, **Move to…** and **Copy link**, and **Move to trash** (with **Undo** for 10 seconds) if you hold `knowledge:documents:archive`; a synced document has no **Move to trash**. A document you can only read offers **Copy link** alone, and the folder actions and **+** buttons show only if your role lets you organise folders and make pages. The menu works with the mouse, the keyboard (Enter opens it, Escape closes it) and on touch.
 - **Move to…** opens a list of folders you can search. Moving between **Personal** and **Shared with org** asks first and says who will see it. You can also drag a row onto a folder.
 - **New personal folder** and **New shared folder** (the **+** next to each tree's name) make a top folder.
 
@@ -121,11 +121,16 @@ Each search, link or read goes through your own connection to the app, so you on
 1. On the Knowledge home, click **Needs review** to see documents that are flagged, stale, missing an owner or past their review date.
 2. Open a document, check it, and click **Verify**.
 
-Use **Archive** to retire a document and **Restore** to bring it back.
+To retire a document, open its **…** menu and click **Move to trash**.
 
 ## Trash
 
-Archiving a document moves it to Trash. It leaves the knowledge base and search at once, and it is deleted for good 30 days later, with its history, its files, its links, its sharing and its place in folders. An agent's `archive` does the same and starts the same 30 days.
+**Move to trash** (in a page's **…** menu) moves a document to Trash. It leaves the knowledge base and search at once, and it is deleted for good 30 days later, with its history, its files, its links, its sharing and its place in folders. For 10 seconds a message offers **Undo**. An agent's `archive` does the same and starts the same 30 days.
+
+1. In the Knowledge sidebar, click **Trash**, under **Unfiled**. The number beside it counts the documents you can restore.
+2. Each document shows who moved it and when, and how many days are left. **Kept** means it was archived before Trash existed.
+3. Click **Restore** to bring a document back. A link to a document in Trash opens the same card, with **Restore**.
+4. An administrator also sees **Delete for good**, and confirms before the document is removed.
 
 - Anyone who can edit a document can see it in Trash and restore it until then. A restored document goes back to its folders, or to Unfiled when none of them is left.
 - Documents archived before Trash existed are listed as kept, with no date: they are never deleted automatically.

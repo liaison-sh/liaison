@@ -42,6 +42,56 @@ describe("ghostClick", () => {
 })
 
 describe("runAutoplay", () => {
+  // Demo walk 2026-11-25: one run's two requests were folded into one Home row
+  // ("2 approvals from Routine … Show all"); the step's row was never rendered
+  // and Do it for me spun for five minutes. A group that says it holds the row
+  // is opened, as a hand would, and the step goes on.
+  it("opens a collapsed group holding the row it waits for, then presses Approve on it", async () => {
+    const approved: string[] = []
+    const toggle = add(document.createElement("button"), "approval-run-group-toggle")
+    toggle.setAttribute("aria-expanded", "false")
+    toggle.dataset.tourHolds = "data-tool-name=kernel:companies_write data-tool-name=mail:reply"
+    toggle.addEventListener("click", () => {
+      toggle.setAttribute("aria-expanded", "true")
+      for (const tool of ["kernel:companies_write", "mail:reply"]) {
+        const btn = add(document.createElement("button"), "approval-card-action-approve")
+        btn.dataset.toolName = tool
+        btn.addEventListener("click", () => approved.push(tool))
+      }
+    })
+    const value = ["kernel:companies_write", "mail:reply"]
+    const approve = {
+      testid: "approval-card-action-approve",
+      where: { attr: "data-tool-name", value },
+    }
+    const res = await runAutoplay([{ waitFor: approve }, { click: approve }, { waitEvent: true }], {
+      signal: new AbortController().signal,
+      cursor,
+      ...fast,
+    })
+    expect(res).toEqual({ status: "done" })
+    expect(approved).toEqual(["kernel:companies_write"])
+  })
+
+  it("never opens a group that holds something else", async () => {
+    const toggle = add(document.createElement("button"), "approval-run-group-toggle")
+    toggle.setAttribute("aria-expanded", "false")
+    toggle.dataset.tourHolds = "data-tool-name=projects:create"
+    const clicked = vi.fn()
+    toggle.addEventListener("click", clicked)
+    const row = {
+      testid: "attention-row-*",
+      where: { attr: "data-tool-name", value: "mail:reply" },
+    }
+    const res = await runAutoplay([{ waitFor: row }], {
+      signal: new AbortController().signal,
+      cursor,
+      ...fast,
+    })
+    expect(res).toEqual({ status: "failed", missing: "attention-row-*" })
+    expect(clicked).not.toHaveBeenCalled()
+  })
+
   // Walk D49: on a visit that had played Sales, the Mail tour opened the
   // newest conversation, the prospect's email the routine had already
   // answered. A click may prefer the rows carrying a mark (unread) and falls

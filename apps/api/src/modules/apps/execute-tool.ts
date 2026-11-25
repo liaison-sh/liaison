@@ -2243,6 +2243,51 @@ export function turnBundleKey(
   return `${toolName}\u0000${JSON.stringify([demand, approveScope, disclosedToReaders])}`
 }
 
+/**
+ * The key a ROUTINE run's gated calls share (`routineChainOf`): one request for the whole run,
+ * whatever tool each step runs, so the run's work is one decision taken in the order it was
+ * proposed. A routine's run is one piece of work its owner approves once (the sales routine's
+ * company, deal, proposal and reply): a later call that cites no `@ref` token (a reply naming the
+ * firm in plain words) staged a request of its own beside the chained one, both waited at once,
+ * and the reply could be approved, and sent, before the writes it spoke of (demo walk
+ * 2026-11-25). A tainted call keys on its audience as `turnBundleKey` does, less the deciding
+ * scope: a step of a request is decided with its head, as a step citing an `@ref` token is.
+ */
+export function routineChainKey(
+  parkTaint: readonly string[] | null,
+  disclosedToReaders: boolean,
+): string {
+  if (parkTaint === null) return "\u0000routine-chain"
+  const demand = [...new Set(parkTaint)].sort()
+  return `\u0000routine-chain\u0000${JSON.stringify([demand, disclosedToReaders])}`
+}
+
+/**
+ * Whether this turn's gated calls chain into one request as a routine run's (`routineChainKey`):
+ * a routine's run that waits for its approvals. A follow-up routine never pauses (each of its
+ * calls waits for a person while the run goes on), so its calls keep the per-tool requests.
+ */
+export function routineChainOf(frame: RunContext | undefined): boolean {
+  return Boolean(frame?.routineId) && frame?.routineFollowUp !== true
+}
+
+/**
+ * A routine run's step that cited an `@ref` token joined the request of the call it cites: the
+ * run's chain now ends at it, so a later call citing nothing waits for it too (and is declined
+ * with it). Only when the chain's request is that same request.
+ */
+export async function noteRoutineChainStep(
+  bundles: Map<string, Promise<TurnToolBundle | null>>,
+  key: string,
+  bundleId: string,
+  stepId: string,
+): Promise<void> {
+  const prior = bundles.get(key)
+  const tail = prior ? await prior : null
+  if (tail && tail.headId !== bundleId) return
+  bundles.set(key, Promise.resolve({ headId: bundleId, lastId: stepId }))
+}
+
 /** The turn's same-tool bundles, created on the turn's first gated call. Null outside a turn. */
 export function turnToolBundlesOf(
   frame: RunContext | undefined,
@@ -6315,7 +6360,9 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           const turnThreadId = opts.threadId
           const staged = await stageInTurnBundle(
             turnBundles,
-            turnBundleKey(opts.toolName, parkTaint, approveScope, taintDisclosedToReaders),
+            routineChainOf(currentRunContext())
+              ? routineChainKey(parkTaint, taintDisclosedToReaders)
+              : turnBundleKey(opts.toolName, parkTaint, approveScope, taintDisclosedToReaders),
             standalone,
             async (tail) =>
               (await joinTurnBundleHead(opts.orgId, userId, tail, actingAgentId))
@@ -6412,6 +6459,19 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         proposingTurnScopes: dispatchProposingTurnScopes,
         actingAgentId,
       })
+      // A routine run's chain now ends at this step: a later call citing no token waits for it.
+      const chainFrame = currentRunContext()
+      if (routineChainOf(chainFrame) && stepBundleId === null) {
+        const chain = turnToolBundlesOf(chainFrame)
+        if (chain) {
+          await noteRoutineChainStep(
+            chain,
+            routineChainKey(parkTaint, taintDisclosedToReaders),
+            bundle.bundleId,
+            approvalRequestId,
+          )
+        }
+      }
       envelope = {
         blocked: {
           reason: "gated",

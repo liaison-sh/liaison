@@ -244,6 +244,13 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
   const firedBy = (evt.metadata as { firedByRoutineId?: string } | null | undefined)
     ?.firedByRoutineId
   if (firedBy === sub.routineId) return
+  // Its own approved work too: a request the routine staged, executed once a person approved it,
+  // runs outside the routine's tick (queue-event.ts stamps `stagedByRoutineId`). A sales routine
+  // on new mail ran again on its own reply once that was approved and sent, and staged the
+  // company, the deal and the proposal a second time (demo walk 2026-11-25).
+  const stagedBy = (evt.metadata as { stagedByRoutineId?: string } | null | undefined)
+    ?.stagedByRoutineId
+  if (stagedBy === sub.routineId) return
   // CHAIN GUARD (0303): routines triggering one another (a routine's write firing another
   // routine, whose write fires a third...) stop at depth 5. queue-event stamps `metadata.hop`
   // (the firing run's hop + 1) on every event a routine run queues. The owner hears of it once an

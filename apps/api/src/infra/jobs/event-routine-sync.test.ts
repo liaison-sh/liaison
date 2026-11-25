@@ -378,6 +378,69 @@ describe("a routine armed after its event", () => {
     }
   })
 
+  it("live first, then another process's catch-up of the same event: one run, not two", async () => {
+    // A sales run that staged its request twice could have been two runs of one email: the
+    // live delivery and a catch-up. Ruled out: the per-event marker holds in this order too,
+    // and with no coalesce window to hide behind.
+    EventRoutineSubscriberTestAccess.setCoalesceMs(0)
+    const enqueue = spyOn(jobs, "enqueueAppJob").mockResolvedValue("job-id" as never)
+    try {
+      const id = await insertEventRoutine()
+      const armed = await armedAt(id)
+      await registerEventRoutineSubscription({ routineId: id, orgId, event: EVENT })
+      const { eventId, ticketId } = await logTicketCreated(new Date(armed.getTime() + 500))
+      await _publishEventInternal({
+        app: "tickets",
+        entity: "ticket",
+        action: "create",
+        entityId: ticketId,
+        orgId,
+        actorId: userId,
+        actorType: "user",
+        _eventId: eventId,
+      } as never)
+      await waitFor(() => ticks(enqueue, id).length === 1)
+      await catchUpMissedEvents({ routineId: id, orgId, event: EVENT }, armed)
+      await new Promise((r) => setTimeout(r, 200))
+      expect(ticks(enqueue, id)).toHaveLength(1)
+    } finally {
+      enqueue.mockRestore()
+      EventRoutineSubscriberTestAccess.setCoalesceMs()
+    }
+  })
+
+  it("the routine's own approved work never fires it again; another routine's still does", async () => {
+    // A sales routine on new mail staged a reply; once approved and sent, the reply was a new
+    // message of the kind it watches, and the routine ran again on it. The approved write's
+    // events carry `stagedByRoutineId` (queue-event.ts), and the routine drops its own.
+    EventRoutineSubscriberTestAccess.setCoalesceMs(0)
+    const enqueue = spyOn(jobs, "enqueueAppJob").mockResolvedValue("job-id" as never)
+    try {
+      const id = await insertEventRoutine()
+      await registerEventRoutineSubscription({ routineId: id, orgId, event: EVENT })
+      const publish = (stagedByRoutineId: string) =>
+        _publishEventInternal({
+          app: "tickets",
+          entity: "ticket",
+          action: "create",
+          entityId: crypto.randomUUID(),
+          orgId,
+          actorId: userId,
+          actorType: "user",
+          metadata: { stagedByRoutineId },
+          _eventId: crypto.randomUUID(),
+        } as never)
+      await publish(id)
+      await new Promise((r) => setTimeout(r, 200))
+      expect(ticks(enqueue, id)).toHaveLength(0)
+      await publish(crypto.randomUUID())
+      await waitFor(() => ticks(enqueue, id).length === 1)
+    } finally {
+      enqueue.mockRestore()
+      EventRoutineSubscriberTestAccess.setCoalesceMs()
+    }
+  })
+
   it("switching a seeded routine on announces it to the cell", async () => {
     const id = await insertEventRoutine({ enabled: false })
     const listener = new Redis(env.REDIS_URL, {

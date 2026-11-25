@@ -6,6 +6,7 @@
 // out, and there is one path per case. Every write waits for the visitor's
 // approval, and the sales request is one approval for the whole chain.
 import { SAAS_PROSPECT_ROUTINE_NAME } from "@liaison/shared"
+import { SAAS_PIPELINE_NAME } from "~/seed/worlds/saas/plan"
 
 export const SAAS_SUPPORT_ROUTINE_NAME = "Draft a reply to new tickets"
 export const PROSPECT_SCENARIO_ROUTINE_NAME = SAAS_PROSPECT_ROUTINE_NAME
@@ -63,7 +64,7 @@ export function prospectRoutinePrompt(issuerProfileId: string): string {
     "quote's number written as the number token, the monthly price per site, a rollout in " +
     "waves of three sites, and one line that shows you know their group.\n" +
     "Then stop: the run waits for my decision and comes back to you with the results.\n" +
-    "7. Once I have decided, create the deal with projects__create in the Sales pipeline: " +
+    `7. Once I have decided, create the deal with projects__create, projectName "${SAAS_PIPELINE_NAME}" exactly: ` +
     "title the group's name, linked to its company. Then close with a short brief: who they " +
     "are, what the group does (say where you learned it), what they want, and what became of " +
     "the company, the contact, the quote (its number) and the reply. If a step failed, propose " +

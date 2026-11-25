@@ -135,7 +135,8 @@ async function threadBacklinks(tx: RlsClient, orgId: string, id: string) {
     app: "kernel",
     entityType: "thread",
     entityId: r.threadId,
-    title: r.title ?? "Thread",
+    // No English fallback here: the reader's app names an untitled conversation.
+    title: r.title ?? "",
     url: `/threads/${r.threadId}`,
   }))
 }

@@ -58,6 +58,14 @@ A document's images and files are read by the people who can read the document, 
 
 A document shows only images stored in Liaison. When you save a document that shows an image or a file of another document, Liaison stores its own copy on this document, so it stays when the other document is deleted. A file you cannot read is not copied: its place in the text is kept, and readers see that it is not available. Only images and files of other documents, and files you have just uploaded, are copied: an email or ticket attachment, a template's file or an encrypted file is never copied onto a document, and readers see it as not available. A copy made by a save that then failed, which no version of the document names, is removed by an hourly cleanup. When your organization's storage is full, the document is still saved and the copy is made at a later save, once there is room.
 
+## Links between documents
+
+A link to another document stores that document's id, never its title. Each reader sees the title only if they can read the linked document; anyone else sees that they cannot open it, and receives no title, in the app or through the API. A link to a document in the archive shows nothing until it is restored. When the linked document is renamed, every link to it shows the new name.
+
+Each document lists the documents that link to it, limited to the ones you can read, beside the conversations that mention it.
+
+Older texts held the linked document's title, as agents wrote their links. Liaison removes those titles from documents, summaries and their history once, in a daily job: only the links change, a document keeps its version and its review status. Self-hosters can run it at once with `liaison knowledge links-backfill` (`--dry-run` only counts). The titles are removed for good: if you go back to a release from before links held only the id, those links show as plain links without a title.
+
 ## Share a document
 
 1. Open the document and click **Share**.
@@ -167,7 +175,7 @@ Knowledge ships three roles. See [roles](../admin/roles.md).
 | Tool | What it does | Scope |
 |---|---|---|
 | `search` | Search Knowledge and enabled remote sources | `knowledge:documents:read` |
-| `get` | Read a document or a remote source item, with the files its text shows | `knowledge:documents:read` |
+| `get` | Read a document or a remote source item, with the files its text shows and the documents it links to that you can read | `knowledge:documents:read` |
 | `find_by_title` | Find a document by its exact title | `knowledge:documents:read` |
 | `review_queue` | List items that need review | `knowledge:documents:read` |
 | `create` | Create a document | `knowledge:documents:create` |

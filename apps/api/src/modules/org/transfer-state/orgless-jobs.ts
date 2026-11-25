@@ -78,6 +78,7 @@ export const ORGLESS_JOB_AUDIT: Readonly<Record<string, OrglessJobEntry>> = {
   "knowledge:stale-running-reclaim": skips("apps/knowledge/knowledge-jobs.ts"),
   "knowledge:update-event-flush": skips("apps/knowledge/event-coalesce.ts"),
   "knowledge:trash-purge": skips("apps/knowledge/trash.ts"),
+  "knowledge:page-links-backfill": skips("apps/knowledge/links.ts"),
   "knowledge:unparented-copies-sweep": skips("apps/knowledge/page-file-sweep.ts"),
   "kernel:mailbox-backfill": skips("modules/mailbox-crypto/backfill-job.ts"),
   "kernel:sync-model-pricing": audited("writes the global model price table only; no per-org rows"),

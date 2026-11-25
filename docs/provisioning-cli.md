@@ -82,6 +82,7 @@ liaison demo reclassify --since <instant> --until <instant> [--org <id>] [--appl
 liaison mailbox verify-attachment --file-id <kernel.files id>
 liaison mailbox purge --user <uuid> --org <uuid> [--execute --confirm <same user uuid>]
 liaison files purge-deleted-message-attachments [--org <uuid>] [--dry-run]
+liaison knowledge links-backfill [--org <uuid>] [--dry-run]
 liaison seed --tier demo|lively|load|standard [--admin <email>] [--now <instant>] [--only agent-app] [--variant reserved|visitor] [--slug <slug>] [--name <org name>] [--locale <locale>] [--reset|--no-reset] [--passwords <password>|--passwords-env <VAR>] [--replace] [--warehouse] [--no-commerce] [--people <file>] [--orgs <n>] [--prefix <prefix>] [--shape demo] [--volume] [--threads <n>] [--contacts <n>] [--tickets <n>] [--projects <n>] [--no-reindex] [--ttl-hours <hours>] [--concurrency <n>]
 liaison keys rotate --family encryption|byok --from-env <VAR> --to-env <VAR> [--execute] [--skip-undecryptable]
 liaison erase-user <userId>
@@ -291,6 +292,14 @@ liaison erase-user <userId>
   messages that were deleted before deleting a message took its files along
   (rows now, objects through the server's object-deletion job). Every org, or
   only `--org`; idempotent; `--dry-run` only counts.
+- **`knowledge links-backfill`**: remove the linked document's title from
+  Knowledge links stored before links held only the document's id (bodies,
+  summaries, history), and record each document's links, as the daily job
+  does. Only documents whose text, summary or history holds a link are
+  touched; only links change: no new version, no event, review status kept.
+  Every org, or only `--org`; idempotent; `--dry-run` only counts. The titles
+  are gone for good: after a rollback to a release older than id-only links,
+  those links show as plain links without a title.
 - **`seed --tier demo`**: fills an org with the demo world: the fictional
   company Resonant Audio Labs, its seven people and their agents, tickets,
   mail, knowledge, projects, invoices, shipments and routines. `--slug` names

@@ -42,3 +42,5 @@ Run pauses on a held call and resumes with its result -> packages/shared/src/tou
 Record approved first, then the reply (tour order) -> packages/shared/src/tours/demo/sales.ts:170-215
 Website read only when neither sender nor company is in the CRM, at https://<domain>/ -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:2012-2016
 Reading the web never waits for an approval -> apps/api/src/modules/apps/execute-tool.ts:4019,4029
+companies_write lists id and name as @ref outputs -> apps/api/src/modules/agent/tools/company-tools.ts:1045
+A whole @ref token passes a uuid field -> apps/api/src/modules/apps/execute-tool-params.ts:219,255,496

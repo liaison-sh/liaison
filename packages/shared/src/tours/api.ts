@@ -127,7 +127,8 @@ export function createdEntityIds(
  *    gate), failed or cut off. The card says so, with the refusal's own words
  *    when there are some, and Try again sends the same question again.
  *  - `routine-*`: the run of the routine the step waits on, on what this run
- *    brought in: under way, finished, stopped with an error, or not run (why).
+ *    brought in: under way, finished, finished without doing the step,
+ *    stopped with an error, or not run (why).
  */
 export type TourBeatStatus =
   | { kind: "done"; held: boolean }
@@ -155,6 +156,12 @@ export type TourBeatStatus =
     }
   | { kind: "routine-running"; routineName: string | null; startedAt: string }
   | { kind: "routine-succeeded"; routineName: string | null }
+  /**
+   * The run ended "succeeded" without doing what the step waits on (its own
+   * work, e.g. the request carrying the reply): the step will not arrive from
+   * this run, and the card offers Skip.
+   */
+  | { kind: "routine-incomplete"; routineName: string | null }
   /**
    * The run paused on an approval it asked for before it did what the step
    * waits on: it carries on once that request is decided on Home.

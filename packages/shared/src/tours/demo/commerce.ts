@@ -50,7 +50,8 @@ const OPERATIONS_DESK_ROW = "chats-agent-row[data-agent-name=Operations Desk]"
 const toAgent = (last: string) => [
   hop(k("askAgent.way1"), "dock-chats", "phone-tab-chats"),
   hop(k("askAgent.way2"), OPERATIONS_DESK_ROW),
-  lastHop(last),
+  // Its composer on screen: the conversation is open already, Chats and the desk's row are behind.
+  lastHop(last, RUN_COMPOSER_ANCHOR),
 ]
 
 export function buildCommerceTour(cfg: ScenarioCfg): Tour {

@@ -178,7 +178,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.common.sendBelow"
+            "label": "tours.scenarios.common.sendBelow",
+            "at": "compose-field[data-personal-agent=true]"
           }
         ],
         "say": {
@@ -306,7 +307,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.support.answer.way3"
+            "label": "tours.scenarios.support.answer.way3",
+            "at": "compose-field[data-personal-agent=true]"
           }
         ],
         "route": "/tickets/{live-ticket}",
@@ -402,7 +404,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.common.sendBelow"
+            "label": "tours.scenarios.common.sendBelow",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "say": {
@@ -484,7 +487,8 @@
             "anchorPhone": "chats-personal-agent-row"
           },
           {
-            "label": "tours.scenarios.projects.subtasks.way3"
+            "label": "tours.scenarios.projects.subtasks.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "route": "/projects/tasks/{teammate}",
@@ -1447,7 +1451,7 @@
         "kind": "show",
         "title": "tours.scenarios.sales.bundle.title",
         "body": "tours.scenarios.sales.bundle.body",
-        "anchor": "attention-row-*[data-tool-name=api-connector:connector_write|invoicing:quote_create_and_issue]",
+        "anchor": "attention-row-*[data-tool-name=api-connector:connector_write|invoicing:quote_create_and_issue|mail:reply]",
         "role": "tours.scenarios.sales.bundle.role",
         "path": [
           {
@@ -1463,7 +1467,7 @@
         "kind": "show",
         "title": "tours.scenarios.sales.bundleSteps.title",
         "body": "tours.scenarios.sales.bundleSteps.body",
-        "anchor": "approval-card[data-tool-name=api-connector:connector_write|invoicing:quote_create_and_issue]",
+        "anchor": "approval-card[data-tool-name=api-connector:connector_write|invoicing:quote_create_and_issue|mail:reply]",
         "role": "tours.scenarios.sales.bundleSteps.role",
         "path": [
           {
@@ -1472,7 +1476,7 @@
           },
           {
             "label": "tours.scenarios.sales.bundleSteps.way2",
-            "anchor": "attention-row-*[data-tool-name=api-connector:connector_write|invoicing:quote_create_and_issue]"
+            "anchor": "attention-row-*[data-tool-name=api-connector:connector_write|invoicing:quote_create_and_issue|mail:reply]"
           }
         ],
         "route": "/",
@@ -1482,7 +1486,11 @@
               "testid": "attention-row-*",
               "where": {
                 "attr": "data-tool-name",
-                "value": ["api-connector:connector_write", "invoicing:quote_create_and_issue"]
+                "value": [
+                  "api-connector:connector_write",
+                  "invoicing:quote_create_and_issue",
+                  "mail:reply"
+                ]
               }
             }
           },
@@ -1491,14 +1499,22 @@
               "testid": "attention-row-*",
               "where": {
                 "attr": "data-tool-name",
-                "value": ["api-connector:connector_write", "invoicing:quote_create_and_issue"]
+                "value": [
+                  "api-connector:connector_write",
+                  "invoicing:quote_create_and_issue",
+                  "mail:reply"
+                ]
               }
             },
             "unlessVisible": {
               "testid": "approval-card",
               "where": {
                 "attr": "data-tool-name",
-                "value": ["api-connector:connector_write", "invoicing:quote_create_and_issue"]
+                "value": [
+                  "api-connector:connector_write",
+                  "invoicing:quote_create_and_issue",
+                  "mail:reply"
+                ]
               }
             }
           }
@@ -1510,7 +1526,7 @@
         "kind": "do",
         "title": "tours.scenarios.sales.approve.title",
         "body": "tours.scenarios.sales.approve.body",
-        "anchor": "approval-card-action-approve[data-tool-name=api-connector:connector_write|invoicing:quote_create_and_issue]",
+        "anchor": "approval-card-action-approve[data-tool-name=api-connector:connector_write|invoicing:quote_create_and_issue|mail:reply]",
         "role": "tours.scenarios.sales.approve.role",
         "path": [
           {
@@ -1519,7 +1535,7 @@
           },
           {
             "label": "tours.scenarios.sales.approve.way2",
-            "anchor": "attention-row-*[data-tool-name=api-connector:connector_write|invoicing:quote_create_and_issue]"
+            "anchor": "attention-row-*[data-tool-name=api-connector:connector_write|invoicing:quote_create_and_issue|mail:reply]"
           }
         ],
         "undo": {
@@ -1544,7 +1560,11 @@
               "testid": "attention-row-*",
               "where": {
                 "attr": "data-tool-name",
-                "value": ["api-connector:connector_write", "invoicing:quote_create_and_issue"]
+                "value": [
+                  "api-connector:connector_write",
+                  "invoicing:quote_create_and_issue",
+                  "mail:reply"
+                ]
               }
             }
           },
@@ -1553,14 +1573,22 @@
               "testid": "attention-row-*",
               "where": {
                 "attr": "data-tool-name",
-                "value": ["api-connector:connector_write", "invoicing:quote_create_and_issue"]
+                "value": [
+                  "api-connector:connector_write",
+                  "invoicing:quote_create_and_issue",
+                  "mail:reply"
+                ]
               }
             },
             "unlessVisible": {
               "testid": "approval-card-action-approve",
               "where": {
                 "attr": "data-tool-name",
-                "value": ["api-connector:connector_write", "invoicing:quote_create_and_issue"]
+                "value": [
+                  "api-connector:connector_write",
+                  "invoicing:quote_create_and_issue",
+                  "mail:reply"
+                ]
               }
             }
           },
@@ -1569,7 +1597,11 @@
               "testid": "approval-card-action-approve",
               "where": {
                 "attr": "data-tool-name",
-                "value": ["api-connector:connector_write", "invoicing:quote_create_and_issue"]
+                "value": [
+                  "api-connector:connector_write",
+                  "invoicing:quote_create_and_issue",
+                  "mail:reply"
+                ]
               }
             }
           },
@@ -1578,7 +1610,11 @@
               "testid": "approval-card-action-approve",
               "where": {
                 "attr": "data-tool-name",
-                "value": ["api-connector:connector_write", "invoicing:quote_create_and_issue"]
+                "value": [
+                  "api-connector:connector_write",
+                  "invoicing:quote_create_and_issue",
+                  "mail:reply"
+                ]
               }
             }
           },
@@ -1762,7 +1798,8 @@
             "anchor": "chats-agent-row[data-agent-name=Operations Desk]"
           },
           {
-            "label": "tours.scenarios.common.sendBelow"
+            "label": "tours.scenarios.common.sendBelow",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "say": {
@@ -1843,7 +1880,8 @@
             "anchor": "chats-agent-row[data-agent-name=Operations Desk]"
           },
           {
-            "label": "tours.scenarios.commerce.prepare.way3"
+            "label": "tours.scenarios.commerce.prepare.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "route": "/shopify/orders",
@@ -1885,7 +1923,8 @@
             "anchor": "chats-agent-row[data-agent-name=Operations Desk]"
           },
           {
-            "label": "tours.scenarios.common.held.way3"
+            "label": "tours.scenarios.common.held.way3",
+            "at": "compose-field[data-thread-id={conversation}]"
           }
         ],
         "undo": {

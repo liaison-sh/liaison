@@ -506,19 +506,30 @@ export const ROUTINE_CHAIN_RETRIES = 3
 
 /**
  * When a routine run's pause falls due (see `routinePauseDue`). A parked call
- * that hands out @ref tokens lets the run go on proposing the calls that cite
- * them (one request the person approves once); the pause falls due at the
- * first step that parks a call with nothing to chain on, or that does anything
- * but look a tool up or have a call refused (its error says how to fix it, up
- * to `ROUTINE_CHAIN_RETRIES` times) after a call was parked.
+ * that hands out @ref tokens opens a chain: the run goes on proposing the calls
+ * that cite them (one request the person approves once). The chain stays open
+ * while the run parks calls, whether or not each one hands out tokens of its
+ * own: the tokens handed out earlier still stand, and a later step cites them.
+ * A sales run on Auto that parked the company (tokens), then the deal (none),
+ * paused at the deal, so its proposal and its reply each became a request of
+ * their own (demo walk 2026-11-25). The pause falls due at the first step that
+ * parks a call with no chain open, or that does anything but park a call, look
+ * a tool up or have a call refused (its error says how to fix it, up to
+ * `ROUTINE_CHAIN_RETRIES` times) after a call was parked.
  */
 export function routinePauseFallsDue(
   step: unknown,
   parkedEarlier: boolean,
   retriesLeft = ROUTINE_CHAIN_RETRIES,
+  chainOpen = false,
 ): boolean {
-  if (stepParkedACall(step)) return !stepParkedWithOutputs(step)
+  if (stepParkedACall(step)) return !chainOpen && !stepParkedWithOutputs(step)
   return parkedEarlier && (retriesLeft <= 0 || !stepOnlyDiscoveredOrRefused(step))
+}
+
+/** Whether a routine step opens a chain: a call it parked handed out @ref tokens. */
+export function stepOpensRoutineChain(step: unknown): boolean {
+  return stepParkedWithOutputs(step)
 }
 
 const TIMEOUT_MS = 300_000
@@ -3220,14 +3231,16 @@ async function runAgentChatTurn(
     if (spentBeforeFirstStep) stoppedAtHardTokenLimit = true
   }
   // A ROUTINE run waits for its gated calls (routine-run-resume.ts): once the
-  // pause falls due (`routinePauseFallsDue`: a parked call it cannot chain on,
-  // or other work after one), the next step says what the run waits for, tools
+  // pause falls due (`routinePauseFallsDue`: a parked call with no chain of
+  // @ref tokens open, or other work after one), the next step says what the run waits for, tools
   // off, and the loop stops after it. The run resumes with the real result once
   // the call is decided, so nothing after the pause guesses it.
   // Steps this turn has finished (the agent_step_usage line).
   let stepsFinished = 0
   let routinePauseDue = false
   let routineParkedEarlier = false
+  // A parked call of this turn handed out @ref tokens: later parked calls chain on (one request).
+  let routineChainOpen = false
   let routineChainRetries = ROUTINE_CHAIN_RETRIES
   let routinePauseSent = false
   // ---- The durable turn (S10): resume seed, journal, open ----
@@ -3855,12 +3868,15 @@ async function runAgentChatTurn(
       // A follow-up routine never pauses: what it staged waits for a person
       // while the run goes on and ends (routine-run-resume.ts).
       if (params.routineId && !runFrame.routineFollowUp && !routinePauseDue) {
-        if (routinePauseFallsDue(step, routineParkedEarlier, routineChainRetries)) {
+        if (
+          routinePauseFallsDue(step, routineParkedEarlier, routineChainRetries, routineChainOpen)
+        ) {
           routinePauseDue = true
         } else if (routineParkedEarlier && !stepParkedACall(step)) {
           routineChainRetries--
         }
         if (stepParkedACall(step)) routineParkedEarlier = true
+        if (stepOpensRoutineChain(step)) routineChainOpen = true
       }
       if (tokenAccount) {
         await recordStepTokens(

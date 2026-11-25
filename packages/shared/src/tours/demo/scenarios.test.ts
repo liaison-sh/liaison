@@ -773,10 +773,15 @@ describe("demo scenarios", () => {
   it("sales: the visitor approves the routine's one request once, in Home", () => {
     const beats = findTour("kernel.scenario-sales")?.beats ?? []
     const approve = beats.find((b) => b.id === "approve")
-    const heads = ["api-connector:connector_write", "invoicing:quote_create_and_issue"]
+    // The request's head row (the record, or the quote when the prospect is
+    // already in the CRM), or the reply alone when the run split its work.
+    const heads = [
+      "api-connector:connector_write",
+      "invoicing:quote_create_and_issue",
+      "mail:reply",
+    ]
     const home = homeApproval(heads)
-    // Rings and Do it for me approves the request's head row (the record, or
-    // the quote when the prospect is already in the CRM), never a seeded request.
+    // Rings and Do it for me approves that row, never a seeded request.
     expect(approve?.anchor).toBe(`approval-card-action-approve[data-tool-name=${heads.join("|")}]`)
     expect(approve?.path?.[1]?.anchor).toBe(home.anchor)
     expect(approve?.route).toBe(home.route)
@@ -852,7 +857,11 @@ describe("demo scenarios", () => {
 
   it("sales: the visitor opens the request in Home and sees its steps before approving", () => {
     const beats = findTour("kernel.scenario-sales")?.beats ?? []
-    const heads = ["api-connector:connector_write", "invoicing:quote_create_and_issue"]
+    const heads = [
+      "api-connector:connector_write",
+      "invoicing:quote_create_and_issue",
+      "mail:reply",
+    ]
     const home = homeApproval(heads)
     const bundle = beats.find((b) => b.id === "bundle")
     expect(bundle?.kind).toBe("show")
@@ -871,6 +880,26 @@ describe("demo scenarios", () => {
         unlessVisible: { testid: "approval-card", where: { attr: "data-tool-name", value: heads } },
       },
     ])
+  })
+
+  // A step aimed at a conversation opened from the dock's Chats: once that
+  // conversation is open (its composer on screen), Chats and the agent's row
+  // are behind the person. Without `at` on the last hop the card kept saying
+  // "1/3 Open Chats" over the open conversation, and pressing it went back to
+  // the list (demo walks 2026-11-25, commerce approve).
+  it("every step whose way opens a conversation from the dock's Chats knows when it is open", () => {
+    const missing: string[] = []
+    for (const tour of DEMO_SCENARIO_TOURS) {
+      for (const beat of tour.beats) {
+        const path = beat.path ?? []
+        if (!path.some((hop) => hop.anchor === "dock-chats")) continue
+        const last = path[path.length - 1] as TourPathHop
+        if (last.anchor !== undefined || !last.at?.startsWith("compose-field[")) {
+          missing.push(`${tour.id} ${beat.id}`)
+        }
+      }
+    }
+    expect(missing).toEqual([])
   })
 
   it("show beats that point at another screen name the way there", () => {

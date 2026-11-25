@@ -293,7 +293,7 @@ describe("an interactive turn's input budget", () => {
     toolResults: [{ toolCallId: "s1", toolName: "kernel__tool_search", output: { tools: [] } }],
   }
 
-  it("a routine turn chains on a parked call's tokens, then pauses at the call with nothing to chain on", async () => {
+  it("a routine turn chains on a parked call's tokens, then pauses at the first step that parks nothing", async () => {
     const result = await startTurn("routine")
     await prepare(0)
     await capturedParams.onStepFinish(chainableStep("a1"))
@@ -317,8 +317,19 @@ describe("an interactive turn's input budget", () => {
       ],
     })
     expect((await prepare(3)).toolChoice).toBeUndefined()
+    // A parked call with no tokens of its own (the deal, the reply) stays in the
+    // chain: the tokens handed out earlier still stand (demo walk 2026-11-25).
     await capturedParams.onStepFinish(parkedStep)
-    const pause = await prepare(4)
+    expect((await prepare(4)).toolChoice).toBeUndefined()
+    expect(result.stepCtx.answerOnly).toBeNull()
+    expect(result.stepCtx.chainOnly).toBe(ROUTINE_CHAIN_ONLY_RESULT)
+    await capturedParams.onStepFinish(parkedStep)
+    // Other work after it: the pause falls due.
+    await capturedParams.onStepFinish({
+      usage: { inputTokens: 1000, outputTokens: 10 },
+      toolResults: [{ toolCallId: "r1", toolName: "tickets__get", output: { id: "t1" } }],
+    })
+    const pause = await prepare(5)
     expect(pause.toolChoice).toBeUndefined()
     expect(result.stepCtx.answerOnly).toBe(ROUTINE_RUN_PAUSE_ANSWER_ONLY_RESULT)
     expect(JSON.stringify(pause.messages ?? [])).toContain(

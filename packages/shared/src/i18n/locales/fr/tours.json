@@ -425,6 +425,8 @@
     "routineRunningUnnamed": "La routine s'en occupe ({{elapsed}}). Cette étape avance quand elle a fini.",
     "routineDone": "La routine « {{name}} » a fini.",
     "routineDoneUnnamed": "La routine a fini.",
+    "routineIncomplete": "La routine « {{name}} » a fini sans faire cette étape. Passez-la pour continuer.",
+    "routineIncompleteUnnamed": "La routine a fini sans faire cette étape. Passez-la pour continuer.",
     "routineWaiting": "La routine « {{name}} » attend une approbation qu’elle a demandée. Décidez-la dans Accueil et la routine reprend.",
     "routineWaitingAsks": "La routine « {{name}} » demande votre approbation avant de continuer. Approuvez sa demande dans Accueil ou appuyez sur Faites-le pour moi, et la routine reprend.",
     "routineWaitingAsksUnnamed": "La routine demande votre approbation avant de continuer. Approuvez sa demande dans Accueil ou appuyez sur Faites-le pour moi, et la routine reprend.",

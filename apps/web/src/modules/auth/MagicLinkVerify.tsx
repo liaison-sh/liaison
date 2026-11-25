@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
+import { isKickoffGoal, type KickoffGoal } from "@liaison/shared"
 import { useNavigate } from "@solidjs/router"
 import { type Component, createSignal, Match, onMount, Switch } from "solid-js"
 import { anonApiClient } from "~/lib/api-client"
@@ -37,6 +38,10 @@ const MagicLinkVerify: Component = () => {
   const [confirmation, setConfirmation] = createSignal<Confirmation | null>(null)
   const [submitting, setSubmitting] = createSignal(false)
   let link: { challengeId: string; token: string } | null = null
+  // The goal a Cloud signup chose (`&goal=` on its handoff link): sent with
+  // "Continue" only, and only one of the three. The server reads it for a
+  // handoff's first setup and for nothing else.
+  let goal: KickoffGoal | null = null
 
   const finish = (result: AuthResponse) => {
     if (result.totpRequired && result.challengeToken) {
@@ -54,6 +59,8 @@ const MagicLinkVerify: Component = () => {
     const params = new URLSearchParams(window.location.search)
     const challengeId = params.get("challengeId")
     const token = params.get("token")
+    const chosen = params.get("goal")
+    goal = isKickoffGoal(chosen) ? chosen : null
     // Strip the token from the URL immediately so it can't leak via history/referrer.
     window.history.replaceState(null, "", window.location.pathname)
 
@@ -83,6 +90,7 @@ const MagicLinkVerify: Component = () => {
         await anonApiClient.post<AuthResponse>(authApiPath("/magic-link/verify"), {
           ...link,
           confirm: true,
+          ...(goal ? { goal } : {}),
         }),
       )
     } catch {

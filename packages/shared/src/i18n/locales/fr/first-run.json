@@ -2,6 +2,22 @@
   "kickoff": {
     "title": "Configurez votre espace",
     "intro": "Votre agent configure cet espace avec vous ici, étape par étape. Il vous demande d'abord quelles fonctionnalités vous voulez, puis commence par l'essentiel : votre boîte mail, la connexion avec Google, la boîte de support et l'import depuis vos autres outils. Chaque étape indique sa durée, et vous pouvez passer n'importe laquelle et y revenir à tout moment.",
+    "introManaged": "Votre agent configure cet espace avec vous ici, étape par étape. Par où voulez-vous commencer ? Choisissez ci-dessous, ou dites-le simplement à votre agent. La connexion de votre boîte mail vient en dernier, quand vous le voulez.",
+    "introManagedGoal": {
+      "knowledge": "Votre agent configure cet espace avec vous ici, étape par étape, en commençant par les connaissances de votre entreprise : une page que vous écrivez ou collez, puis une question à votre agent à son sujet. Viennent ensuite l'invitation de votre équipe, puis, en dernier, la connexion de votre boîte mail, quand vous le voulez.",
+      "support": "Votre agent configure cet espace avec vous ici, étape par étape, en commençant par le support client : une boîte de support, sur l'adresse de votre choix. Viennent ensuite l'invitation de votre équipe, puis, en dernier, la connexion de votre boîte mail, quand vous le voulez.",
+      "projects": "Votre agent configure cet espace avec vous ici, étape par étape, en commençant par les projets : un projet à vous, ou un import depuis Jira. Viennent ensuite l'invitation de votre équipe, puis, en dernier, la connexion de votre boîte mail, quand vous le voulez."
+    },
+    "goal": {
+      "knowledge": "Connaissances de l'entreprise",
+      "support": "Support client",
+      "projects": "Projets"
+    },
+    "goalMessage": {
+      "knowledge": "Je veux commencer par les connaissances de l'entreprise.",
+      "support": "Je veux commencer par le support client.",
+      "projects": "Je veux commencer par les projets."
+    },
     "keyFirst": "D'abord, une clé de modèle d'IA : votre agent en a besoin pour répondre. Saisissez-la dans la carte ci-dessous ; l'agent ne la voit jamais.",
     "demoTitle": "Envie de le voir fonctionner d'abord ?",
     "demoBody": "Ouvrez votre propre copie temporaire d'une entreprise exemple sur {{host}}, choisissez ce que vous voulez voir et suivez ses scénarios guidés. Rien à installer.",

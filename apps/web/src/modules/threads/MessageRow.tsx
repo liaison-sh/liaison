@@ -899,7 +899,15 @@ const MessageRow: Component<MessageRowProps> = (props) => {
     )
   }
   const setupKickoff = props.message.authorType !== "user" && setupKickoffOf(props.message.metadata)
-  if (setupKickoff) return <SetupKickoffRow messageId={props.message.id} view={setupKickoff} />
+  if (setupKickoff) {
+    return (
+      <SetupKickoffRow
+        messageId={props.message.id}
+        threadId={props.message.threadId}
+        view={setupKickoff}
+      />
+    )
+  }
   if (props.message.metadata?.type === "participant-added") {
     const meta = () => props.message.metadata
     return (

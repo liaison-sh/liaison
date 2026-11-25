@@ -80,3 +80,52 @@ describe("MagicLinkVerify", () => {
     expect(hasSession()).toBe(false)
   })
 })
+
+describe("MagicLinkVerify: the goal a signup chose", () => {
+  beforeEach(() => {
+    clearAuth()
+    postMock.mockReset()
+  })
+  afterEach(() => {
+    clearAuth()
+    window.history.replaceState({}, "", "/")
+  })
+
+  async function continueWith(search: string) {
+    window.history.replaceState({}, "", `/login/magic?${search}`)
+    postMock.mockResolvedValueOnce({
+      confirmRequired: true,
+      workspace: { name: "Acme Tools", slug: "acme-tools" },
+      account: { email: "owner@acme.test", name: "Olive Owner" },
+    })
+    const page = renderPage()
+    await page.findByTestId("magic-link-continue", {}, { timeout: 15000 })
+    // Read before the URL is cleaned: nothing of it stays in the address bar.
+    expect(window.location.search).toBe("")
+    expect(postMock).toHaveBeenLastCalledWith("/auth/magic-link/verify", {
+      challengeId: "c1",
+      token: "t1",
+    })
+    postMock.mockResolvedValueOnce({ accessToken: "at-goal" })
+    fireEvent.click(page.getByTestId("magic-link-continue"))
+    await waitFor(() => expect(accessToken()).toBe("at-goal"), { timeout: 15000 })
+    return postMock.mock.calls.at(-1)![1]
+  }
+
+  it("rides on Continue only, when it is one of the three", async () => {
+    expect(await continueWith("challengeId=c1&token=t1&goal=knowledge")).toEqual({
+      challengeId: "c1",
+      token: "t1",
+      confirm: true,
+      goal: "knowledge",
+    })
+  })
+
+  it("an unknown goal is dropped", async () => {
+    expect(await continueWith("challengeId=c1&token=t1&goal=billing")).toEqual({
+      challengeId: "c1",
+      token: "t1",
+      confirm: true,
+    })
+  })
+})

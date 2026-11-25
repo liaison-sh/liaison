@@ -38,6 +38,17 @@ export const magicLinkRequestSchema = z.object({
   orgSlug: z.string().optional(),
 })
 
+/**
+ * The goal a new Cloud workspace's first session starts from, chosen on the
+ * signup page and carried by the handoff link (`&goal=`). A closed list.
+ */
+export const KICKOFF_GOALS = ["knowledge", "support", "projects"] as const
+export type KickoffGoal = (typeof KICKOFF_GOALS)[number]
+
+export function isKickoffGoal(value: unknown): value is KickoffGoal {
+  return typeof value === "string" && (KICKOFF_GOALS as readonly string[]).includes(value)
+}
+
 export const magicLinkVerifySchema = z
   .object({
     challengeId: z.string().min(1),
@@ -51,6 +62,12 @@ export const magicLinkVerifySchema = z
     token: z.string().min(1).optional(),
     /** The person clicked "Continue" on a handoff link (a link alone shows who and where first). */
     confirm: z.literal(true).optional(),
+    /**
+     * The goal a signup chose, sent with "Continue" on a handoff link. Only the
+     * three goals pass; anything else is dropped, never a refused sign-in. The
+     * server reads it only for a handoff and only for a workspace's first setup.
+     */
+    goal: z.enum(KICKOFF_GOALS).optional().catch(undefined),
   })
   .refine((d) => (d.code === undefined) !== (d.token === undefined), {
     message: "Provide exactly one of code or token",

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import type { KickoffGoal } from "@liaison/shared"
 import { and, count, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm"
 import type { StatusCode } from "hono/utils/http-status"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
@@ -385,6 +386,12 @@ export async function login(
   return createSession(user.id, user.orgId)
 }
 
+/** What a sign-in may hand the first-setup kickoff (provisioning/setup-kickoff.ts). */
+export interface SessionKickoff {
+  /** The goal a Cloud signup chose; only a handoff sign-in passes one. */
+  kickoffGoal?: KickoffGoal
+}
+
 /**
  * @param scopeCeiling When provided, the session is RESTRICTED: the issued
  *   access token's scopes are intersected with this set, and the set is stored
@@ -398,12 +405,13 @@ export async function createSession(
   orgId: string,
   scopeCeiling?: string[],
   rotation?: SessionRotation,
+  kickoff?: SessionKickoff,
 ): Promise<TokenPair> {
   // A session row is a write of the org: counted, then refused while the org is
   // frozen or moved (503 `org_moving`; the client retries, and its token still
   // works on the new instance).
   return withOrgWrite(orgId, () =>
-    createSessionUnder(userId, orgId, scopeCeiling, rotation, "member"),
+    createSessionUnder(userId, orgId, scopeCeiling, rotation, "member", false, kickoff),
   )
 }
 
@@ -511,6 +519,7 @@ async function createSessionUnder(
   rotation: SessionRotation | undefined,
   kind: SessionKind,
   secondFactor = false,
+  kickoff?: SessionKickoff,
 ): Promise<TokenPair> {
   // The one door every login, token refresh, OAuth sign-in and magic link goes
   // through: an expired demo workspace mints no new credential (403).
@@ -720,7 +729,14 @@ async function createSessionUnder(
   // A full administrator session may open a brand-new workspace's setup
   // conversation (provisioning/setup-kickoff.ts). Not awaited and never
   // throws: sign-in does not wait for it and cannot fail because of it.
-  if (admin && scopeCeiling === undefined) startSetupKickoff({ orgId, userId, admin })
+  if (admin && scopeCeiling === undefined) {
+    startSetupKickoff({
+      orgId,
+      userId,
+      admin,
+      ...(kickoff?.kickoffGoal ? { goal: kickoff.kickoffGoal } : {}),
+    })
+  }
 
   return { accessToken, refreshToken, orgId, userId, admin }
 }

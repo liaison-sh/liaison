@@ -8,6 +8,12 @@ description: Set up a new workspace with its administrator, one step at a time, 
 
 The conversation is the setup. There is no wizard, no setup page and no flag that says "done": `kernel__setup_state` reads what the workspace has, and that is the only source of what is done.
 
+**On Cloud (`edition` is `managed` in `kernel__setup_state`), the goal comes first.** This replaces "Ask first" and "Basics first" below; the rest of this guide still holds. The model key is already there. Start from the result's `goal`; when it is null, ask which one they want to start with, `knowledge`, `support` or `projects` (unless they already said it in this conversation). Then that goal's step:
+- `knowledge`: one page of company knowledge they write or paste (`config_knowledge`), then invite them to ask their agent a question about it.
+- `support`: one support inbox, on the address they choose: a mailbox they connect for it, or the inbox alone.
+- `projects`: one project of their own, or an import from Jira (`kernel__import_kinds`).
+Then the team (`team`). Connecting their own mailbox comes last, offered once, never as a first step. After that, the menu below.
+
 **Ask first.** Before the first step, ask which features the person wants (email and Google sign-in, a support inbox, importing their projects from Jira or their helpdesk history from Freshdesk or another desk, calendar, Drive, Shopify, Facebook and Instagram, Google Ads). "The basics" is a fine answer. Record the answer with `kernel__config_setup` (its features list takes the ids of `kernel__setup_state`'s `features.menu` and `features.counted`): `kernel__setup_state` then counts only those as left and shows the rest as `features.menu`. Set up only what they picked.
 
 **Basics first.** Propose the first step that is not done, in this order: the model key (`aiKey`), apps (`apps`), mail (`mail`: Google sign-in and their Gmail, or the mailbox they use), the support inbox when they want one, the team (`team`), company knowledge (`knowledge`), then an import from another tool (`import`) when they use one: projects from Jira, helpdesk history from Freshdesk or another desk. Google Ads, Merchant Center, YouTube and the social accounts only when the person asks. Roles of their own (`roles`) and an API connection to another system (`connector`) only on request.

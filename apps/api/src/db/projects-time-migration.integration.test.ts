@@ -104,6 +104,25 @@ const taskRows = (db: postgres.Sql) =>
     SELECT to_jsonb(t) - ${NEW_TASK_COLUMNS}::text[] AS row
       FROM app_projects.tasks t WHERE org_id = ${ORG_ID} ORDER BY id`
 
+/**
+ * The login's memberships. A migration replay elsewhere on the cluster (0178) takes
+ * `liaison_definer` back from every member but its runner, so they are given again under the
+ * role catalog lock, right before the login migrates.
+ */
+async function grantLoginRoles(): Promise<void> {
+  await admin.unsafe(
+    `GRANT liaison_admin, liaison_rls, liaison_schema_admin, liaison_definer TO "${login}"`,
+  )
+  await admin.unsafe(`GRANT liaison_portal TO "${login}" WITH ADMIN OPTION`)
+}
+
+async function migrateAsLogin(folder: string): Promise<void> {
+  await withRoleCatalogLock(adminUrl, async () => {
+    await grantLoginRoles()
+    await runMigrations(freshAsLogin.toString(), { migrationsFolder: folder })
+  })
+}
+
 beforeAll(async () => {
   admin = postgres(adminUrl.toString(), { max: 1, onnotice: () => {} })
   await admin.unsafe(`CREATE DATABASE "${dbName}"`)
@@ -196,10 +215,7 @@ beforeAll(async () => {
   await admin.unsafe(
     `CREATE ROLE "${login}" LOGIN PASSWORD '${password}' NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB`,
   )
-  await admin.unsafe(
-    `GRANT liaison_admin, liaison_rls, liaison_schema_admin, liaison_definer TO "${login}"`,
-  )
-  await admin.unsafe(`GRANT liaison_portal TO "${login}" WITH ADMIN OPTION`)
+  await grantLoginRoles()
   await admin.unsafe(`ALTER DATABASE "${dbName}" OWNER TO "${login}"`)
   await fresh.unsafe(`DO $$
     DECLARE r record;
@@ -247,9 +263,7 @@ describe("the time and budgets migrations on a live database", () => {
 
     const all = folderUpTo(LAST_NEW_TAG, 0)
     folders.push(all)
-    await withRoleCatalogLock(adminUrl, () =>
-      runMigrations(freshAsLogin.toString(), { migrationsFolder: all }),
-    )
+    await migrateAsLogin(all)
 
     // Every project is off, nobody turned anything, and no task has a timebox.
     const projects = await fresh<

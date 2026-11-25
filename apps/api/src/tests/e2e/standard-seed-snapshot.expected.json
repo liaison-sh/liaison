@@ -5,11 +5,11 @@
   },
   "app_knowledge.collections": {
     "rows": 3,
-    "digest": "55a436d4b7947451"
+    "digest": "cf9b77197b1958fd"
   },
   "app_knowledge.documents": {
     "rows": 13,
-    "digest": "7ca524245ee29e32"
+    "digest": "a5ebc10e8537f9b7"
   },
   "app_mail.accounts": {
     "rows": 3,
@@ -61,7 +61,7 @@
   },
   "kernel.apps": {
     "rows": 12,
-    "digest": "c30dca28e3204e74"
+    "digest": "1b4c5eb90141cca4"
   },
   "kernel.attention_events": {
     "rows": 49,
@@ -69,7 +69,7 @@
   },
   "kernel.audit_log": {
     "rows": 223,
-    "digest": "f0ee9aa0a0624e16"
+    "digest": "1ee5337d8455a9d8"
   },
   "kernel.connected_accounts": {
     "rows": 5,
@@ -107,25 +107,29 @@
     "rows": 509,
     "digest": "45337945b4bb89de"
   },
+  "kernel.org_app_features": {
+    "rows": 4,
+    "digest": "e228f65df64b3870"
+  },
   "kernel.organizations": {
     "rows": 1,
-    "digest": "99193415da6831c0"
+    "digest": "3ea34e374f51c468"
   },
   "kernel.pending_events": {
     "rows": 218,
-    "digest": "e60ffd7993754165"
+    "digest": "cfccb7e75eea718f"
   },
   "kernel.role_dimension_grants": {
     "rows": 1,
     "digest": "e4f244d9734ab9c4"
   },
   "kernel.role_scope_grants": {
-    "rows": 340,
-    "digest": "ae7396ba7d838742"
+    "rows": 342,
+    "digest": "055deacbe263c57d"
   },
   "kernel.roles": {
     "rows": 26,
-    "digest": "4fdeed4e9bf1a026"
+    "digest": "2be5e4b45cb4ff13"
   },
   "kernel.routine_runs": {
     "rows": 6,

@@ -244,8 +244,8 @@
     "digest": "9456d4c1f7f091f7"
   },
   "kernel.org_app_features": {
-    "rows": 1,
-    "digest": "38dce2dbee08f02e"
+    "rows": 5,
+    "digest": "9ee94f0a8b376fca"
   },
   "kernel.pending_events": {
     "rows": 467,

@@ -207,6 +207,10 @@
     "rows": 10,
     "digest": "8b59c9fe4bb9015b"
   },
+  "kernel.org_app_features": {
+    "rows": 4,
+    "digest": "e228f65df64b3870"
+  },
   "kernel.pending_events": {
     "rows": 519,
     "digest": "0097c2e62975a0b4"

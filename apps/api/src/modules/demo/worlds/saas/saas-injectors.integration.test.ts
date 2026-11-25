@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { KERNEL_DECLARED_EMITS } from "~/infra/events/event-bus"
 import { declaredEmits } from "~/modules/apps/app-registries"
-import { markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { visitorMarker } from "~/modules/demo/demo-org"
 import { RECORDING, recordingOf } from "~/modules/demo/replay/replay"
 import { worldInjectors } from "~/modules/demo/world/registry"
 import { demoWebFetchFixture } from "~/modules/demo/world/web-fetch-fixture"
@@ -15,6 +15,7 @@ import { insertUnarmedMail } from "~/seed/factories/mail/conversations"
 import { seedUserRow } from "~/seed/factories/org/rows"
 import { ensureTicketInboxes } from "~/seed/factories/support/inboxes"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 import { SAAS_CHAT_CHANNEL, saasChatQuestionInjector } from "./chat-question"
 import { saasSalesEmailInjector } from "./sales-email"
@@ -44,7 +45,7 @@ beforeAll(async () => {
   priorKernelEmits = declaredEmits.get("kernel")
   declaredEmits.set("kernel", new Set(KERNEL_DECLARED_EMITS))
   demoOrg = (await createTestOrg()).id
-  await markOrgAsDemo(demoOrg, visitorMarker(24, new Date(), undefined, { worldId: "saas" }))
+  await markDemoOrgForTest(demoOrg, visitorMarker(24, new Date(), undefined, { worldId: "saas" }))
   plainOrg = (await minimal.secondOrg()).orgId
   owner = await addUser(demoOrg, "Visitor")
   await addUser(demoOrg, "Lucie Vasseur")

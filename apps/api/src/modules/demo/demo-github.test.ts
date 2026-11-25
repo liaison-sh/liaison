@@ -10,8 +10,9 @@ import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { createEgressMethods } from "~/modules/apps/sandbox/bridge/egress"
 import { envelopeError, SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import type { FetchAnswer, GithubCtx } from "../../../../../bundled-apps/github/src/client"
 import { githubListCommits, githubListRepos } from "../../../../../bundled-apps/github/src/tools"
@@ -68,7 +69,7 @@ describe("GitHub in a demo organization", () => {
   beforeAll(async () => {
     await acquireTestLock()
     demoOrgId = (await ensureOrg({ slug: "github-demo", name: "GitHub Demo" })).orgId
-    await markOrgAsDemo(demoOrgId, visitorMarker(24))
+    await markDemoOrgForTest(demoOrgId, visitorMarker(24))
     invalidateDemoMarker()
     SandboxBridgeTestAccess.setFetch((async (url: string | URL) => {
       onTheWire.push(String(url))

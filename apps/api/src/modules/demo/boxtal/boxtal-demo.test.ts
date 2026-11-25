@@ -9,7 +9,8 @@ import { readdirSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { sql } from "~/db"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { parseCotationXml } from "../../../../../../bundled-apps/boxtal/src/lib/boxtal-v1-client"
 import { maybeDemoBoxtalResponse } from "./index"
 
@@ -31,7 +32,7 @@ describe("the demo's Boxtal connection", () => {
       await sql`INSERT INTO kernel.organizations (id, name, slug)
         VALUES (${id}, ${name}, ${`boxtal-demo-${id.slice(0, 8)}`})`
     }
-    await markOrgAsDemo(DEMO_ORG, visitorMarker(24))
+    await markDemoOrgForTest(DEMO_ORG, visitorMarker(24))
     invalidateDemoMarker()
   })
   afterEach(() => DemoModeTestAccess.set(null))

@@ -45,8 +45,21 @@ async function rolledBack(fn: (tx: Tx) => Promise<void>): Promise<void> {
     })
 }
 
+/**
+ * 0309's own schema, without the rules of the release after it (0355: the
+ * class never changes, a marker only on a demo org), which would refuse the
+ * writes these cases make on purpose.
+ */
+async function without0355(tx: Tx): Promise<void> {
+  await tx.unsafe(
+    "ALTER TABLE kernel.organizations DROP CONSTRAINT IF EXISTS organizations_demo_marker_class_check",
+  )
+  await tx.unsafe("DROP TRIGGER IF EXISTS organizations_class_immutable ON kernel.organizations")
+}
+
 /** The schema the previous release ran on. */
 async function before(tx: Tx): Promise<void> {
+  await without0355(tx)
   await tx.unsafe("ALTER TABLE kernel.org_billing_state DROP COLUMN org_class")
   await tx.unsafe("DROP INDEX kernel.organizations_id_class_key")
   await tx.unsafe("ALTER TABLE kernel.organizations DROP COLUMN class")
@@ -244,6 +257,7 @@ describe("0309 org class", () => {
     const window = await org()
     const customer = await org(true)
     await rolledBack(async (tx) => {
+      await without0355(tx)
       await mark(tx, window, marker("visitor"))
       expect(await classOf(tx, window)).toBe("standard")
       await tx`UPDATE kernel.org_billing_state SET version = 2 WHERE org_id = ${customer}`
@@ -258,6 +272,7 @@ describe("0309 org class", () => {
     const customer = await org(true)
     const plain = await org()
     await rolledBack(async (tx) => {
+      await without0355(tx)
       const flipped = await tx
         .savepoint(
           (sp) => sp`UPDATE kernel.organizations SET class = 'demo' WHERE id = ${customer}`,

@@ -7,7 +7,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { demoProvider } from "~/infra/email"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { visitorMarker } from "~/modules/demo/demo-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 import { sendClientReportMail } from "./client-report-mail"
 
@@ -25,7 +26,7 @@ const report = (orgId: string, to: string) => ({
 
 beforeAll(async () => {
   demoOrg = (await createTestOrg()).id
-  await markOrgAsDemo(demoOrg, visitorMarker(24))
+  await markDemoOrgForTest(demoOrg, visitorMarker(24))
   plainOrg = (await createTestOrg()).id
   DemoModeTestAccess.set(true)
 })

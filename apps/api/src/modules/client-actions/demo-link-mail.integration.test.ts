@@ -12,7 +12,8 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { demoProvider } from "~/infra/email"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { visitorMarker } from "~/modules/demo/demo-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { k, useClientActionWorld, waitForMail } from "../../../test-support/client-actions-kit"
 import { newActionMailId, sendCodeMail } from "./mail"
 import { mintClientAction } from "./mint"
@@ -91,7 +92,7 @@ describe("a client action's link mail in a demo workspace", () => {
   })
 
   it("in a demo workspace a change request's link to a client on a reserved domain is recorded sent and the sender is told nothing failed", async () => {
-    await markOrgAsDemo(kit.w.orgId, visitorMarker(24))
+    await markDemoOrgForTest(kit.w.orgId, visitorMarker(24))
     demoOrgMarked = true
     DemoModeTestAccess.set(true)
     const refusedBefore = demoProvider().refused.length

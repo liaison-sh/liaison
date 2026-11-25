@@ -31,7 +31,7 @@ import {
 } from "~/modules/agent/media/media-analysis-tool"
 import type { AppContext } from "~/modules/apps/context"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, reservedMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker } from "~/modules/demo/demo-org"
 import { ensureReservedSecondAdmin } from "~/modules/demo/demo-seeder"
 import { reservedDemoModelId } from "~/modules/demo/demo-spend"
 import {
@@ -49,6 +49,7 @@ import {
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { invalidateOrgEmbedder, resolveOrgEmbedder } from "~/modules/search/message-indexer"
 import { getThread } from "~/modules/threads/thread"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 const AGENT_MODEL = "reserved-test-agent-model"
@@ -61,7 +62,7 @@ describe("the reserved App Review org's spend", () => {
     await acquireTestLock()
     reservedOrgId = (await ensureOrg({ slug: "reserved-spend", name: "Reserved Spend" })).orgId
     normalOrgId = (await ensureOrg({ slug: "reserved-spend-normal", name: "Normal" })).orgId
-    await markOrgAsDemo(reservedOrgId, reservedMarker())
+    await markDemoOrgForTest(reservedOrgId, reservedMarker())
     // An agent preference on another vendor, and the pinned id, both in the
     // catalog exactly as the seed puts the pinned one there.
     await sql`

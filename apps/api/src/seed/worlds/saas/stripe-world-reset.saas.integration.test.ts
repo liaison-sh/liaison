@@ -16,11 +16,12 @@ import { sql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { bullPrefix, redisBullMQ } from "~/lib/redis"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { visitorMarker } from "~/modules/demo/demo-org"
 import { purgeDemoOrg } from "~/modules/demo/demo-reset"
 import { countOutsideObjects, putOutsideObjects } from "~/modules/demo/worlds/saas/payments/overlay"
 import { residueScan } from "~/modules/org/purge/residue"
 import { type SeedDemoWorldResult, seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
 
 const CATALOG_WORLD_APPS = ["invoicing", "stripe"]
@@ -95,7 +96,7 @@ describe("the software world's workspace, ended and reaped", () => {
   it("the reaper leaves no row in any table, no outside object, no search document and nothing stored", async () => {
     const now = new Date()
     // Two days past a day's time.
-    await markOrgAsDemo(
+    await markDemoOrgForTest(
       world.orgId,
       visitorMarker(24, new Date(now.getTime() - 72 * 3_600_000), [...DEMO_WORLD_NEEDS.saas], {
         worldId: "saas",

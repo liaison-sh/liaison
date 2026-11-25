@@ -34,8 +34,9 @@ import {
   installDemoApiConnectorConnection,
 } from "~/modules/demo/api-connector"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 /** Upstream latency of the plain-HTTP CRM: a card's calls overlap as they do against a real API. */
@@ -164,7 +165,7 @@ beforeAll(async () => {
   const d = await viewer("demo")
   demo = { ...d.view, email: "jane.doe@acme-instruments.example" }
   await registerApiConnectorApp(d.orgId)
-  await markOrgAsDemo(d.orgId, visitorMarker(24))
+  await markDemoOrgForTest(d.orgId, visitorMarker(24))
   DemoModeTestAccess.set(true)
   invalidateDemoMarker()
   await installDemoApiConnectorConnection({ orgId: d.orgId, createdByUserId: d.userId })

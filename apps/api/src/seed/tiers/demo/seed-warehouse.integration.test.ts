@@ -46,12 +46,13 @@ import { SqlPoolTestAccess } from "~/modules/apps/connections/sql/pool"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, reservedMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker } from "~/modules/demo/demo-org"
 import {
   DEMO_WAREHOUSE_DSN_ENV,
   DEMO_WAREHOUSE_SCHEMA,
   DEMO_WAREHOUSE_SENTINEL_DSN,
 } from "~/modules/demo/warehouse"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { stageDemoCatalog } from "../../../../test-support/seed/stage-demo-catalog"
 import { seedDemoWarehouse } from "./seed-warehouse"
 
@@ -149,7 +150,7 @@ beforeAll(async () => {
   // The roles the world's domain access names (the org seed makes them first).
   await db.execute(sql`INSERT INTO kernel.roles (org_id, name, description)
     VALUES (${ORG}::uuid, 'finance', 'Finance'), (${ORG}::uuid, 'operations', 'Operations')`)
-  await markOrgAsDemo(ORG, reservedMarker())
+  await markDemoOrgForTest(ORG, reservedMarker())
   await ensureAppsForOrg(ORG)
 
   const result = await seedDemoWarehouse(

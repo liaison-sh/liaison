@@ -17,7 +17,7 @@ import { env } from "~/lib/env"
 import { redisBullMQ } from "~/lib/redis"
 import { listExpiredDemoOrgs } from "~/modules/demo/demo-expiry"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import {
   DEMO_REAP_CONCURRENCY,
   DEMO_REAP_MAX_PER_RUN,
@@ -27,6 +27,7 @@ import {
 } from "~/modules/demo/demo-reset"
 import { deleteOrgRedisKeys } from "~/modules/org/purge/external"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const HOUR = 60 * 60 * 1000
@@ -153,7 +154,7 @@ describe("collecting expired demo workspaces", () => {
                 VALUES (gen_random_uuid(), ${`Reap ${i}`}, ${`reap-${i}-${crypto.randomUUID().slice(0, 8)}`}, 'demo')
                 RETURNING id`
             )[0]?.id as string)
-      await markOrgAsDemo(orgId, visitorMarker(72, new Date(Date.now() - (80 + i) * HOUR)))
+      await markDemoOrgForTest(orgId, visitorMarker(72, new Date(Date.now() - (80 + i) * HOUR)))
       ids.push(orgId)
     }
     invalidateDemoMarker()
@@ -282,7 +283,7 @@ describe("collecting expired demo workspaces", () => {
         VALUES (gen_random_uuid(), ${`Paced ${i}`}, ${`paced-${i}-${crypto.randomUUID().slice(0, 8)}`}, 'demo')
         RETURNING id`
       const orgId = row[0]?.id as string
-      await markOrgAsDemo(orgId, visitorMarker(72, new Date(Date.now() - 80 * HOUR)))
+      await markDemoOrgForTest(orgId, visitorMarker(72, new Date(Date.now() - 80 * HOUR)))
       fresh.push(orgId)
     }
     invalidateDemoMarker()
@@ -333,7 +334,7 @@ describe("collecting expired demo workspaces", () => {
         VALUES (gen_random_uuid(), ${`Floor ${i}`}, ${`floor-${i}-${crypto.randomUUID().slice(0, 8)}`}, 'demo')
         RETURNING id`
       const orgId = row[0]?.id as string
-      await markOrgAsDemo(orgId, visitorMarker(72, new Date(Date.now() - 80 * HOUR)))
+      await markDemoOrgForTest(orgId, visitorMarker(72, new Date(Date.now() - 80 * HOUR)))
       fresh.push(orgId)
     }
     invalidateDemoMarker()
@@ -363,7 +364,7 @@ describe("collecting expired demo workspaces", () => {
         VALUES (gen_random_uuid(), ${`Capped ${i}`}, ${`capped-${i}-${crypto.randomUUID().slice(0, 8)}`}, 'demo')
         RETURNING id`
       const orgId = row[0]?.id as string
-      await markOrgAsDemo(orgId, {
+      await markDemoOrgForTest(orgId, {
         ...visitorMarker(72, new Date(Date.now() - 80 * HOUR)),
         synthetic: true,
       })

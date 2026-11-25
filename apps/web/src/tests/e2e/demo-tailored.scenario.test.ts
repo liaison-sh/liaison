@@ -40,6 +40,27 @@ const TOUR_ID = "kernel.scenario-projects"
 const SUBTASK = "Charge the four demo units"
 const DECOY = "Order booth lanyards"
 const ks = (env: ProfiledWorkerEnv) => `"${env.schemaPrefix}kernel"`
+
+/**
+ * Make the worker's org a visitor demo workspace. Postgres keeps an org's class
+ * fixed and lets only a `demo` org carry the marker (migration 0355), so the
+ * class is written with the marker, on this superuser connection with the
+ * trigger that fixes the class skipped for the statement
+ * (`session_replication_role = replica`): the org is a demo org as if it had
+ * been created as one.
+ */
+async function markVisitorOrg(env: ProfiledWorkerEnv, [orgId, marker]: [string, string]) {
+  await env.db.sql.begin(async (tx) => {
+    await tx.unsafe("SET LOCAL session_replication_role = replica")
+    await tx.unsafe(
+      `UPDATE ${ks(env)}.organizations
+       SET class = 'demo',
+           settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object('demo', $2::text::jsonb)
+       WHERE id = $1`,
+      [orgId, marker],
+    )
+  })
+}
 const ps = (env: ProfiledWorkerEnv) => `"${env.schemaPrefix}app_projects"`
 
 /** Load a deferred tool, then call it: one scripted step each. */
@@ -113,12 +134,7 @@ async function playProjects(
     expiresAt: new Date(now.getTime() + 24 * 3600 * 1000).toISOString(),
     needs: ["projects"],
   }
-  await env.db.sql.unsafe(
-    `UPDATE ${ks(env)}.organizations
-     SET settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object('demo', $2::text::jsonb)
-     WHERE id = $1`,
-    [orgId, JSON.stringify(marker)],
-  )
+  await markVisitorOrg(env, [orgId, JSON.stringify(marker)])
   await grantProjectScopes(env, orgId, adminId)
   await seedModelPricingAndCredits(env, orgId)
   await api(env.serverUrl, "/api/_test/agent-script", { method: "DELETE" })
@@ -321,12 +337,7 @@ test("chat, started twice: both runs ask the agent in the person's one DM with i
     expiresAt: new Date(now.getTime() + 24 * 3600 * 1000).toISOString(),
     needs: ["chat"],
   }
-  await env.db.sql.unsafe(
-    `UPDATE ${ks(env)}.organizations
-     SET settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object('demo', $2::text::jsonb)
-     WHERE id = $1`,
-    [orgId, JSON.stringify(marker)],
-  )
+  await markVisitorOrg(env, [orgId, JSON.stringify(marker)])
   await seedModelPricingAndCredits(env, orgId)
   await api(env.serverUrl, "/api/_test/agent-script", { method: "DELETE" })
   await clearTourRuns(env, orgId, adminId)
@@ -435,20 +446,15 @@ for (const phone of [false, true]) {
     const orgId = world.org.id
     const adminId = qa.admin.id
     const now = new Date()
-    await env.db.sql.unsafe(
-      `UPDATE ${ks(env)}.organizations
-       SET settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object('demo', $2::text::jsonb)
-       WHERE id = $1`,
-      [
-        orgId,
-        JSON.stringify({
-          variant: "visitor",
-          createdAt: now.toISOString(),
-          expiresAt: new Date(now.getTime() + 24 * 3600 * 1000).toISOString(),
-          needs: ["support"],
-        }),
-      ],
-    )
+    await markVisitorOrg(env, [
+      orgId,
+      JSON.stringify({
+        variant: "visitor",
+        createdAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + 24 * 3600 * 1000).toISOString(),
+        needs: ["support"],
+      }),
+    ])
     await grantTicketsScopes(env, orgId, adminId)
     await seedModelPricingAndCredits(env, orgId)
     await api(env.serverUrl, "/api/_test/agent-script", { method: "DELETE" })

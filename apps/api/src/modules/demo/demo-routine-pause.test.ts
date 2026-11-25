@@ -24,8 +24,9 @@ import { runRoutineTick } from "~/modules/agent/routines/routine-worker"
 import { registerDemoAlertMailer } from "~/modules/demo/demo-alerts"
 import { DemoBudgetTestAccess, type DemoSpendIdentity } from "~/modules/demo/demo-budget"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 type EnvKey = keyof typeof env
@@ -51,7 +52,7 @@ describe("a demo visitor's routine and the verification refusal", () => {
     process.env.OPENROUTER_API_KEY = "sk-or-box-key-of-demo-tests"
     orgId = (await minimal.secondOrg({ name: "Demo Routine Pause" })).orgId
     userId = (await minimal.person(orgId)).id
-    await markOrgAsDemo(orgId, visitorMarker(24))
+    await markDemoOrgForTest(orgId, visitorMarker(24))
     DemoBudgetTestAccess.setVerifiedIdentity(async (id) => identities.get(id) ?? null)
     registerDemoAlertMailer(async () => {})
   }, 60_000)

@@ -8,7 +8,7 @@ import { SCENARIO_TOURS, scenarioStudioClientTour } from "@liaison/shared"
 import { sql } from "~/db"
 import { KERNEL_DECLARED_EMITS } from "~/infra/events/event-bus"
 import { declaredEmits } from "~/modules/apps/app-registries"
-import { markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { visitorMarker } from "~/modules/demo/demo-org"
 import { resetDemoShopifyOverlay, worldOrdersFor } from "~/modules/demo/shopify/overlay"
 import { CHAT_WORLD_CHANNEL, chatQuestionInjector } from "~/modules/demo/world/chat-question"
 import {
@@ -24,6 +24,7 @@ import { salesEmailInjector } from "~/modules/demo/world/sales-email"
 import { SUPPORT_WORLD_SUBJECT, supportTicketInjector } from "~/modules/demo/world/support-ticket"
 import { demoWebFetchFixture } from "~/modules/demo/world/web-fetch-fixture"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 
 let priorKernelEmits: Set<string> | undefined
@@ -53,7 +54,7 @@ beforeAll(async () => {
   priorKernelEmits = declaredEmits.get("kernel")
   declaredEmits.set("kernel", new Set(KERNEL_DECLARED_EMITS))
   demoOrg = (await createTestOrg()).id
-  await markOrgAsDemo(demoOrg, visitorMarker(24))
+  await markDemoOrgForTest(demoOrg, visitorMarker(24))
   plainOrg = (await minimal.secondOrg()).orgId
   owner = await addUser(demoOrg, "Visitor")
   plainOwner = await addUser(plainOrg, "Someone")

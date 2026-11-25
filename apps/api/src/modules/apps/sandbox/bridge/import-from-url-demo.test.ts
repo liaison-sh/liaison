@@ -15,7 +15,8 @@ import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { createFilesMethods } from "~/modules/apps/sandbox/bridge/files"
 import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 
 const DEMO_ORG = randomUUID()
 const NORMAL_ORG = randomUUID()
@@ -86,7 +87,7 @@ beforeAll(async () => {
       VALUES (${id}, 'Import Demo Org', ${`idemo-${id.slice(0, 8)}`})`
     manifestFileParentRegistry.set([id, "boxtal", "shipment"], PARENT)
   }
-  await markOrgAsDemo(DEMO_ORG, visitorMarker(24))
+  await markDemoOrgForTest(DEMO_ORG, visitorMarker(24))
   invalidateDemoMarker()
 })
 

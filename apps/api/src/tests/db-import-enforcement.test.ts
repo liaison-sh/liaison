@@ -889,9 +889,6 @@ describe("db import enforcement", () => {
     // whether it is a customer's or the operator's. Runs beside the purge and the
     // seeder, outside any tenant context.
     "modules/demo/org-class.ts",
-    // The operator's one-off `liaison demo reclassify`: lists and classes demo
-    // workspaces across orgs, from the command line only.
-    "modules/demo/reclassify.ts",
     "modules/demo/demo-spend.ts",
     // The visitor's recap counts every agent message and approval of their own
     // workspace, rooms they are not in included (a routine's run): one org,

@@ -33,8 +33,9 @@ import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { createScope } from "~/modules/permissions/types"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   DEMO_API_CONNECTOR_BASE_URL,
@@ -96,7 +97,7 @@ beforeAll(async () => {
   await registerApiConnectorApp(DEMO_ORG)
   await ensureAppsForOrg(NORMAL_ORG)
   await registerApiConnectorApp(NORMAL_ORG)
-  await markOrgAsDemo(DEMO_ORG, visitorMarker(24))
+  await markDemoOrgForTest(DEMO_ORG, visitorMarker(24))
   DemoModeTestAccess.set(true)
   invalidateDemoMarker()
 }, 120_000)
@@ -249,7 +250,7 @@ describe("demo org: the fixture CRM keeps what the agent writes", () => {
     const OTHER_DEMO_ORG = await newOrg("api-connector-demo-other")
     await ensureAppsForOrg(OTHER_DEMO_ORG)
     await registerApiConnectorApp(OTHER_DEMO_ORG)
-    await markOrgAsDemo(OTHER_DEMO_ORG, visitorMarker(24))
+    await markDemoOrgForTest(OTHER_DEMO_ORG, visitorMarker(24))
     invalidateDemoMarker()
     await installDemoApiConnectorConnection({ orgId: OTHER_DEMO_ORG, createdByUserId: USER })
 

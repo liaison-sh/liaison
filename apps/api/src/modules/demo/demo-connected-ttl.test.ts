@@ -22,13 +22,13 @@ import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import {
   invalidateDemoMarker,
   loadDemoMarker,
-  markOrgAsDemo,
   reservedMarker,
   visitorMarker,
 } from "~/modules/demo/demo-org"
 import { HealthTracker } from "~/modules/mcp-client/health"
 import { markOrgDeleting } from "~/modules/org/purge/deleting"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const HOUR = 3600_000
@@ -67,7 +67,7 @@ let seq = 0
 async function visitorOrg(marker: DemoOrgMarker = soonMarker()): Promise<string> {
   seq++
   const { orgId } = await ensureOrg({ slug: `conn-ttl-${seq}-${Date.now()}`, name: "Conn TTL" })
-  await markOrgAsDemo(orgId, marker)
+  await markDemoOrgForTest(orgId, marker)
   return orgId
 }
 
@@ -125,7 +125,7 @@ describe("a demo visitor workspace that connects a real service lives longer", (
   it("an MCP connection's first successful handshake extends (bearer, headers, any auth)", async () => {
     DemoModeTestAccess.set(true)
     const world = await buildMcpWorld()
-    await markOrgAsDemo(world.org.id, soonMarker())
+    await markDemoOrgForTest(world.org.id, soonMarker())
     const connectionId = await withSystemDb("seed-conn", async (db) => {
       const [row] = await db
         .insert(mcpConnections)

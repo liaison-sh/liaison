@@ -32,12 +32,8 @@ import {
 } from "~/modules/agent/context/context"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import {
-  invalidateDemoMarker,
-  markOrgAsDemo,
-  reservedMarker,
-  visitorMarker,
-} from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker, visitorMarker } from "~/modules/demo/demo-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const HEADING = "## Work on the person's computer"
@@ -209,7 +205,7 @@ describe("computer mode in a server turn", () => {
     try {
       // A simulated node exists only in a demo org (0193). In the reserved
       // review org (not a visitor's) it reads as presence says, unnamed.
-      await markOrgAsDemo(ORG, reservedMarker())
+      await markDemoOrgForTest(ORG, reservedMarker())
       invalidateDemoMarker(ORG)
       await sql`INSERT INTO kernel.nodes (org_id, owner_user_id, device_id, name, simulated)
         VALUES (${ORG}, ${USER}, 'demo-replay', 'Demo laptop (recorded)', true)`
@@ -218,7 +214,7 @@ describe("computer mode in a server turn", () => {
       expect(reserved).not.toContain("Demo laptop (recorded)")
 
       // A visitor's demo org: available, by name, never offline.
-      await markOrgAsDemo(ORG, visitorMarker(24))
+      await markDemoOrgForTest(ORG, visitorMarker(24))
       invalidateDemoMarker(ORG)
       const demo = await turn()
       expect(demo).toContain(renderClientSurfaceLine("web", "online", "Demo laptop (recorded)"))

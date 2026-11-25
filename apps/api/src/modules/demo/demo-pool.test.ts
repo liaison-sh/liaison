@@ -29,7 +29,7 @@ import {
 } from "~/modules/demo/demo-door.test-fixtures"
 import { countVisitorOrgs, listExpiredDemoOrgs } from "~/modules/demo/demo-expiry"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker } from "~/modules/demo/demo-org"
 import {
   claimPooledOrg,
   DEMO_POOL_OWNER_NAME,
@@ -55,6 +55,7 @@ import {
   mountDemoRoutes,
   useDemoRateLimit,
 } from "~/modules/demo/routes"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 const demoApp = new Hono<AppEnv>()
@@ -770,7 +771,7 @@ describe("demo warm pool", () => {
         VALUES (gen_random_uuid(), 'Half seeded', ${`half-seeded-${crypto.randomUUID().slice(0, 8)}`})
         RETURNING id`
       const orgId = row?.id as string
-      await markOrgAsDemo(
+      await markDemoOrgForTest(
         orgId,
         pooledMarker(
           "seeding",

@@ -8,9 +8,10 @@ import { app } from "~/app"
 import { env } from "~/lib/env"
 import { signAccessToken } from "~/modules/auth/jwt"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker } from "~/modules/demo/demo-org"
 import { createMcpConnection, mintAccessToken } from "~/modules/mcp/connection-service"
 import { cleanupSeededOrg, grantScope, seedOrgWithUser } from "~/modules/mcp/test-helpers"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 
 let orgId = ""
 let userId = ""
@@ -30,7 +31,7 @@ beforeAll(async () => {
   refreshToken = conn.refreshToken
   mcpToken = (await mintAccessToken(conn.connection.id)).token
   const past = Date.now() - 3 * 24 * 3600_000
-  await markOrgAsDemo(orgId, {
+  await markDemoOrgForTest(orgId, {
     variant: "visitor",
     createdAt: new Date(past).toISOString(),
     expiresAt: new Date(past + 3600_000).toISOString(),

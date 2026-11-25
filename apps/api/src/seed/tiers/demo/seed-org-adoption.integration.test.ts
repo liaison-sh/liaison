@@ -13,18 +13,18 @@ import { sql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { CLOUD_CREATE_ORG_ENDPOINT, claimOutcome } from "~/modules/cloud/outcomes"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import {
-  invalidateDemoMarker,
-  loadDemoMarker,
-  markOrgAsDemo,
-  visitorMarker,
-} from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, loadDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import {
   claimOrgSlug,
   hasOrgSlugClaim,
   findOrgIdBySlug as orgIdBySlug,
 } from "~/seed/factories/org/org"
 import { seedUserRow } from "~/seed/factories/org/rows"
+import {
+  forgeDemoMarker,
+  markDemoOrgForTest,
+  revalidateMarkerCheck,
+} from "~/tests/helpers/demo-org"
 import { runSeedDemoCli, type SeedDemoWorldOptions } from "./seed-demo"
 import { demoMarkRefusal, seedDemoOrg } from "./seed-org"
 
@@ -87,6 +87,7 @@ afterAll(async () => {
   await withSystemDb("demo-adoption-test-cleanup-claim", (tx) =>
     tx.execute(sql`DELETE FROM kernel.system_config WHERE key LIKE ${`seed.org-claim:${SLUG}%`}`),
   )
+  await revalidateMarkerCheck()
 })
 
 describe("demoMarkRefusal", () => {
@@ -118,7 +119,10 @@ describe("demo:seed --variant visitor --reset: a seeded visitor org is replaced"
       ),
     )
     const id = String(rows[0]?.id ?? "")
-    await markOrgAsDemo(id, visitorMarker(72))
+    // A standard org with a marker is refused by Postgres (0355): forged for the
+    // case that proves the replace refuses it on its own.
+    if (orgClass === "standard") await forgeDemoMarker(id, visitorMarker(72))
+    else await markDemoOrgForTest(id, visitorMarker(72))
     await seedUserRow({ orgId: id, email: `p@${slug}.test`, name: "P", passwordHash: "x" })
     return id
   }

@@ -26,12 +26,13 @@ import {
 } from "~/modules/demo/demo-alerts"
 import { DemoBudgetTestAccess, reserveStep, settleStep } from "~/modules/demo/demo-budget"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, reservedMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker } from "~/modules/demo/demo-org"
 import {
   RESERVED_MODEL_DEFAULT,
   VISITOR_MODEL_UPSTREAM_DEFAULT,
 } from "~/modules/demo/demo-spend-ceiling"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 type EnvKey = keyof typeof env
@@ -58,7 +59,7 @@ describe("the demo owner alert", () => {
     await sql`DELETE FROM kernel.demo_spend`
     await clearRedisPatterns(["demo:*"])
     reservedOrg = (await ensureOrg({ slug: "alerts-reserved", name: "Reserved" })).orgId
-    await markOrgAsDemo(reservedOrg, reservedMarker())
+    await markDemoOrgForTest(reservedOrg, reservedMarker())
     await sql`
       INSERT INTO kernel.model_pricing
         (model_id, provider, display_name, input_cost_per_m, output_cost_per_m,

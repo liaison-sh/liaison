@@ -16,7 +16,7 @@ import { isLeader, LeadershipTestAccess, startLeadership, stopLeadership } from 
 import { getWsManager, setWsManager, WebSocketManager } from "~/infra/websocket"
 import { redis } from "~/lib/redis"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { submitCommand } from "~/modules/node-sessions/commands"
 import { sweepSessionLeases } from "~/modules/node-sessions/lifecycle"
 import { appendReplayEvents, ReplayAppendRefusedError } from "~/modules/node-sessions/store"
@@ -24,6 +24,7 @@ import { onNodeConnectionHello } from "~/modules/nodes/hooks"
 import { createNodeJob, NodeJobRefusedError, sweepNodeLeases } from "~/modules/nodes/jobs"
 import { liveDesktopConnections, sweepStaleNodeSessions } from "~/modules/nodes/presence"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
@@ -159,7 +160,7 @@ describe("demo replay", () => {
     // Each registered person already owns the personal agent the replay drives.
     regular = await minimal.session(regularOrg.id)
     const demoOrgId = (await minimal.secondOrg({ name: "Replay Demo" })).orgId
-    await markOrgAsDemo(demoOrgId, visitorMarker(24))
+    await markDemoOrgForTest(demoOrgId, visitorMarker(24))
     invalidateDemoMarker(demoOrgId)
     visitor = await minimal.adminSession(demoOrgId)
     DemoModeTestAccess.set(true)

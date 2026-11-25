@@ -78,7 +78,6 @@ liaison export --full --output <path>
 liaison org export <org slug or id> [--wait] [--timeout <seconds>]
 liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--custom-apps <n>] [--audit-days <n>] [--app-runs-per-day <n>] [--app-bridge-calls-per-day <n>] [--app-cpu-ms-per-day <n>] [--unset <cap>]
 liaison org delete <org slug or id> [--dry-run] [--yes <slug>] [--export-to <path>] [--no-legal-archive] [--abort]
-liaison demo reclassify --since <instant> --until <instant> [--org <id>] [--apply]
 liaison mailbox verify-attachment --file-id <kernel.files id>
 liaison mailbox purge --user <uuid> --org <uuid> [--execute --confirm <same user uuid>]
 liaison files purge-deleted-message-attachments [--org <uuid>] [--dry-run]

@@ -1,0 +1,16 @@
+A link stores the document id, never its title -> packages/shared/src/knowledge-tokens.ts (normalizePageRefs)
+Writes drop a link's title -> apps/api/src/apps/knowledge/service.ts (createKnowledgeDocument, updateKnowledgeDocument)
+Reads drop a link's title -> apps/api/src/apps/knowledge/service.ts (rowFromDb)
+History leaves without link titles -> apps/api/src/apps/knowledge/page-routes.ts (withoutLinkTitles)
+Titles only for readers who can read the linked document -> apps/api/src/apps/knowledge/links.ts:77 (readablePages)
+Resolve route answers readable live documents only -> apps/api/src/apps/knowledge/page-routes.ts:132
+An archived document resolves to nothing -> apps/api/src/apps/knowledge/links.ts:77 (readablePages)
+A rename shows in every link (title read at resolve time) -> apps/api/src/apps/knowledge/links.ts:77 (readablePages)
+Backlinks list readable documents and conversations -> apps/api/src/apps/knowledge/page-routes.ts:149
+Backlinks of documents come from document_links, refreshed on save -> apps/api/src/apps/knowledge/links.ts:50 (refreshDocumentLinks)
+Daily job removes stored titles -> apps/api/src/apps/knowledge/knowledge-jobs.ts (page-links-backfill)
+Only links change: no revision, no event, review status kept -> apps/api/src/apps/knowledge/links.ts (normalisePage)
+CLI links-backfill, --dry-run only counts -> apps/api/src/cli/knowledge-links-backfill.ts
+get lists the linked documents the reader can read -> apps/api/src/modules/apps/sandbox/bridge/knowledge.ts (knowledge_get links)
+Titles are removed for good; a rollback shows plain links -> apps/api/src/apps/knowledge/links.ts (normalisePage)
+Only documents holding a link are backfilled -> apps/api/src/apps/knowledge/links.ts (needsBackfill)

@@ -1,0 +1,6 @@
+{
+  "privileged": {
+    "apps/knowledge/links.ts": "The backfill that removes linked pages' titles from texts stored before links held only ids. It runs for no person (the daily job and the operator CLI): a system read of the orgs with pages not done yet, then per org one transaction pinned to that org per batch of locked pages, which rewrites only link tokens in bodies, summaries and history and records the links. It returns counts only, never a title or a text.",
+    "seed/factories/knowledge/document-version.ts": "Page-history rows holding exact stored text (a legacy body with a link title, an unapplied draft) for tests of the link backfill and history reads, written over a connection pinned to the org the test names; the knowledge writer itself never produces such rows any more."
+  }
+}

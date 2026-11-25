@@ -857,12 +857,27 @@ async function orgCaps(argv: string[]): Promise<number> {
   return res.exitCode
 }
 
+// The visitor workspaces a rolling deploy left without their class (cli/demo-reclassify.ts).
+async function demoReclassify(argv: string[]): Promise<number> {
+  const { runDemoReclassifyCli } = await import("~/cli/demo-reclassify")
+  const res = await runDemoReclassifyCli(argv.slice(2))
+  if (res.report) process.stdout.write(`${JSON.stringify(res.report, null, 2)}\n`)
+  if (res.message) err(res.message)
+  return res.exitCode
+}
+
 // Removes the attachments messages deleted before deletion took them along.
 async function filesPurgeDeletedMessageAttachments(argv: string[]): Promise<number> {
   const { runPurgeDeletedMessageAttachmentsCli } = await import(
     "~/cli/files-purge-deleted-message-attachments"
   )
   return await runPurgeDeletedMessageAttachmentsCli(argv.slice(2))
+}
+
+// Removes linked pages' titles from Knowledge texts stored before links held only ids.
+async function knowledgeLinksBackfill(argv: string[]): Promise<number> {
+  const { runKnowledgeLinksBackfillCli } = await import("~/cli/knowledge-links-backfill")
+  return await runKnowledgeLinksBackfillCli(argv.slice(2))
 }
 
 // Fire event routines again for the events they never handled (a dry run
@@ -980,6 +995,7 @@ export const HANDLERS: Record<CommandName, Handler> = {
   "org export": orgExport,
   "org delete": orgDelete,
   "org caps": orgCaps,
+  "demo reclassify": demoReclassify,
   "org transfer keys": orgTransfer,
   "org transfer export": orgTransfer,
   "org transfer import": orgTransfer,
@@ -989,6 +1005,7 @@ export const HANDLERS: Record<CommandName, Handler> = {
   "org transfer probe-clear": orgTransfer,
   "org transfer agent": orgTransfer,
   "files purge-deleted-message-attachments": filesPurgeDeletedMessageAttachments,
+  "knowledge links-backfill": knowledgeLinksBackfill,
   "routines reconcile": routinesReconcile,
   "approval-reminders run": approvalReminders,
   "tour start": tour,

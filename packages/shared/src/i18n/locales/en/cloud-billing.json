@@ -64,7 +64,7 @@
     "description": "Credits you buy are used after the ones your plan includes and do not expire at the end of the month.",
     "amount": "Credits",
     "minimum": "At least {{min}} credits.",
-    "price": "{{price}} excluding VAT",
+    "price": "{{price}}",
     "buy": "Buy {{credits}} credits",
     "paid": "{{credits}} credits added.",
     "belowMinimum": "Buy at least {{min}} credits.",

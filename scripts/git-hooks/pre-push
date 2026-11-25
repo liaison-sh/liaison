@@ -97,6 +97,15 @@ MSG
     status=1
   fi
 
+  # Commits are authored by people: no AI co-author trailer or "Generated with"
+  # footer (CI checks the same with scripts/check-no-ai-coauthor.ts).
+  ai=$(git log --format='%h %B' $revs | grep -iE '^[[:space:]>]*co-authored-by:.*(claude|anthropic|copilot|chatgpt|openai|codex|cursor|gemini|devin|aider)|generated (with|by) \[?(claude|copilot|chatgpt|codex|cursor|gemini|devin|aider)')
+  if [ -n "$ai" ]; then
+    printf '\npre-push: AI attribution in a commit message of %s:\n%s\n' "$local_ref" "$ai" >&2
+    echo "Reword those commits (git rebase -i <base>, then reword) and push again." >&2
+    status=1
+  fi
+
   for address in $blocked; do
     hits=$(git log --format='%h author %ae%n%h committer %ce%n%B' $revs | grep -iFw -- "$address")
     if [ -n "$hits" ]; then

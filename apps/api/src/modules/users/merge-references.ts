@@ -113,6 +113,8 @@ export const USER_FK_DISPOSITION: Record<string, ReferenceDisposition> = {
   "app_knowledge.documents.owner_user_id": repoint,
   "app_knowledge.documents.updated_by": repoint,
   "app_knowledge.documents.verified_by": repoint,
+  "app_knowledge.documents.trashed_by": repoint,
+  "app_knowledge.document_versions.author_id": repoint,
   "app_knowledge.source_links.owner_user_id": repoint,
   "app_knowledge.source_links.verified_by": repoint,
   "app_knowledge.collections.owner_user_id": repoint,

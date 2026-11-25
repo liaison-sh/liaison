@@ -26,6 +26,11 @@ import {
   type SyncedSourceDbRow,
   rowFromDb as syncedSourceRowFromDb,
 } from "~/apps/knowledge/synced-sources"
+import {
+  checkTrashResidue,
+  runTrashPurge,
+  type TrashResidueJobPayload,
+} from "~/apps/knowledge/trash"
 import { extractRows } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import {
@@ -341,9 +346,37 @@ export async function registerKnowledgeJobs(opts: RunSyncWorkerDeps = {}): Promi
     await flushPendingUpdateEvents()
   })
 
+  // Trash (trash.ts): pages in Trash for 30 days are deleted at night, and page
+  // versions older than a year go. Each purge's index entry and stored objects are
+  // checked ten minutes after it (trash-residue).
+  await registerScheduledJob("knowledge", "trash-purge", "17 3 * * *", async () => {
+    const report = await runTrashPurge()
+    if (report.purged.length > 0 || report.failed.length > 0 || report.versionsPruned > 0) {
+      log.info(
+        {
+          purged: report.purged.length,
+          failed: report.failed.length,
+          versionsPruned: report.versionsPruned,
+        },
+        "Knowledge Trash purge ran",
+      )
+    }
+  })
+  registerJobWorker<TrashResidueJobPayload>("knowledge", "trash-residue", async (payload) => {
+    await checkTrashResidue(payload)
+  })
+
   // Copies of files made for a page whose create rolled back (page-file-sweep.ts).
   await registerScheduledJob("knowledge", "unparented-copies-sweep", "17 * * * *", async () => {
     await sweepUnparentedPageCopies()
+  })
+
+  // Page links stored with a title before links were normalised (links.ts): bodies,
+  // summaries and history, a batch at a time, until every page is done.
+  await registerScheduledJob("knowledge", "page-links-backfill", "41 3 * * *", async () => {
+    const { backfillPageLinks } = await import("~/apps/knowledge/links")
+    const report = await backfillPageLinks()
+    if (report.documents > 0) log.info({ ...report }, "knowledge: page links backfilled")
   })
 
   registerJobWorker<SyncJobPayload>("knowledge", "sync-source", async (payload) => {

@@ -125,10 +125,10 @@ export interface PurgeOrgOptions {
   verify?: boolean
   /**
    * Check every immutability trigger and regenerate a stale one (DDL) before
-   * deleting. Default true. The demo reaper passes false: a demo workspace's
-   * legal records go through the demo-marker branch, which every trigger body
-   * already carries, so a reap runs no DDL and a trigger it cannot read back
-   * never blocks reaping.
+   * deleting. Default true. The demo reaper passes false: it marks the org
+   * deleting first, and every trigger body carries the deleting branch (boot
+   * regenerates the stale ones), so a reap runs no DDL and a trigger it cannot
+   * read back never blocks reaping.
    */
   regenerateTriggers?: boolean
   /**

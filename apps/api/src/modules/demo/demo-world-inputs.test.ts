@@ -66,6 +66,7 @@ const LOGIC_NOT_CONTENT: Record<string, string> = {
   "apps/api/src/modules/demo/demo-mode.ts": "whether this process runs in demo mode",
   "apps/api/src/modules/demo/demo-org.ts": "the demo marker on an org and its guards",
   "apps/api/src/modules/demo/demo-reset.ts": "the nightly reset and the reaper's deletes",
+  "apps/api/src/modules/demo/org-class.ts": "which orgs no demo code may delete",
   "apps/api/src/modules/demo/demo-provisioning.ts":
     "a workspace's readiness state and seed deadline",
   "apps/api/src/modules/demo/demo-verification.ts":

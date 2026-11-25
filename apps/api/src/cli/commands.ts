@@ -901,6 +901,28 @@ export const COMMANDS = [
     ],
   },
   {
+    name: "demo reclassify",
+    usage: "liaison demo reclassify --since <instant> --until <instant> [--org <id>] [--apply]",
+    summary:
+      "For the operator of a public demo, once, right after upgrading it to the release that gives every org a class: the visitor workspaces the previous release made while both ran have none, and the demo reaper deletes no org of another class. Lists the workspaces created in the window, and with `--apply` makes exactly those demo orgs, so they are deleted at their own expiry. Only a workspace with a valid visitor marker, a visitor workspace's generated slug, no billing and no control plane create is ever listed, never the operator's org. Refused (exit 2) with demo mode off and in the managed edition.",
+    flags: [
+      {
+        name: "--since",
+        arg: "<instant>",
+        summary: "The start of the window, with its zone: a little before the migration ran.",
+        required: true,
+      },
+      {
+        name: "--until",
+        arg: "<instant>",
+        summary: "The end of the window: when the last process of the previous release stopped.",
+        required: true,
+      },
+      { name: "--org", arg: "<id>", summary: "Only this workspace." },
+      { name: "--apply", summary: "Make the change; without it the command only lists." },
+    ],
+  },
+  {
     name: "org caps",
     usage:
       "liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--custom-apps <n>] [--audit-days <n>] [--app-runs-per-day <n>] [--app-bridge-calls-per-day <n>] [--app-cpu-ms-per-day <n>] [--unset <cap>]",
@@ -963,6 +985,16 @@ export const COMMANDS = [
     usage: "liaison files purge-deleted-message-attachments [--org <uuid>] [--dry-run]",
     summary:
       "Delete the attachments of messages that were deleted before deleting a message took its files along (rows now, objects through the server's object-deletion job). Every org, or only `--org`; idempotent.",
+    flags: [
+      { name: "--org", arg: "<uuid>", summary: "Only this org." },
+      { name: "--dry-run", summary: "Only count." },
+    ],
+  },
+  {
+    name: "knowledge links-backfill",
+    usage: "liaison knowledge links-backfill [--org <uuid>] [--dry-run]",
+    summary:
+      "Remove the linked page's title from Knowledge page links stored before links held only the page id (bodies, summaries, page history) and record each page's links, as the daily job does. Only link tokens change: no new revision, no event, review status kept. Every org, or only `--org`; idempotent.",
     flags: [
       { name: "--org", arg: "<uuid>", summary: "Only this org." },
       { name: "--dry-run", summary: "Only count." },
@@ -1069,7 +1101,8 @@ export const COMMANDS = [
       { name: "--locale", arg: "<locale>", summary: "The language the world is written in." },
       {
         name: "--reset",
-        summary: "Clear the org's seeded content first (the default for `reserved`).",
+        summary:
+          "Clear the reserved org's seeded content first (its default). With `--variant visitor`, delete the demo org under the slug and seed it fresh instead; refused on a public demo box and for any org that is not of class demo.",
       },
       { name: "--no-reset", summary: "Top up: adopt what is there, clear nothing." },
       {

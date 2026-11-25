@@ -796,8 +796,14 @@ for (const [tourId, { approveBeat, tool }] of Object.entries(APPROVE_AFTER_RELOA
       const here = page.locator(`[data-testid="tour-panel"][data-beat-id="${beatId}"]`)
       const next = here.getByTestId("tour-next")
       const doForMe = here.getByTestId("tour-do-for-me")
-      // Next is held while a show step waits for what it points at.
-      if ((await next.isVisible()) && (await next.isEnabled())) {
+      // Next is held while a show step waits for what it points at. isVisible
+      // reads at once but isEnabled waits for the element: when the step moves
+      // on between the two reads, the scoped locator matches nothing any more
+      // and isEnabled used to wait out its 10 s and throw. A step gone counts
+      // as not enabled; the loop reads the new step next.
+      const nextEnabled = async () =>
+        (await next.isVisible()) && (await next.isEnabled({ timeout: 500 }).catch(() => false))
+      if (await nextEnabled()) {
         await next.click({ timeout: 2_000 }).catch(() => {})
       } else if (!pressed.has(beatId) && (await doForMe.isVisible())) {
         pressed.add(beatId)

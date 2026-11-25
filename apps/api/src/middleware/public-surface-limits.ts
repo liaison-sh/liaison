@@ -80,6 +80,29 @@ const BUDGETS: PublicBudget[] = [
     windowSeconds: 60,
   },
   {
+    // A commercial mail's opt-out link (modules/mail/opt-out-routes.ts): a person
+    // opens it once or twice, a mail scanner a few times.
+    name: "opt-out",
+    applies: (_m, p) => p.startsWith("/public/opt-out/"),
+    limit: 30,
+    windowSeconds: 60,
+  },
+  {
+    // The client portal's sign-in steps (modules/portal/auth-routes.ts): request,
+    // verify, totp, refresh and logout. A person needs a handful per minute.
+    name: "portal-auth",
+    applies: (m, p) => m === "POST" && p.startsWith("/api/portal/auth/"),
+    limit: 20,
+    windowSeconds: 60,
+  },
+  {
+    // The portal sign-in page's branding: one read per page load.
+    name: "portal-branding",
+    applies: (m, p) => m === "GET" && p.startsWith("/api/portal/auth/branding/"),
+    limit: 60,
+    windowSeconds: 60,
+  },
+  {
     name: "well-known",
     applies: (_m, p) => p.startsWith("/.well-known/"),
     limit: 120,
@@ -100,7 +123,12 @@ export function publicSurfaceBodyLimit(): MiddlewareHandler<AppEnv> {
   const transport = bodyLimit({ maxSize: MCP_TRANSPORT_BODY_MAX_BYTES })
   return async (c, next) => {
     const path = c.req.path
-    if (isPublicOauthSurface(path)) return small(c, next)
+    if (
+      isPublicOauthSurface(path) ||
+      path.startsWith("/public/opt-out/") ||
+      path.startsWith("/api/portal/auth/")
+    )
+      return small(c, next)
     if (path === "/mcp") return transport(c, next)
     return next()
   }

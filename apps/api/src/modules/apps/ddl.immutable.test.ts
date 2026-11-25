@@ -54,13 +54,20 @@ describe("immutable table trigger DDL", () => {
       { retentionYears: 10 },
       { retentionYears: 6, anchor: "recorded_at" },
       { retentionYears: 10, writeOnceColumns: ["document_id", "kind"] },
-    ]) {
+      { retentionYears: 10, anchor: "signed_at", insertOnly: true },
+    ] as Array<{
+      retentionYears: number
+      anchor?: string
+      writeOnceColumns?: string[]
+      insertOnly?: boolean
+    }>) {
       const fn = generateImmutableTriggerDdl("s", "t", spec).split(";\n")[0] ?? ""
       const body = fn.slice(fn.indexOf("DECLARE"), fn.lastIndexOf("END") + 3)
       expect(immutableSpecFromTriggerBody(body)).toEqual({
         retentionYears: spec.retentionYears,
         anchor: spec.anchor ?? "created_at",
         ...(spec.writeOnceColumns ? { writeOnceColumns: spec.writeOnceColumns } : {}),
+        ...(spec.insertOnly ? { insertOnly: true } : {}),
       })
     }
     expect(immutableSpecFromTriggerBody("BEGIN RETURN NEW; END")).toBeNull()

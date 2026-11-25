@@ -104,7 +104,7 @@ Older texts held the linked document's title, as agents wrote their links. Liais
 4. Under **Roles with access**, click **Add roles…** to share with a whole role.
 5. Click **Save**.
 
-Admins have no bypass: a restricted document is editable only by its owner or someone with an **Editor** share. Search follows the same sharing rules, so a document not shared with you does not appear in your results or your agent's.
+Admins have no bypass: a restricted document is editable only by its owner or someone with an **Editor** share. Search follows the same sharing rules, so a document not shared with you does not appear in your results or your agent's. When an agent reads a restricted document, what it writes next can be read only by the people the document is shared with.
 
 ## Sync a Google Drive folder
 

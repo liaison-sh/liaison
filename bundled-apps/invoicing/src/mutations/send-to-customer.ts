@@ -4,8 +4,10 @@
 
 import { closeAutoEmailParks } from "../deferred"
 import { deliveryFileId } from "../legal-originals/delivery"
+import { recordSent } from "../sent-record"
 import { findDocumentSummary, findIssuerProfile } from "./db-helpers"
 import { ensureDocumentPdf } from "./pdf"
+import { annexMailText, annexSetKey, sendAnnexes } from "./send-annexes"
 import {
   type DocumentRowSummary,
   type ErrorEnvelope,
@@ -28,7 +30,13 @@ async function preflightSendToCustomerParams(
   ctx: MutationsCtx,
   input: { document_id: string; to?: string },
 ): Promise<
-  | { ok: true; doc: DocumentRowSummary; mailAccountId: string; recipient: string }
+  | {
+      ok: true
+      doc: DocumentRowSummary
+      mailAccountId: string
+      recipient: string
+      issuer: Awaited<ReturnType<typeof findIssuerProfile>>
+    }
   | { ok: false; error: ErrorEnvelope }
 > {
   const doc = await findDocumentSummary(ctx.db, input.document_id)
@@ -59,7 +67,7 @@ async function preflightSendToCustomerParams(
           // to do about it. No dash punctuation.
           message:
             "No send-from mailbox is set on this issuer profile, so the document cannot be emailed. " +
-            "Set the send-from mailbox on the issuer profile in invoicing settings (mail_account_id), then send again.",
+            "Choose it under Send invoices from, on the issuer profile in Settings, Invoicing, then send again.",
         },
       },
     }
@@ -120,7 +128,7 @@ async function preflightSendToCustomerParams(
       },
     }
   }
-  return { ok: true, doc, mailAccountId, recipient }
+  return { ok: true, doc, mailAccountId, recipient, issuer }
 }
 
 /**
@@ -133,7 +141,12 @@ export async function documentsSendToCustomerPreflight(
   ctx: MutationsCtx,
   input: { document_id: string; to?: string },
 ): Promise<PreflightResult> {
-  return toPreflightResult(await preflightSendToCustomerParams(ctx, input))
+  const pre = await preflightSendToCustomerParams(ctx, input)
+  const result = toPreflightResult(pre)
+  if (!pre.ok || !("ok" in result)) return result
+  // The card lists the annexes as they are now: the approval binds them (a pinned param, so a
+  // caller's own value is dropped), and the send refuses once they changed.
+  return { ...result, pinnedParams: { annex_set: await annexSetKey(ctx.db, pre.doc.id) } }
 }
 
 export async function documentsSendToCustomer(
@@ -143,6 +156,8 @@ export async function documentsSendToCustomer(
     to?: string
     subject?: string
     body?: string
+    /** The annexes the approval card listed (pinned by the preflight). */
+    annex_set?: string | null
   },
 ): Promise<MutationResult<{ dispatched: true }>> {
   // Recipient resolution ALSO runs at stage time (the preflight export above shares this exact
@@ -150,7 +165,20 @@ export async function documentsSendToCustomer(
   // approval, so the executed send re-resolves rather than trusts.
   const pre = await preflightSendToCustomerParams(ctx, input)
   if (!pre.ok) return pre.error
-  const { doc, mailAccountId, recipient } = pre
+  const { doc, mailAccountId, recipient, issuer } = pre
+  // A file filed on the invoice after the card was drawn would go out unseen: refused, before
+  // anything is rendered or sent. A request staged before the card bound its annexes has none.
+  if (
+    typeof input.annex_set === "string" &&
+    input.annex_set !== (await annexSetKey(ctx.db, doc.id))
+  )
+    return {
+      status: "error",
+      error: {
+        code: "card_changed",
+        message: `The files attached to ${doc.number ? `invoice ${doc.number}` : `document ${doc.id}`} changed after this send was proposed, so nothing was sent. Propose the send again: its card lists every file the mail carries.`,
+      },
+    }
 
   // Self-heal a missing PDF instead of refusing to send: an issued document whose issue-time render
   // never ran or failed (pdf_status null/pending/failed) is rendered on-demand here, then attached.
@@ -168,6 +196,12 @@ export async function documentsSendToCustomer(
     )[0] ?? {}
   const delivery = await deliveryFileId(ctx.db, { ...fresh, pdf_file_id: pdf.pdf_file_id })
   const attachment = delivery.file_id ?? pdf.pdf_file_id
+  // The invoice's activity report and the files filed on it go in the same mail: a retry sends
+  // them all again together. A report that cannot render blocks the send, never the invoice.
+  const annex = await sendAnnexes(ctx, doc, issuer)
+  if (!annex.ok) return { status: "error", error: annex.error }
+  const annexText = annexMailText(annex.annexes)
+  const baseBody = input.body ?? "Please find the attached document."
   // Use mail:composeForApp — the INTERNAL cross-app variant — NOT the agent-facing gated mail:compose.
   // documents_send_to_customer is ALREADY gated at its own surface (this handler only runs post-approval),
   // so the send must EXECUTE here, not gate again. mail:compose is gated; invoked cross-app from this
@@ -184,12 +218,15 @@ export async function documentsSendToCustomer(
     accountId: mailAccountId,
     to: [recipient],
     subject: input.subject ?? `Document ${doc.number ?? doc.id}`,
-    textBody: input.body ?? "Please find the attached document.",
-    attachments: [attachment],
+    textBody: annexText ? `${baseBody}\n\n${annexText}` : baseBody,
+    attachments: [attachment, ...annex.annexes.map((a) => a.file_id)],
     originating_approval_id: ctx.approval?.approvalRequestId ?? "",
   })
   if (composeResult.status === "completed") {
-    // The document went out: its automatic mail, parked or unknown, must not go as well.
+    // The document went out: its automatic mail, parked or unknown, must not go as well, and it
+    // takes no new annex from now on.
+    // The mail is gone whatever happens to the record: a failed write never fails the send.
+    await recordSent(ctx.db, doc.id, await ctx.getUserId()).catch(() => undefined)
     await closeAutoEmailParks(ctx, doc.id)
     return { status: "completed", dispatched: true }
   }
@@ -214,6 +251,21 @@ export async function documentsSendToCustomer(
 export function sendErrorFromEnvelope(envelope: {
   error?: { code?: string; message?: string; retryable?: boolean }
 }): { code: string; message: string } {
+  // The issuer's send-from mailbox is not one this person reaches (mail access decides): say so in
+  // their words, never the mail tool's instructions to an agent. Only a miss that names the
+  // mailbox: a missing attachment or conversation is its own error, passed on as is.
+  // The mail app throws that miss (any code reaches here), so the words decide, not the code.
+  const message = envelope.error?.message ?? ""
+  if (
+    /no mailbox matches|accountid/i.test(message) ||
+    (envelope.error?.code === "NOT_FOUND" && /mailbox|account not found/i.test(message))
+  ) {
+    return {
+      code: "mailbox_unavailable",
+      message:
+        "This document was not sent: you cannot send from the mailbox chosen in Settings, Invoicing. Someone who can send from it can send it, or an admin can choose another one there.",
+    }
+  }
   if (envelope.error?.code || envelope.error?.message) {
     return {
       code: envelope.error.code ?? "send_failed",

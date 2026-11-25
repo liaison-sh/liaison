@@ -183,6 +183,8 @@ describe("isDetailRoute - only an entity tail is a detail route", () => {
       "/sessions": false,
       "/sessions/:entityId": true,
       "/settings": false,
+      // A staff signer's own Read and sign (kernel:client_action).
+      "/sign/:entityId": true,
       "/support/:entityId": true,
       "/threads/:entityId": true,
       "/tickets/:entityId": true,

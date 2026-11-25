@@ -3,7 +3,7 @@
 // The Deferred tab: open parks only, tax reviews (which wait for a person) first, and a gated
 // override click reports that it went for approval.
 import { describe, expect, it } from "bun:test"
-import { taxOverrideNote, visibleDeferredItems } from "./DeferredList"
+import { deferredReason, taxOverrideNote, visibleDeferredItems } from "./DeferredList"
 
 describe("Deferred tab", () => {
   it("lists open parks only, tax reviews first", () => {
@@ -42,5 +42,14 @@ describe("Deferred tab", () => {
       text: "Still blocked.",
       isError: true,
     })
+  })
+})
+
+describe("why a deferred row waits", () => {
+  it("reads in words, and an unknown reason reads as itself", () => {
+    expect(deferredReason({ reason: "issue_interrupted", status: "render_failed" })).toBe(
+      "Its PDF was not made when it was issued: it is made again",
+    )
+    expect(deferredReason({ reason: "something_new", status: "pending" })).toBe("something_new")
   })
 })

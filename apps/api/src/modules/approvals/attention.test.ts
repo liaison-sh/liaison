@@ -798,4 +798,142 @@ describe("approvals.attention", () => {
       expect(pending.metadata?.lastFailure).toBeUndefined()
     })
   })
+
+  describe("one run, one Home row", () => {
+    const RUN = "00000000-0000-4000-8000-0000000910f0"
+    const OTHER_RUN = "00000000-0000-4000-8000-0000000910f1"
+    const R1 = "00000000-0000-4000-8000-0000000910e1"
+    const R2 = "00000000-0000-4000-8000-0000000910e2"
+    const R3 = "00000000-0000-4000-8000-0000000910e3"
+    const LONE = "00000000-0000-4000-8000-0000000910e4"
+    const NO_RUN = "00000000-0000-4000-8000-0000000910e5"
+    const ids = [R1, R2, R3, LONE, NO_RUN]
+
+    beforeAll(async () => {
+      const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000)
+      for (const id of [R1, R2, R3]) {
+        await insertApproval({
+          id,
+          toolName: "invoicing:invoice_issue",
+          notifyUserIds: [USER_A],
+          expiresAt,
+          metadata: { originRootRunId: RUN },
+        })
+      }
+      await insertApproval({
+        id: LONE,
+        toolName: "invoicing:invoice_issue",
+        notifyUserIds: [USER_A],
+        expiresAt,
+        metadata: { originRootRunId: OTHER_RUN },
+      })
+      // The only card of its action today: nothing to group with.
+      await insertApproval({
+        id: NO_RUN,
+        toolName: "invoicing:quote_issue",
+        notifyUserIds: [USER_A],
+        expiresAt,
+      })
+    })
+
+    afterAll(async () => {
+      await sql`DELETE FROM kernel.approval_requests WHERE id IN ${sql(ids)}`
+    })
+
+    const feed = () =>
+      withRlsContext(
+        {
+          actorType: "user",
+          userId: USER_A,
+          orgId: ORG,
+          scopes: ["invoicing:approve", "tickets:approve"],
+          dimensionGrants: {},
+        },
+        (tx) => computeApprovalAttentionItems(tx, ORG, USER_A),
+      )
+
+    it("the cards one run staged for the viewer carry one group, each still its own decision", async () => {
+      const items = await feed()
+      const members = items.filter((i) => [R1, R2, R3].includes(i.entityId))
+      expect(members).toHaveLength(3)
+      const keys = new Set(
+        members.map((m) => (m.metadata?.runGroup as { key: string } | undefined)?.key),
+      )
+      expect(keys.size).toBe(1)
+      for (const m of members) {
+        expect(m.metadata?.runGroup).toMatchObject({ count: 3, basis: "run" })
+        expect(m.action).toMatchObject({ type: "decide_approval", approvalId: m.entityId })
+      }
+    })
+
+    it("a run's single card and a card with no run are left as they are", async () => {
+      const items = await feed()
+      for (const id of [LONE, NO_RUN]) {
+        const row = items.find((i) => i.entityId === id)
+        expect(row).toBeDefined()
+        expect(row?.metadata?.runGroup).toBeUndefined()
+      }
+    })
+  })
+
+  describe("one batch with no run, one Home row", () => {
+    const TOOL = "invoicing:credit_note_issue"
+    const B1 = "00000000-0000-4000-8000-0000000910d1"
+    const B2 = "00000000-0000-4000-8000-0000000910d2"
+    const B3 = "00000000-0000-4000-8000-0000000910d3"
+    const B_OLD = "00000000-0000-4000-8000-0000000910d4"
+    const B_SCOPE = "00000000-0000-4000-8000-0000000910d5"
+    const ids = [B1, B2, B3, B_OLD, B_SCOPE]
+
+    beforeAll(async () => {
+      const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000)
+      for (const id of ids) {
+        await insertApproval({ id, toolName: TOOL, notifyUserIds: [USER_A], expiresAt })
+      }
+      // Staged two days ago: another business day, another row.
+      await sql`UPDATE kernel.approval_requests SET created_at = now() - interval '2 days' WHERE id = ${B_OLD}`
+      // Decided by other people: another audience, another row.
+      await sql`UPDATE kernel.approval_requests SET approve_scope = 'invoicing:documents:write' WHERE id = ${B_SCOPE}`
+    })
+
+    afterAll(async () => {
+      await sql`DELETE FROM kernel.approval_requests WHERE id IN ${sql(ids)}`
+    })
+
+    const feed = () =>
+      withRlsContext(
+        {
+          actorType: "user",
+          userId: USER_A,
+          orgId: ORG,
+          scopes: ["invoicing:approve", "invoicing:documents:write"],
+          dimensionGrants: {},
+        },
+        (tx) => computeApprovalAttentionItems(tx, ORG, USER_A),
+      )
+
+    it("the same action for the same people on the same day is one group that names the action", async () => {
+      const items = await feed()
+      const members = items.filter((i) => [B1, B2, B3].includes(i.entityId))
+      expect(members).toHaveLength(3)
+      const keys = new Set(
+        members.map((m) => (m.metadata?.runGroup as { key: string } | undefined)?.key),
+      )
+      expect(keys.size).toBe(1)
+      for (const m of members) {
+        expect(m.metadata?.runGroup).toMatchObject({ count: 3, basis: "batch", toolName: TOOL })
+        expect((m.metadata?.runGroup as { label?: string } | undefined)?.label).toBeUndefined()
+        expect(m.action).toMatchObject({ type: "decide_approval", approvalId: m.entityId })
+      }
+    })
+
+    it("another day or another audience stays its own row", async () => {
+      const items = await feed()
+      for (const id of [B_OLD, B_SCOPE]) {
+        const row = items.find((i) => i.entityId === id)
+        expect(row).toBeDefined()
+        expect(row?.metadata?.runGroup).toBeUndefined()
+      }
+    })
+  })
 })

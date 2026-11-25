@@ -41,6 +41,8 @@ export interface TicketFollowup {
 
 export interface TicketSpec {
   key: string
+  /** The ticket's fixed number (`ticket-<n>`), for a world whose story names its tickets. */
+  number?: number
   subject: string
   /** Key of the contact the ticket comes from (the caller's contact map). */
   contactKey: string
@@ -119,14 +121,14 @@ export async function insertTicketMessageHistory(
             from_email, from_name, to_emails, cc_emails,
             subject, html_body, text_body, snippet,
             external_message_id, in_reply_to, header_references,
-            sent_at, created_by, created_at, updated_at
+            sent_at, received_at, created_by, created_at, updated_at
           ) VALUES (
             ${messageId}::uuid, ${orgId}::uuid, ${ticketId}::uuid, ${msg.kind},
             ${msg.fromEmail}, ${msg.fromName},
             ${JSON.stringify(msg.toEmails)}::jsonb, '[]'::jsonb,
             ${msg.subject}, ${msg.htmlBody ?? null}, ${msg.textBody}, ${msg.textBody.slice(0, 160)},
             NULL, NULL, '[]'::jsonb,
-            ${msg.sentAt.toISOString()}, ${msg.createdBy}::uuid,
+            ${msg.sentAt.toISOString()}, ${msg.sentAt.toISOString()}, ${msg.createdBy}::uuid,
             ${msg.sentAt.toISOString()}, ${msg.sentAt.toISOString()}
           )
           ON CONFLICT (id) DO NOTHING
@@ -257,7 +259,7 @@ export async function seedTickets(
           adminRef,
           // Every read createTicket makes runs on this transaction. On a second
           // connection it would wait behind policy DDL that waits for this one.
-          { privilegedTx: tx },
+          { privilegedTx: tx, ...(spec.number !== undefined ? { handleNumber: spec.number } : {}) },
         )
         if ("error" in created) {
           throw new Error(`tickets seed: ticket '${spec.key}' refused: ${created.error.message}`)
@@ -269,7 +271,8 @@ export async function seedTickets(
       for (let i = 0; i < (spec.followups?.length ?? 0); i++) {
         const f = (spec.followups as TicketFollowup[])[i] as TicketFollowup
         const author = f.author ? input.people[f.author] : undefined
-        await insertTicketMessageHistory(
+        const sentAt = new Date(createdAt.getTime() + f.hoursAfter * HOUR_MS)
+        const added = await insertTicketMessageHistory(
           tx as never,
           orgId,
           ticketId,
@@ -281,10 +284,19 @@ export async function seedTickets(
             toEmails: f.kind === "outbound" ? [contact.email] : [],
             subject: f.kind === "note" ? null : `Re: ${spec.subject}`,
             textBody: f.body,
-            sentAt: new Date(createdAt.getTime() + f.hoursAfter * HOUR_MS),
+            sentAt,
             createdBy: author?.userId ?? input.adminUserId,
           },
         )
+        // A sent reply is the ticket's first response, as the reply service stamps it
+        // (`appendTicketMessages` does the same): an answered ticket is no SLA risk.
+        if (added && f.kind === "outbound") {
+          await tx.execute(
+            sql`UPDATE ${ticketsRel("tickets")}
+                SET first_response_at = coalesce(first_response_at, ${sentAt.toISOString()}::timestamptz)
+                WHERE id = ${ticketId}::uuid`,
+          )
+        }
       }
 
       // Snooze and reopen go through the real state machine so the followup
@@ -378,6 +390,19 @@ export async function seedTickets(
         { targetTicketId: target, sourceTicketIds: [source], note: merge.note },
         adminRef,
         { privilegedTx: tx },
+      )
+    }
+
+    // A seeded message came in when the story says it did, not when the seed
+    // ran: the ticket service stamps its first message received now, and a
+    // follow-up's send check reads a message received after it was staged as
+    // a late-arriving reply.
+    const ids = Object.values(byKey)
+    if (ids.length > 0) {
+      await tx.execute(
+        sql`UPDATE ${ticketsRel("messages")} SET received_at = sent_at
+            WHERE org_id = ${orgId}::uuid AND ticket_id = ANY(${`{${ids.join(",")}}`}::uuid[])
+              AND sent_at IS NOT NULL AND received_at > sent_at`,
       )
     }
   })

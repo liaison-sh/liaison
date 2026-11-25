@@ -1,0 +1,42 @@
+{
+  "mail": {
+    "subject": "Votre lien de connexion pour {{org}}",
+    "eyebrow": "Espace client",
+    "heading": "Connexion à {{org}}",
+    "body": "Ouvrez le lien ci-dessous pour vous connecter à votre espace client. Il ne fonctionne qu'une fois et expire dans 15 minutes.",
+    "ignore": "Si vous n'avez pas demandé à vous connecter, ignorez cet e-mail. Personne ne peut se connecter sans ce lien.",
+    "cta": "Se connecter",
+    "footer": "Vous recevez cet e-mail parce qu'une connexion à l'espace client a été demandée pour cette adresse."
+  },
+  "page": {
+    "requested": "Si cette adresse a un accès, un lien de connexion est en route. Consultez votre boîte de réception.",
+    "continue": "Continuer vers votre espace client",
+    "linkInvalid": "Ce lien ne fonctionne plus. Demandez-en un nouveau.",
+    "totpPrompt": "Saisissez le code de votre application d'authentification.",
+    "totpInvalid": "Ce code n'a pas fonctionné. Réessayez.",
+    "unavailable": "L'espace client n'est pas disponible pour le moment."
+  },
+  "reply": {
+    "subject": "Une réponse à votre demande : {{subject}}",
+    "eyebrow": "Espace client",
+    "heading": "Vous avez une réponse",
+    "body": "Vous avez une réponse à {{subject}}. Connectez-vous pour la lire.",
+    "cta": "Ouvrir votre espace client",
+    "footer": "Vous recevez cet e-mail parce que vous avez envoyé cette demande depuis l'espace client de {{org}}."
+  },
+  "invite": {
+    "subject": "{{org}} vous ouvre votre espace client",
+    "eyebrow": "Espace client",
+    "heading": "Votre espace pour {{company}}",
+    "body": "{{org}} a ouvert un espace client pour {{company}}. Connectez-vous avec cette adresse : à chaque fois, un lien arrive par e-mail, sans mot de passe.",
+    "cta": "Ouvrir l'espace client",
+    "footer": "Si vous n'attendiez pas ce message, vous pouvez l'ignorer."
+  },
+  "totpReset": {
+    "subject": "La seconde étape de votre espace client a été réinitialisée",
+    "eyebrow": "Espace client",
+    "heading": "Votre seconde étape a été réinitialisée",
+    "body": "Une personne de {{org}} a réinitialisé votre application d'authentification pour l'espace client. À votre prochaine connexion, vous en configurerez une nouvelle. Si vous n'avez rien demandé, répondez à cet e-mail.",
+    "footer": "Vous recevez ce message car vous avez accès à l'espace client de {{org}}."
+  }
+}

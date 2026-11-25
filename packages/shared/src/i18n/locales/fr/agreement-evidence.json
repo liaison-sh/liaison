@@ -1,0 +1,38 @@
+{
+  "copy": {
+    "subject": "Votre exemplaire signé : {{agreement}}, version {{version}}",
+    "body": "Tout le monde a signé « {{title}} » avec {{org}}. Votre exemplaire du document signé et de son fichier de preuve sont joints. Gardez-les : ils permettent de vérifier le document sans {{org}}.",
+    "fingerprint": "Empreinte du document signé (SHA-256) : {{fingerprint}}",
+    "seal": "Sceau : {{seal}}",
+    "pending": "L'horodatage extérieur n'est pas encore arrivé ; un fichier de preuve horodaté suivra par mail.",
+    "footer": "Ce mail vous est envoyé pour le garder. Il ne contient aucun lien.",
+    "approved_subject": "Votre exemplaire approuvé : {{agreement}}, version {{version}}",
+    "approved_body": "Tout le monde a approuvé « {{title}} » avec {{org}} : une approbation enregistrée. Votre exemplaire du document approuvé et de son fichier de preuve sont joints. Gardez-les : ils permettent de vérifier le document sans {{org}}."
+  },
+  "pages": {
+    "page": "Page de signature {{n}} sur {{of}}",
+    "heading": "Signatures",
+    "capacity": "Qualité",
+    "typed": "Mention saisie",
+    "at": "Signé le",
+    "level_ses": "Signature électronique simple",
+    "level_demo": "Démonstration, pas une signature",
+    "fingerprint": "Empreinte du document signé (SHA-256)",
+    "document": "{{agreement}}, version {{version}}"
+  },
+  "certificate": {
+    "title": "Certificat de signature",
+    "document_fingerprint": "Empreinte du document (SHA-256)",
+    "signed_fingerprint": "Empreinte du PDF signé (SHA-256)",
+    "seal": "Sceau (SHA-256 du manifeste)",
+    "stamped": "Horodatage : reçu d'une autorité extérieure.",
+    "pending": "Horodatage : en attente, pas encore reçu.",
+    "signers": "Signataires"
+  },
+  "claim": {
+    "subject": "Le contrat à accès restreint {{number}} a été repris",
+    "body": "{{name}} s'est ajouté à la liste des personnes qui voient le contrat {{number}} le {{on}}.",
+    "why": "Un administrateur ne peut le faire qu'après que chaque personne de la liste a été désactivée depuis 7 jours. La reprise est affichée sur le contrat pour toute personne qui le voit.",
+    "footer": "Vous recevez ce mail car vous figuriez sur la liste de ce contrat. Il ne contient aucun lien."
+  }
+}

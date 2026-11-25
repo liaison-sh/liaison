@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
 import { randomUUID } from "node:crypto"
-import { PUBLIC_EMAIL_PROVIDERS } from "@liaison/shared"
+import {
+  maskHtmlWithNote,
+  maskPaymentSecrets,
+  maskWithNote,
+  PUBLIC_EMAIL_PROVIDERS,
+} from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { lookupTicketIdByHandle } from "~/apps/tickets/display-handle"
 import { detectAutoResponder } from "~/apps/tickets/inbound-auto-responder"
@@ -35,6 +40,7 @@ import { redis } from "~/lib/redis"
 import { checkRateLimit } from "~/middleware/rate-limiter"
 import { TRANSFER_HOST_WHITELIST } from "~/modules/agent/media/media-analysis-constants"
 import { loadAllowedMailDomains } from "~/modules/apps/connections/mail-domains"
+import { cutSigningLinks } from "~/modules/client-actions/quoted-link"
 import { resolveContact } from "~/modules/contacts/service"
 import { senderAuthForRules } from "~/modules/contacts/trusted-senders"
 import { emitSecurityEvent } from "~/modules/security/security-events"
@@ -405,9 +411,13 @@ async function insertMessage(
   const fromName = params.raw.from?.name ?? null
   const toEmails = (params.raw.to ?? []).map((a) => a.email)
   const ccEmails = (params.raw.cc ?? []).map((a) => a.email)
-  const subject = params.raw.subject ?? null
-  const html = params.raw.htmlBody ? sanitizeCustomerHtml(params.raw.htmlBody) : null
-  const text = params.raw.textBody ?? null
+  // Card numbers and payment keys are masked before the row is written, so no
+  // reader (a person, an agent, search, an export) ever meets the full value.
+  const subject = params.raw.subject ? maskPaymentSecrets(params.raw.subject).text : null
+  const html = params.raw.htmlBody
+    ? maskHtmlWithNote(sanitizeCustomerHtml(params.raw.htmlBody)).text
+    : null
+  const text = params.raw.textBody ? maskWithNote(params.raw.textBody).text : null
   const snippet = (text ?? html ?? "").slice(0, 200)
   const externalMessageId = params.raw.messageId ?? null
   const inReplyTo = params.raw.inReplyTo ?? null
@@ -1003,10 +1013,18 @@ function noteInboundDrop(reason: string, ctx: TicketsServiceCtx, raw: ParsedEmai
 }
 
 export async function processInboundMessage(
-  raw: ParsedEmail,
+  received: ParsedEmail,
   inbox: InboxRow,
   ctx: TicketsServiceCtx,
 ): Promise<MatcherResult> {
+  // A quoted signing link is cut before anything reads or stores the mail, so an
+  // outside signer's reply never leaves a live link on a ticket.
+  const raw: ParsedEmail = {
+    ...received,
+    subject: cutSigningLinks(received.subject),
+    textBody: cutSigningLinks(received.textBody),
+    htmlBody: cutSigningLinks(received.htmlBody),
+  }
   const headersFlat = (raw.headers ?? {}) as Record<string, string | string[]>
   const headersForGate: Record<string, string[]> = {}
   for (const [k, v] of Object.entries(headersFlat)) {

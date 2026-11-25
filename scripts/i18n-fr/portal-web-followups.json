@@ -1,0 +1,9 @@
+{
+  "text": {
+    "This project bills by milestone, so it has no billed hours.": "Ce projet est facturé par jalon, il n'a donc pas d'heures facturées.",
+    "Only {{names}} can read it.": "Seuls {{names}} peuvent le lire.",
+    "I have read it": "Je l'ai lu",
+    "The notice changed since it was shown. Please read the new one.": "La notice a changé depuis son affichage. Lisez la nouvelle.",
+    "That did not work. Try again.": "Cela n'a pas fonctionné. Réessayez."
+  }
+}

@@ -3,8 +3,9 @@
 // Invoicing mutations: document PDF rendering (ensureDocumentPdf) and the explicit retry.
 
 import type { OperationCategory } from "../einvoicing/classify-operation"
-import { importedOriginalMissing } from "../einvoicing/gate"
+import { importedOriginalMissing, resolveGateMode } from "../einvoicing/gate"
 import { documentLegalMention } from "../einvoicing/mentions"
+import { sellerIncompleteError } from "../einvoicing/seller"
 import { FacturxBuildError, type FacturxInput } from "../facturx/cii"
 import { facturxEligible, facturxInputFrom } from "../facturx/input"
 import {
@@ -297,7 +298,13 @@ async function renderFirstLegalOriginal(
   const wasFacturxFailed = a.doc.pdf_status === "facturx_failed"
   let facturx: FacturxInput | null = null
   let built: { ok: false; code: string; message: string; facturx: true } | null = null
-  if (facturxEligible(a.type, a.doc)) {
+  // An issuer that cannot sign the e-invoice file, in an org that does not enforce e-invoicing:
+  // a plain PDF, as at issue, never a failed legal original.
+  const plain =
+    facturxEligible(a.type, a.doc) &&
+    sellerIncompleteError(a.issuer, a.type) !== null &&
+    (await resolveGateMode(ctx.db, { materialise: false })) !== "enforce"
+  if (facturxEligible(a.type, a.doc) && !plain) {
     try {
       facturx = facturxInputFrom({
         type: a.type as "invoice" | "credit_note",

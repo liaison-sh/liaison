@@ -73,3 +73,13 @@ describe("tickets attention: awaiting a reply carries the assignee (D21)", () =>
     expect(awaiting(nobody)?.metadata?.assignedTo).toBeNull()
   })
 })
+
+describe("tickets attention: awaiting a reply names the question", () => {
+  it("the summary carries the ticket's subject beside its handle", async () => {
+    const id = await seedAwaiting(`AC${Date.now()}`, null)
+    const items = await asOrgMember(orgId, userId, (tx) => computeAttentionItems(tx, orgId))
+    const row = items.find((i) => i.kind === "awaiting_agent" && i.entityId === id)
+    expect(row?.summary).toStartWith("Awaiting agent reply on ")
+    expect(row?.summary).toEndWith(": Question")
+  })
+})

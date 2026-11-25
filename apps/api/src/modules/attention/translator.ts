@@ -2,10 +2,11 @@
 
 import type { ThreadAnchor } from "@liaison/shared"
 import { sql } from "drizzle-orm"
-import type { PrivilegedDb } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { extractRows, type PrivilegedDb } from "~/db"
+import { withPrivilegedDb, withPrivilegedReadReusingHeld } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { UUID_RE } from "~/lib/uuid"
+import { nextInLineToday } from "~/modules/users/away"
 
 const K = sql.raw(schemaRef("kernel"))
 
@@ -19,6 +20,7 @@ import {
   type AttentionTranslation as ManifestTranslation,
   manifestAttentionRegistry,
 } from "~/modules/apps/app-registries"
+import { keepRestrictedReaders } from "~/modules/attention/restricted-recipients"
 import {
   type AttentionLiveItem,
   attentionTextRedacted,
@@ -38,7 +40,7 @@ import {
 import { isSeededWrite } from "~/modules/notifications/seeded"
 import { readNotificationChannels } from "~/modules/notifications/settings"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
-import { defaultLoadScopeHolders } from "~/modules/permissions/scope-holders"
+import { defaultLoadScopeHolders, withoutExternalUsers } from "~/modules/permissions/scope-holders"
 import {
   resolveThreadAnchorForReaders,
   type ThreadAnchorRef,
@@ -131,7 +133,7 @@ export interface TranslatorDeps {
     orgId: string,
   ) => Promise<Map<string, UserPrefsSnapshot>>
   /** `resolveWhen` hit: mark matching unread rows read. Injectable for tests. */
-  resolveAttentionRows?: (event: AppEvent, kind: string) => Promise<void>
+  resolveAttentionRows?: (event: AppEvent, kind: string, entityType?: string) => Promise<void>
   recipientContext?: Partial<RecipientContext>
   /**
    * Phase 16 Task A2 — per-translation, per-event subscription narrowing.
@@ -823,14 +825,18 @@ export function resolveWhenHit(
 
 /** `resolveWhen` hit: mark every matching UNREAD row read (org-wide — resolution
  *  clears the row for all recipients, not just those the event would notify). */
-async function resolveAttentionRows(event: AppEvent, kind: string): Promise<void> {
+async function resolveAttentionRows(
+  event: AppEvent,
+  kind: string,
+  entityType: string = event.entity,
+): Promise<void> {
   await withPrivilegedDb(event.orgId, "translator:resolve-rows", async (tx: PrivilegedDb) => {
     await tx.execute(sql`
       UPDATE ${K}.attention_events
       SET read_at = now()
       WHERE org_id = ${event.orgId}
         AND app = ${event.app}
-        AND entity_type = ${event.entity}
+        AND entity_type = ${entityType}
         AND entity_id = ${event.entityId}
         AND kind = ${kind}
         AND read_at IS NULL
@@ -940,15 +946,27 @@ export async function processTranslationEvent(
     )
     for (const id of missing) anchorByUser.set(id, found.get(id) ?? null)
   }
+  // A recipient who holds the row for a colleague away gets `metadata.forUserId`, so Home lists
+  // it under what they cover: named by the event (`data.standingInFor`, recipient id to the
+  // absent person's id), or found by an `account_manager` recipient that added a stand-in.
+  const standingInFor: Record<string, unknown> = (() => {
+    const map = (event.data as { standingInFor?: unknown } | undefined)?.standingInFor
+    return map && typeof map === "object" && !Array.isArray(map)
+      ? { ...(map as Record<string, unknown>) }
+      : {}
+  })()
   /** A row's metadata for one recipient: the anchor only when they may see it. */
   function metadataFor(
     userId: string,
     metadata: Record<string, unknown> | null,
   ): Record<string, unknown> | null {
     const threadAnchor = anchorByUser.get(userId) ?? null
-    return threadAnchor && metadata?.messageId !== undefined
-      ? { ...metadata, threadAnchor }
-      : metadata
+    const anchored =
+      threadAnchor && metadata?.messageId !== undefined ? { ...metadata, threadAnchor } : metadata
+    const forUserId = standingInFor[userId]
+    return typeof forUserId === "string" && forUserId !== userId
+      ? { ...(anchored ?? {}), forUserId }
+      : anchored
   }
   // Phase 16 Task A2 — derive axes from event.metadata once per event; passed
   // into the subscription evaluator alongside the translation's kind. Keys in
@@ -969,6 +987,24 @@ export async function processTranslationEvent(
     // Repairs the Shopify/invoicing manifests too. `perTranslationCtx` below
     // spreads `recipientCtx`, so this default propagates automatically.
     loadScopeHolders: deps.recipientContext?.loadScopeHolders ?? defaultLoadScopeHolders,
+    loadAccountManager: async (orgId, companyId, opts) => {
+      const found = await (deps.recipientContext?.loadAccountManager ?? loadAccountManager)(
+        orgId,
+        companyId,
+        opts,
+      )
+      if (Array.isArray(found)) Object.assign(standingInFor, standInMark(found).standingInFor)
+      return found
+    },
+    // Members only, and for a record closed to the organization its list only (a derived
+    // copy: recipients follow the list whatever the manifest's recipient kind).
+    keepMembers:
+      deps.recipientContext?.keepMembers ??
+      (async (orgId, ids) =>
+        keepListed(
+          event,
+          await keepRestrictedReaders(orgId, event, await withoutExternalUsers(orgId, ids)),
+        )),
   }
 
   // null = the preferences could not be read: the router degrades (in_app
@@ -1126,7 +1162,11 @@ export async function processTranslationEvent(
       // that ends its order:created row's reason to exist). Clear the unread
       // row(s) instead of upserting a nonsense "0 items need you" row.
       if (t.resolveWhen && resolveWhenHit(t.resolveWhen, event)) {
-        await (deps.resolveAttentionRows ?? resolveAttentionRows)(event, t.kind)
+        await (deps.resolveAttentionRows ?? resolveAttentionRows)(
+          event,
+          t.kind,
+          ...(t.resolveEntityType ? [t.resolveEntityType] : []),
+        )
         continue
       }
       // D2 batching: resolve the CANDIDATE set first, with NO subscription
@@ -1427,4 +1467,71 @@ export const AttentionTranslatorTestAccess = {
   resetRegistration(): void {
     registered = false
   },
+}
+
+/**
+ * An event that carries the list of a record closed to the organization (`data.visibleTo`)
+ * reaches the people on it only, whatever its recipient kind names.
+ */
+function keepListed(event: { data?: unknown }, ids: string[]): string[] {
+  const list = (event.data as { visibleTo?: unknown } | null | undefined)?.visibleTo
+  if (!Array.isArray(list)) return ids
+  const named = new Set(list.filter((x): x is string => typeof x === "string"))
+  return ids.filter((id) => named.has(id))
+}
+
+/**
+ * The `data.standingInFor` mark for a list `loadAccountManager` returned: its second id
+ * holds the rows for the first, who is away.
+ */
+export function standInMark(ids: readonly string[] | null): {
+  standingInFor?: Record<string, string>
+} {
+  const [manager, next] = ids ?? []
+  return manager && next ? { standingInFor: { [next]: manager } } : {}
+}
+
+/**
+ * A company's account manager, an active member, and while they are away today (their own day)
+ * the colleague next in line (modules/users/away.ts), unless the caller asked for no stand-in.
+ * A company merged into another answers with the surviving company's manager: the
+ * merge's audit row names the survivor (followed through a few merges in a row).
+ */
+export async function loadAccountManager(
+  orgId: string,
+  companyId: string,
+  opts?: { standIn?: boolean; now?: Date },
+): Promise<string[] | null> {
+  if (!UUID_RE.test(companyId)) return null
+  const K = sql.raw(schemaRef("kernel"))
+  const [row] = await withPrivilegedReadReusingHeld(
+    orgId,
+    "attention-account-manager",
+    async (tx) =>
+      extractRows<{ id: string }>(
+        await tx.execute(sql`
+        WITH RECURSIVE chain(id, depth) AS (
+          SELECT ${companyId}::uuid, 0
+          UNION ALL
+          SELECT (a.changes->>'mergedInto')::uuid, chain.depth + 1
+            FROM chain
+            JOIN ${K}.audit_log a
+              ON a.org_id = ${orgId}::uuid AND a.entity_type = 'company'
+             AND a.entity_id = chain.id::text AND a.action = 'company.delete'
+             AND a.changes->>'mergedInto' ~ '^[0-9a-fA-F-]{36}$'
+           WHERE chain.depth < 5
+             AND NOT EXISTS (SELECT 1 FROM ${K}.companies c0
+                              WHERE c0.id = chain.id AND c0.org_id = ${orgId}::uuid)
+        )
+        SELECT u.id::text AS id FROM chain
+          JOIN ${K}.companies c ON c.id = chain.id AND c.org_id = ${orgId}::uuid
+          JOIN ${K}.users u ON u.id = c.owner_user_id AND u.org_id = c.org_id
+         WHERE u.status = 'active' AND u.user_type = 'member'
+         ORDER BY chain.depth LIMIT 1`),
+      ),
+  )
+  if (!row) return null
+  if (opts?.standIn === false) return [row.id]
+  const next = await nextInLineToday(orgId, row.id, opts?.now)
+  return next ? [row.id, next] : [row.id]
 }

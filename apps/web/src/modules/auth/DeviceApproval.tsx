@@ -19,6 +19,7 @@
 import { useSearchParams } from "@solidjs/router"
 import { type Component, createEffect, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { ApiError, createApiClient } from "~/lib/api-client"
+import { scopeLabel } from "~/lib/capability-copy"
 import { authApiPath } from "~/lib/env"
 import { accessToken } from "~/modules/auth/auth-store"
 import { authManager } from "~/modules/auth/createAuthManager"
@@ -379,8 +380,11 @@ export const DeviceApprovalCard: Component = () => {
                           <p class="text-text-secondary">
                             {i18n.t("kernel.deviceApproval.scopesTitle")}
                           </p>
-                          <ul data-testid="device-approval-scopes" class="list-disc pl-5 font-mono">
-                            <For each={req().scopes}>{(scope) => <li>{scope}</li>}</For>
+                          <ul data-testid="device-approval-scopes" class="list-disc pl-5">
+                            {/* In words; the scope id stays on the tooltip. */}
+                            <For each={req().scopes}>
+                              {(scope) => <li title={scope}>{scopeLabel(scope, i18n.t)}</li>}
+                            </For>
                           </ul>
                         </>
                       }

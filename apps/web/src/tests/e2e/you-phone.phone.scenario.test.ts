@@ -49,7 +49,16 @@ test.describe("the You seat and the work surfaces at phone width", () => {
     await expect(notifRow).toBeVisible()
     await expect(page.locator("[data-testid^='you-toggle-notifications-']")).toHaveCount(0)
     const viewportWidth = await page.evaluate(() => window.innerWidth)
-    const box = await notifRow.boundingBox()
+    // The rows are rebuilt while the sections and apps load, so a second read can land
+    // between two renders: keep the box the poll measured instead of reading it again.
+    const measured: { box: Awaited<ReturnType<typeof notifRow.boundingBox>> } = { box: null }
+    await expect
+      .poll(async () => {
+        measured.box = await notifRow.boundingBox()
+        return measured.box
+      })
+      .not.toBeNull()
+    const box = measured.box
     expect(box).not.toBeNull()
     expect(box!.x + box!.width).toBeLessThanOrEqual(viewportWidth)
     // 44px is the floor for anything a finger has to hit.
@@ -173,6 +182,25 @@ test.describe("the You seat and the work surfaces at phone width", () => {
 
     await page.getByTestId("phone-tab-work").tap()
     await expect(page.getByTestId("work-screen")).toBeVisible()
+    // The list gains rows as the apps register, so a row can move between the moment a tap is
+    // aimed and the moment it lands (it once opened the row below): tap once the list reads the
+    // same on two polls in a row.
+    const rowList = () =>
+      page
+        .locator("[data-testid^='work-row-']:not([data-testid^='work-row-count-'])")
+        .evaluateAll((els) => els.map((e) => e.getAttribute("data-testid")).join(","))
+    let lastRows = ""
+    await expect
+      .poll(
+        async () => {
+          const now = await rowList()
+          const settled = now === lastRows && now.includes("work-row-calendar")
+          lastRows = now
+          return settled
+        },
+        { intervals: [500], timeout: 20_000 },
+      )
+      .toBe(true)
     await page.getByTestId("work-row-calendar").tap()
     await expect(page.getByTestId("calendar-agenda")).toBeVisible({ timeout: 15_000 })
     await expect(page.getByTestId("calendar-agenda-strip")).toBeVisible()

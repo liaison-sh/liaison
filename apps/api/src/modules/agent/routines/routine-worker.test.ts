@@ -14,7 +14,7 @@ import {
   users,
 } from "~/db/schema/kernel"
 import { redis } from "~/lib/redis"
-import { runRoutineTick } from "~/modules/agent/routines/routine-worker"
+import { routineRunScopes, runRoutineTick } from "~/modules/agent/routines/routine-worker"
 import { currentRunContext, type RunContext } from "~/modules/agent/runtime/run-context"
 import { createTestOrg } from "~/tests/helpers/org"
 import { clearRedisPatterns } from "~/tests/route-test-setup"
@@ -186,6 +186,31 @@ describe("routine-worker — runRoutineTick lifecycle", () => {
     expect(runs[0].error).toContain("kernel:users:admin")
     expect(runs[0].error).toContain("Scopes")
     expect(runs[0].error).toContain("agent")
+  })
+
+  it("an exact-only scope on a routine whose owner holds only *: the tick is refused, never run with it", async () => {
+    const r = await makeRoutine({ orgId, userId, scopes: ["projects:margin:read"] })
+    const result = await runRoutineTick({
+      orgId,
+      routineId: r.id,
+      scheduledAt: new Date().toISOString(),
+      loadOwnerScopes: async () => ["*"],
+    })
+    expect(result.status).toBe("skipped_scope_mismatch")
+    const runs = await withPrivilegedDb(orgId, "rw-check-runs", (tx) =>
+      tx.select().from(routineRuns).where(eq(routineRuns.routineId, r.id)),
+    )
+    expect(runs[0].error).toContain("projects:margin:read")
+  })
+
+  it("routineRunScopes adds no exact-only read sibling for an owner holding only *", () => {
+    expect(routineRunScopes(["projects:timesheet:write"], ["*"])).toEqual([
+      "projects:timesheet:write",
+    ])
+    expect(routineRunScopes(["projects:timesheet:write"], ["projects:timesheet:read"])).toEqual([
+      "projects:timesheet:write",
+      "projects:timesheet:read",
+    ])
   })
 
   it("owner agent with an empty ceiling: skipped_scope_mismatch + paused_scope_mismatch", async () => {

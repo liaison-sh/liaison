@@ -1,0 +1,3 @@
+Away days setting, off by default -> apps/api/src/apps/calendar/app.manifest.json:728
+Off writes nothing -> apps/api/src/apps/calendar/away-from-calendar.ts:234
+Label -> packages/shared/src/i18n/locales/en/calendar.json:88

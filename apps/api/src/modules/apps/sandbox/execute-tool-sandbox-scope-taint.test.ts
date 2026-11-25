@@ -190,6 +190,7 @@ async function dispatchSequence(
   frame: RunContext,
   callerScopes: string[],
   calls: Array<[string, string]>,
+  kind: Kind = "createRpcBridge",
 ): Promise<Envelope[]> {
   handlerCalls.length = 0
   const actor = {
@@ -199,11 +200,22 @@ async function dispatchSequence(
     scopes: callerScopes,
     dimensionGrants: {},
   }
-  void actor
+  // The session bridge rebuilds its bridge for every call, inside the call, which
+  // is where the worker's IPC message arrives: outside any run.
   const bridge = runContextStore.run(frame, () =>
-    createRpcBridge(APP, userId, orgId, poison(), manifest() as never, callerScopes),
+    kind === "createSessionRpcBridge"
+      ? createSessionRpcBridge(
+          APP,
+          userId,
+          orgId,
+          { ctx: actor, run: <T>(fn: (tx: RlsClient) => Promise<T>) => fn(poison()) } as never,
+          manifest() as never,
+          callerScopes,
+        )
+      : createRpcBridge(APP, userId, orgId, poison(), manifest() as never, callerScopes),
   )
   return runContextStore.exit(async () => {
+    expect(runContextStore.getStore()).toBeUndefined()
     const out: Envelope[] = []
     for (const [toolName, params] of calls) {
       out.push(JSON.parse(await bridge.executeTool(`${APP}:${toolName}`, params)) as Envelope)
@@ -301,38 +313,45 @@ describe("sandbox ctx.executeTool: the calling turn's scope taint survives the h
   // in frame. The bridge forwards the turn's live origin STORE, not a snapshot taken
   // when it was built: a snapshot could only carry what the turn had read BEFORE the
   // handler started, and the read below happens after that.
-  it("a read made inside the sandbox files its origin, so the write back to that row passes", async () => {
-    const frame = taintedFrame([READ])
-    const [read, sameRow] = await dispatchSequence(
-      frame,
-      [READ, READ_SCOPE, WRITE_SCOPE],
-      [
-        ["reads_row", JSON.stringify({ rowId: ROW_A })],
-        ["writes_row", JSON.stringify({ rowId: ROW_A })],
-      ],
-    )
+  // Both bridges: the session bridge (what a pooled worker's handler gets) builds
+  // its per-call bridge outside the frame, so the turn's store must be captured
+  // when the session bridge is built, never read back from the call's context.
+  for (const kind of ["createRpcBridge", "createSessionRpcBridge"] as const) {
+    it(`${kind}: a read made inside the sandbox files its origin, so the write back to that row passes`, async () => {
+      const frame = taintedFrame([READ])
+      const [read, sameRow] = await dispatchSequence(
+        frame,
+        [READ, READ_SCOPE, WRITE_SCOPE],
+        [
+          ["reads_row", JSON.stringify({ rowId: ROW_A })],
+          ["writes_row", JSON.stringify({ rowId: ROW_A })],
+        ],
+        kind,
+      )
 
-    expect(read.error).toBeUndefined()
-    expect(sameRow.error).toBeUndefined()
-    expect(handlerCalls).toEqual(["reads_row", "writes_row"])
-    // And the origin landed on the calling turn itself, not on some copy of it.
-    expect(frame.turnScopeAccumulator?.originRows()).toEqual({ [OWN_TABLE]: [ROW_A] })
-  })
+      expect(read.error).toBeUndefined()
+      expect(sameRow.error).toBeUndefined()
+      expect(handlerCalls).toEqual(["reads_row", "writes_row"])
+      // And the origin landed on the calling turn itself, not on some copy of it.
+      expect(frame.turnScopeAccumulator?.originRows()).toEqual({ [OWN_TABLE]: [ROW_A] })
+    })
 
-  it("the in-sandbox read widens nothing beyond the row it returned", async () => {
-    const [, otherRow] = await dispatchSequence(
-      taintedFrame([READ]),
-      [READ, READ_SCOPE, WRITE_SCOPE],
-      [
-        ["reads_row", JSON.stringify({ rowId: ROW_A })],
-        ["writes_row", JSON.stringify({ rowId: ROW_B })],
-      ],
-    )
+    it(`${kind}: the in-sandbox read widens nothing beyond the row it returned`, async () => {
+      const [, otherRow] = await dispatchSequence(
+        taintedFrame([READ]),
+        [READ, READ_SCOPE, WRITE_SCOPE],
+        [
+          ["reads_row", JSON.stringify({ rowId: ROW_A })],
+          ["writes_row", JSON.stringify({ rowId: ROW_B })],
+        ],
+        kind,
+      )
 
-    // Not the same resource: the write is judged, so it parks instead of running.
-    expectParked(otherRow)
-    expect(handlerCalls).toEqual(["reads_row"])
-  })
+      // Not the same resource: the write is judged, so it parks instead of running.
+      expectParked(otherRow)
+      expect(handlerCalls).toEqual(["reads_row"])
+    })
+  }
 
   it("refuses the write when the calling turn's taint is undeterminable", async () => {
     // A frame with no accumulator, no effective scope and no caller scopes: the

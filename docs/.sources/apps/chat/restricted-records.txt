@@ -1,0 +1,2 @@
+A reply after a restricted read is shown only to the record's list -> apps/api/src/modules/threads/message.ts (withRestrictedDisclosure)
+Posting it to others waits for the person who asked -> apps/api/src/modules/agent/scopes/post-disclosure.ts (decidePostDisclosure) ; apps/api/src/modules/apps/execute-tool.ts (executeToolCore)

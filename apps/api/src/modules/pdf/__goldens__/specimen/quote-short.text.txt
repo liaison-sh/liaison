@@ -1,0 +1,56 @@
+Example Works Ltd
+ 
+QUOTE
+DOC-2026-0001
+Issued:
+ 
+2026-05-15
+Due:
+ 
+2026-06-14
+Incoterm:
+ 
+DAP
+FROM
+Example Works Ltd
+1 Example Street, Example Town
+GB
+VAT: GB123456789
+BILL TO
+Example Client SARL
+2 Client Avenue, 69001 Lyon
+FR
+VAT: FR98765432109
+#
+ 
+Description
+ 
+Qty
+ 
+Unit price
+ 
+Tax %
+ 
+Amount excl. VAT
+1
+ 
+1
+ 
+100.00
+ 
+20.00%
+ 
+100.00
+Design and build work, part 1 of the agreed scope
+Subtotal
+ 
+100.00 EUR
+Tax (20.00%)
+ 
+20.00 EUR
+Total due
+ 
+120.00 EUR
+Example Works Ltd · VAT GB123456789
+ 
+Page 1 of 1

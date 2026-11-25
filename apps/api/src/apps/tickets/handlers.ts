@@ -10,6 +10,7 @@ import { csvCell } from "@liaison/shared"
 import type { CoreCtx } from "~/modules/apps/core/ctx"
 
 export interface TicketsMethods {
+  tickets_activityRead: (paramsJson: string) => Promise<string>
   tickets_validateAndApply: (ticketId: string, inputJson: string) => Promise<string>
   tickets_setPriority: (ticketId: string, priority: string) => Promise<string>
   tickets_search: (paramsJson: string) => Promise<string>
@@ -40,6 +41,8 @@ export interface TicketsMethods {
   tickets_listSyncableAccounts: () => Promise<string>
   tickets_onGmailPushService: (accountEmail: string, historyId: string) => Promise<string>
   executeTool: (toolName: string, paramsJson: string) => Promise<string>
+  /** Handler-conditional gating: park this call behind a person's decision. */
+  requestApproval?: (inputJson: string) => Promise<string>
   tickets_conversion_readTicket: (ticketId: string) => Promise<string>
   tickets_createFromMail: (paramsJson: string) => Promise<string>
   tickets_conversion_closeAsMailConverted: (
@@ -157,6 +160,15 @@ export async function search(params: unknown, ctx: TicketsCtx): Promise<unknown>
 
 export async function get(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_get(JSON.stringify(params ?? {})))
+}
+
+/** Who a pending approval about a ticket is for: whoever the ticket is assigned to. */
+export async function approvalRouteRead(params: unknown, ctx: TicketsCtx): Promise<unknown> {
+  const { entityType, entityId } = (params ?? {}) as { entityType?: unknown; entityId?: unknown }
+  if (entityType !== "ticket" || typeof entityId !== "string") return { personId: null }
+  const data = JSON.parse(await ctx.tickets_get(JSON.stringify({ ticketId: entityId })))
+  const assignee = data?.ticket?.assignedTo
+  return { personId: typeof assignee === "string" ? assignee : null }
 }
 
 export async function create(params: unknown, ctx: TicketsCtx): Promise<unknown> {
@@ -486,8 +498,51 @@ export async function regenerateSummary(params: unknown, ctx: TicketsCtx): Promi
   return JSON.parse(await ctx.tickets_summary_regenerate(ref.ticketId))
 }
 
+/**
+ * A merge copies the sources' messages onto the target. When the target is shown on a client's
+ * portal, an agent's merge parks for a person; a person's own merge is decided by the tool's own
+ * scope (the request is granted inline). Refusals (another company, a more sensitive source) are
+ * asked first, so no card is staged for a merge that cannot happen.
+ */
 export async function merge(params: unknown, ctx: TicketsCtx): Promise<unknown> {
-  return JSON.parse(await ctx.tickets_merge(JSON.stringify(params ?? {})))
+  const p = { ...((params ?? {}) as Record<string, unknown>) }
+  delete p.checkOnly
+  if (!ctx.approval) {
+    const checked = JSON.parse(
+      await ctx.tickets_merge(JSON.stringify({ ...p, checkOnly: true })),
+    ) as { error?: unknown; check?: { targetHandle: string; portalVisible: boolean } }
+    if (checked.error) return checked
+    if (checked.check?.portalVisible) {
+      if (!ctx.requestApproval) {
+        throw new Error(
+          "tickets:merge into a ticket the client's portal shows needs a person's decision, but no approval channel is available here.",
+        )
+      }
+      const sources = Array.isArray(p.sourceTicketIds) ? p.sourceTicketIds.map(String) : []
+      const res = JSON.parse(
+        await ctx.requestApproval(
+          JSON.stringify({
+            tool_name: "tickets:merge",
+            summary: `Merge ${sources.join(", ")} into ${checked.check.targetHandle}`,
+            summary_detail: {
+              lines: [
+                `${checked.check.targetHandle} is shown on the client's portal: the merged messages will show there too.`,
+              ],
+            },
+            current_payload: p,
+          }),
+        ),
+      ) as { approval_id: string | null; auto_approved?: true }
+      if (res.auto_approved !== true) {
+        return {
+          status: "pending_approval",
+          approval_id: res.approval_id,
+          note: `Nothing was merged yet: ${checked.check.targetHandle} is shown on the client's portal, so the merge waits for a person to approve card ${res.approval_id}. Report it as pending, never as done.`,
+        }
+      }
+    }
+  }
+  return JSON.parse(await ctx.tickets_merge(JSON.stringify(p)))
 }
 
 export async function ticketsMarkRead(params: unknown, ctx: TicketsCtx): Promise<unknown> {
@@ -1165,4 +1220,75 @@ export async function ticketsOnGmailPush(
   }
   await ctx.tickets_onGmailPushService(inner.emailAddress, String(inner.historyId))
   return { received: true }
+}
+
+/** Timeline rows for the kernel's activity read (activitySources), host-side. */
+export async function activityRead(params: unknown, ctx: TicketsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.tickets_activityRead(JSON.stringify(params ?? {})))
+}
+
+const COMPANY_TICKETS_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const COMPANY_TICKETS_LIMIT = 20
+
+/**
+ * The open tickets of a company's people, newest first, for the Support
+ * section of its page: the people the caller can see (`kernel:companies_read`),
+ * then their tickets under the caller's row security.
+ */
+export async function companyTickets(params: unknown, ctx: TicketsCtx): Promise<unknown> {
+  const companyId = String((params as { companyId?: unknown } | null)?.companyId ?? "")
+  if (!COMPANY_TICKETS_UUID_RE.test(companyId)) {
+    return { items: [], message: "companyId is not a company id. Nothing was read." }
+  }
+  const read = JSON.parse(
+    await ctx.executeTool("kernel:companies_read", JSON.stringify({ companyId })),
+  ) as { data?: { people?: Array<{ id?: unknown; name?: unknown }> }; error?: unknown }
+  const people = (read?.data?.people ?? []).filter(
+    (p): p is { id: string; name?: unknown } =>
+      typeof p?.id === "string" && COMPANY_TICKETS_UUID_RE.test(p.id),
+  )
+  if (people.length === 0)
+    return {
+      items: [],
+      message:
+        "No open ticket you can read from this company's people; a team you do not work is not listed.",
+    }
+  const names = new Map(people.map((p) => [p.id, typeof p.name === "string" ? p.name : null]))
+  const rows = JSON.parse(
+    await ctx.db_findMany(
+      "tickets",
+      JSON.stringify({
+        where: {
+          contactId: { in: people.map((p) => p.id) },
+          status: { in: ["open", "awaiting_customer", "awaiting_followup"] },
+        },
+        orderBy: { updatedAt: "desc" },
+        limit: COMPANY_TICKETS_LIMIT + 1,
+      }),
+    ),
+  ) as Array<{
+    id: string
+    handle?: string | null
+    subject?: string | null
+    status: string
+    contactId?: string | null
+    updatedAt?: string
+  }>
+  const items = rows.slice(0, COMPANY_TICKETS_LIMIT).map((t) => ({
+    id: t.id,
+    handle: t.handle ?? null,
+    subject: t.subject ?? null,
+    status: t.status,
+    contactId: t.contactId ?? null,
+    contactName: t.contactId ? (names.get(t.contactId) ?? null) : null,
+    updatedAt: t.updatedAt ?? null,
+  }))
+  const more = rows.length > COMPANY_TICKETS_LIMIT
+  return {
+    items,
+    message:
+      items.length === 0
+        ? "No open ticket you can read from this company's people; a team you do not work is not listed."
+        : `${items.length}${more ? "+" : ""} open ticket${items.length === 1 ? "" : "s"} from this company's people.`,
+  }
 }

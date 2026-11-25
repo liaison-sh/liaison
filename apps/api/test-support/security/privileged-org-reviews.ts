@@ -71,8 +71,6 @@ export const TRUSTED_SOURCES: Record<string, string> = {
     "the pooled org the demo pool's refill itself just created (createVisitorOrgShell on a slug the pool generated, demo-pool.ts createPooledShell)",
   acquireVisitorWorkspace:
     "the workspace this request just made the visitor's (demo/routes.ts acquireVisitorWorkspace): a ready pooled org claimPooledOrg handed over in one locked transaction, or the shell createVisitorOrgShell just created; reached from a signup and from POST /start-over, whose own org is requireVisitorOrg's",
-  pooledRows:
-    "the demo pool's own visitor orgs: kernel.organizations rows its marker names as pooled (demo-pool.ts pooledRows)",
   provisionOrgShell:
     "the org the seed engine's org factory just created, or found under the slug its caller chose, through the provisioning CLI's org provisioner (seed/factories/org/org.ts); the demo tier writes into it only once it carries the demo marker or this run created it (seed/tiers/demo/seed-org.ts demoMarkRefusal)",
   requireVisitorOrg:
@@ -263,6 +261,18 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
     "public ticket intake: the URL org only scopes the lookup; an API key of that org (classifyTier) is the authority, behind the pre-auth throttle",
   "apps/api/src/modules/webhooks/tickets-public.ts#handleTicketCreate":
     "public ticket intake: the URL org only scopes the lookup; an API key of that org (classifyTier) or the org's enabled public form is the authority, behind the pre-auth throttle",
+}
+
+/**
+ * Entries above reviewed for having no product caller: the product files that use each function,
+ * pinned. src/db/privileged-org-source.test.ts fails on a new caller, so no caller can pass
+ * unreviewed: rewrite the entry for that caller's org id, then add it here.
+ */
+export const REVIEWED_CALLERS: Record<string, readonly string[]> = {
+  "apps/api/src/modules/agent/runtime/tool-card-store.ts#clearToolCardsByKey": [],
+  "apps/api/src/modules/apps/org-features.ts#setOrgAppFeature": [
+    "apps/api/src/modules/apps/org-features.ts",
+  ],
 }
 
 /**

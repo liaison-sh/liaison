@@ -264,6 +264,47 @@ describe("tickets.reference-validation", () => {
     })
   })
 
+  // The ticket's company stamp reads the contact the row is linked to after the fallback, never
+  // the caller's raw non-UUID contactId (which once reached a `::uuid` cast and failed the INSERT).
+  it("tickets:create stamps the company of the contact found by email when contactId is non-UUID", async () => {
+    const email = `stamp-${Date.now()}@test.com`
+    const companyId = await withSystemDb(
+      "tickets-reference-validation-company-fixture",
+      async (tx) => {
+        const companyRows = await tx.execute(drizzleSql`
+        INSERT INTO kernel.companies (id, org_id, handle, name)
+        VALUES (gen_random_uuid(), ${orgId}::uuid, ${`stamp-co-${Date.now()}`}, 'Maison Stamp')
+        RETURNING id
+      `)
+        const id = extractRows<{ id: string }>(companyRows)[0].id
+        await tx.execute(drizzleSql`
+        INSERT INTO kernel.contacts (id, org_id, handle, name, email, company_id, created_at, updated_at)
+        VALUES (gen_random_uuid(), ${orgId}::uuid, ${`stamp-contact-${Date.now()}`}, 'Stamp Contact', ${email}, ${id}::uuid, now(), now())
+      `)
+        return id
+      },
+    )
+    const out = await executeTool<TicketCreateData>({
+      toolName: "tickets:create",
+      orgId,
+      actor,
+      params: {
+        subject: "Non-uuid contactId + known email",
+        channel: "manual",
+        contactId: "@contact-bogus",
+        contactEmail: email,
+      },
+    })
+    await withSystemDb("tickets-reference-validation-company-stamp-check", async (tx) => {
+      const rows = extractRows<{ company_id: string | null }>(
+        await tx.execute(drizzleSql`
+          SELECT company_id FROM app_tickets.tickets WHERE id = ${out.data.ticketId}::uuid AND org_id = ${orgId}::uuid
+        `),
+      )
+      expect(rows[0]?.company_id).toBe(companyId)
+    })
+  })
+
   // boxtal-tracking-exception-sweep-to-tickets gate (run-2 fail): a NON-UUID assignedTo that is NOT
   // the 'me' sentinel (e.g. a teammate NAME) reached `WHERE id = '<non-uuid>'::uuid` in
   // requireUserInOrg → "invalid input syntax for type uuid" → opaque HTTP 500. Must be a clean,

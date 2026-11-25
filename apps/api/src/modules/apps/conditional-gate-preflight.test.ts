@@ -57,6 +57,24 @@ beforeAll(async () => {
       return { id: "doc-1" }
     },
   } as never)
+  // A tool not gated by its declaration, which an org policy or a turn's outside text can still
+  // park: its preflight runs on every call, so a call the handler would refuse never waits for a
+  // person to approve it first.
+  toolRegistry.set([ORG, "cg_test", "check"], {
+    appName: "cg_test",
+    name: "check",
+    description: "check a draft; parked only by policy or taint",
+    requiredScopes: ["cg_test:write"],
+    preflight: async (p: any) => {
+      preflightRan += 1
+      if (!p.ready) return { error: { code: "not_ready", message: "the draft is not ready" } }
+      return { ok: true }
+    },
+    handler: async () => {
+      handlerRan += 1
+      return { id: "checked" }
+    },
+  } as never)
 }, 60_000)
 
 afterAll(async () => {
@@ -83,6 +101,24 @@ describe("stage-time preflight on a conditionally-gated tool", () => {
       (e: unknown) => e as { code?: string },
     )
     expect(err?.code).toBe("collection_required")
+    expect(preflightRan).toBe(1)
+    expect(handlerRan).toBe(0)
+  })
+
+  it("runs a declared preflight on a tool that only a policy or outside text can gate", async () => {
+    preflightRan = 0
+    handlerRan = 0
+    const err = await executeTool({
+      toolName: "cg_test:check",
+      orgId: ORG,
+      actor,
+      origin: "in-app-agent",
+      params: {},
+    }).then(
+      () => null,
+      (e: unknown) => e as { code?: string },
+    )
+    expect(err?.code).toBe("not_ready")
     expect(preflightRan).toBe(1)
     expect(handlerRan).toBe(0)
   })

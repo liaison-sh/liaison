@@ -163,7 +163,7 @@ describe("a routine's approval, in the conversation the routine posts to", () =>
 })
 
 describe("a routine's 'is running' line", () => {
-  const line = (status: "running" | "succeeded" | "failed") =>
+  const line = (status: "running" | "succeeded" | "failed", draftsWaiting?: number) =>
     message({
       id: "run-1",
       authorType: "system",
@@ -177,6 +177,7 @@ describe("a routine's 'is running' line", () => {
           ownerUserId: "owner",
           runKey: "k1",
           status,
+          ...(draftsWaiting === undefined ? {} : { draftsWaiting }),
         },
       } as never,
     })
@@ -196,5 +197,33 @@ describe("a routine's 'is running' line", () => {
     expect(screen.getByTestId("message-row-routine-run").textContent).toContain(
       "Routine prospects did not finish",
     )
+  })
+
+  it("says how many drafts wait for a person when a follow-up run ended with some", () => {
+    renderRow(line("succeeded", 1))
+    expect(screen.getByTestId("message-row-routine-run").textContent).toContain(
+      "Routine prospects finished: 1 draft waits for a person",
+    )
+    cleanup()
+    renderRow(line("succeeded", 3))
+    expect(screen.getByTestId("message-row-routine-run").textContent).toContain(
+      "Routine prospects finished: 3 drafts wait for a person",
+    )
+  })
+})
+
+describe("a failed sequence's note to the agent", () => {
+  it("is never drawn as the person's own message", () => {
+    renderRow(
+      message({
+        authorType: "user",
+        authorName: "Owner",
+        authorAgentId: null,
+        content:
+          'An approval sequence failed and was stopped: Step 2 failed. {"number":"F-1"} To finish the task, propose a corrected sequence as NEW tool calls.',
+        metadata: { type: "bundle-reinvoke" },
+      }),
+    )
+    expect(screen.queryByText(/propose a corrected sequence/)).toBeNull()
   })
 })

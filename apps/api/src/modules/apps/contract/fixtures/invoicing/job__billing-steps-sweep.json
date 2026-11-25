@@ -1,0 +1,17 @@
+{
+  "entry": "job:billing-steps-sweep",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack, record-invoicing-billing-plan.recorder.test.ts",
+  "calls": [
+    {
+      "method": "time_civil",
+      "args": ["{\"timezone\":\"UTC\"}"],
+      "reply": "{\"date\":\"2026-11-17\",\"year\":2026,\"month\":11,\"day\":17,\"hour\":4,\"minute\":39,\"weekday\":2,\"zone\":\"UTC\"}"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["billing_steps", "{\"limit\":2000}"],
+      "reply": "[]"
+    }
+  ]
+}

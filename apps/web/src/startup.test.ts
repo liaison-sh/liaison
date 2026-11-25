@@ -195,6 +195,29 @@ describe("startup", () => {
     expect(probeCookieSession).not.toHaveBeenCalled()
   })
 
+  it("the signing page and the portal touch no member session, signed in or not", async () => {
+    const { initializeAuth, completeRuntimeInit, isPublicPagePath } = await import("~/startup")
+    for (const signedIn of [true, false]) {
+      hasSessionValue = signedIn
+      for (const path of ["/a", "/portal", "/portal/maison-alpha/documents/x"]) {
+        restoreSession.mockClear()
+        probeCookieSession.mockClear()
+        loadManifestApps.mockClear()
+        rehydrateTabs.mockClear()
+        window.history.replaceState(null, "", path)
+        expect(isPublicPagePath()).toBe(true)
+        await initializeAuth()
+        await completeRuntimeInit()
+        expect(restoreSession).not.toHaveBeenCalled()
+        expect(probeCookieSession).not.toHaveBeenCalled()
+        expect(loadManifestApps).not.toHaveBeenCalled()
+        expect(rehydrateTabs).not.toHaveBeenCalled()
+      }
+    }
+    window.history.replaceState(null, "", "/")
+    expect(isPublicPagePath()).toBe(false)
+  })
+
   it("completeRuntimeInit runs locale/billing/manifest loaders concurrently, then rehydrateTabs after manifests resolve", async () => {
     const localeDeferred = deferred<void>()
     const billingDeferred = deferred<void>()

@@ -12,7 +12,9 @@
 // Every intersection goes through `intersectScopes` from spawn-agent so the
 // turn path agrees with the spawn path on `*`, `:*` globs and bare-prefix
 // grants. The result is always an intersection, never a union: an agent can
-// never lower the floor of the room it is speaking in.
+// never lower the floor of the room it is speaking in. An exact-only scope
+// (`isExactOnlyScope`) survives only where every side names it exactly, so a
+// member holding `*` floors it out of a room exactly as the app refuses them.
 //
 // `withheldCapabilities` is the set of ceiling entries the room narrowed away.
 // Those names are private to the requester; callers must never place them in

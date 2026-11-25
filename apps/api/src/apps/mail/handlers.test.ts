@@ -1053,6 +1053,66 @@ describe("mail agent handlers", () => {
     expect(smtpCalls[0].to).toEqual(["Hans <hans@example.com>"])
   })
 
+  it("a reply the demo captured says it was captured and not delivered, never that it was sent", async () => {
+    const bridge = {
+      ...makeReplyBridge({ onSmtp: () => {} }),
+      smtp_send: async () =>
+        JSON.stringify({
+          messageId: "<captured@demo>",
+          deliveryState: "delivered",
+          captured: true,
+        }),
+    }
+    const result = (await runMail({
+      exportName: "agentMailReply",
+      params: { conversationId: "conv-1", textBody: "Reply body" },
+      bridge,
+    })) as any
+    expect(result.captured).toBe(true)
+    expect(result.delivered).toBe(false)
+    expect(result.note).toStartWith("Captured, not delivered: this is a demo workspace")
+    expect(result.note).toContain("Nobody received it.")
+    expect(result.note).not.toMatch(/^Sent to/)
+  })
+
+  it("a reply that went out says it was sent, with no captured mark", async () => {
+    const result = (await runMail({
+      exportName: "agentMailReply",
+      params: { conversationId: "conv-1", textBody: "Reply body" },
+      bridge: makeReplyBridge({ onSmtp: () => {} }),
+    })) as any
+    expect(result.captured).toBeUndefined()
+    expect(result.note).toStartWith(
+      "Sent to hans@example.com from support@acme.com, in conversation conv-1.",
+    )
+  })
+
+  it("a new mail the demo captured says it was captured and not delivered", async () => {
+    const bridge = {
+      ...makeReplyBridge({ onSmtp: () => {} }),
+      smtp_send: async () =>
+        JSON.stringify({
+          messageId: "<captured@demo>",
+          deliveryState: "delivered",
+          captured: true,
+        }),
+    }
+    const result = (await runMail({
+      exportName: "agentMailCompose",
+      params: {
+        accountId: "account-1",
+        to: ["noor@brasserie.example"],
+        subject: "A question",
+        textBody: "Why are you leaving?",
+      },
+      bridge,
+    })) as any
+    expect(result.captured).toBe(true)
+    expect(result.note).toStartWith(
+      "Captured, not delivered: this is a demo workspace, so the mail to noor@brasserie.example from support@acme.com",
+    )
+  })
+
   it("agentMailReply records the landed send before post-send work, so a cut-off run still names it", async () => {
     const recorded: any[] = []
     const bridge = {
@@ -1727,6 +1787,7 @@ describe("mail:composeForApp (B8) — internal companion tool", () => {
   // org's shared mailbox: that silently sent a user's personal mail from contact@.
   const orgMailboxBridge = () =>
     makeComposeBridge({
+      hasScope: async () => true,
       db_findOne: async (entity: string, id: string) => {
         if (entity === "accounts" && id === "account-1") return JSON.stringify({ id: "account-1" })
         // the real sandbox/DB throws on an invalid-uuid id rather than returning null
@@ -1763,6 +1824,48 @@ describe("mail:composeForApp (B8) — internal companion tool", () => {
       bridge: orgMailboxBridge(),
     })) as any
     expect(result.error?.code).toBe("NOT_FOUND")
+  })
+
+  // A run whose scopes lack mail:accounts:read sees no mailbox however many are connected: it is told
+  // that the access is missing, never that no mailbox matches.
+  it("preflight tells a caller who may read no mailbox that the access is missing", async () => {
+    const noAccess = { ...orgMailboxBridge(), hasScope: async () => false }
+    for (const accountId of [undefined, "other-account", "sales@example.com"]) {
+      const result = (await runMail({
+        exportName: "agentMailComposePreflight",
+        params: {
+          ...(accountId ? { accountId } : {}),
+          to: ["dealer@example.com"],
+          subject: "R",
+          textBody: "b",
+        },
+        bridge: noAccess,
+      })) as any
+      expect(result.error?.code).toBe("MISSING_SCOPE")
+      expect(result.error?.message).toContain("mail:accounts:read")
+      expect(result.error?.message).not.toMatch(/No mailbox|listAccounts/)
+    }
+  })
+
+  it("a reply or a forward by a caller who may read no mailbox is told the same", async () => {
+    for (const exportName of ["agentMailReplyPreflight", "agentMailForwardPreflight"]) {
+      const bridge = makeComposeBridge({
+        hasScope: async () => false,
+        db_findOne: async (entity: string) =>
+          entity === "conversations"
+            ? JSON.stringify({ id: "conv-1", account_id: "account-1" })
+            : "null",
+      })
+      const params = { conversationId: "conv-1", to: ["dealer@example.com"] }
+      const denied = (await runMail({ exportName, params, bridge })) as any
+      expect(denied.error?.code).toBe("MISSING_SCOPE")
+      const other = (await runMail({
+        exportName,
+        params,
+        bridge: { ...bridge, hasScope: async () => true },
+      })) as any
+      expect(other.error?.code).toBe("NOT_FOUND")
+    }
   })
 
   it("preflight accepts a real accountId", async () => {

@@ -1,0 +1,6 @@
+A draft from a card, a milestone, a retainer month or an advance shows its source, no number, what stays inside, lateness and deductions -> bundled-apps/invoicing/src/ui/SourcedDraft.tsx (SourcedDraftPanel) ; bundled-apps/invoicing/src/ui/DocumentDetail.tsx (DocumentDetail)
+The button reads Issue with the amount when approved, Approve when not, all three for a retainer month, and calls invoice_issue -> bundled-apps/invoicing/src/ui/SourcedDraft.tsx (issueButtonLabel) ; bundled-apps/invoicing/src/ui/SourcedDraft.tsx (issueNote)
+documents_get returns the draft's source key, approver and invoice role -> bundled-apps/invoicing/src/reads.ts (toDocumentHeader)
+A final lists each advance it deducts with its number and date -> bundled-apps/invoicing/src/ui/SourcedDraft.tsx (deductionsOf)
+The retainer terms are a section of the schedule editor; a retainer offers no By itself and shows the prepaid warning for the period ahead -> bundled-apps/invoicing/src/ui/ScheduleEditor.tsx (RetainerSection) ; bundled-apps/invoicing/src/recurring/retainer.ts (PREPAID_WARNING)
+The list names a retainer's hours included a month -> bundled-apps/invoicing/src/ui/ScheduleEditor.tsx (retainerListLine) ; bundled-apps/invoicing/src/ui/RecurringList.tsx (InvoicingRecurringList)

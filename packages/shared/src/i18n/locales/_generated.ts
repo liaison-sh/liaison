@@ -3,9 +3,11 @@
 // Adding a locale is FILE-ONLY: drop locales/<x>/*.json and this regenerates.
 import type { LocaleDict } from "../dictionaries"
 
+import en_Agreement_evidence from "./en/agreement-evidence.json"
 import en_Api_connector from "./en/api-connector.json"
 import en_App_frame from "./en/app-frame.json"
 import en_Calendar from "./en/calendar.json"
+import en_Client_action from "./en/client-action.json"
 import en_Cloud_billing from "./en/cloud-billing.json"
 import en_Cloud_limits from "./en/cloud-limits.json"
 import en_Contacts from "./en/contacts.json"
@@ -16,14 +18,18 @@ import en_Google_drive from "./en/google-drive.json"
 import en_Kernel from "./en/kernel.json"
 import en_Knowledge from "./en/knowledge.json"
 import en_Mail from "./en/mail.json"
+import en_Portal from "./en/portal.json"
+import en_Portal_auth from "./en/portal-auth.json"
 import en_Projects from "./en/projects.json"
 import en_Secret_request from "./en/secret-request.json"
 import en_Setup_guides from "./en/setup-guides.json"
 import en_Tickets from "./en/tickets.json"
 import en_Tours from "./en/tours.json"
+import fr_Agreement_evidence from "./fr/agreement-evidence.json"
 import fr_Api_connector from "./fr/api-connector.json"
 import fr_App_frame from "./fr/app-frame.json"
 import fr_Calendar from "./fr/calendar.json"
+import fr_Client_action from "./fr/client-action.json"
 import fr_Cloud_billing from "./fr/cloud-billing.json"
 import fr_Cloud_limits from "./fr/cloud-limits.json"
 import fr_Contacts from "./fr/contacts.json"
@@ -34,6 +40,8 @@ import fr_Google_drive from "./fr/google-drive.json"
 import fr_Kernel from "./fr/kernel.json"
 import fr_Knowledge from "./fr/knowledge.json"
 import fr_Mail from "./fr/mail.json"
+import fr_Portal from "./fr/portal.json"
+import fr_Portal_auth from "./fr/portal-auth.json"
 import fr_Projects from "./fr/projects.json"
 import fr_Secret_request from "./fr/secret-request.json"
 import fr_Setup_guides from "./fr/setup-guides.json"
@@ -47,9 +55,11 @@ export const GENERATED_DICTIONARIES: Record<
   Record<string, LocaleDict>
 > = {
   en: {
+    "agreement-evidence": en_Agreement_evidence as LocaleDict,
     "api-connector": en_Api_connector as LocaleDict,
     "app-frame": en_App_frame as LocaleDict,
     calendar: en_Calendar as LocaleDict,
+    "client-action": en_Client_action as LocaleDict,
     "cloud-billing": en_Cloud_billing as LocaleDict,
     "cloud-limits": en_Cloud_limits as LocaleDict,
     contacts: en_Contacts as LocaleDict,
@@ -60,6 +70,8 @@ export const GENERATED_DICTIONARIES: Record<
     kernel: en_Kernel as LocaleDict,
     knowledge: en_Knowledge as LocaleDict,
     mail: en_Mail as LocaleDict,
+    portal: en_Portal as LocaleDict,
+    "portal-auth": en_Portal_auth as LocaleDict,
     projects: en_Projects as LocaleDict,
     "secret-request": en_Secret_request as LocaleDict,
     "setup-guides": en_Setup_guides as LocaleDict,
@@ -67,9 +79,11 @@ export const GENERATED_DICTIONARIES: Record<
     tours: en_Tours as LocaleDict,
   },
   fr: {
+    "agreement-evidence": fr_Agreement_evidence as LocaleDict,
     "api-connector": fr_Api_connector as LocaleDict,
     "app-frame": fr_App_frame as LocaleDict,
     calendar: fr_Calendar as LocaleDict,
+    "client-action": fr_Client_action as LocaleDict,
     "cloud-billing": fr_Cloud_billing as LocaleDict,
     "cloud-limits": fr_Cloud_limits as LocaleDict,
     contacts: fr_Contacts as LocaleDict,
@@ -80,6 +94,8 @@ export const GENERATED_DICTIONARIES: Record<
     kernel: fr_Kernel as LocaleDict,
     knowledge: fr_Knowledge as LocaleDict,
     mail: fr_Mail as LocaleDict,
+    portal: fr_Portal as LocaleDict,
+    "portal-auth": fr_Portal_auth as LocaleDict,
     projects: fr_Projects as LocaleDict,
     "secret-request": fr_Secret_request as LocaleDict,
     "setup-guides": fr_Setup_guides as LocaleDict,

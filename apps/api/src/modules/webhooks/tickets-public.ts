@@ -28,6 +28,11 @@ import { APP_STATE_UNAVAILABLE_CODE, pathOrgAppState } from "~/modules/apps/org-
 import { assertOrgTakesPublicWrites } from "~/modules/cloud/suspension"
 import { resolveContact } from "~/modules/contacts/service"
 import { ORG_DELETED_CODE, OrgDeletedError } from "~/modules/org/purge/deleting"
+import {
+  defaultCreateInboxId,
+  ingestTicket,
+  reparentStagedFiles,
+} from "~/modules/tickets/ingest-core"
 
 const MAX_BODY_BYTES = 51_200
 // One staged attachment. This is the cap the route has ALWAYS enforced in
@@ -1121,15 +1126,8 @@ async function handleTicketCreate(c: Context<AppEnv>, forcedInboxId: string | nu
   const sourceInboxId = targetInboxId ?? undefined
   let resolvedInboxId: string | undefined = sourceInboxId
   if (!resolvedInboxId) {
-    const rows = await withPrivilegedDb(orgId, "tickets-public-default-inbox", async (db) =>
-      db.execute(drizzleSql`
-        SELECT id FROM ${ticketsRel("inboxes")}
-        WHERE org_id = ${orgId} AND is_default_for_create = true AND archived_at IS NULL
-        LIMIT 1
-      `),
-    )
-    const row = extractRows<{ id: string }>(rows)[0]
-    if (!row) {
+    const defaultInboxId = await defaultCreateInboxId(orgId)
+    if (!defaultInboxId) {
       const status = tierResult.tier === "api_keyed" ? 422 : 503
       const code = tierResult.tier === "api_keyed" ? "inbox_required" : "no_default_inbox"
       return new Response(
@@ -1137,7 +1135,7 @@ async function handleTicketCreate(c: Context<AppEnv>, forcedInboxId: string | nu
         { status, headers: { "content-type": "application/json", ...cors } },
       )
     }
-    resolvedInboxId = row.id
+    resolvedInboxId = defaultInboxId
   }
 
   const bodyHash = createHash("sha256").update(rawBody).digest("hex")
@@ -1233,8 +1231,28 @@ async function handleTicketCreate(c: Context<AppEnv>, forcedInboxId: string | nu
     // Public webhook runs as a privileged system actor (admin role) — bypasses RLS
     // because anonymous/API-key clients have no team or scope grants. Inputs are
     // already restricted to the documented ticket-create surface.
-    result = await withPrivilegedDb(orgId, "tickets-public-create", async (tx) => {
-      const { createTicket } = await import("~/apps/tickets/create")
+    result = await ingestTicket(
+      orgId,
+      {
+        subject: input.subject,
+        channel,
+        team: tierResult.tier === "api_keyed" ? input.team : undefined,
+        sensitivity: tierResult.tier === "api_keyed" ? input.sensitivity : undefined,
+        assignedTo: tierResult.tier === "api_keyed" ? input.assignedTo : undefined,
+        categoryId: resolvedCategoryId,
+        sourceInboxId: resolvedInboxId,
+        externalRef:
+          tierResult.tier === "api_keyed" && !relatedTicketId ? input.externalRef : undefined,
+        priority: tierResult.tier === "api_keyed" ? input.priority : undefined,
+        requesterEmail: input.fromEmail,
+        relatedTicketId,
+        message: {
+          fromEmail: input.fromEmail,
+          fromName: input.fromName ?? null,
+          htmlBody: input.htmlBody ? sanitizeCustomerHtml(input.htmlBody) : null,
+          textBody: input.textBody ?? null,
+        },
+      },
       // A public form never adds its sender to the organisation's contacts
       // (that is a person's choice): it links an org contact that already
       // exists for the address, or none.
@@ -1243,7 +1261,7 @@ async function handleTicketCreate(c: Context<AppEnv>, forcedInboxId: string | nu
       // profile would sit beside attacker-written text). A server key that
       // vouches for its submitter is a trusted caller. (An explicit contactId
       // never comes with the flag: refused above as a conflict.)
-      const resolvedContactId =
+      async (tx) =>
         tierResult.tier === "api_keyed" && input.contactId
           ? input.contactId
           : tierResult.tier === "api_keyed" && !unverified
@@ -1256,37 +1274,8 @@ async function handleTicketCreate(c: Context<AppEnv>, forcedInboxId: string | nu
                   { audience: "none" },
                 )
               ).contact?.id ?? null)
-            : null
-      return createTicket(
-        tx,
-        orgId,
-        {
-          subject: input.subject,
-          channel,
-          team: tierResult.tier === "api_keyed" ? input.team : undefined,
-          sensitivity: tierResult.tier === "api_keyed" ? input.sensitivity : undefined,
-          assignedTo: tierResult.tier === "api_keyed" ? input.assignedTo : undefined,
-          contactId: resolvedContactId,
-          categoryId: resolvedCategoryId,
-          sourceInboxId: resolvedInboxId,
-          externalRef:
-            tierResult.tier === "api_keyed" && !relatedTicketId ? input.externalRef : undefined,
-          priority: tierResult.tier === "api_keyed" ? input.priority : undefined,
-          requesterEmail: input.fromEmail,
-          relatedTicketId,
-          initialMessage: {
-            kind: "inbound",
-            fromEmail: input.fromEmail,
-            fromName: input.fromName ?? null,
-            subject: input.subject,
-            htmlBody: input.htmlBody ? sanitizeCustomerHtml(input.htmlBody) : null,
-            textBody: input.textBody ?? null,
-          },
-        },
-        { actorType: "system", userId: "00000000-0000-0000-0000-000000000000" } as never,
-        { privilegedTx: tx },
-      )
-    })
+            : null,
+    )
   } catch (err) {
     const code =
       (err as { code?: string }).code ?? (err as { cause?: { code?: string } }).cause?.code
@@ -1330,17 +1319,11 @@ async function handleTicketCreate(c: Context<AppEnv>, forcedInboxId: string | nu
   // by the caller's array order. The storage key is left as-is — only the
   // DB parent changes.
   if (stagedFiles.length > 0 && result.initialMessageId) {
-    const KS = drizzleSql.raw(schemaRef("kernel"))
-    const messageId = result.initialMessageId
-    await withPrivilegedDb(orgId, "tickets-public-attachments-reparent", async (tx) => {
-      for (let i = 0; i < stagedFiles.length; i += 1) {
-        await tx.execute(drizzleSql`
-          UPDATE ${KS}.files
-          SET entity_type = 'message', entity_id = ${messageId}, ordinal = ${i}
-          WHERE id = ${stagedFiles[i]!.id}::uuid AND org_id = ${orgId}::uuid
-        `)
-      }
-    })
+    await reparentStagedFiles(
+      orgId,
+      result.initialMessageId,
+      stagedFiles.map((f) => f.id),
+    )
   }
 
   if (relatedTicketId) {

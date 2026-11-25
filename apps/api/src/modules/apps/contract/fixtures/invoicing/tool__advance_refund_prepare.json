@@ -1,0 +1,20 @@
+{
+  "entry": "tool:advance_refund_prepare",
+  "params": {
+    "advanceDocumentId": "7f000000-0000-4000-8000-00000000b1a1"
+  },
+  "recordedFrom": "the contract org on a local stack, record-invoicing-billing-plan.recorder.test.ts",
+  "expectError": {
+    "reason": "no advance invoice has this id, so no credit note is made: pins that refusal; the refund path is proven by advances.test.ts"
+  },
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"id\":\"7f000000-0000-4000-8000-00000000b1a1\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

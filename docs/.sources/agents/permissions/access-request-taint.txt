@@ -1,0 +1,1 @@
+request_scope taints nothing; access requests and sub-agent roles are judged after a narrow read -> apps/api/src/modules/agent/scopes/scope-taint.ts (checkScopeTaint) ; apps/api/src/modules/agent/scopes/scope-taint.ts (TAINT_CONTROL_PLANE_TEXT_SINKS)

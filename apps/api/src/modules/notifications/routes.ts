@@ -142,7 +142,7 @@ async function onCallResponse(orgId: string, canEdit: boolean) {
     const members = canEdit
       ? ((await tx.execute(
           sql`SELECT id, name, email FROM ${K}.users
-               WHERE org_id = ${orgId} AND status = 'active'
+               WHERE org_id = ${orgId} AND status = 'active' AND user_type = 'member'
                ORDER BY name NULLS LAST, email`,
         )) as unknown as Array<{ id: string; name: string | null; email: string }>)
       : []
@@ -181,7 +181,7 @@ notificationSettingsRoutes.put("/on-call", zValidator("json", onCallSchema), asy
     if (ids.length > 0) {
       const found = (await tx.execute(
         sql`SELECT id FROM ${K}.users
-             WHERE org_id = ${orgId} AND status = 'active' AND id::text IN (${sql.join(
+             WHERE org_id = ${orgId} AND status = 'active' AND user_type = 'member' AND id::text IN (${sql.join(
                ids.map((id) => sql`${id}`),
                sql`, `,
              )})`,

@@ -3,6 +3,7 @@ import { lookup } from "node:dns/promises"
 import { isIP } from "node:net"
 import { env } from "~/lib/env"
 import { isAlwaysBlockedIp, isPrivateIp } from "~/lib/ip-classify"
+import { isInstanceHostname } from "~/lib/org-public-url"
 import { ownOption } from "~/lib/safe-path"
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
@@ -44,6 +45,78 @@ function isTestPrivateHostAllowed(opts: OutboundValidationOptions): boolean {
 }
 
 /**
+ * The routes a holder of a client's link or a portal session calls. No
+ * server-side fetch (an agent's web fetch, an app's egress, an API connector)
+ * may call them on this server: an agent that found a link must not be able to
+ * open, verify or decide it from the server.
+ */
+const OWN_ACTION_PREFIXES = ["/api/public", "/api/portal"]
+
+/** The path as the router reads it: percent-decoded, lowercased, single slashes, no dot segments. */
+function routedPath(url: URL): string {
+  let path = url.pathname
+  for (let i = 0; i < 3 && /%[0-9a-f]{2}/i.test(path); i++) {
+    try {
+      path = decodeURIComponent(path)
+    } catch {
+      break
+    }
+  }
+  path = path
+    .replace(/\\/g, "/")
+    .replace(/\/{2,}/g, "/")
+    .toLowerCase()
+  const out: string[] = []
+  for (const seg of path.split("/")) {
+    if (seg === "..") out.pop()
+    else if (seg !== "." && seg !== "") out.push(seg)
+  }
+  return `/${out.join("/")}`
+}
+
+function isActionRoutePath(url: URL): boolean {
+  const path = routedPath(url)
+  return OWN_ACTION_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))
+}
+
+/** This server's own public addresses (LIAISON_CELL_PUBLIC_ADDRESSES), as compared. */
+function ownPublicAddresses(): Set<string> {
+  return new Set(
+    (env.LIAISON_CELL_PUBLIC_ADDRESSES ?? "")
+      .split(",")
+      .map((a) => normalizeIp(a))
+      .filter((a) => a.length > 0),
+  )
+}
+
+function normalizeIp(address: string): string {
+  const a = address
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+  return /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(a)?.[1] ?? a
+}
+
+const OWN_ACTION_REFUSAL = "Outbound URL must not call this server's public or portal routes"
+
+/** Refuses this server's own client action and portal routes, by name or by address. */
+function refuseOwnActionRoute(url: URL, address?: string): void {
+  if (!isActionRoutePath(url)) return
+  if (isInstanceHostname(url.hostname)) throw new UnsafeOutboundUrlError(OWN_ACTION_REFUSAL)
+  const own = ownPublicAddresses()
+  const isOwn = (a: string) => {
+    const ip = normalizeIp(a)
+    // Loopback is this machine: with private hosts allowed, it is this server too.
+    return (
+      own.has(ip) || ip === "localhost" || ip === "::1" || ip === "0.0.0.0" || /^127\./.test(ip)
+    )
+  }
+  if (isOwn(url.hostname) || (address && isOwn(address))) {
+    throw new UnsafeOutboundUrlError(OWN_ACTION_REFUSAL)
+  }
+}
+
+/**
  * Scheme + literal-IP validation only. Does NOT resolve DNS — used by
  * fetchWithPinnedHost which combines this with a single DNS resolution
  * inside resolveAndPin. Exported so callers that delegate to
@@ -55,6 +128,8 @@ export function validateOutboundUrlNoDns(
 ): URL {
   const parsed = normalizeUrl(url)
   const requireHttps = opts.requireHttps ?? true
+  // Before every other rule, test hosts included: no option opens these routes.
+  refuseOwnActionRoute(parsed)
 
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new UnsafeOutboundUrlError("Outbound URL must use http or https")
@@ -102,6 +177,7 @@ export async function validateOutboundUrl(
     if (resolved.length === 0) {
       throw new UnsafeOutboundUrlError("Outbound URL host could not be resolved")
     }
+    for (const entry of resolved) refuseOwnActionRoute(parsed, entry.address)
     if (
       ownOption(opts, "allowPrivate") === true &&
       resolved.some((entry) => isAlwaysBlockedIp(entry.address))
@@ -295,6 +371,7 @@ export async function fetchWithPinnedHost(
     if (!allowPrivateLookup && !allowPrivateNotMetadata && isPrivateIp(pinned.address)) {
       throw new UnsafeOutboundUrlError("Outbound URL must not resolve to a private network")
     }
+    refuseOwnActionRoute(currentUrl, pinned.address)
     const refused = opts.refuseAddress?.(pinned.address, currentUrl)
     if (refused) throw new UnsafeOutboundUrlError(refused)
 

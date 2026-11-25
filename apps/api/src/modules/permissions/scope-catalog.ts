@@ -20,12 +20,51 @@ export const KERNEL_SCOPES: ScopeCatalogEntry[] = [
     description: "Manage users, roles, and invitations",
   },
   { scope: "kernel:users:read", app: "kernel", description: "Read user list" },
+  {
+    scope: "kernel:portal:admin",
+    app: "kernel",
+    description: "See and manage clients' portal accounts",
+  },
+  {
+    scope: "kernel:client_actions:read",
+    app: "kernel",
+    description: "See the requests sent to clients to sign, accept or approve",
+  },
+  {
+    scope: "kernel:client_actions:write",
+    app: "kernel",
+    description: "Send and withdraw requests to clients to sign, accept or approve",
+  },
+  {
+    scope: "kernel:portal:share",
+    app: "kernel",
+    description: "Choose what a client company sees in its portal",
+  },
+  {
+    scope: "kernel:portal:logs",
+    app: "kernel",
+    description: "Read what clients did in the portal",
+  },
   { scope: "kernel:org:admin", app: "kernel", description: "Edit org settings" },
   { scope: "kernel:threads:read", app: "kernel", description: "Read threads" },
   { scope: "kernel:threads:write", app: "kernel", description: "Write threads" },
   { scope: "kernel:threads:admin", app: "kernel", description: "Administer threads" },
   { scope: "kernel:contacts:read", app: "kernel", description: "Read contacts" },
   { scope: "kernel:contacts:write", app: "kernel", description: "Write contacts" },
+  { scope: "kernel:companies:read", app: "kernel", description: "Read companies" },
+  { scope: "kernel:companies:write", app: "kernel", description: "Create and edit companies" },
+  // The kernel's opt-out list (kernel.suppressions) is guarded by mail scopes:
+  // listed here so a role can hold them before any mail tool registers.
+  {
+    scope: "mail:suppressions:read",
+    app: "mail",
+    description: "See which addresses opted out of mail",
+  },
+  {
+    scope: "mail:suppressions:write",
+    app: "mail",
+    description: "Remove an address's opt-out from mail",
+  },
   {
     scope: "kernel:products:read",
     app: "kernel",

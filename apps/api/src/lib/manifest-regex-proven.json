@@ -38,11 +38,43 @@
     },
     {
       "flags": "u",
+      "pattern": "^[0-9]{1,15}$"
+    },
+    {
+      "flags": "u",
+      "pattern": "^[0-9]{1,18}$"
+    },
+    {
+      "flags": "u",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    {
+      "flags": "u",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    {
+      "flags": "u",
+      "pattern": "^[1-9][0-9]*$"
+    },
+    {
+      "flags": "u",
+      "pattern": "^[A-Z]{3}$"
+    },
+    {
+      "flags": "u",
       "pattern": "^[a-z0-9][a-z0-9-]*$"
     },
     {
       "flags": "u",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    {
+      "flags": "u",
+      "pattern": "^\\d{4}-\\d{2}$"
+    },
+    {
+      "flags": "u",
+      "pattern": "^\\d{4}-W\\d{2}$"
     },
     {
       "flags": "u",

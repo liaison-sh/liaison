@@ -8,6 +8,15 @@ import { env } from "~/lib/env"
 export const REQUEST_LOGIN = "liaison_request"
 
 /**
+ * The login of the client portal (migration 0313's role, given LOGIN by the
+ * migration step with the request login's password). A session whose login is
+ * liaison_portal holds the portal role's grants and nothing else: no RESET ROLE,
+ * SET ROLE or set_config('role') reaches another role, because the login is a
+ * member of none.
+ */
+export const PORTAL_LOGIN = "liaison_portal"
+
+/**
  * DATABASE_URL with the request login's credentials, or null when
  * DATABASE_REQUEST_PASSWORD is unset (every pool then shares DATABASE_URL).
  * Host, port, database and options stay DATABASE_URL's, so the two logins can
@@ -17,9 +26,25 @@ export function requestDatabaseUrl(
   databaseUrl: string = env.DATABASE_URL,
   password: string | undefined = env.DATABASE_REQUEST_PASSWORD,
 ): string | null {
+  return loginUrl(REQUEST_LOGIN, databaseUrl, password)
+}
+
+/**
+ * DATABASE_URL with the portal login's credentials (the request login's
+ * password), or null when the logins are not split: then no portal pool
+ * exists and every portal transaction refuses.
+ */
+export function portalDatabaseUrl(
+  databaseUrl: string = env.DATABASE_URL,
+  password: string | undefined = env.DATABASE_REQUEST_PASSWORD,
+): string | null {
+  return loginUrl(PORTAL_LOGIN, databaseUrl, password)
+}
+
+function loginUrl(login: string, databaseUrl: string, password: string | undefined): string | null {
   if (!password) return null
   const url = new URL(databaseUrl)
-  url.username = REQUEST_LOGIN
+  url.username = login
   url.password = encodeURIComponent(password)
   return url.toString()
 }
@@ -49,6 +74,7 @@ export function createPool(max: number, url: string = env.DATABASE_URL) {
 export type DbPool = ReturnType<typeof createPool>
 
 const requestUrl = requestDatabaseUrl()
+const portalUrl = portalDatabaseUrl()
 
 // Every pool below is sized by this process's pool plan (db/process-pool-plan.ts).
 
@@ -114,6 +140,13 @@ export const __privileged_jobs_pool_db__ = requestUrl
   ? createPool(poolPlan.pools.privilegedJobs).db
   : jobsPool.db
 
+// The PORTAL pool: every withPortalContext transaction (db/portal-rls.ts), on
+// the liaison_portal login. Null when the logins are not split, or when this
+// process plans no portal pool (a worker): the portal context then refuses and
+// every portal route answers 503, it never falls back to another login.
+export const __portal_pool_db__ =
+  portalUrl && poolPlan.pools.portal > 0 ? createPool(poolPlan.pools.portal, portalUrl).db : null
+
 // ── Statement counting, for budget tests ────────────────────────────────────
 
 type DebugHook = (connection: number, query: string) => void
@@ -127,6 +160,7 @@ function poolClients(): PoolOptions[] {
     __privileged_pool_db__,
     __jobs_pool_db__,
     __privileged_jobs_pool_db__,
+    ...(__portal_pool_db__ ? [__portal_pool_db__] : []),
   ]
   const clients = new Set(dbs.map((d) => d.$client as unknown as { options: PoolOptions }))
   return [...clients].map((c) => c.options)

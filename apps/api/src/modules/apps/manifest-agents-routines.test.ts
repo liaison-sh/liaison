@@ -84,6 +84,31 @@ describe("manifest validator — Component-A sections (A8)", () => {
     expect(r.success).toBe(false)
   })
 
+  test("accepts a new-mail routine only when it reads from the app's own groups, named by key", () => {
+    const tpl = (eventFilter?: unknown) =>
+      validateAppManifest({
+        ...base,
+        routines: {
+          check: {
+            description: "d",
+            kind: "event",
+            event: "mail:message:create",
+            promptTemplate: "p",
+            scopes: [],
+            enabledByDefault: false,
+            ...(eventFilter === undefined ? {} : { eventFilter }),
+          },
+        },
+      })
+    expect(
+      tpl({ fromGroupKeys: { "clients-signed": "Clients under a signed agreement" } }).success,
+    ).toBe(true)
+    expect(tpl().success).toBe(false)
+    expect(tpl({ fromGroupKeys: {} }).success).toBe(false)
+    expect(tpl({ fromGroupKeys: { "Bad Key": "x" } }).success).toBe(false)
+    expect(tpl({ fromGroupKeys: { ok: "" } }).success).toBe(false)
+  })
+
   test("rejects an event routine for a different app's event namespace", () => {
     const r = validateAppManifest({
       ...base,

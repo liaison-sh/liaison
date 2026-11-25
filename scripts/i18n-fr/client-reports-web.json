@@ -1,0 +1,18 @@
+{
+  "text": {
+    "Client reports": "Rapports clients",
+    "{{n}} waiting for a person": "{{n}} en attente d'une personne",
+    "Save the draft": "Enregistrer le brouillon",
+    "Send to the client": "Envoyer au client",
+    "As the client will read it": "Tel que le client le lira",
+    "For your team only": "Pour votre équipe seulement",
+    "Left out on purpose": "Laissé de côté exprès",
+    "Read from {{tasks}} tasks, {{prs}} pull requests and {{messages}} messages.": "Lu à partir de {{tasks}} tâches, {{prs}} pull requests et {{messages}} messages.",
+    "Waiting for a person": "En attente d'une personne",
+    "Sent": "Envoyé",
+    "Not sent": "Non envoyé",
+    "Loading…": "Chargement…",
+    "That did not work.": "Cela n'a pas fonctionné.",
+    "Edit": "Modifier"
+  }
+}

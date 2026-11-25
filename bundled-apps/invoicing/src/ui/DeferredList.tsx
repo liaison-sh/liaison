@@ -16,6 +16,8 @@ export interface DeferredItem {
   reason: string | null
   order_id: string | null
   order_number: string | null
+  /** Set on a park about one of the app's own documents (not an order). */
+  document_number?: string | null
   resolution_options?: Array<"shopify_reported" | "as_computed">
 }
 
@@ -40,6 +42,19 @@ export function taxOverrideNote(result: unknown): { text: string; isError: boole
     }
   }
   return { text: tr("Issued."), isError: false }
+}
+
+/** Why a row waits, in words; a reason this table does not know reads as itself. */
+const DEFERRED_REASONS: Record<string, string> = {
+  issue_interrupted: "Its PDF was not made when it was issued: it is made again",
+  awaiting_fx_rate: "Waiting for the day's exchange rate",
+  awaiting_customs_dependency: "Waiting for the customs data",
+  issuer_incomplete: "Waiting for your company's SIREN and address in Settings",
+}
+
+export function deferredReason(item: Pick<DeferredItem, "reason" | "status">): string {
+  const label = item.reason ? DEFERRED_REASONS[item.reason] : undefined
+  return label ? tr(label) : (item.reason ?? item.status)
 }
 
 async function loadDeferred(): Promise<DeferredItem[]> {
@@ -80,9 +95,11 @@ export const InvoicingDeferred: Component<{ entityId?: string }> = () => {
               >
                 <div class="flex items-center gap-2">
                   <span class="font-medium text-text">
-                    {tr("Order")} {item.order_number ?? item.order_id ?? "?"}
+                    {item.document_number !== undefined
+                      ? `${tr("Document")} ${item.document_number ?? "?"}`
+                      : `${tr("Order")} ${item.order_number ?? item.order_id ?? "?"}`}
                   </span>
-                  <span class="text-text-tertiary">{item.reason ?? item.status}</span>
+                  <span class="text-text-tertiary">{deferredReason(item)}</span>
                 </div>
                 <Show when={item.resolution_options?.length}>
                   <div class="text-text-secondary">

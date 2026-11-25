@@ -19,6 +19,8 @@ Each agent also has a ceiling: the most it may ever do. On every turn the agent 
 | Delegation to another agent | The requester's permissions intersected with the other agent's ceiling, then the room's limit. |
 | Sub-agent | What the agent that started it had, intersected with the sub-agent role's ceiling and any narrower scopes requested. |
 
+A few scopes are held only by their exact grant: `*` or a shorter scope does not hold them. They are `projects:margin:read`, `projects:cost_rates:write` and `projects:timesheet:read`, and a document's own edit scope with no `app:` part (such as `clevel`). Everywhere scopes are combined, one of them survives only where every side names it exactly: an admin holding `*` who asks an agent whose ceiling lists `projects:margin:read` gets no margin through it, a conversation with such an admin in it loses it too, and a ceiling of `*` or `projects:*` carries none. The same holds when you set one up: a routine, an agent's or sub-agent role's ceiling, or an agent-bound connection names one only if you hold it exactly. Saving an agent is judged on what it adds: a scope already in its ceiling stays, whoever saves, so an admin holding `*` can rename an agent whose ceiling lists `clevel`, or narrow it, but cannot add `clevel` to it. When you narrow a person's own agent, it loses only the scopes you removed. A post or approval carrying data such a scope classifies is shown only to people who hold it exactly. A document's edit scope is always one bare word such as `clevel`.
+
 Because of this, adding a colleague with fewer permissions to a conversation can reduce what an agent can do there. When that happens the agent says **Some capabilities are unavailable here** and the message offers **Continue in a DM**, where only your own permissions count.
 
 ### The ceiling by agent kind
@@ -36,6 +38,10 @@ A person's own mailbox is the exception to every ceiling: only that person and t
 ### Data limits
 
 Scopes say what a person can do. Data dimensions say which records they see, for example one territory or one team. Agents see exactly the records the person would see, because the limit is applied by the database and the response filter, not by the agent's judgment. See [Data dimensions](../admin/dimensions.md).
+
+Some records can be closed to the organization by the people who own them, such as an agreement whose organization access is **none**. Only the people named on it read it; no role, scope or administrator grant opens it, and an agent acting for someone else sees nothing of it. See [Prepare agreements](../apps/agreements.md#decide-who-can-see-an-agreement).
+
+What an agent reads from such a record stays with its list. A reply, post or note it writes afterwards can be read only by the people on the list. A post into a conversation with anyone else waits for the approval of the person who asked, and nobody else sees that request. The same holds for a Knowledge document with **Restricted** access.
 
 ### Apps people cannot use
 
@@ -65,6 +71,8 @@ When you try something in the app and are refused, the toast reads **Permission 
 2. When it explains that it lacks a scope, confirm that you want it to ask.
 3. The agent calls `request_scope` with the exact scope strings and a reason. It should file the request only after you confirmed.
    A role or system agent never files a request for mail access: it tells you it cannot open your mailbox and names your personal agent instead, and the request is refused without reaching an administrator.
+   Asking for access does not mark the conversation. The request names only the scopes and a reason, so it does not make later actions wait (see [Hold actions after outside content](approvals.md#hold-actions-after-outside-content)).
+   After the agent has read a record only some people may open, such as an agreement closed to the organization, a request for access or a new sub-agent role that carries free text waits like any other write: the administrators who would read it may not be allowed to read that record, so the person who asked decides first.
 4. You get a notification when the request is decided. The agent also speaks first in the conversation, to say what it can now do or that it still cannot.
 
 ## Decide access requests

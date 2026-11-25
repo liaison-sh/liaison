@@ -1,0 +1,1 @@
+The margin refusal names the members who hold the scope exactly; no agent asked for the person can read it -> apps/api/src/apps/projects/service/margin.ts (requireExact) ; apps/api/src/apps/projects/service/margin.ts (exactHolderNames)

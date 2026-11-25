@@ -24,6 +24,18 @@
  * set apart from the platform's own words, without the tags.
  */
 const AGENT_DIRECTIVE = /—\s*your reply (?:MUST|should)\b/i
+/** A line whose only value is one id or a list of them ("Task id: 6c1b..."): not a thing a person
+ *  reads, but the field is set. Cards stored before the server read records by their names hold
+ *  them; the field stays, its value said as the server says it today. */
+const BARE_IDS =
+  /^(\s*(?:[^:]{1,80}:\s*)?)([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}(?:,\s*[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})*)\s*$/i
+
+function withoutBareIds(line: string): string {
+  return line.replace(BARE_IDS, (_m, field: string, ids: string) => {
+    const n = ids.split(",").length
+    return `${field.replace(/[\s_]ids?(?=:)/i, "")}${n === 1 ? "a record" : `${n} items`}`
+  })
+}
 const FENCE_OPEN = /<\s*external-content(?:\s+source="[a-z]+")?\s*>/i
 const FENCE_CLOSE = /<\s*\/\s*external-content\s*>/i
 const ESCAPED_FENCE_TAG = /&lt;(\s*\/?\s*external-content)/gi
@@ -74,7 +86,7 @@ export function readableSummaryLines(lines: readonly string[]): string[] {
     if (expanded) out.push(...expanded)
     else out.push(line)
   }
-  return out
+  return out.map(withoutBareIds)
 }
 
 function expandJsonObjectLine(line: string): string[] | null {

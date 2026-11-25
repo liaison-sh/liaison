@@ -1,0 +1,1 @@
+Another person in a withdrawn signer's place and turn; refused for a holder of a link -> apps/api/src/modules/apps/sandbox/bridge/client-actions.ts (replaceSigner) ; apps/api/src/modules/client-actions/mint.ts (signInPlaceOf, linkInPlaceOf)

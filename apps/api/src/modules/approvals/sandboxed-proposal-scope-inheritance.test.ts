@@ -433,4 +433,30 @@ describe("a gated call from a sandboxed app records the real proposing scopes (F
 
     expect(await storedScopesOf(created.approval_id as string)).toEqual([READ])
   })
+
+  it("a card a handler parks with no frame of its own carries the run the bridge handed over", async () => {
+    // Home groups a run's cards by the run's root: a handler-parked card must name it too.
+    const ROOT = "00000000-0000-4000-8000-0000000650aa"
+    const created = await runContextStore.exit(async () =>
+      createHandlerApprovalRequest({
+        orgId: ORG,
+        requestedBy: USER,
+        actorScopes: [READ, WRITE],
+        defaultAppName: APP,
+        threadId: THREAD,
+        input: {
+          tool_name: `${APP}:postScoped`,
+          summary: "parked by its handler mid-run",
+          current_payload: { body: "handler-parked body" },
+        },
+        proposingTurnScopes: [],
+        originRun: { runId: ROOT, rootRunId: ROOT, nestingDepth: 0 },
+      }),
+    )
+    const [row] = await sql<{ metadata: { originRootRunId?: string; originRun?: unknown } }[]>`
+      SELECT metadata FROM kernel.approval_requests WHERE id = ${created.approval_id as string}::uuid`
+    expect(row?.metadata.originRootRunId).toBe(ROOT)
+    // A top-level run is not a sub-run: nothing to nest below.
+    expect(row?.metadata.originRun).toBeUndefined()
+  })
 })

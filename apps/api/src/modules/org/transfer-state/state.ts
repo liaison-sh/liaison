@@ -87,7 +87,8 @@ export const SNAPSHOT_FAIL_CLOSED_MS = 10_000
 /** How long every live instance has to confirm a state. */
 export const ACK_TIMEOUT_MS = 2_000
 
-const CHANGE_CHANNEL = `${REDIS_PREFIX}org-transfer:changed`
+/** The channel a transfer-state change is broadcast on. */
+export const ORG_TRANSFER_CHANGED = `${REDIS_PREFIX}org-transfer:changed`
 const ackKey = (orgId: string) => `org-transfer:ack:${orgId}`
 const ACK_TTL_S = 3_600
 
@@ -130,9 +131,12 @@ export interface OrgTransferViewOptions {
  */
 export class OrgTransferView {
   private snapshot = new Map<string, OrgTransferRecord>()
+  /** When the snapshot's read started: the rows may be that old. */
   private loadedAt = 0
   private loadedOnce = false
   private refreshing: Promise<void> | null = null
+  /** The refresh queued behind the one running (`refreshAfterChange`). */
+  private queued: Promise<void> | null = null
   private readonly activity = new Map<string, Record<OrgActivityKind, number>>()
   /** Cross-org sweeps running, each with the orgs it leaves alone. */
   private readonly sweeps = new Set<ReadonlySet<string>>()
@@ -151,10 +155,14 @@ export class OrgTransferView {
     this.now = opts.now ?? Date.now
   }
 
-  /** Re-read the moving orgs now (shared with a refresh already running). */
+  /**
+   * Re-read the moving orgs now (shared with a refresh already running). After a change, ask
+   * `refreshAfterChange`.
+   */
   refresh(): Promise<void> {
     if (this.refreshing) return this.refreshing
     const run = (async () => {
+      const startedAt = this.now()
       const rows = await this.read()
       const next = new Map(rows.map((r) => [r.orgId, r]))
       const changed: Array<[string, OrgTransferRecord | null, OrgTransferRecord | null]> = []
@@ -168,7 +176,7 @@ export class OrgTransferView {
         if (!next.has(orgId)) changed.push([orgId, null, prev])
       }
       this.snapshot = next
-      this.loadedAt = this.now()
+      this.loadedAt = startedAt
       this.loadedOnce = true
       for (const [orgId, rec, prev] of changed) {
         for (const fn of this.listeners) {
@@ -194,9 +202,24 @@ export class OrgTransferView {
       }
     })().finally(() => {
       this.refreshing = null
+      // The refresh queued behind this one starts now: a later change queues its own.
+      this.queued = null
     })
     this.refreshing = run
     return run
+  }
+
+  /**
+   * Re-read the moving orgs with a read that starts now or later: never shared with one already
+   * running, which may have read before the change the caller knows of. While one runs, exactly one
+   * more is queued behind it, for every change made meanwhile.
+   */
+  refreshAfterChange(): Promise<void> {
+    if (!this.refreshing) return this.refresh()
+    this.queued ??= this.refreshing
+      .catch(() => {}) // its own caller hears of it
+      .then(() => this.refresh())
+    return this.queued
   }
 
   /**
@@ -412,6 +435,16 @@ export function orgRuntimePinnedByTransfer(orgId: string): boolean {
   return orgTransferView.peek(orgId) !== null || orgTransferView.hasOwnActivity(orgId)
 }
 
+/** A message on the subscriber connection: a transfer-state change refreshes this process's view. */
+export function onOrgTransferBroadcast(channel: string): void {
+  if (channel !== ORG_TRANSFER_CHANGED) return
+  void orgTransferView
+    .refreshAfterChange()
+    .catch((err) =>
+      log.warn({ err }, "org transfer state refresh after a broadcast failed; the ticker retries"),
+    )
+}
+
 let syncStarted = false
 let ticker: ReturnType<typeof setInterval> | null = null
 
@@ -422,24 +455,14 @@ let ticker: ReturnType<typeof setInterval> | null = null
 export async function initOrgTransferSync(): Promise<void> {
   if (syncStarted) return
   syncStarted = true
-  redisSub.on("message", (channel) => {
-    if (channel !== CHANGE_CHANNEL) return
-    void orgTransferView
-      .refresh()
-      .catch((err) =>
-        log.warn(
-          { err },
-          "org transfer state refresh after a broadcast failed; the ticker retries",
-        ),
-      )
-  })
+  redisSub.on("message", onOrgTransferBroadcast)
   ticker = setInterval(() => {
     void orgTransferView
       .refresh()
       .catch((err) => log.warn({ err }, "org transfer state refresh failed"))
   }, SNAPSHOT_MAX_AGE_MS)
   ticker.unref?.()
-  await redisSub.subscribe(CHANGE_CHANNEL)
+  await redisSub.subscribe(ORG_TRANSFER_CHANGED)
   await orgTransferView.refresh()
 }
 
@@ -514,11 +537,11 @@ export async function setOrgTransferState(
     return { orgId, state: next, transferId, at: updated!.at!.getTime() }
   })
   log.info({ orgId, transferId, state: next ?? "none" }, "org transfer state set")
-  await publishRedis(CHANGE_CHANNEL, JSON.stringify({ orgId })).catch((err) =>
+  await publishRedis(ORG_TRANSFER_CHANGED, JSON.stringify({ orgId })).catch((err) =>
     log.warn({ err, orgId }, "org transfer change broadcast failed; peers see it within a second"),
   )
   await orgTransferView
-    .refresh()
+    .refreshAfterChange()
     .catch((err) => log.warn({ err, orgId }, "own org transfer view refresh failed"))
   return result
 }
@@ -595,7 +618,7 @@ export async function awaitOrgTransferAcks(
   const since = opts.since ?? 0
   const deadline = Date.now() + timeoutMs
   // Ask every process to refresh now instead of on its next tick.
-  await publishRedis(CHANGE_CHANNEL, JSON.stringify({ orgId })).catch(() => {})
+  await publishRedis(ORG_TRANSFER_CHANGED, JSON.stringify({ orgId })).catch(() => {})
   for (;;) {
     const instances = opts.instances ?? (await liveInstanceIds())
     const acks = await readOrgTransferAcks(orgId)

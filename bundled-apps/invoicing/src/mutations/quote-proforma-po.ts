@@ -14,6 +14,7 @@ import {
   taxCountryOf,
 } from "../issue"
 import { issueDateParts } from "../issue-date"
+import { paymentTermsOf, termsText } from "../payment-terms"
 import { documentsGet, type ReadsCtx } from "../reads"
 import type { ClassifyInput } from "../tax"
 import { planTax } from "../tax-plan"
@@ -23,6 +24,7 @@ import {
   type IssuerProfileRow,
   resolveIssuerProfileOrError,
 } from "./db-helpers"
+import { handOverDraft } from "./issue-handover"
 import {
   buildIssueInputFromDraft,
   checkTwoEyes,
@@ -210,10 +212,10 @@ async function issueFromDraftWithGating(
   if (!when.ok) return when.error
   // The draft goes in the same commit as the document that replaces it: a re-run finds no
   // draft (not_found) instead of issuing it twice.
-  const issueInput = {
-    ...buildIssueInputFromDraft(draft, issuer, counterparty, when),
-    commit_with: [{ delete: "documents", id: draft.id }],
-  }
+  const issueInput = handOverDraft(
+    draft,
+    buildIssueInputFromDraft(draft, issuer, counterparty, when),
+  )
   const result = await issueDocument(ctx, issueInput)
   return {
     status: "completed",
@@ -1015,7 +1017,26 @@ export async function draftIssuePreview(
     counterparty_country: taxCountryOf(counterparty),
     has_vat_id: !!counterparty.vat_id,
   })
-  return { ...doc, issue_total_minor: grand.toString() }
+  // The org's day (`UTC` reads the org's own zone), so a card's late line never reads yesterday.
+  const today = (await ctx.time.civil({ timezone: "UTC" })).date
+  const terms =
+    draft.type === "invoice" && !draft.due_at
+      ? termsText(
+          (
+            await paymentTermsOf(ctx.db, {
+              issuer,
+              contactId: draft.counterparty_contact_id,
+              externalRefs: draft.external_refs,
+            })
+          ).days,
+        )
+      : null
+  return {
+    ...doc,
+    issue_total_minor: grand.toString(),
+    today,
+    ...(terms ? { due_terms: terms } : {}),
+  }
 }
 
 /** STAGE-TIME preflight for `po_create_and_issue`: the same checks, before any approval exists. */

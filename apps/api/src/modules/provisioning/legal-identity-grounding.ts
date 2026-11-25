@@ -383,7 +383,10 @@ export function ungroundedAddressRefusal(missing: readonly LegalIdentifier[]): {
 /** The addresses the workspace already knows: its members' and its connected accounts'. */
 export async function storedAddresses(orgId: string): Promise<string[]> {
   return withPrivilegedDb(orgId, "address-grounding-stored", async (tx) => {
-    const people = await tx.select({ email: users.email }).from(users).where(eq(users.orgId, orgId))
+    const people = await tx
+      .select({ email: users.email })
+      .from(users)
+      .where(and(eq(users.orgId, orgId), eq(users.userType, "member")))
     const accounts = await tx
       .select({ identifier: connectedAccounts.identifier })
       .from(connectedAccounts)

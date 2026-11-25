@@ -81,6 +81,12 @@
     "accounts": {
       "title": "Comptes d'agenda",
       "description": "Les agendas Google que vous, ou toute l'organisation, importez dans Agenda."
+    },
+    "away": {
+      "title": "Jours d'absence",
+      "description": "Si votre propre agenda indique à Liaison quand vous êtes absent.",
+      "fromCalendar": "Lire mes absences dans mon agenda",
+      "fromCalendarHelp": "Activé, un message d'absence dans votre agenda Google principal vous marque absent, et un événement d'une journée qui ressemble à un congé vous est demandé une fois sur l'accueil. Pendant votre absence, les approbations qui vous attendent passent à la personne suivante. Désactivé, votre agenda ne change rien."
     }
   }
 }

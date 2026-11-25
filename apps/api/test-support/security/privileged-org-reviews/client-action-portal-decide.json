@@ -1,0 +1,7 @@
+{
+  "reviewedOutsideRoutes": {
+    "apps/api/src/modules/client-actions/code-attempt.ts#attemptCode": "its callers pass the one client action row they already resolved: the public verify route the row found by the posted token's hash, the portal decide the row decideClientAction re-read by id in the portal session's own org after portal.client_actions showed it to that person; every statement names that row's id in that row's org",
+    "apps/api/src/modules/client-actions/decide.ts#portalDecideGate": "called by decideClientAction and sendPortalActionCode for the portal path only, with the portal session's own context (orgId and userId set by portalAuthMiddleware from the verified portal token); the action is first read as the portal role through portal.client_actions, then re-read by id AND that org",
+    "apps/api/src/modules/client-actions/code-attempt.ts#giveBack": "attemptCode's own give-back of the guess it took, on the same row and org attemptCode was given (reviewed entry above)"
+  }
+}

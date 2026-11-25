@@ -34,7 +34,7 @@ import { startThemeSync } from "~/modules/shell/theme-store"
 import { addToast } from "~/modules/shell/toast-store"
 import { startWebBuildWatch } from "~/modules/shell/web-update"
 import { startKeyboardInset } from "~/primitives/keyboardInset"
-import { completeRuntimeInit, initializeAuth } from "~/startup"
+import { completeRuntimeInit, initializeAuth, isPublicPagePath } from "~/startup"
 
 // Phase 16.6 — Expose host-services on the same window-global pattern used
 // for the Solid runtime above. Plugin UI bundles `import { app, fetch } from
@@ -65,6 +65,9 @@ if (typeof window !== "undefined") {
       /(error loading|failed to fetch) dynamically imported module/i.test(msg) ||
       /importing a module script failed/i.test(msg)
     if (!isChunkLoadFailure) return
+    // The token page and the portal show their own down page for a chunk that
+    // failed: no reload.
+    if (isPublicPagePath()) return
     const key = "liaison:chunk-reload-at"
     const last = Number(sessionStorage.getItem(key) ?? 0)
     if (Date.now() - last < 60_000) return

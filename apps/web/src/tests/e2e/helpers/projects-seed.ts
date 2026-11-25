@@ -387,7 +387,17 @@ export async function seedAttentionFixtures(
  */
 export async function seedApprovalsForFacets(
   env: WorkerEnv,
-  params: { orgId: string; userId: string; toolNames: string[] },
+  params: {
+    orgId: string
+    userId: string
+    toolNames: string[]
+    /**
+     * Stage each call in its own agent run (one chat turn per card). Home
+     * folds the cards one run staged, or a day of one action with no run
+     * behind it, into one row; separate turns stay one row each.
+     */
+    runPerCard?: boolean
+  },
 ): Promise<Record<string, string[]>> {
   const byTool: Record<string, string[]> = {}
   let threadId: string | undefined
@@ -398,6 +408,7 @@ export async function seedApprovalsForFacets(
       toolName,
       title: "Approval facet seed",
       ...(threadId ? { threadId } : {}),
+      ...(params.runPerCard ? { runId: randomUUID() } : {}),
       params:
         toolName === "test:gatedCreateItem"
           ? { title: "facet seed", team: "facet" }

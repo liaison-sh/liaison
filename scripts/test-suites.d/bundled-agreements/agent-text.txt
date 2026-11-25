@@ -1,0 +1,2 @@
+# Agent text: a stand-in signature named as one, honest words.
+src/stand-in.test.ts

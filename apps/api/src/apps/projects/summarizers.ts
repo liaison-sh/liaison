@@ -4,6 +4,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import { UUID_RE } from "~/lib/uuid"
+import { recordToken } from "~/modules/apps/approval-record-token"
 
 function clip(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value
@@ -397,13 +398,23 @@ export async function summarizeCreateProject(
   params: {
     name: string
     description?: string | null
-    tasks?: Array<{ title?: string; assigneeName?: string | null }> | null
+    tasks?: Array<{ title?: string; assigneeName?: string | null; timebox?: unknown }> | null
+    timeBudgets?: boolean
   },
   _ctx: { tx: RlsClient; orgId: string; userId: string },
 ): Promise<ApprovalSummary> {
   const lines: string[] = []
   if (params.description?.trim()) lines.push(clip(params.description.trim(), 200))
   const tasks = Array.isArray(params.tasks) ? params.tasks : []
+  // Approving the card is the person turning time and budgets on: the card says so.
+  if (params.timeBudgets === true) {
+    const planned = tasks.filter((t) => typeof t.timebox === "string").length
+    lines.push(
+      planned > 0
+        ? `Turns time and budgets on, with planned time on ${planned === 1 ? "1 task" : `${planned} tasks`}`
+        : "Turns time and budgets on",
+    )
+  }
   if (tasks.length === 0) {
     lines.push("No tasks yet")
   } else {
@@ -437,5 +448,150 @@ export async function summarizeCreateProject(
     subtitle: tasks.length > 0 ? "A new project with its tasks" : "A new project",
     lines,
     impact: "internal",
+  }
+}
+
+/**
+ * Approval summary for the gated `client_report_send`: what goes out, to whom, and,
+ * before Approve, a warning on any text that matches an internal note of the project or
+ * an active member's name (deterministic, no model). The warning never blocks.
+ */
+export async function summarizeClientReportSend(
+  params: { reportId?: string },
+  ctx: { tx: RlsClient; orgId: string; userId: string },
+): Promise<ApprovalSummary> {
+  const { clientReportReadyToSend } = await import("~/apps/projects/service/client-reports")
+  try {
+    const ready = await clientReportReadyToSend({
+      tx: ctx.tx,
+      orgId: ctx.orgId,
+      input: { reportId: params.reportId },
+    })
+    const r = ready.report
+    return {
+      kind: "projects.client_report_send",
+      title: `Send the client report: ${clip(r.project_name, 80)}, week ending ${r.period_end}`,
+      subtitle: `To ${ready.recipient.name ? `${ready.recipient.name} <${ready.recipient.email}>` : ready.recipient.email}`,
+      lines: [
+        ...ready.warnings.map((w) =>
+          w.kind === "internal_note"
+            ? `Warning: matches an internal note of the project: "${clip(w.words, 80)}"`
+            : `Warning: names a member of your team: ${clip(w.words, 80)}`,
+        ),
+        ...r.sections.map((s) => `${clip(s.heading, 80)}: ${clip(s.text, 160)}`),
+        ...(r.left_out.length > 0 ? [`Left out on purpose: ${r.left_out.length} item(s)`] : []),
+      ],
+    }
+  } catch (err) {
+    return {
+      kind: "projects.client_report_send",
+      title: "Send a client report",
+      subtitle: "Send a client report",
+      lines: [err instanceof Error ? err.message : "The report could not be read."],
+    }
+  }
+}
+
+interface DealCardRow {
+  id: string
+  number: number | null
+  project_key: string | null
+  project_id: string
+  company_id: string | null
+}
+
+const PERIOD_WORDS: Record<string, string> = { month: " per month", year: " per year" }
+
+function dealAmount(minor: number, currency: unknown, period: unknown): string {
+  const code = typeof currency === "string" ? currency.toUpperCase() : ""
+  let digits = 2
+  try {
+    if (code) {
+      digits =
+        new Intl.NumberFormat("en", { style: "currency", currency: code }).resolvedOptions()
+          .maximumFractionDigits ?? 2
+    }
+  } catch {
+    // Not a currency code: two decimals, as most are.
+  }
+  const amount = (minor / 10 ** digits).toFixed(digits)
+  return `${amount}${code ? ` ${code}` : ""}${PERIOD_WORDS[String(period)] ?? ""}`
+}
+
+/**
+ * Approval summary of `deals_update`, shown when a deal change is held for a decision: which deal,
+ * whose, and what changes. The records stand as records (`recordToken`): each reader of the card
+ * reads the names they may. The deal's stored amount is left out (it has a scope of its own, which
+ * a decider may not hold).
+ */
+export async function summarizeDealsUpdate(
+  params: Record<string, unknown>,
+  ctx: { tx: RlsClient; orgId: string; userId: string },
+): Promise<ApprovalSummary> {
+  const ref = typeof params.taskId === "string" ? params.taskId.trim() : ""
+  const { parseTaskKey, formatTaskKey } = await import("~/apps/projects/service/task-key")
+  const key = UUID_RE.test(ref) ? null : parseTaskKey(ref)
+  const [deal] =
+    key || UUID_RE.test(ref)
+      ? extractRows<DealCardRow>(
+          await ctx.tx.execute(drizzleSql`
+            SELECT t.id::text AS id, t.number, p.key AS project_key,
+                   p.id::text AS project_id, d.company_id::text AS company_id
+              FROM ${projectsRel("tasks")} t
+              JOIN ${projectsRel("projects")} p ON p.id = t.project_id AND p.org_id = t.org_id
+              LEFT JOIN ${projectsRel("deals")} d ON d.task_id = t.id
+             WHERE t.org_id = ${ctx.orgId}::uuid
+               AND ${
+                 key
+                   ? drizzleSql`p.key = ${key.key} AND t.number = ${key.number}`
+                   : drizzleSql`t.id = ${ref}::uuid`
+               }
+             LIMIT 1`),
+        )
+      : []
+  const outcome = params.outcome
+  const article = deal ? "the" : "a"
+  const act =
+    outcome === "won" || outcome === "lost"
+      ? `Mark ${article} deal ${outcome}`
+      : outcome === "open"
+        ? `Reopen ${article} deal`
+        : `Change ${article} deal`
+
+  const lines: string[] = []
+  const says = (field: string, value: unknown, words: (v: unknown) => string = String) => {
+    if (value === undefined) return
+    lines.push(`${field}: ${value === null || value === "" ? "cleared" : clip(words(value), 160)}`)
+  }
+  says("Outcome", outcome)
+  says("Reason", params.reason)
+  const record = (app: string, entityType: string) => (id: unknown) =>
+    UUID_RE.test(String(id)) ? recordToken({ app, entityType, id: String(id) }) : "a record"
+  says("Client", params.companyId, record("kernel", "company"))
+  says("Contact", params.contactId, record("kernel", "contact"))
+  says("Amount", params.amountMinor, (v) =>
+    dealAmount(Number(v), params.currency, params.amountPeriod),
+  )
+  says("Probability", params.probability, (v) => `${String(v)}%`)
+  says("Next step", params.nextStep)
+
+  return {
+    kind: "projects.deals_update",
+    title: deal ? `${act}: ${record("projects", "task")(deal.id)}` : act,
+    subtitle: deal
+      ? [
+          ...(deal.company_id ? [record("kernel", "company")(deal.company_id)] : []),
+          record("projects", "project")(deal.project_id),
+        ].join(", ")
+      : "The deal is not visible to the person who asked",
+    ...(deal?.project_key && deal.number !== null
+      ? { ref: formatTaskKey(deal.project_key, deal.number) }
+      : {}),
+    lines,
+    ...(deal
+      ? {
+          links: [{ label: "Open deal", app: "projects", entityType: "task", entityId: deal.id }],
+        }
+      : {}),
   }
 }

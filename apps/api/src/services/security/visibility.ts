@@ -3,6 +3,7 @@ import { and, asc, sql as drizzleSql, eq, isNull } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { messages, threadParticipants, threads } from "~/db/schema/kernel"
+import { isExactOnlyScope } from "~/modules/agent/scopes/scope-coverage"
 import {
   checkScopeTaint,
   type ScopeTaintBlockedError,
@@ -13,6 +14,17 @@ import {
 import { resolveAuditAgentId } from "~/modules/audit/resolve-agent"
 import { writeAuditLog } from "~/modules/audit/service"
 import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { isRestrictedScope } from "~/modules/permissions/restricted-scope"
+
+/**
+ * Does a viewer holding `grants` hold one entry of a stamp (a row's required scopes)? As
+ * `hasScope`, except that an exact-only scope (`isExactOnlyScope`) is held only by its exact
+ * grant: a `*`, glob or parent grant does not stand for it, as in the database
+ * (`kernel.stamp_scope_held`, `kernel.scopes_covered`, migration 0343).
+ */
+export function holdsStampScope(scope: string, grants: string[]): boolean {
+  return isExactOnlyScope(scope) ? scope !== "" && grants.includes(scope) : hasScope(scope, grants)
+}
 
 export interface VisibilityMessage {
   requiredScopes: string[]
@@ -27,9 +39,9 @@ export interface VisibilityViewer {
 /**
  * App-level mirror of the messages SELECT policy's scope/disclosure half:
  * `viewer.grants covers every requiredScopes entry OR viewer.userId in disclosureList`.
- * Room membership is the caller's check. Scope coverage uses `hasScope`, so a
+ * Room membership is the caller's check. Scope coverage uses `holdsStampScope`, so a
  * `*`, `<prefix>:*` or parent grant covers its children exactly as elsewhere in the
- * API. An empty requiredScopes array is visible to every member, grants or not.
+ * API, an exact-only scope excepted (held by its exact grant only). An empty requiredScopes array is visible to every member, grants or not.
  * Fails closed: a missing requiredScopes array or an empty scope string never
  * satisfies the scope branch, and an empty viewer id never matches the disclosure list.
  */
@@ -41,10 +53,16 @@ export function isMessageVisible(message: VisibilityMessage, viewer: VisibilityV
   // not be read. Fail closed means EXCLUDE the row, never abort the turn.
   const scopesHeld =
     Array.isArray(requiredScopes) &&
-    requiredScopes.every((s) => typeof s === "string" && hasScope(s, viewer.grants))
+    requiredScopes.every((s) => typeof s === "string" && holdsStampScope(s, viewer.grants))
   if (scopesHeld) return true
-  return (
+  const disclosed =
     viewer.userId !== "" && Array.isArray(disclosureList) && disclosureList.includes(viewer.userId)
+  if (!disclosed || !Array.isArray(requiredScopes)) return disclosed
+  // A stamp holding a restricted record's scope is read only through its disclosure list (the
+  // record's list, filled by the stamping writer), by people who also hold the rest of it.
+  if (!requiredScopes.some(isRestrictedScope)) return true
+  return requiredScopes.every(
+    (s) => typeof s === "string" && (isRestrictedScope(s) || holdsStampScope(s, viewer.grants)),
   )
 }
 
@@ -67,7 +85,7 @@ export function viewerHoldsEveryScope(
 ): boolean {
   const { requiredScopes } = message
   if (!Array.isArray(requiredScopes)) return false
-  return requiredScopes.every((s) => typeof s === "string" && hasScope(s, viewer.grants))
+  return requiredScopes.every((s) => typeof s === "string" && holdsStampScope(s, viewer.grants))
 }
 
 /**

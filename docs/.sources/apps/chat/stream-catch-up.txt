@@ -1,0 +1,1 @@
+A quiet answer the server drew past takes the server's text without a reload -> apps/web/src/modules/threads/message-store.ts (reconcileAgentStreamsWithServer) ; apps/web/src/modules/threads/AgentStateLabel.tsx (AgentStateLabel)

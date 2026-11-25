@@ -1,0 +1,2 @@
+Attach to invoice lists the project's draft invoices, exports the month's sheet as a PDF and files it on the chosen draft as the person -> apps/web/src/modules/projects/TimesheetView.tsx (TimesheetView)
+The budget panel shows Invoiced and Left to invoice from budget_get, or why not -> apps/web/src/modules/projects/BudgetPanel.tsx (invoicedNote) ; apps/api/src/apps/projects/handlers.ts (budgetGet)

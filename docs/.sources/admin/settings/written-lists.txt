@@ -1,0 +1,1 @@
+A list with written items is edited as Written items, at least one -> apps/web/src/modules/settings/documents/RichTextEditor.tsx (RichTextEditor)

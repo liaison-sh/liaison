@@ -2,6 +2,7 @@
 
 import type { ActorContext } from "~/db/rls"
 import { env } from "~/lib/env"
+import { isInstanceHostname } from "~/lib/org-public-url"
 import { UnsafeOutboundUrlError, validateOutboundUrlNoDns } from "~/lib/outbound-fetch"
 import { sandboxTenantKey } from "~/modules/apps/custom-app-name"
 
@@ -262,38 +263,10 @@ export function cellOwnAddresses(): Set<string> {
   )
 }
 
-/** The host names of this server itself: its base URL, its web origins, its org hosts. */
-function cellOwnHostSuffixes(): { exact: Set<string>; suffixes: string[] } {
-  const exact = new Set<string>()
-  const suffixes: string[] = []
-  const add = (u: string | undefined) => {
-    if (!u) return
-    try {
-      exact.add(new URL(u).hostname.toLowerCase())
-    } catch {
-      // not a URL: ignored
-    }
-  }
-  add(env.BASE_URL)
-  for (const o of (env.ALLOWED_ORIGINS ?? "").split(",")) add(o.trim())
-  const template = env.LIAISON_ORG_HOST_TEMPLATE
-  if (template) {
-    const host = /^[a-z]+:\/\/([^/:]+)/i.exec(template)?.[1]?.toLowerCase() ?? ""
-    const suffix = host.startsWith("{slug}.") ? host.slice("{slug}.".length) : ""
-    if (suffix) {
-      exact.add(suffix)
-      suffixes.push(`.${suffix}`)
-    }
-  }
-  return { exact, suffixes }
-}
-
 /** Whether `hostname` names this server (its own origins or an org host on it). */
 export function isCellOwnHost(hostname: string): boolean {
-  const h = hostname.toLowerCase().replace(/\.$/, "")
-  const { exact, suffixes } = cellOwnHostSuffixes()
-  if (exact.has(h) || suffixes.some((s) => h.endsWith(s))) return true
-  return cellOwnAddresses().has(normalizeAddress(h))
+  if (isInstanceHostname(hostname)) return true
+  return cellOwnAddresses().has(normalizeAddress(hostname.replace(/\.$/, "")))
 }
 
 const CELL_SELF_REFUSAL = "Outbound URL must not point to this server's own address"

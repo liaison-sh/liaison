@@ -551,7 +551,9 @@ function blockQuote(block: Record<string, unknown>): string {
     case "paragraph":
       return `${type}: ${truncated(text("text"))}`
     case "list":
-      return `list of ${text("from") || "?"}: ${truncated(text("line"))}`
+      return Array.isArray(block.items)
+        ? `list: ${truncated(block.items.filter((x) => typeof x === "string").join("; "))}`
+        : `list of ${text("from") || "?"}: ${truncated(text("line"))}`
     case "image":
       return "image"
     case "spacer":

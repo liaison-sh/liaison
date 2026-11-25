@@ -36,6 +36,14 @@ const NO_PREFLIGHT_NEEDED: Record<string, string> = {
   // (knowledge_create_validate / knowledge_update_validate) rather than a
   // manifest preflight: these tools gate from INSIDE their handler, and the
   // handler refuses before it parks. See apps/knowledge/handlers.ts.
+  // conditionalGate: an agent's change of who can see an agreement, or an agent's template
+  // save, parks from inside the handler after every check the handler can run (draft state,
+  // editor on the list, a non-empty list, the template's conditions) has passed.
+  "agreements:agreement_update": "handler checks before it parks an agent's access change",
+  "agreements:template_save": "handler validates the body before it parks an agent's save",
+  // conditionalGate: a merge into a ticket a client's portal shows parks from inside the
+  // handler, after the merge's own refusals (another company, a more sensitive source) ran.
+  "tickets:merge": "handler runs the merge's refusals before it parks",
   "knowledge:create": "stage-time guard via knowledge_create_validate",
   "knowledge:update": "stage-time guard via knowledge_update_validate",
   // Only post-approval failure is a document deleted between staging and the
@@ -51,6 +59,7 @@ const NO_PREFLIGHT_NEEDED: Record<string, string> = {
   // reaches a human in the first place.
   "invoicing:drafts_create": "validates before parking",
   "invoicing:drafts_update": "validates before parking",
+  "invoicing:drafts_discard": "validates before parking",
   "invoicing:quote_issue": "validates before parking",
   "invoicing:quote_create_and_issue": "validates before parking",
   "invoicing:credit_note_issue": "validates before parking",
@@ -119,6 +128,8 @@ const NO_PREFLIGHT_NEEDED: Record<string, string> = {
   "invoicing:einvoice_send": "staged by einvoice_send_request after its checks; only genuine races",
   "invoicing:einvoice_book_batch":
     "staged by the booking job for a batch it built; only genuine races",
+  "invoicing:einvoice_send_batch":
+    "staged by the daily send job for a batch of sendable documents it built; only genuine races",
   // conditionalGate: checksum, SIRET-of-SIREN and registry checks run in the
   // handler before it calls requestApproval.
   "invoicing:counterparty_identity_set": "validates before parking",

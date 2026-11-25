@@ -164,7 +164,10 @@ describe("DeviceApproval", () => {
     expect((await findByTestId("device-approval-client")).textContent).toBe("liaison-desktop")
     expect((await findByTestId("device-approval-device")).textContent).toBe("Ada's laptop, macOS")
     expect((await findByTestId("device-approval-ip")).textContent).toBe("203.0.113.9")
-    expect((await findByTestId("device-approval-scopes")).textContent).toContain("knowledge:read")
+    const scopes = await findByTestId("device-approval-scopes")
+    // In words, with the scope id on the tooltip.
+    expect(scopes.querySelector('li[title="knowledge:read"]')).toBeTruthy()
+    expect(scopes.textContent).not.toContain("knowledge:read")
     expect((await findByTestId("device-approval-unverified")).textContent).toContain("Unverified")
   })
 

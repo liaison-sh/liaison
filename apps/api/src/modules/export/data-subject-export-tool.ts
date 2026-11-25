@@ -14,6 +14,9 @@ import {
 } from "~/modules/export/member-data-subject-bundle"
 import { hasScope } from "~/modules/permissions/permissions"
 
+/** The payments connector's app name: its mirror's schema, tables and id columns carry it. */
+const PAYMENTS_APP = "stripe"
+
 /**
  * `kernel.data_subject_export` agent-tool handler (BL-261).
  *
@@ -200,6 +203,14 @@ interface ContactRow {
   tags: string[] | null
   created_at: string | Date | null
   updated_at: string | Date | null
+  company_id: string | null
+  lawful_basis: string | null
+  lawful_basis_source: string | null
+  lawful_basis_at: string | Date | null
+  is_consumer: boolean | null
+  recipient_country: string | null
+  data_source: string | null
+  art14_notice_at: string | Date | null
 }
 
 interface InvoiceRow {
@@ -228,6 +239,81 @@ function toIso(v: string | Date | null): string | null {
   return v instanceof Date ? v.toISOString() : new Date(v).toISOString()
 }
 
+/** A day column as `YYYY-MM-DD`, whatever the driver hands back. */
+function toDay(v: string | Date | null): string | null {
+  if (v == null) return null
+  return v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10)
+}
+
+type Row = Record<string, unknown>
+const text = (v: unknown): string | null => (v == null ? null : String(v))
+const minor = (v: unknown): number | null => (v == null ? null : Number(v))
+
+/** A recurring invoice schedule billing the subject, as the bundle carries it. */
+export function scheduleRecord(
+  r: Row,
+): DataSubjectExportBundle["records"]["recurringSchedules"][number] {
+  return {
+    id: String(r.id),
+    status: String(r.status),
+    repeats: String(r.repeats),
+    billingDay: text(r.billing_day),
+    endsOn: toDay(r.ends_on as string | Date | null),
+    covers: text(r.covers),
+    issueMode: text(r.issue_mode),
+    paidBy: text(r.paid_by),
+    dueRule: text(r.due_rule),
+    dueDays: r.due_days == null ? null : Number(r.due_days),
+    language: text(r.language),
+    lines: r.lines ?? [],
+    notes: text(r.notes),
+    pausedUntil: toDay(r.paused_until as string | Date | null),
+    nextIssueOn: toDay(r.next_issue_on as string | Date | null),
+    companyId: text(r.company_id),
+    createdAt: toIso(r.created_at as string | Date | null),
+  }
+}
+
+/**
+ * A payments customer linked to the subject, with its subscriptions, as the bundle carries it.
+ * Card data follows the payments mirror's own rule: brand, last 4 digits and expiry at most.
+ */
+export function billingCustomerRecord(
+  c: Row,
+  subscriptions: readonly Row[],
+): DataSubjectExportBundle["records"]["payments"]["customers"][number] {
+  return {
+    id: String(c.mirror_id),
+    email: text(c.email),
+    name: text(c.name),
+    currency: text(c.currency),
+    delinquent: Boolean(c.delinquent),
+    address: c.address ?? null,
+    taxIds: c.tax_ids ?? null,
+    companyId: text(c.company_id),
+    createdAt: toIso(c.created_upstream_at as string | Date | null),
+    deletedAt: toIso(c.deleted_at as string | Date | null),
+    subscriptions: subscriptions
+      .filter((s) => s.customer_id === c.mirror_id)
+      .map((s) => ({
+        id: String(s.mirror_id),
+        status: String(s.status),
+        planName: text(s.plan_name),
+        mrrMinor: minor(s.mrr_minor),
+        currency: text(s.currency),
+        currentPeriodStart: toIso(s.current_period_start as string | Date | null),
+        currentPeriodEnd: toIso(s.current_period_end as string | Date | null),
+        trialEnd: toIso(s.trial_end as string | Date | null),
+        cancelAt: toIso(s.cancel_at as string | Date | null),
+        canceledAt: toIso(s.canceled_at as string | Date | null),
+        card:
+          s.card_brand || s.card_last4 || s.card_exp
+            ? { brand: text(s.card_brand), last4: text(s.card_last4), exp: text(s.card_exp) }
+            : null,
+      })),
+  }
+}
+
 /**
  * The export bundle shape — a stable, self-describing GDPR DSR package: subject
  * identity + one section per data-holding app (real records or an honest
@@ -248,6 +334,20 @@ export interface DataSubjectExportBundle {
     tags: string[]
     createdAt: string | null
     updatedAt: string | null
+    /** The company the person is linked to (its name is `company`). */
+    companyId: string | null
+    /** What is recorded about writing to the person; null fields are not recorded. */
+    lawfulBasis: {
+      basis: string | null
+      source: string | null
+      recordedAt: string | null
+      isConsumer: boolean | null
+      recipientCountry: string | null
+      dataSource: string | null
+      art14NoticeAt: string | null
+    }
+    /** "Opted out on <date>, by <how>." when the person's address is on the opt-out list. */
+    optedOut: { at: string; by: string; line: string } | null
   }
   records: {
     tickets: Array<{
@@ -267,6 +367,37 @@ export interface DataSubjectExportBundle {
       issuedAt: string | null
       dueAt: string | null
     }>
+    /**
+     * The subject's client portal: their account (made from this contact), its access
+     * log (sign-ins, views, downloads, approvals) and the requests to sign, accept or
+     * approve sent to them. Each part reads under the caller's own rights: empty for
+     * a caller without the portal and client action scopes.
+     */
+    portal: {
+      account: {
+        userId: string
+        companyId: string
+        invitedAt: string | null
+        lastSignInAt: string | null
+        removedAt: string | null
+      } | null
+      accessLog: Array<{
+        at: string | null
+        action: string
+        entityType: string | null
+        entityId: string | null
+      }>
+      clientActions: Array<{
+        id: string
+        kind: string
+        target: string
+        invitedEmail: string
+        decision: string | null
+        decidedAt: string | null
+        revokedAt: string | null
+        createdAt: string | null
+      }>
+    }
     /** The subject's invoicing counterparty identity, null when none is held. */
     identity: {
       kind: string | null
@@ -311,6 +442,65 @@ export interface DataSubjectExportBundle {
         createdAt: string | null
       }>
     }
+    /** Recurring invoice schedules billing the person, ended ones included. */
+    recurringSchedules: Array<{
+      id: string
+      status: string
+      repeats: string
+      billingDay: string | null
+      endsOn: string | null
+      covers: string | null
+      issueMode: string | null
+      paidBy: string | null
+      dueRule: string | null
+      dueDays: number | null
+      language: string | null
+      lines: unknown
+      notes: string | null
+      pausedUntil: string | null
+      nextIssueOn: string | null
+      companyId: string | null
+      createdAt: string | null
+    }>
+    /** The payments customers mirrored from the payment connector and linked to the person. */
+    payments: {
+      customers: Array<{
+        /** The payment provider's customer id. */
+        id: string
+        email: string | null
+        name: string | null
+        currency: string | null
+        delinquent: boolean
+        address: unknown
+        taxIds: unknown
+        companyId: string | null
+        createdAt: string | null
+        deletedAt: string | null
+        subscriptions: Array<{
+          id: string
+          status: string
+          planName: string | null
+          mrrMinor: number | null
+          currency: string | null
+          currentPeriodStart: string | null
+          currentPeriodEnd: string | null
+          trialEnd: string | null
+          cancelAt: string | null
+          canceledAt: string | null
+          /** Brand, last 4 digits and expiry, never more. */
+          card: { brand: string | null; last4: string | null; exp: string | null } | null
+        }>
+      }>
+    }
+    /** Deals naming the person as their contact; amounts only for an exporter with deal access. */
+    deals: Array<{
+      taskId: string
+      title: string
+      stage: string | null
+      outcome: string
+      closedAt: string | null
+      amount?: { amountMinor: number | null; currency: string | null }
+    }>
     shopify:
       | {
           includedInBundle: false
@@ -326,6 +516,8 @@ export interface DataSubjectExportBundle {
   counts: {
     tickets: number
     invoices: number
+    recurringSchedules: number
+    billingCustomers: number
     shopifyOrders: number
     memoryFiles: number
     memoryEpisodes: number
@@ -454,7 +646,9 @@ export async function buildDataSubjectBundle(
   const contactRows = extractRows<ContactRow>(
     await ctx.db.execute(drizzleSql`
       SELECT id::text AS id, handle, name, email, phone, company,
-             external_ids, metadata, tags, created_at, updated_at
+             external_ids, metadata, tags, created_at, updated_at,
+             company_id::text AS company_id, lawful_basis, lawful_basis_source, lawful_basis_at,
+             is_consumer, recipient_country, data_source, art14_notice_at
       FROM ${drizzleSql.raw(schemaRef("kernel"))}.contacts
       WHERE org_id = ${ctx.orgId} AND id = ${contactId}
       LIMIT 1
@@ -506,8 +700,117 @@ export async function buildDataSubjectBundle(
       )[0]
     : undefined
 
+  // Deals leg: the deals naming the person as their contact, read under the
+  // caller's RLS (a projects-blind caller gets none); amounts only when the
+  // caller holds deal access. An org database without the projects tables has none.
+  const dealsTable = `${schemaRef("app_projects")}.deals`
+  const hasDeals = extractRows<{ ok: boolean }>(
+    await ctx.db.execute(drizzleSql`SELECT to_regclass(${dealsTable}) IS NOT NULL AS ok`),
+  )[0]?.ok
+  const dealAccess = hasScope("projects:deals:read", [...(ctx.scopes ?? [])])
+  const dealRows = hasDeals
+    ? extractRows<{
+        task_id: string
+        title: string
+        stage: string | null
+        outcome: string
+        closed_at: string | Date | null
+        amount_minor: string | null
+        currency: string | null
+      }>(
+        await ctx.db.execute(drizzleSql`
+          SELECT d.task_id::text AS task_id, t.title, s.label AS stage, d.outcome, d.closed_at,
+                 v.amount_minor::text AS amount_minor, v.currency
+          FROM ${drizzleSql.raw(schemaRef("app_projects"))}.deals d
+          JOIN ${drizzleSql.raw(schemaRef("app_projects"))}.tasks t ON t.id = d.task_id AND t.org_id = d.org_id
+          LEFT JOIN ${drizzleSql.raw(schemaRef("app_projects"))}.project_statuses s ON s.id = t.status_id
+          LEFT JOIN ${drizzleSql.raw(schemaRef("app_projects"))}.deal_values v ON v.task_id = d.task_id
+          WHERE d.org_id = ${ctx.orgId} AND d.contact_id = ${contactId} AND t.archived_at IS NULL
+            AND t.parent_task_id IS NULL
+          ORDER BY d.created_at
+          LIMIT 100
+        `),
+      )
+    : []
+
+  // Recurring schedules billing the person and the payments customers linked to them, read under
+  // the caller's row security (an invoicing- or payments-blind caller gets an empty leg). An org
+  // without either app has no table, which is an empty leg too.
+  const schedulesTable = `${schemaRef("app_invoicing")}.recurring_schedules`
+  // The payments connector's mirror names its schema, tables and id columns after the app; each
+  // read below aliases them to the neutral names billingCustomerRecord reads.
+  const customersTable = `${schemaRef(`app_${PAYMENTS_APP}`)}.${PAYMENTS_APP}_customers`
+  const subscriptionsTable = `${schemaRef(`app_${PAYMENTS_APP}`)}.${PAYMENTS_APP}_subscriptions`
+  const mirrorId = drizzleSql.raw(`${PAYMENTS_APP}_id`)
+  const createdUpstream = drizzleSql.raw(`created_at_${PAYMENTS_APP}`)
+  const billing = extractRows<{
+    schedules: string | null
+    customers: string | null
+    subscriptions: string | null
+  }>(
+    await ctx.db.execute(
+      drizzleSql`SELECT to_regclass(${schedulesTable})::text AS schedules, to_regclass(${customersTable})::text AS customers, to_regclass(${subscriptionsTable})::text AS subscriptions`,
+    ),
+  )[0]
+  const scheduleRows = billing?.schedules
+    ? extractRows<Row>(
+        await ctx.db.execute(drizzleSql`
+          SELECT id::text AS id, status, repeats, billing_day, ends_on, covers, issue_mode,
+                 paid_by, due_rule, due_days, language, lines, notes, paused_until,
+                 next_issue_on, company_id::text AS company_id, created_at
+          FROM ${drizzleSql.raw(schedulesTable)}
+          WHERE org_id = ${ctx.orgId} AND contact_id = ${contactId}
+          ORDER BY created_at
+          LIMIT 100
+        `),
+      )
+    : []
+  const customerRows = billing?.customers
+    ? extractRows<Row>(
+        await ctx.db.execute(drizzleSql`
+          SELECT ${mirrorId} AS mirror_id, email, name, currency, delinquent, address, tax_ids,
+                 company_id::text AS company_id, ${createdUpstream} AS created_upstream_at,
+                 deleted_at
+          FROM ${drizzleSql.raw(customersTable)}
+          WHERE org_id = ${ctx.orgId} AND contact_id = ${contactId}
+          ORDER BY ${createdUpstream}
+          LIMIT 100
+        `),
+      )
+    : []
+  const customerIds = customerRows.map((c) => String(c.mirror_id))
+  const subscriptionRows =
+    billing?.subscriptions && customerIds.length > 0
+      ? extractRows<Row>(
+          await ctx.db.execute(drizzleSql`
+            SELECT ${mirrorId} AS mirror_id, customer_id, status, plan_name, mrr_minor::text AS mrr_minor,
+                   currency, current_period_start, current_period_end, trial_end, cancel_at,
+                   canceled_at, card_brand, card_last4, card_exp
+            FROM ${drizzleSql.raw(subscriptionsTable)}
+            WHERE org_id = ${ctx.orgId} AND customer_id IN (${drizzleSql.join(
+              customerIds.map((id) => drizzleSql`${id}`),
+              drizzleSql`, `,
+            )})
+            ORDER BY current_period_start
+            LIMIT 500
+          `),
+        )
+      : []
+
   // (4) Memory leg — what this subject's own agent remembers (P4m-T32).
   const memory = await buildMemorySection({ email: contact.email }, ctx)
+
+  // (5) The opt-out list keeps a fingerprint of the address, never the address: matched here.
+  const { listSuppressions, optedOutLine } = await import("~/modules/mail/suppressions")
+  const [suppression] = contact.email ? await listSuppressions(ctx.orgId, [contact.email]) : []
+  const optedOut = suppression
+    ? {
+        at: suppression.createdAt,
+        by: suppression.reason,
+        line: await optedOutLine(ctx.orgId, suppression),
+      }
+    : null
+  const portal = await readPortalSection(ctx, contact.id, contact.email)
 
   return {
     kind: "gdpr_data_subject_export",
@@ -524,9 +827,21 @@ export async function buildDataSubjectBundle(
       tags: contact.tags ?? [],
       createdAt: toIso(contact.created_at),
       updatedAt: toIso(contact.updated_at),
+      companyId: contact.company_id,
+      lawfulBasis: {
+        basis: contact.lawful_basis,
+        source: contact.lawful_basis_source,
+        recordedAt: toIso(contact.lawful_basis_at),
+        isConsumer: contact.is_consumer,
+        recipientCountry: contact.recipient_country,
+        dataSource: contact.data_source,
+        art14NoticeAt: toIso(contact.art14_notice_at),
+      },
+      optedOut,
     },
     records: {
       memory,
+      portal,
       identity: identityRow
         ? {
             kind: identityRow.customer_kind,
@@ -555,6 +870,25 @@ export async function buildDataSubjectBundle(
         issuedAt: toIso(r.issued_at),
         dueAt: toIso(r.due_at),
       })),
+      recurringSchedules: scheduleRows.map(scheduleRecord),
+      payments: {
+        customers: customerRows.map((c) => billingCustomerRecord(c, subscriptionRows)),
+      },
+      deals: dealRows.map((r) => ({
+        taskId: r.task_id,
+        title: r.title,
+        stage: r.stage,
+        outcome: r.outcome,
+        closedAt: toIso(r.closed_at),
+        ...(dealAccess
+          ? {
+              amount: {
+                amountMinor: r.amount_minor === null ? null : Number(r.amount_minor),
+                currency: r.currency,
+              },
+            }
+          : {}),
+      })),
       shopify:
         shopifyOrders && shopifyOrders.length > 0
           ? {
@@ -571,6 +905,8 @@ export async function buildDataSubjectBundle(
     counts: {
       tickets: tickets.length,
       invoices: invoiceRows.length,
+      recurringSchedules: scheduleRows.length,
+      billingCustomers: customerRows.length,
       shopifyOrders: shopifyOrders?.length ?? 0,
       memoryFiles: memory.tree.length,
       memoryEpisodes: memory.episodes.length,
@@ -640,7 +976,11 @@ export async function buildMemberDataSubjectBundle(
   )[0]
   if (!member) return { error: { code: "NOT_FOUND", message: NOT_VISIBLE.user } }
 
-  const sections = await readMemberSections(ctx.db, { orgId: ctx.orgId, subjectUserId })
+  const sections = await readMemberSections(ctx.db, {
+    orgId: ctx.orgId,
+    subjectUserId,
+    callerUserId: ctx.userId,
+  })
   const memory = await buildMemorySection({ userId: subjectUserId }, ctx)
 
   const counts: Record<string, number> = {}
@@ -832,5 +1172,86 @@ export async function handleDataSubjectExport(
     subjectName: bundle.subject.name,
     counts: bundle.counts,
     shopifyIncluded: bundle.records.shopify.includedInBundle,
+  }
+}
+
+/** The subject's client portal part of the bundle, read under the caller's RLS. */
+async function readPortalSection(
+  ctx: DataSubjectExportToolCtx,
+  contactId: string,
+  email: string | null,
+): Promise<DataSubjectExportBundle["records"]["portal"]> {
+  const K = drizzleSql.raw(schemaRef("kernel"))
+  const [account] = extractRows<{
+    user_id: string
+    company_id: string
+    invited_at: string | Date | null
+    last_sign_in_at: string | Date | null
+    removed_at: string | Date | null
+  }>(
+    await ctx.db.execute(drizzleSql`
+      SELECT user_id::text, company_id::text, invited_at, last_sign_in_at, removed_at
+        FROM ${K}.portal_people
+       WHERE org_id = ${ctx.orgId} AND contact_id = ${contactId}
+       ORDER BY invited_at DESC LIMIT 1`),
+  )
+  const accessLog = account
+    ? extractRows<{
+        at: string | Date | null
+        action: string
+        entity_type: string | null
+        entity_id: string | null
+      }>(
+        await ctx.db.execute(drizzleSql`
+          SELECT "timestamp" AS at, action, entity_type, entity_id FROM ${K}.audit_log
+           WHERE org_id = ${ctx.orgId} AND app = 'portal' AND actor_id = ${account.user_id}::uuid
+           ORDER BY "timestamp" DESC LIMIT 1000`),
+      )
+    : []
+  const actions = extractRows<{
+    id: string
+    kind: string
+    target_app: string
+    target_type: string
+    invited_email: string
+    decision: string | null
+    decided_at: string | Date | null
+    revoked_at: string | Date | null
+    created_at: string | Date | null
+  }>(
+    await ctx.db.execute(drizzleSql`
+      SELECT id::text, kind, target_app, target_type, invited_email, decision, decided_at,
+             revoked_at, created_at
+        FROM ${K}.client_actions
+       WHERE org_id = ${ctx.orgId}
+         AND (contact_id = ${contactId} OR invited_email = ${(email ?? "").toLowerCase()})
+       ORDER BY created_at DESC LIMIT 1000`),
+  )
+  return {
+    account: account
+      ? {
+          userId: account.user_id,
+          companyId: account.company_id,
+          invitedAt: toIso(account.invited_at),
+          lastSignInAt: toIso(account.last_sign_in_at),
+          removedAt: toIso(account.removed_at),
+        }
+      : null,
+    accessLog: accessLog.map((r) => ({
+      at: toIso(r.at),
+      action: r.action,
+      entityType: r.entity_type,
+      entityId: r.entity_id,
+    })),
+    clientActions: actions.map((a) => ({
+      id: a.id,
+      kind: a.kind,
+      target: `${a.target_app}.${a.target_type}`,
+      invitedEmail: a.invited_email,
+      decision: a.decision,
+      decidedAt: toIso(a.decided_at),
+      revokedAt: toIso(a.revoked_at),
+      createdAt: toIso(a.created_at),
+    })),
   }
 }

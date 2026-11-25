@@ -73,6 +73,7 @@ import { connectionRoutes } from "~/modules/apps/connections/routes"
 import { installRoutes } from "~/modules/apps/install-routes"
 import { manifestsAxesRoutes } from "~/modules/apps/manifests-axes-route"
 import { initOrgAppsInvalidation, UUID_RE } from "~/modules/apps/org-apps"
+import { restrictedClaimRoutes } from "~/modules/apps/restricted-claim"
 import { appRoutes, hostApiRoutes } from "~/modules/apps/routes"
 import { registerKernelAttentionProvider } from "~/modules/apps/runtime"
 import { appSettingsRoutes } from "~/modules/apps/settings-routes"
@@ -95,6 +96,11 @@ import { billingManagedRoutes, managedBillingOnly } from "~/modules/billing-mana
 import { billingStateRoutes } from "~/modules/billing-state"
 import { brandingRoutes } from "~/modules/branding/routes"
 import { bugReports } from "~/modules/bug-reports/routes"
+import {
+  CLIENT_ACTIONS_PUBLIC_PREFIX,
+  clientActionPublicRoutes,
+} from "~/modules/client-actions/public-routes"
+import { clientActionRoutes } from "~/modules/client-actions/routes"
 import { CLIENT_HEADER, clientPolicyRoutes, logClientHeader } from "~/modules/client-policy/routes"
 import { cellHeaderMiddleware } from "~/modules/cloud/cell-header"
 import { mailSenderRoutes, managedMailSenderOnly } from "~/modules/cloud/mail-sender-routes"
@@ -111,10 +117,12 @@ import { fileDownloadRelay, files as filesRoutes, fileUploadRelay } from "~/modu
 import { health } from "~/modules/health/routes"
 import { healthzRoutes, systemHealthRoutes } from "~/modules/healthz"
 import { readyzRoutes } from "~/modules/healthz/readyz"
+import { homeBriefRoutes } from "~/modules/home/brief-route"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { importRoutes } from "~/modules/imports/routes"
 import { importUploadRoutes } from "~/modules/imports/uploads/routes"
 import { liaisonTeamRoutes } from "~/modules/liaison-team/routes"
+import { OPT_OUT_PATH, optOutRefusalPage, optOutRoutes } from "~/modules/mail/opt-out-routes"
 import { mailRoutes } from "~/modules/mail/routes"
 import { mailboxJobsRoutes } from "~/modules/mailbox-jobs/routes"
 import { mailboxEncryptionRoutes } from "~/modules/mailbox-keys/encryption-mode-routes"
@@ -164,6 +172,11 @@ import { dimensionCatalogRoutes } from "~/modules/permissions/dimension-catalog-
 import { adminRoles } from "~/modules/permissions/roles-routes"
 import { scopeCatalogRoutes } from "~/modules/permissions/scope-catalog-routes"
 import type { Scope } from "~/modules/permissions/types"
+import { portalAdminRoutes, portalSettingsRoutes } from "~/modules/portal/admin-routes"
+import { portalAuthMiddleware, portalAvailableGate } from "~/modules/portal/auth-middleware"
+import { portalAuthRoutes } from "~/modules/portal/auth-routes"
+import { portalRoutes } from "~/modules/portal/routes"
+import { PORTAL_AUTH_PREFIX, PORTAL_PREFIX } from "~/modules/portal/routes-list"
 import { pushRoutes } from "~/modules/push/routes"
 import { savedViewsRoutes } from "~/modules/saved-views/routes"
 import { scopeRequests } from "~/modules/scope-requests/routes"
@@ -178,6 +191,7 @@ import { slotsRoutes } from "~/modules/slots/routes"
 import { mentions } from "~/modules/threads/mentions-routes"
 import { references } from "~/modules/threads/references-routes"
 import { threads } from "~/modules/threads/routes"
+import { PORTAL_ATTACHMENT_MAX_BYTES } from "~/modules/tickets/ingest-core"
 import { tourRoutes } from "~/modules/tours/routes"
 import { invites } from "~/modules/users/invites-routes"
 import { preferencesRoutes } from "~/modules/users/preferences-routes"
@@ -227,6 +241,9 @@ export type AppEnv = {
     // (database, Redis, search, maintenance), not an outside upstream: the access
     // log keeps that 503 at error (lib/own-dependency-down.ts).
     ownDependencyDown?: boolean
+    // Set by portalAuthMiddleware on /api/portal/* only: the client a portal
+    // token names. Never set together with userId: no member route reads it.
+    portal?: { orgId: string; userId: string }
   }
 }
 
@@ -237,6 +254,12 @@ registerKernelAttentionProvider({
   handler: "computeApprovalAttentionItems",
   scope: "kernel:approvals:read",
   bundlePath: new URL("./modules/approvals/attention.ts", import.meta.url).pathname,
+})
+// "While you were away": decisions taken for the person while they were away, once back.
+registerKernelAttentionProvider({
+  appName: "kernel.away_recap",
+  handler: "getAwayRecapAttentionItems",
+  bundlePath: new URL("./modules/approvals/away-recap.ts", import.meta.url).pathname,
 })
 registerKernelAttentionProvider({
   appName: "kernel.attention_events",
@@ -354,7 +377,8 @@ app.use(
     },
   }),
 )
-app.use("*", securityHeaders())
+// The portal API never leaves a referrer, is never indexed, cached or framed.
+app.use("*", securityHeaders({ publicPrefixes: [PORTAL_PREFIX, CLIENT_ACTIONS_PUBLIC_PREFIX] }))
 // Managed edition: every response names the instance that served it (an org's
 // move between two instances is measured with it).
 app.use("*", cellHeaderMiddleware)
@@ -442,6 +466,11 @@ export const apiBodyLimitMiddleware: MiddlewareHandler<AppEnv> = async (c, next)
   // own per-attachment/count caps, not the generic 1 MB JSON cap.
   if (c.req.path.startsWith("/api/bug-reports")) {
     return bodyLimit({ maxSize: 25 * 1024 * 1024 })(c, next)
+  }
+  // A portal person's attachment: the route refuses a file over its own 10 MB, so the
+  // body may be that much plus the multipart framing, not the generic 1 MB.
+  if (c.req.method === "POST" && c.req.path === "/api/portal/requests/attachments") {
+    return bodyLimit({ maxSize: PORTAL_ATTACHMENT_MAX_BYTES + 64 * 1024 })(c, next)
   }
   // Avatar upload carries the raw image body — bounded by the route's own 5 MB
   // ceiling (with headroom here), not the generic 1 MB JSON cap.
@@ -650,6 +679,18 @@ if (env.LIAISON_DEMO_MODE) {
   mountDemoRoutes(app)
 }
 
+// The card-payments stand-in's signed QA write (outside objects of a demo org).
+// Mounted ONLY when LIAISON_DEMO_PAYMENTS_FIXTURES is set, like the demo
+// routes above: with the flag off the route does not exist. Mounted, every
+// request still 404s unless the harness signature is valid and the org is demo
+// marked (modules/demo/worlds/saas/payments/harness-route.ts).
+if (env.LIAISON_DEMO_PAYMENTS_FIXTURES) {
+  const { demoPaymentsHarnessRoutes } = await import(
+    "~/modules/demo/worlds/saas/payments/harness-route"
+  )
+  app.route("/api/demo-payments", demoPaymentsHarnessRoutes)
+}
+
 // Phase 14: top-level /healthz (outside /api/) — version + migration head +
 // dependency status. Consumed by load balancers, `liaison.sh upgrade` health
 // gate, and `validate-compose`.
@@ -725,6 +766,11 @@ app.use("/api/auth/totp", authPlusLimit) // DELETE /totp
 app.use("/api/auth/password/change", authPlusLimit)
 app.use("/api/auth/account/*", authPlusLimit)
 
+// The client action token page's protocol (modules/client-actions): public, before
+// any auth. The token is in the POST body only; each route takes its own budgets,
+// keyed on the token's hash, and fails closed when Redis is down.
+app.route(CLIENT_ACTIONS_PUBLIC_PREFIX, clientActionPublicRoutes)
+
 app.route("/api/auth", auth)
 app.route("/api/auth/oauth", oauth)
 
@@ -735,6 +781,20 @@ app.use("/api/auth/device-flow/pending/*", authPlusLimit)
 app.use("/api/auth/device-flow/approve/*", authPlusLimit)
 app.use("/api/auth/device-flow/deny/*", authPlusLimit)
 app.route("/api/auth/device-flow", deviceFlow)
+
+// The client portal (modules/portal). Its sign-in (/api/portal/auth/*) is public,
+// rate limited and small-bodied; everything else under /api/portal opens to a
+// portal token only (portalAuthMiddleware), never to authMw, and is exactly
+// PORTAL_ROUTES. With the logins not split there is no portal login: every
+// portal route answers 503.
+app.use(`${PORTAL_PREFIX}/*`, portalAvailableGate)
+app.use(`${PORTAL_AUTH_PREFIX}/*`, publicSurfaceBodyLimit(), publicSurfaceRateLimit(redis))
+app.route(PORTAL_AUTH_PREFIX, portalAuthRoutes)
+const portalAuthMw = portalAuthMiddleware(env.JWT_SECRET)
+app.use(`${PORTAL_PREFIX}/*`, (c, next) =>
+  c.req.path.startsWith(`${PORTAL_AUTH_PREFIX}/`) ? next() : portalAuthMw(c, next),
+)
+app.route(PORTAL_PREFIX, portalRoutes)
 
 // WebSocket ticket: exchange access token for single-use ticket
 app.use("/api/auth/ws-ticket", authPlusLimit)
@@ -753,6 +813,10 @@ const authAndDemoMw: MiddlewareHandler<AppEnv> = env.LIAISON_DEMO_MODE
   ? every(baseAuthMw, (await import("~/modules/demo/demo-expiry")).demoExpiryMiddleware())
   : baseAuthMw
 const authMw: MiddlewareHandler<AppEnv> = every(authAndDemoMw, perUserLimiter)
+
+// A staff signer's own "Read and sign" (REST only, no tool).
+app.use("/api/client-actions/*", authMw, orgLimiter)
+app.route("/api/client-actions", clientActionRoutes)
 
 app.use("/api/users", authMw, orgLimiter)
 app.use("/api/users/*", authMw, orgLimiter)
@@ -932,6 +996,10 @@ app.use(
   "/api/contacts/*",
   requireScope({ GET: "kernel:contacts:read", "*": "kernel:contacts:write" }),
 )
+// A company's client portal, from the client access panel (modules/portal/admin-routes.ts):
+// each route names its portal scope; a person's click, never an agent's.
+app.route("/api/contacts/companies/:id/portal", portalAdminRoutes)
+app.route("/api/contacts/portal-settings", portalSettingsRoutes)
 app.route("/api/contacts", contacts)
 
 // Trusted senders (any member reads with contacts or tickets read; a contacts or tickets
@@ -1075,12 +1143,18 @@ app.route("/api/apps/mcp-manager", mcpManagerAuditRoutes)
 app.route("/api/apps", appSettingsRoutes)
 // POST /api/apps/:app/pages/:page/link: a one-time link to an app page (app-pages.ts).
 app.route("/api/apps", appPageLinkRoutes)
+// POST /api/apps/agreements/agreements/:id/claim: an admin's one way in to a restricted agreement whose people are all gone (restricted-claim.ts).
+app.route("/api/apps", restrictedClaimRoutes)
 app.route("/api/apps", appRoutes)
 
 // Aggregated attention feed (authenticated — providers self-authorize per-row)
 app.use("/api/attention-items", authMw, orgLimiter)
 app.use("/api/attention-items/*", authMw, orgLimiter)
 app.route("/api/attention-items", attentionRoutes)
+
+// Home's "Today's brief": the caller's own morning-brief routine's newest output.
+app.use("/api/home/*", authMw, orgLimiter)
+app.route("/api/home", homeBriefRoutes)
 
 // Phase 16 Task A8a — user-scoped subscription rules + installed-app axes registry.
 app.use("/api/attention/subscriptions", authMw, orgLimiter)
@@ -1598,6 +1672,15 @@ if (qaSeedRoutesEnabled) {
 // limiter, so the public MCP OAuth / device-grant / discovery routes and the MCP
 // transport get their own cap and per-IP budgets, applied before any parsing.
 app.use("/.well-known/*", publicSurfaceBodyLimit(), publicSurfaceRateLimit(redis))
+// A commercial mail's opt-out link: public, no session, no cookie. Its refusals
+// render the page's own states (modules/mail/opt-out-routes.ts).
+app.use(
+  `${OPT_OUT_PATH}/*`,
+  optOutRefusalPage,
+  publicSurfaceBodyLimit(),
+  publicSurfaceRateLimit(redis),
+)
+app.route(OPT_OUT_PATH, optOutRoutes)
 app.use("/mcp/oauth/*", publicSurfaceBodyLimit(), publicSurfaceRateLimit(redis))
 app.use("/mcp/device/*", publicSurfaceBodyLimit(), publicSurfaceRateLimit(redis))
 app.use("/mcp", publicSurfaceBodyLimit())

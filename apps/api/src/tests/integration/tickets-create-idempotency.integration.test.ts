@@ -136,6 +136,37 @@ afterAll(async () => {
 })
 
 describe("tickets:create idempotencyKey", () => {
+  it("another person's call with the same key and params runs as their own, never replaying the first person's answer", async () => {
+    const other = await withSystemDb(
+      "tickets-create-idem-other",
+      async (tx) =>
+        extractRows<{ id: string }>(
+          await tx.execute(drizzleSql`
+          INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
+          VALUES (gen_random_uuid(), ${orgId}, ${`other-${crypto.randomUUID()}@test.com`}, 'Other', 'active', 'hash', 1, 1)
+          RETURNING id`),
+        )[0]!.id,
+    )
+    const subject = uniqueSubject("Shared key")
+    const params = { subject, channel: "manual", idempotencyKey: `idem-${crypto.randomUUID()}` }
+    const first = await executeTool<TicketCreateData>({
+      toolName: "tickets:create",
+      orgId,
+      actor,
+      params,
+    })
+    const second = await executeTool<TicketCreateData>({
+      toolName: "tickets:create",
+      orgId,
+      actor: { ...actor, userId: other } as ActorContext,
+      params,
+    })
+    expect("data" in first && "data" in second).toBe(true)
+    if (!("data" in first) || !("data" in second)) return
+    expect(second.data.ticketId).not.toBe(first.data.ticketId)
+    expect((await ticketIdsWithSubject(subject)).length).toBe(2)
+  })
+
   it("a replay with the same key returns the original ticket and opens no second one", async () => {
     const subject = uniqueSubject("Replayed delivery")
     const params = { subject, channel: "manual", idempotencyKey: `idem-${crypto.randomUUID()}` }

@@ -1,0 +1,2 @@
+# The client company stamped on an issued document.
+src/issue-company-stamp.test.ts

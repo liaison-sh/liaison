@@ -637,6 +637,21 @@ liaison org transfer agent --role target | agent --role source <org id> --transf
 | `--target-cmd <command>` | no | Source only: the command that starts the target agent (e.g. an ssh to the target). |
 | `--fail-at <precopy\|draining\|frozen\|after-cas>` | no | Source only, for rehearsals on test servers: stop on the spot at that step (no abort, no more heartbeats), as a crash would. |
 
+## demo reclassify
+
+For the operator of a public demo, once, right after upgrading it to the release that gives every org a class: the visitor workspaces the previous release made while both ran have none, and the demo reaper deletes no org of another class. Lists the workspaces created in the window, and with `--apply` makes exactly those demo orgs, so they are deleted at their own expiry. Only a workspace with a valid visitor marker, a visitor workspace's generated slug, no billing and no control plane create is ever listed, never the operator's org. Refused (exit 2) with demo mode off and in the managed edition.
+
+```
+liaison demo reclassify --since <instant> --until <instant> [--org <id>] [--apply]
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--since <instant>` | yes | The start of the window, with its zone: a little before the migration ran. |
+| `--until <instant>` | yes | The end of the window: when the last process of the previous release stopped. |
+| `--org <id>` | no | Only this workspace. |
+| `--apply` | no | Make the change; without it the command only lists. |
+
 ## org caps
 
 Show or set an organization's caps: seats (active people), mailboxes (connected Gmail or IMAP addresses), storage in GB, background jobs per hour, custom apps, audit days, and the org's app runs, app calls and app CPU milliseconds per UTC day. Without a change flag it prints the caps and the usage; a change keeps the caps it does not name. A missing cap is unlimited, which is how every org starts. Each cap is a whole number of at least 1: 0 is refused, and `--unset` makes a cap unlimited. Only the operator sets caps: org admins see them read only in Settings → Organization. A cap below current usage removes nothing; new seats and mailboxes are refused until usage drops, background jobs over the hourly cap wait for the next hour, and past an app day cap tools are refused while webhooks, events and app jobs wait for the next UTC day.
@@ -763,10 +778,10 @@ liaison seed --tier demo|lively|load|standard [--admin <email>] [--now <instant>
 | `--slug <slug>` | no | The org to seed (default: the reserved org's slug). |
 | `--name <org name>` | no | The org's name for a new org. |
 | `--locale <locale>` | no | The language the world is written in. |
-| `--reset` | no | Clear the org's seeded content first (the default for `reserved`). |
+| `--reset` | no | Clear the reserved org's seeded content first (its default). With `--variant visitor`, delete the demo org under the slug and seed it fresh instead; refused on a public demo box and for any org that is not of class demo. |
 | `--no-reset` | no | Top up: adopt what is there, clear nothing. |
 | `--passwords <password>` | no | Give the seeded people this password so a tester can sign in as them; refused in demo mode. |
-| `--passwords-env <VAR>` | no | `lively` and `load`: read that password from this environment variable, so it never shows in a process list. |
+| `--passwords-env <VAR>` | no | `demo`, `lively` and `load`: read that password from this environment variable, so it never shows in a process list. |
 | `--replace` | no | `lively`: delete the earlier demo org under `--slug` first, so the activity ends now; refused in demo mode. |
 | `--no-commerce` | no | `lively`: leave out the shop, invoices, carrier and books, for an org without the commerce apps installed. |
 | `--people <file>` | no | `lively`: a JSON array of your own people in the world's seats (`seat`, `name`, `email`, optional `jobTitle` and `bio`); everything the world writes for that seat is written for them. |

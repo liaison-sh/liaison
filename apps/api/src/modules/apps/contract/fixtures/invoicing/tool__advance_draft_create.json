@@ -1,0 +1,53 @@
+{
+  "entry": "tool:advance_draft_create",
+  "params": {
+    "projectId": "7a000000-0000-4000-8000-00000000b1a1",
+    "amountMinor": 100000
+  },
+  "recordedFrom": "the contract org on a local stack, record-invoicing-billing-plan.recorder.test.ts",
+  "expectError": {
+    "reason": "the project has no plan and no contact was given, so the advance has no customer and nothing is drafted: pins that refusal; the drafting path is proven by advances.test.ts"
+  },
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "billing_steps",
+        "{\"where\":{\"billing_project_id\":\"7a000000-0000-4000-8000-00000000b1a1\"},\"limit\":500}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "projects:milestone_status_read",
+        "{\"projectId\":\"7a000000-0000-4000-8000-00000000b1a1\",\"taskIds\":[]}"
+      ],
+      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"not_found\",\"message\":\"No project 7a000000-0000-4000-8000-00000000b1a1 you can read. Nothing was read.\",\"retryable\":false}}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "recurring_schedules",
+        "{\"where\":{\"retainer_project_id\":\"7a000000-0000-4000-8000-00000000b1a1\"},\"limit\":20}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"external_ref\":\"advance:7a000000-0000-4000-8000-00000000b1a1:undated:100000\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"billing_project_id\":\"7a000000-0000-4000-8000-00000000b1a1\",\"invoice_role\":\"final\"},\"limit\":20}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

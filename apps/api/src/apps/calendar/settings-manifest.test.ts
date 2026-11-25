@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Calendar's settings page (settings overhaul P2 T8): ONE declarative page with
 // a connections block (connect, share, disconnect) and the CalendarChoices
-// block (which calendars are imported, retry of a failed import), no
-// views.settings, and a dimension manageHref that lands on that page (the old
-// /settings/calendar/accounts matched no page at all).
+// block (which calendars are imported, retry of a failed import), then the
+// person's away-days toggle, no views.settings, and a dimension manageHref that
+// lands on that page (the old /settings/calendar/accounts matched no page at all).
 import { describe, expect, it } from "bun:test"
 import calendarManifest from "~/apps/calendar/app.manifest.json"
 import { validateAppManifest } from "~/modules/apps/contract"
@@ -16,14 +16,17 @@ describe("calendar settings manifest", () => {
     schema: Record<string, { dimensions?: Record<string, { manageHref?: string }> }>
   }
 
-  it("declares one page: a connections block and the CalendarChoices block", () => {
+  it("declares one page: a connections block and the CalendarChoices block, then the away-days toggle", () => {
     expect(validateAppManifest(calendarManifest).success).toBe(true)
     expect(m.kind).toBe("app")
     expect(m.views.settings).toBeUndefined()
-    expect(m.settings.sections).toHaveLength(1)
-    expect(m.settings.sections[0].scope).toBe("user")
+    expect(m.settings.sections.map((s) => s.id)).toEqual(["accounts", "away"])
+    expect(m.settings.sections.every((s) => s.scope === "user")).toBe(true)
     expect(m.settings.sections[0].blocks.map((b) => b.block)).toEqual(["connections", "custom"])
     expect(m.settings.sections[0].blocks[1].component).toBe("CalendarChoices")
+    expect(m.settings.sections[1].blocks.map((b) => [b.block, b.key, b.default])).toEqual([
+      ["field", "awayFromCalendar", false],
+    ])
   })
 
   it("every manageHref points at the calendar settings page", () => {

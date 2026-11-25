@@ -263,8 +263,24 @@ Where the time went, one segment per status in its colour -> apps/web/src/module
 Automations on this task, the recent runs fired on it -> apps/web/src/modules/projects/TaskTimeInStatus.tsx:119
 Automations list row: last run dot, time since and step strip -> apps/web/src/modules/projects/ProjectAutomations.tsx:330
 An SLA whose time came reads as passed -> apps/web/src/modules/projects/TaskTimeInStatus.tsx:34
+Money taint: a money-bearing result stamps projects:money:read -> apps/api/src/modules/apps/execute-tool.ts:6699 ; apps/api/src/apps/projects/app.manifest.json:2339
+No linked invoice, mixed price and invoice currencies -> apps/api/src/apps/projects/handlers.ts:1230
+Margin refuses mixed currencies -> apps/api/src/apps/projects/service/margin.ts:274
+cost_rate_set DM only, human turn only, margin scope, ISO 4217 -> apps/api/src/apps/projects/app.manifest.json:2285 ; apps/api/src/apps/projects/service/currency.ts:23
 The automation editor names a missing status until one is picked -> apps/web/src/modules/projects/ProjectAutomations.tsx:393 ; apps/web/src/modules/agent/flow/flow-model.ts:530
 A task opened from a dashboard drill is named by its title -> apps/web/src/modules/projects/exports.ts:43 ; apps/web/src/modules/shell/entity-opener.ts:135
 A project's task table names who last changed each task -> apps/api/src/apps/projects/service/table-backing.ts:138
+A week nobody has planned says so, with the projects using time and how time gets planned -> apps/api/src/apps/projects/service/capacity.ts:340 ; apps/api/src/apps/projects/service/capacity.ts:352
+A reconcile names a source repository only to a reader of its host -> apps/api/src/apps/projects/service/reconcile.ts:445 ; apps/api/src/apps/projects/service/reconcile.ts:556
+On a day or hour rate the money half shows what is invoiced, with no left to invoice -> apps/api/src/apps/projects/handlers.ts:1252
+A past week whose planned tasks are all done is not a week nobody planned -> apps/api/src/apps/projects/service/capacity.ts:341
+A coding agent gets the card's own page link, which opens the card with Create invoice -> apps/api/src/apps/projects/service/reconcile.ts:1578 ; apps/web/src/modules/projects/ReconcileCardView.tsx:11
+A line's amount is its quantity rounded to hundredths, then priced -> apps/api/src/apps/projects/service/reconcile-lines.ts:552
+A retainer card's time lines carry no amount; its note names fee, included hours, rate, used -> apps/api/src/apps/projects/service/reconcile-card.ts:96 ; apps/api/src/apps/projects/handlers.ts:1666
+A month the schedule's run bills has no Create and says so -> apps/api/src/apps/projects/handlers.ts:1674
+A month's margin counts an invoice in the month of its service period, a credit note with its invoice -> bundled-apps/invoicing/src/tools/project-invoiced-get.ts:150
 A project refuses a months field -> apps/api/src/apps/projects/service/create-project.ts:505
 A project refuses lookup and formula fields too; the fields editor offers neither, nor months -> apps/api/src/modules/dashboards/tables/columns.ts:48 ; apps/web/src/modules/dashboards/dashboards-client.ts:1326
+time_plan_set refuses a request that sets nothing, before any approval -> apps/api/src/apps/projects/service/time-plan.ts:673 ; apps/api/src/apps/projects/app.manifest.json:4453
+An omitted basis on a fixed-price project becomes fixed; a basis contradicting the terms is refused -> apps/api/src/apps/projects/service/time-plan.ts:699 ; apps/api/src/apps/projects/service/time-plan.ts:707
+A project created with its tasks takes each task's timebox and milestone flag when it turns time and budgets on -> apps/api/src/apps/projects/service/create-project.ts:623 ; apps/api/src/modules/apps/sandbox/bridge/projects.ts:669

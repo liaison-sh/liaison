@@ -34,7 +34,11 @@ import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-co
 import { SINK_KERNEL_MESSAGES } from "~/modules/agent/scopes/scope-taint"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { toolRegistry } from "~/modules/apps/app-registries"
-import { createSequencedApprovalStep, executeTool } from "~/modules/apps/execute-tool"
+import {
+  createHandlerApprovalRequest,
+  createSequencedApprovalStep,
+  executeTool,
+} from "~/modules/apps/execute-tool"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -231,6 +235,7 @@ describe("FX18: gated calls and sandboxed app writes name the acting agent", () 
     await sql`DELETE FROM kernel.approval_requests WHERE org_id = ${ORG}`
     await sql`DELETE FROM kernel.pending_events WHERE org_id = ${ORG}`
     await sql`DELETE FROM kernel.audit_log WHERE org_id = ${ORG}`
+    await sql`DELETE FROM kernel.messages WHERE org_id = ${ORG}`
     // `app_mail` is outside the test lock's truncation set, so this file cleans
     // up after itself or the next run inherits its rows.
     await withPrivilegedDb(ORG, "fx18-clean-mail", async (tx) => {
@@ -470,6 +475,112 @@ describe("FX18: gated calls and sandboxed app writes name the acting agent", () 
     )
 
     expect(seen).toEqual([AGENT])
+  })
+
+  /**
+   * An issue approval a second app raises after a cross-app hop, the way a draft made from a
+   * planned vs done card raises its own: the hop has lost the turn's frame and hands the target
+   * app's bridge the frame it captured (`spawnParentFrameOverride`), and that bridge parks
+   * through the real recording site. `agent` null is a person's own click on the card.
+   */
+  async function nestedIssueApproval(agent: string | null): Promise<string> {
+    const bridge = runContextStore.exit(
+      () =>
+        createRpcBridge(
+          APP,
+          USER,
+          ORG,
+          poison(),
+          appManifest() as never,
+          [WRITE],
+          "user",
+          undefined,
+          {
+            actor: actor as never,
+            threadId: THREAD,
+            origin: "in-app-agent",
+            spawnParentFrameOverride: agent ? { agentId: agent } : null,
+            requestApprovalImpl: ((
+              input: never,
+              proposingTurnScopes: string[] | null,
+              actingAgentId: string | null,
+            ) =>
+              createHandlerApprovalRequest({
+                orgId: ORG,
+                requestedBy: USER,
+                actorScopes: [WRITE],
+                defaultAppName: APP,
+                threadId: THREAD,
+                origin: "in-app-agent",
+                input,
+                proposingTurnScopes,
+                actingAgentId,
+              })) as never,
+          },
+        ) as Record<string, (...a: unknown[]) => Promise<string>>,
+    )
+    const parked = JSON.parse(
+      await bridge.requestApproval!(
+        JSON.stringify({
+          tool_name: `${APP}:stage`,
+          summary: "Issue the invoice draft",
+          current_payload: { draft_id: "d-1" },
+          approve_scope: `${APP}:issue`,
+          expiry_hours: 720,
+        }),
+      ),
+    ) as { approval_id?: string }
+    expect(parked.approval_id).toBeTruthy()
+    return String(parked.approval_id)
+  }
+
+  async function greetingOf(
+    approvalId: string,
+  ): Promise<{ requesterKind?: string; requesterName?: string } | undefined> {
+    const [row] = await sql<Array<{ metadata: Record<string, string> }>>`
+      SELECT metadata FROM kernel.messages
+      WHERE org_id = ${ORG} AND thread_id = ${THREAD}
+        AND metadata->>'type' = 'approval-created' AND metadata->>'requestId' = ${approvalId}`
+    return row?.metadata
+  }
+
+  it("an approval an app raises under its own title keeps that title on the row", async () => {
+    const approvalId = await nestedIssueApproval(null)
+    const [row] = await sql<
+      Array<{ metadata: Record<string, unknown>; summary: { title: string } }>
+    >`
+      SELECT metadata, summary FROM kernel.approval_requests WHERE id = ${approvalId}`
+    expect(row?.summary.title).toBe("Issue the invoice draft")
+    expect(row?.metadata.cardTitle).toBe("Issue the invoice draft")
+  })
+
+  it("the nested issue approval is posted as the thread's agent", async () => {
+    const approvalId = await nestedIssueApproval(AGENT)
+    const [row] = await sql<Array<{ agent_id: string | null; requested_by: string }>>`
+      SELECT agent_id, requested_by FROM kernel.approval_requests WHERE id = ${approvalId}`
+    expect(row).toEqual({ agent_id: AGENT, requested_by: USER })
+    // A personal agent is named for its person, never as the person.
+    expect(await greetingOf(approvalId)).toMatchObject({
+      requesterKind: "agent",
+      requesterName: "Requester's agent",
+    })
+    await drainOutbox()
+    expect(await auditAgentOf(approvalId, "approval_request.create")).toEqual({
+      found: true,
+      agentId: AGENT,
+      actorId: USER,
+    })
+  })
+
+  it("the same nested approval after a person's own click names the person and no agent", async () => {
+    const approvalId = await nestedIssueApproval(null)
+    const [row] = await sql<Array<{ agent_id: string | null }>>`
+      SELECT agent_id FROM kernel.approval_requests WHERE id = ${approvalId}`
+    expect(row?.agent_id).toBeNull()
+    expect(await greetingOf(approvalId)).toMatchObject({
+      requesterKind: "user",
+      requesterName: "Requester",
+    })
   })
 
   it("the durable consumer persists whatever agent the approval event carries", async () => {

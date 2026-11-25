@@ -44,6 +44,18 @@ interface AllowlistEntry {
 const ALLOWLIST: AllowlistEntry[] = [
   // --- savepoint: the fallible statement runs in its own nested tx.transaction() ---
   {
+    file: "modules/contacts/groups.ts",
+    function: "ensureSystemGroup",
+    why: "savepoint",
+    note: "The insert runs inside db.transaction() (a savepoint under a caller's tx); a concurrent enable's row stands and is read back on the live tx.",
+  },
+  {
+    file: "modules/apps/sandbox/bridge/projects.ts",
+    function: "projects_createProject",
+    why: "savepoint",
+    note: "The create runs inside txDb.transaction() (stepTx); on a duplicate externalRef the catch reads the first delivery's project on the live outer tx.",
+  },
+  {
     file: "modules/agent/directory/personal-agent.ts",
     function: "insertPersonalAgentWithFreeHandle",
     why: "savepoint",
@@ -215,7 +227,7 @@ const ALLOWLIST: AllowlistEntry[] = [
   },
   {
     file: "apps/projects/service/update-project.ts",
-    function: "updateProject",
+    function: "updateProjectWithOutcome",
     why: "rethrows",
     note: "Maps a key collision to ProjectsServiceError(409) and throws; the caller's tx rolls back.",
   },

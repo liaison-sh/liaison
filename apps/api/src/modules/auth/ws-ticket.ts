@@ -2,7 +2,7 @@
 import { bindingAllowsOrg, hostBindingEnabled, rawRequestHostBinding } from "~/lib/org-host"
 import { effectiveRequestFromRaw } from "~/lib/request-context"
 import { isOrgDeletingAsync } from "~/modules/apps/org-apps"
-import { isUserAuthCurrent } from "~/modules/auth/auth-state"
+import { getUserAuthState, isUserAuthCurrent } from "~/modules/auth/auth-state"
 import { isSessionRevoked } from "~/modules/auth/session-revocation"
 import { createScope, type Scope } from "~/modules/permissions/types"
 
@@ -84,6 +84,11 @@ export async function consumeWsTicket(
   )
 
   if (!isCurrent) return null
+  // A socket is a member's: a client of the portal has no socket (the ticket route
+  // refuses their token), and a ticket that names one opens nothing. The read above
+  // just refreshed this state, so this one is the cached answer.
+  const state = await getUserAuthState(payload.userId, payload.orgId)
+  if (!state || state.userType === "external") return null
   // An org whose deletion has started opens no socket (S2.5), even with a
   // ticket minted before the mark.
   if (await isOrgDeletingAsync(payload.orgId)) return null

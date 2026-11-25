@@ -19,7 +19,7 @@ import { createMockDb, type MockDb } from "../test-db"
 import { testTime } from "../test-time"
 import { raiseIdentityAttention } from "./gate"
 import { retryParkedCreditNote } from "./parked-credit-note"
-import { FICTIONAL_SIRENS } from "./test-fixtures"
+import { FICTIONAL_SIRENS, FR_SELLER_IDENTITY } from "./test-fixtures"
 
 const ISSUER_ROW = {
   id: "iss-1",
@@ -27,6 +27,7 @@ const ISSUER_ROW = {
   country: "FR",
   vat_id: "FR68900000001",
   address: "1 rue de l'Emetteur, 75001 Paris",
+  ...FR_SELLER_IDENTITY,
   iban: null,
   swift_bic: null,
   bank_name: null,

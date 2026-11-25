@@ -11,12 +11,15 @@
 // the kernel's `app_sequences` and are advanced through Drizzle in the same
 // transaction.
 //
-// Issued documents carry `pdf_status = 'pending'` and no file: the app's own
-// "render me on demand" state, so the PDF a person asks for is rendered by the
-// real template path.
+// Issued documents carry no `pdf_status` and no file: a PDF never made, which
+// the app makes on request (Retry render, a send) by the real template path.
+// Never `pending`: that is an issue whose render is still owed, which the app's
+// interrupted-issue sweep would take up.
 import { sql } from "drizzle-orm"
+import { extractRows } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { appSequences } from "~/db/schema/kernel/app-sequences"
+import { schemaRef } from "~/db/schema-ref"
 import type { SeedContext } from "~/seed/context"
 import { type AppCell, iso, jsonCell, type SeedTx, shiftTime, upsertAppRow } from "../app-tables"
 
@@ -201,7 +204,9 @@ export interface InvoicingLineSpec {
   description?: string
   unitPriceMinor?: number
   quantity: number
-  lineKind?: "goods" | "software" | "shipping"
+  lineKind?: "goods" | "software" | "shipping" | "service"
+  /** The source key the line carries (`retainer_overage:<schedule>:<month>` and the like). */
+  externalId?: string
 }
 
 export interface InvoicingDocumentSpec {
@@ -219,6 +224,16 @@ export interface InvoicingDocumentSpec {
   poNumber?: string
   notes?: string
   incoterm?: string
+  /** The document's links to records outside invoicing (a payment processor's invoice). */
+  externalRefs?: Record<string, string>
+  /** The project the document bills (a services company's invoice). */
+  billingProjectId?: string
+  /** The source key the document carries (`reconcile:<id>:<revision>` and the like). */
+  externalRef?: string
+  /** A credit note: the key of the document it corrects. */
+  correctsKey?: string
+  /** Further columns of the document row, as the app writes them (`invoice_role` and the like). */
+  columns?: Record<string, AppCell>
 }
 
 /** Prefix per document type: the issuer profile's own defaults. */
@@ -236,7 +251,7 @@ export interface ComputedLine {
   description: string
   quantity: number
   unitPriceMinor: bigint
-  lineKind: "goods" | "software" | "shipping"
+  lineKind: "goods" | "software" | "shipping" | "service"
   taxRateBp: number
   subtotalMinor: bigint
   taxMinor: bigint
@@ -339,7 +354,7 @@ export function computeDocuments(
         countryOfOrigin: needsCustoms ? "FR" : null,
         customsDescription: needsCustoms ? sku.customsDescription : null,
         productSource: sku ? sku.productSource : null,
-        externalId: sku ? sku.externalId : null,
+        externalId: sku ? sku.externalId : (ln.externalId ?? null),
       })
       position++
     }
@@ -407,6 +422,10 @@ export interface IssuerProfileInput {
   invoiceApprovalThresholdMinor: string
   poApprovalThresholdMinor: string
   timezone: string
+  /** The company's SIREN and structured address, which a French e-invoice states. */
+  identity?: { siren: string; line1: string; postcode: string; city: string; countryCode: string }
+  /** The mailbox its documents are sent from (Settings, Invoicing). */
+  mailAccountId?: string | null
 }
 
 export function issuerProfileId(ctx: SeedContext, key: string): string {
@@ -445,6 +464,16 @@ async function upsertIssuerProfile(
     auto_email_enabled: false,
     prices_include_tax: false,
     timezone: p.timezone,
+    ...(p.identity
+      ? {
+          siren: p.identity.siren,
+          address_line1: p.identity.line1,
+          postcode: p.identity.postcode,
+          city: p.identity.city,
+          country_code: p.identity.countryCode,
+        }
+      : {}),
+    ...(p.mailAccountId ? { mail_account_id: p.mailAccountId } : {}),
     email_templates: jsonCell({}),
     created_at: iso(shiftTime(ctx.now, -365)),
     updated_at: iso(shiftTime(ctx.now, -30)),
@@ -532,8 +561,23 @@ export async function seedInvoicingHistory(
       })
     }
 
+    // The company stamp the app writes at issue: the counterparty contact's company now.
+    const contactIds = [
+      ...new Set(Object.values(input.contactIdsByPartyKey).filter((id): id is string => !!id)),
+    ]
+    const companyOfContact = new Map(
+      contactIds.length === 0
+        ? []
+        : extractRows<{ id: string; company_id: string }>(
+            await tx.execute(sql`
+              SELECT id::text AS id, company_id::text AS company_id
+                FROM ${sql.raw(schemaRef("kernel"))}.contacts
+               WHERE org_id = ${orgId}::uuid AND company_id IS NOT NULL
+                 AND id = ANY(${`{${contactIds.join(",")}}`}::uuid[])`),
+          ).map((r) => [r.id, r.company_id]),
+    )
     for (const d of input.documents) {
-      const issued = d.issuedAt !== null
+      const contactId = input.contactIdsByPartyKey[d.party.key] ?? null
       const row: Record<string, AppCell> & { id: string; org_id: string } = {
         id: d.id,
         org_id: orgId,
@@ -545,7 +589,8 @@ export async function seedInvoicingHistory(
         number_int: d.numberInt,
         year_of_issue: d.yearOfIssue,
         issuer_profile_id: profileId,
-        counterparty_contact_id: input.contactIdsByPartyKey[d.party.key] ?? null,
+        counterparty_contact_id: contactId,
+        company_id: contactId ? (companyOfContact.get(contactId) ?? null) : null,
         counterparty_name: d.party.name,
         counterparty_address: d.party.address,
         counterparty_vat_id: d.party.vatId,
@@ -562,14 +607,20 @@ export async function seedInvoicingHistory(
         paid_at: d.paidAt === null ? null : iso(d.paidAt),
         voided_at: null,
         pdf_file_id: null,
-        // The app's own "render me on demand" state: see the header note.
-        pdf_status: issued ? "pending" : null,
-        external_refs: jsonCell({}),
+        // No PDF made yet, made on request: see the header note.
+        pdf_status: null,
+        external_refs: jsonCell(d.spec.externalRefs ?? {}),
         po_number: d.spec.poNumber ?? null,
         notes: d.spec.notes ?? null,
         lifecycle_log: jsonCell(buildLifecycleLog(d)),
+        ...(d.spec.billingProjectId ? { billing_project_id: d.spec.billingProjectId } : {}),
+        ...(d.spec.externalRef ? { external_ref: d.spec.externalRef } : {}),
+        ...(d.spec.correctsKey
+          ? { original_document_id: ctx.id("document", d.spec.correctsKey) }
+          : {}),
         created_at: iso(d.issuedAt ?? shiftTime(now, -1, 16)),
         updated_at: iso(d.paidAt ?? d.issuedAt ?? shiftTime(now, -1, 16)),
+        ...(d.spec.columns ?? {}),
       }
       await upsertAppRow(tx, "invoicing", "documents", row)
       for (const l of d.lines) {
@@ -624,4 +675,81 @@ export async function seedInvoicingHistory(
     }
     return { issuerProfileId: profileId }
   })
+}
+
+// ── Recurring schedules ──────────────────────────────────────────────────────
+
+export interface RecurringScheduleSpec {
+  /** Keys the schedule's deterministic id: `ctx.id("recurring_schedule", key)`. */
+  key: string
+  contactId: string
+  companyId?: string | null
+  repeats: "month" | "quarter" | "year"
+  /** `last`, a day from 1 to 28, or `MM-DD` for a year. */
+  billingDay: string
+  status: "draft" | "active" | "paused" | "ended"
+  lines: readonly { description: string; qty: number; unitPriceMinor: number; vatBp: number }[]
+  /** The civil dates the app would have computed from the schedule's cadence. */
+  nextIssueOn: string | null
+  nextDraftOn: string | null
+  language?: string
+  pausedUntil?: string | null
+}
+
+/** The `recurring_schedules` rows the app would have written: always `review`, never automatic. */
+export function recurringScheduleRows(
+  ctx: SeedContext,
+  issuerId: string,
+  specs: readonly RecurringScheduleSpec[],
+): Array<Record<string, AppCell> & { id: string; org_id: string }> {
+  return specs.map((s) => ({
+    id: ctx.id("recurring_schedule", s.key),
+    org_id: ctx.orgId,
+    issuer_profile_id: issuerId,
+    company_id: s.companyId ?? null,
+    contact_id: s.contactId,
+    status: s.status,
+    repeats: s.repeats,
+    billing_day: s.billingDay,
+    ends_on: null,
+    covers: "period_ended",
+    issue_mode: "review",
+    auto_enabled_by: null,
+    auto_enabled_at: null,
+    paid_by: "transfer",
+    card_link_url: null,
+    due_rule: "days_30",
+    due_days: null,
+    language: s.language ?? "en",
+    lines: jsonCell(
+      s.lines.map((l) => ({
+        description: l.description,
+        qty: l.qty,
+        unit_price_minor: l.unitPriceMinor,
+        vat_bp: l.vatBp,
+        line_kind: "service",
+      })),
+    ),
+    notes: null,
+    paused_until: s.pausedUntil ?? null,
+    next_issue_on: s.status === "active" ? s.nextIssueOn : null,
+    next_draft_on: s.status === "active" ? s.nextDraftOn : null,
+    version: 1,
+    created_by: "seed",
+    created_at: iso(shiftTime(ctx.now, -60)),
+    updated_at: iso(shiftTime(ctx.now, -30)),
+  }))
+}
+
+/** Recurring schedules for an issuer. Idempotent. */
+export async function seedRecurringSchedules(
+  ctx: SeedContext,
+  issuerId: string,
+  specs: readonly RecurringScheduleSpec[],
+): Promise<number> {
+  const rows = recurringScheduleRows(ctx, issuerId, specs)
+  await withSystemDb("seed-invoicing-recurring", async (tx) => {
+    for (const row of rows) await upsertAppRow(tx, "invoicing", "recurring_schedules", row)
+  })
+  return rows.length
 }

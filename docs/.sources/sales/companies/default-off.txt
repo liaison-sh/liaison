@@ -1,0 +1,8 @@
+Features off until an admin turns them on (missing row is off) -> apps/api/src/modules/apps/org-apps.ts:445
+Admin switch route GET/PUT features -> apps/api/src/modules/apps/routes.ts:668
+Admin scope checked, derived feature refused -> apps/api/src/modules/apps/org-features.ts:227
+Feature labels -> packages/shared/src/i18n/locales/en/kernel.json:7571
+A declared cross-app call is not refused -> apps/api/src/modules/apps/execute-tool.ts:5090
+Company tabs name the feature -> apps/api/src/apps/contacts/app.manifest.json:185
+Company and portal tools name it -> apps/api/src/modules/agent/tools/company-tools.ts:967
+People/Companies switch hidden when off -> apps/web/src/modules/contacts/ContactsSidebar.tsx:378

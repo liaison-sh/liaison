@@ -13,6 +13,7 @@ import {
   issuePipelineCtx,
   lineRow,
 } from "../__tests__/credit-note-fixtures"
+import { FR_SELLER_IDENTITY } from "../einvoicing/test-fixtures"
 import { createMockDb, type MockDb } from "../test-db"
 import {
   buildAdjustmentReversalItems,
@@ -1006,6 +1007,8 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
 
 describe("refund credit note against a French company buyer: the e-invoicing gate parks, never drops", () => {
   const SETTINGS = [{ id: "set-1", gate_mode: "enforce", gate_mode_source: "config" }]
+  // The issuer that signed the e-invoice original: its SIREN and structured address are on file.
+  const SIGNING_ISSUER = { ...ISSUER_ROW, ...FR_SELLER_IDENTITY }
   const FR_CONTACT = "00000000-0000-4000-8000-0000000c0931"
 
   /** An e-invoice to a French company whose stored snapshot carries no SIREN. */
@@ -1038,7 +1041,7 @@ describe("refund credit note against a French company buyer: the e-invoicing gat
     const DOC = "00000000-0000-4000-8000-000000000931"
     const db = createMockDb({
       seed: {
-        issuer_profiles: [ISSUER_ROW],
+        issuer_profiles: [SIGNING_ISSUER],
         einvoicing_settings: SETTINGS,
         documents: [eInvoiceWithoutSiren(DOC, "ORD-931")],
         document_lines: [
@@ -1092,7 +1095,7 @@ describe("refund credit note against a French company buyer: the e-invoicing gat
     const B = "00000000-0000-4000-8000-000000000933"
     const db = createMockDb({
       seed: {
-        issuer_profiles: [ISSUER_ROW],
+        issuer_profiles: [SIGNING_ISSUER],
         einvoicing_settings: SETTINGS,
         documents: [eInvoiceWithoutSiren(A, "ORD-932"), eInvoiceWithoutSiren(B, "ORD-933")],
         document_lines: [

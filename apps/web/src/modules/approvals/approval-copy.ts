@@ -181,6 +181,8 @@ const TEMPLATES: Template[] = [
   // files/attach.ts: a file an earlier step of a sequence makes, pending until it runs.
   T(/^📎 (.+) \(attached once that step has run\)$/, "attachedAfterStep", "file"),
   T(/^Delete role "(.+)"$/, "deleteRole", "name"),
+  // approvals/attention.ts RESTRICTED_DECISION_TITLE: a request about a restricted record.
+  T(/^A restricted document needs your decision$/, "restrictedDecision"),
   T(/^Invite (\S+) as (.+)$/, "inviteAs", "email", "role"),
   T(/^Assign (\S+) to (.+)$/, "assignTo", "email", "role"),
   T(/^Remove (\S+) from (.+)$/, "removeFrom", "email", "role"),
@@ -207,6 +209,21 @@ const TEMPLATES: Template[] = [
   T(/^Due: (.+)$/, "dueLine", "date"),
   T(/^\(no description\)$/, "noDescription"),
   T(/^Add status column: (.+)$/, "addStatusColumn", "label"),
+  // The agreements change-request card (agreements/summarizers.ts). Its title
+  // starts like a ticket reply, so it comes before "Reply to (.+)", which would
+  // otherwise put the card's own English words into the French reply phrase.
+  T(/^Reply to the client and send a change request$/, "changeRequestTitle"),
+  T(/^Nothing is sent if the client wrote after this card$/, "changeRequestGuard"),
+  T(/^Change request: (.+)$/, "changeRequestLine", "title"),
+  T(/^Work: (.+)$/, "workLine", "item"),
+  T(/^Hours: (.+?) \(from (.+)\)$/, "hoursFromLine", "hours", "source"),
+  T(/^Rate: (.+) per hour$/, "ratePerHourLine", "rate"),
+  T(/^Price: (.+)$/, "priceLine", "price"),
+  T(
+    /^The client approves it on a link with an emailed code: a recorded approval, not a signature\.$/,
+    "changeRequestClientApproves",
+  ),
+  T(/^Reply:\n([\s\S]*)$/, "replyBody", "body"),
   T(/^Reply to (.+) on (ticket-\S+)$/, "replyOn", "to", "handle"),
   T(/^Nudge (.+) on (ticket-\S+)$/, "nudgeOn", "to", "handle"),
   T(/^Add internal note on (.+)$/, "addNoteOn", "handle"),

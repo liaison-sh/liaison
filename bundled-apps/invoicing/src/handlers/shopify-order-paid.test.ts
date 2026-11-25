@@ -479,6 +479,8 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     const doc = docs[0]!
     // Payment side settled…
     expect(doc.payment_status).toBe("paid")
+    // Paid already: nothing is due.
+    expect(doc.due_at ?? null).toBeNull()
     expect(doc.paid_at).toBe("2026-05-15") // order createdAt date
     // …but the invoice stays a live, shippable issued document (boxtal reads
     // status='issued'; flipping to 'paid' here would drop it from shipping).
@@ -3205,9 +3207,13 @@ describe("order-paid e-invoicing gate", () => {
       ...overrides,
     }
   }
-  function gated(opts?: { gateMode?: "warn" | "enforce"; resolveContactId?: string }) {
+  function gated(opts?: {
+    gateMode?: "warn" | "enforce"
+    resolveContactId?: string
+    issuer?: IssuerProfileRow
+  }) {
     const made = makeCtx({
-      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+      issuerProfiles: [{ profile: opts?.issuer ?? issuerFR, shopify_shop_id: "shop-1" }],
       resolveContactId: opts?.resolveContactId ?? "contact-ei",
       noDefaultIdentity: true,
     })
@@ -3450,6 +3456,136 @@ describe("order-paid e-invoicing gate", () => {
       confirmed_via: null,
     })
     expect(identityEmits(emits)).toHaveLength(1)
+  })
+
+  // The issuer profile has neither a SIREN (its VAT number does not carry one) nor a street line.
+  const issuerNoSeller: IssuerProfileRow = { ...issuerFR, siren: null, address_line1: null }
+  const issuerEmits = (emits: Array<Record<string, unknown>>) =>
+    emits.filter((e) => e.entity === "einvoicing" && e.action === "issuer_incomplete")
+  async function confirmedBuyer(db: MockDb) {
+    await seedConfirmedIdentity(db, {
+      contact_id: "contact-ei",
+      siren: "900000001",
+      name: "Forge Exemple SARL",
+      postcode: "69002",
+      city: "Lyon",
+    })
+  }
+
+  test("enforce mode: an issuer without SIREN or street line parks the order on the issuer, raises one item for the issuer, and the retry issues it once Settings is completed", async () => {
+    const { ctx, db, emits } = gated({ issuer: issuerNoSeller })
+    await setMode(db, "enforce")
+    await confirmedBuyer(db)
+    const first = await onShopifyOrderCreated(fireEvent({ buyerTaxId: "FR68900000001" }), ctx)
+    expect(first).toMatchObject({ status: "deferred", reason: "awaiting_dependency" })
+    expect(db.__all("documents")).toHaveLength(0)
+    const parks = db.__all("deferred_events")
+    expect(parks).toHaveLength(1)
+    expect(parks[0]).toMatchObject({
+      status: "awaiting_dependency",
+      reason: "issuer_incomplete",
+      blocked_on: {
+        kind: "issuer_incomplete",
+        issuer_profile_id: "issuer-1",
+        missing_fields: ["siren", "address_line1"],
+      },
+    })
+    // Never filed as a wait on the buyer.
+    expect(identityEmits(emits)).toHaveLength(0)
+    expect(issuerEmits(emits)).toHaveLength(1)
+    expect(issuerEmits(emits)[0]).toMatchObject({
+      entityId: "issuer-1",
+      data: { issuer_profile_id: "issuer-1", resolved: false },
+    })
+    const text = String((issuerEmits(emits)[0]?.data as { text?: string } | undefined)?.text)
+    expect(text).toContain("Shopify order #5001")
+    expect(text).toContain("SIREN and street address are missing")
+    expect(text).toContain("Settings > Invoicing, Issuer profiles")
+
+    // A second order waits on the same issuer: still one item.
+    await onShopifyOrderCreated(
+      fireEvent({ orderId: "order-ei-2", name: "#5002", buyerTaxId: "FR68900000001" }),
+      ctx,
+    )
+    expect(db.__all("deferred_events")).toHaveLength(2)
+    expect(issuerEmits(emits)).toHaveLength(1)
+
+    const cronCtx = {
+      ...ctx,
+      db,
+      decideApproval: async () => ({ status: "ok" as const }),
+    }
+    // Far past the retry cap and the dead-letter age, the parks still wait on a person.
+    for (const p of db.__all("deferred_events"))
+      await db.update("deferred_events", String(p.id), {
+        retry_count: 40,
+        retried_at: "2030-01-01T00:00:00Z",
+        created_at: "2029-01-01T00:00:00Z",
+      })
+    const still = await deferredRetryJobHandler(undefined, cronCtx, {
+      now: new Date("2030-01-01T00:01:00Z"),
+    })
+    // Inside the backoff and with the issuer unchanged, nothing is due.
+    expect(still.scanned).toBe(0)
+    expect(db.__all("deferred_events").every((p) => p.status === "awaiting_dependency")).toBe(true)
+
+    // Settings is completed: the next sweep issues both orders and closes the item.
+    await db.update("issuer_profiles", "issuer-1", {
+      siren: FR_SELLER_IDENTITY.siren,
+      address_line1: FR_SELLER_IDENTITY.address_line1,
+      updated_at: "2030-01-01T00:02:00Z",
+    })
+    const swept = await deferredRetryJobHandler(undefined, cronCtx, {
+      now: new Date("2030-01-01T00:03:00Z"),
+    })
+    expect(swept.succeeded).toBe(2)
+    expect(db.__all("documents")).toHaveLength(2)
+    expect(db.__all("deferred_events").every((p) => p.status === "resolved")).toBe(true)
+    const closed = issuerEmits(emits).filter(
+      (e) => (e.data as { resolved: boolean }).resolved === true,
+    )
+    expect(closed).toHaveLength(1)
+    expect(closed[0]?.entityId).toBe("issuer-1")
+  })
+
+  test("once the issuer is completed, an order that now waits on its buyer closes its issuer park and item", async () => {
+    const { ctx, db, emits } = gated({ issuer: issuerNoSeller })
+    await setMode(db, "enforce")
+    // The buyer's SIREN is read off its VAT number but not confirmed: once the issuer is fixed,
+    // the registry check is what the order waits on.
+    await onShopifyOrderCreated(fireEvent({ buyerTaxId: "FR68900000001" }), ctx)
+    expect(db.__all("deferred_events").map((p) => p.reason)).toEqual(["issuer_incomplete"])
+    await db.update("issuer_profiles", "issuer-1", {
+      siren: FR_SELLER_IDENTITY.siren,
+      address_line1: FR_SELLER_IDENTITY.address_line1,
+      updated_at: "2030-01-01T00:02:00Z",
+    })
+    const cronCtx = { ...ctx, db, decideApproval: async () => ({ status: "ok" as const }) }
+    await deferredRetryJobHandler(undefined, cronCtx, { now: new Date("2030-01-01T00:03:00Z") })
+    const rows = db.__all("deferred_events")
+    expect(rows.find((p) => p.reason === "issuer_completed")?.status).toBe("resolved")
+    expect(rows.find((p) => p.reason === "registry_unconfirmed")?.status).toBe("awaiting_data")
+    expect(issuerEmits(emits).map((e) => (e.data as { resolved: boolean }).resolved)).toEqual([
+      false,
+      true,
+    ])
+    expect(identityEmits(emits)).toHaveLength(1)
+  })
+
+  test("warn mode: the same issuer issues the order with a plain PDF, parks nothing and raises nothing", async () => {
+    const { ctx, db, emits } = gated({ issuer: issuerNoSeller })
+    await setMode(db, "warn")
+    await confirmedBuyer(db)
+    const r = await onShopifyOrderCreated(fireEvent({ buyerTaxId: "FR68900000001" }), ctx)
+    expect(r.status).toBe("ok")
+    const doc = db.__all("documents")[0] as Record<string, unknown>
+    expect(doc.pdf_status).toBe("ready")
+    const log = doc.lifecycle_log as Array<Record<string, unknown>>
+    expect(log.find((e) => e.event === "einvoice_gate_warning")).toMatchObject({
+      code: "issuer_incomplete",
+    })
+    expect(db.__all("deferred_events")).toHaveLength(0)
+    expect(issuerEmits(emits)).toHaveLength(0)
   })
 
   // red: warn mode must issue, not park; and the warning must be recorded on the document.

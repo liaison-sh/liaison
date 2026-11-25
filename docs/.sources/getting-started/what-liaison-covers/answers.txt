@@ -1,0 +1,8 @@
+Deals on a board, follow-ups drafted for a person to approve -> apps/api/src/apps/projects/service/deals.ts (followupCandidates) ; apps/api/src/apps/projects/service/deals.ts (dealsRollup)
+A reply, an opt-out or a closed deal stops a send at the moment of sending -> apps/api/src/modules/mail/send-guard.ts (decideSendGuard)
+Mail is one-to-one, opt-outs respected -> apps/api/src/modules/mail/suppressions.ts (SuppressionRecord)
+Timebox, real time, left and the coverage line on a project -> apps/api/src/apps/projects/service/budget.ts (BudgetResult) ; apps/api/src/apps/projects/service/coverage.ts (Coverage)
+Margin for finance only -> apps/api/src/apps/projects/service/budget.ts (MONEY_READ_SCOPE)
+Planned time per person per week, no ranking -> apps/api/src/apps/projects/service/capacity.ts (CapacityResult)
+Client status reports from a project -> apps/api/src/apps/projects/service/client-reports.ts (REPORT_SECTION_KINDS)
+Simple signature, proposals numbered in their own series -> bundled-apps/agreements/src/agreements.ts (seriesOf)

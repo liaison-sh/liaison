@@ -7,7 +7,7 @@ import { registerDurableEventConsumer } from "~/infra/events/durable-consumers"
 import { registerJobWorker } from "~/infra/jobs/jobs"
 import { searchLogger as log } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
-import { buildSearchDocument } from "~/modules/search/doc-builder"
+import { aclFieldsMissing, buildSearchDocument } from "~/modules/search/doc-builder"
 import { documentId } from "~/modules/search/document-id"
 import { writeIndexAndWait } from "~/modules/search/index-writer"
 import {
@@ -359,6 +359,13 @@ export async function planEntityDocument(
     log.debug(
       { app: payload.app, entityType: payload.entityType, entityId: payload.entityId },
       "Row not found or not index-eligible for indexer upsert — treating as delete",
+    )
+    return { deleteId: docId }
+  }
+  if (aclFieldsMissing(reg, row)) {
+    log.error(
+      { app: payload.app, entityType: payload.entityType, entityId: payload.entityId },
+      "Row lacks the access fields its entity declares: refused, its document removed",
     )
     return { deleteId: docId }
   }

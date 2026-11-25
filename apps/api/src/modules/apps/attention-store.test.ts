@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun
 import type { AttentionItem } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import { extractRows } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { redis } from "~/lib/redis"
 import { attentionItemsRegistry, toolRegistry } from "~/modules/apps/app-registries"
@@ -22,7 +23,10 @@ import {
   processAttentionRefreshJob,
   REFRESH_MIN_INTERVAL_MS,
   readStoredAttention,
+  refreshAllAppAttention,
   refreshAppAttention,
+  STALE_LIST_MESSAGE,
+  STORED_LIST_MAX_AGE_MS,
   wireAttentionRefreshWakes,
 } from "~/modules/apps/attention-store"
 import * as executor from "~/modules/apps/sandbox/executor"
@@ -81,6 +85,15 @@ describe("stored app attention", () => {
       actor: { actorType: "user", userId, orgId, scopes: ["*"], dimensionGrants: {} },
     })
 
+  // Back-date the stored list, as if its refreshes had stopped that long ago.
+  const ageList = async (ms: number) =>
+    withPrivilegedDb(orgId, "test:age-attention-list", (tx) =>
+      tx.execute(
+        sql`UPDATE kernel.app_attention_items SET computed_at = now() - make_interval(secs => ${ms / 1000})
+            WHERE org_id = ${orgId}::uuid AND app = ${APP}`,
+      ),
+    )
+
   beforeAll(async () => {
     await acquireTestLock()
     const u = await minimal.orgAdmin((await createTestOrg()).id)
@@ -110,6 +123,54 @@ describe("stored app attention", () => {
     attentionItemsRegistry.delete([orgId, APP])
     AttentionStoreTestAccess.reset()
     await releaseTestLock()
+  })
+
+  it("a pass over every app reads the people and each one's permissions once, not once per app", async () => {
+    const SECOND = `${APP}2`
+    attentionItemsRegistry.set([orgId, SECOND], {
+      handler: "computeAttention",
+      bundlePath: "/nonexistent/attention-store-test-bundle.js",
+      trusted: false,
+    } as never)
+    let listings = 0
+    let loads = 0
+    const ran: string[] = []
+    try {
+      await refreshAllAppAttention(orgId, {
+        ...deps,
+        listActiveUsers: async () => {
+          listings++
+          return [userId]
+        },
+        loadPersonActor: async (o, u) => {
+          loads++
+          return deps.loadPersonActor(o, u)
+        },
+        invoke: async (_reg, appName) => {
+          ran.push(appName)
+          return []
+        },
+      })
+      expect(ran).toContain(APP)
+      expect(ran).toContain(SECOND)
+      expect([listings, loads]).toEqual([1, 1])
+    } finally {
+      attentionItemsRegistry.delete([orgId, SECOND])
+    }
+  })
+
+  it("a pass over every app runs for every active member, also one who is not around", async () => {
+    // Nobody is around in a workspace just seeded: its lists must still be stored.
+    const ranFor: string[] = []
+    await refreshAllAppAttention(orgId, {
+      loadPersonActor: deps.loadPersonActor,
+      notify: deps.notify,
+      invoke: async (_reg, appName, actor) => {
+        if (appName === APP && actor.actorType === "user") ranFor.push(actor.userId)
+        return []
+      },
+    })
+    expect(ranFor).toEqual([userId])
   })
 
   it("a feed poll runs no app code: it reads the stored list", async () => {
@@ -197,6 +258,86 @@ describe("stored app attention", () => {
     const res = await feed()
     expect(res.items.filter((i) => i.app === APP).map((i) => i.id)).toEqual(["kept"])
     expect(res.errors).toContainEqual({ app: APP, reason: "error", message: "provider broke" })
+  })
+
+  it("a list computed while its person was away is not served: it is recomputed, and the feed reloads", async () => {
+    // A dated line (a period's last day) stored three days ago, the person away since.
+    listed = [item("period-last-day")]
+    await refreshAppAttention(orgId, APP, deps)
+    const age = async (ms: number) =>
+      withPrivilegedDb(orgId, "test:age-attention-list", (tx) =>
+        tx.execute(
+          sql`UPDATE kernel.app_attention_items SET computed_at = now() - make_interval(secs => ${ms / 1000})
+              WHERE org_id = ${orgId}::uuid AND app = ${APP}`,
+        ),
+      )
+    await age(3 * 24 * 60 * 60_000)
+    providerRuns = 0
+    notified.length = 0
+    // The provider no longer lists it: the day is past.
+    listed = []
+    const first = await feed()
+    expect(first.items.filter((i) => i.app === APP)).toEqual([])
+    await attentionRefreshesSettled()
+    expect(providerRuns).toBe(1)
+    // Recomputed and stored: the person's devices reload the feed.
+    expect(notified).toEqual([userId])
+    expect((await feed()).items.filter((i) => i.app === APP)).toEqual([])
+
+    // A stale list whose items are still true comes back on the reload.
+    listed = [item("still-true")]
+    await refreshAppAttention(orgId, APP, deps)
+    await age(STORED_LIST_MAX_AGE_MS + 60_000)
+    notified.length = 0
+    expect((await feed()).items.filter((i) => i.app === APP)).toEqual([])
+    await attentionRefreshesSettled()
+    expect(notified).toEqual([userId])
+    expect((await feed()).items.filter((i) => i.app === APP).map((i) => i.id)).toEqual([
+      "still-true",
+    ])
+
+    // A list within its age is served as stored.
+    await age(STORED_LIST_MAX_AGE_MS - 60_000)
+    providerRuns = 0
+    expect((await feed()).items.filter((i) => i.app === APP).map((i) => i.id)).toEqual([
+      "still-true",
+    ])
+    await attentionRefreshesSettled()
+    expect(providerRuns).toBe(0)
+  })
+
+  it("a list too old to serve says so on the feed: the app reads as out of date, never as nothing to do", async () => {
+    listed = [item("stalled")]
+    await refreshAppAttention(orgId, APP, deps)
+    await ageList(STORED_LIST_MAX_AGE_MS + 60_000)
+    const res = await feed()
+    expect(res.items.filter((i) => i.app === APP)).toEqual([])
+    expect(res.errors).toContainEqual({
+      app: APP,
+      reason: "error",
+      message: STALE_LIST_MESSAGE,
+    })
+    await attentionRefreshesSettled()
+    // Recomputed: served again, the marker gone.
+    const after = await feed()
+    expect(after.items.filter((i) => i.app === APP).map((i) => i.id)).toEqual(["stalled"])
+    expect(after.errors.filter((e) => e.app === APP)).toEqual([])
+  })
+
+  it("a failed refresh of an old list does not make it fresh: the old items stay hidden", async () => {
+    listed = [item("days-old")]
+    await refreshAppAttention(orgId, APP, deps)
+    await ageList(3 * 24 * 60 * 60_000)
+    await refreshAppAttention(orgId, APP, {
+      ...deps,
+      invoke: async () => {
+        throw new Error("provider slow")
+      },
+    })
+    const res = await feed()
+    expect(res.items.filter((i) => i.app === APP)).toEqual([])
+    expect(res.errors.filter((e) => e.app === APP).length).toBeGreaterThan(0)
+    await attentionRefreshesSettled()
   })
 
   it("drops malformed items and caps nothing it should not", async () => {

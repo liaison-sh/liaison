@@ -115,6 +115,13 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   not_installed: 503,
   unsupported: 501,
 
+  // ── kernel admin tools ────────────────────────────────────────────────────
+  // A role, scope or dimension grant aimed at a client's portal account: the
+  // target's kind, not a fault (admin-tools.ts EXTERNAL_USER_REFUSAL).
+  USER_IS_EXTERNAL: 409,
+  // A staff invitation for an address that belongs to a client of the portal.
+  EMAIL_IS_PORTAL_USER: 409,
+
   // ── invoicing ─────────────────────────────────────────────────────────────
   invalid_input: 400,
   invalid_type: 400,
@@ -131,6 +138,38 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   shopify_draft_order_id: 400,
   draft_order_id_missing: 400,
   issuer_not_found: 404,
+  // Who issues what: a customer a live card subscription bills, a payment mirror that cannot say
+  // yet, a card stream's issuer left unpicked, a stream with no choice, no card stream connected.
+  subscription_stream_conflict: 409,
+  subscription_check_unavailable: 503,
+  issuer_required: 400,
+  stream_not_choosable: 400,
+  card_stream_not_connected: 409,
+  issuer_unknown: 503,
+  // Card payments from the payments app: what waits in the queue, how to name it, the rate a
+  // bare charge needs.
+  payment_ref_missing: 400,
+  nothing_waiting: 404,
+  vat_rate_required: 400,
+  // The payments provider did not answer the read a decision is checked against: nothing was issued.
+  payment_unreadable: 502,
+  invoice_not_found: 404,
+  einvoice_gate: 422,
+  // Month-end run rows: a required argument is missing, the row changed under the caller, the run
+  // no longer takes changes, or "from now on" has no schedule to change.
+  applies_required: 400,
+  unknown_field: 400,
+  ends_on_required: 400,
+  if_unchanged_since_required: 400,
+  draft_changed: 409,
+  already_in_run: 409,
+  amount_changed: 409,
+  run_closed: 409,
+  schedule_issues_by_itself: 409,
+  // No row of the run is ready to issue, so approving it would issue nothing: fix a row first.
+  nothing_ready: 409,
+  no_schedule: 422,
+  schedule_has_no_currency: 422,
   draft_order_not_found: 404,
   issued_document_immutable: 409,
   // A create-and-issue keyed onto an existing document asked for different content: edit that
@@ -164,6 +203,75 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   received_reason_invalid: 400,
   document_not_editable: 409,
   already_invoiced: 409,
+  // A draft from a planned vs done card: its card changed since (issue refused), or its lines
+  // belong to the card (edit refused).
+  reconcile_changed: 409,
+  from_reconcile_change_on_card: 409,
+  // Making a draft from a planned vs done card: the card moved on, or could not be read.
+  card_changed: 409,
+  card_unreadable: 502,
+  // Filing an annex: the invoice was sent, the file is not the caller's to read, or files are off.
+  document_sent: 409,
+  file_not_readable: 403,
+  files_unavailable: 503,
+  invalid_kind: 400,
+  invalid_project: 400,
+  nothing_billed: 422,
+  // A retainer: its terms, its month drafted from its card, and the card's own discard.
+  no_retainer_schedule: 409,
+  nothing_to_bill: 409,
+  // A renewal whose schedule bills several fee lines: a person sets the new terms.
+  fee_lines_ambiguous: 409,
+  not_a_card_draft: 409,
+  not_a_retainer: 409,
+  period_on_run: 409,
+  month_on_other_card: 409,
+  draft_outdated: 409,
+  retainer_needs_project_money: 403,
+  retainer_needs_reconcile: 409,
+  // A change of a retainer's terms that does not name the version it was read at.
+  version_required: 400,
+  // A billing plan, its milestone and advance invoices, and an advance's refund.
+  advance_already_deducted: 409,
+  advance_exceeds_invoice: 422,
+  advance_needs_final: 400,
+  advance_not_issued: 409,
+  already_drafted: 409,
+  final_already_drafted: 409,
+  billing_draft_locked: 409,
+  invalid_step: 400,
+  invalid_task: 400,
+  no_billing_step: 404,
+  no_customer: 422,
+  no_steps: 400,
+  not_an_advance: 404,
+  not_an_advance_step: 400,
+  not_done: 409,
+  nothing_to_refund: 409,
+  plan_on_rate_project: 409,
+  advance_on_rate_project: 409,
+  plan_total_mismatch: 422,
+  project_unreadable: 502,
+  quote_not_found: 404,
+  quote_not_sent: 409,
+  refund_by_hand: 422,
+  step_locked: 409,
+  task_gone: 404,
+  task_not_in_project: 404,
+  task_on_other_plan: 409,
+  // An accepted amendment's milestone (billing_step_add) and a plan that lists amendments.
+  amendment_not_accepted: 422,
+  amendment_amount_mismatch: 422,
+  amendment_on_other_plan: 409,
+  currency_mismatch: 422,
+  no_billing_plan: 409,
+  // Correcting a billed line of a planned vs done invoice by a credit note.
+  correction_by_hand: 422,
+  line_not_found: 404,
+  line_not_on_invoice: 422,
+  not_invoiced: 409,
+  nothing_to_credit: 409,
+  use_new_line: 422,
   hs_code_in_use: 409,
   stale_reissue_approval: 409,
   reissue_needs_second_approval: 409,
@@ -175,6 +283,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   draft_order_fetch_pending_approval: 409,
   // Settings or counterparty data must be completed first.
   no_mail_account: 422,
+  // The issuer's send-from mailbox is not one this person can send from.
+  mailbox_unavailable: 422,
   no_issuer_profile: 422,
   no_recipient: 422,
   counterparty_incomplete: 422,
@@ -204,8 +314,21 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   einvoice_approval_stale: 409,
   einvoice_already_sent: 409,
   einvoice_send_disabled: 409,
+  // Standing authorization asked for before an e-invoicing platform is chosen.
+  einvoicing_platform_not_set: 409,
   einvoice_before_cutover: 409,
   einvoice_retry_not_allowed: 409,
+  // A send prepared under a stream's standing grant or a month-end row's grant whose document is no
+  // longer that stream's or that row's; a standing authorization asked for a stream that has none;
+  // a collection the platform did not take.
+  stream_mismatch: 409,
+  run_item_mismatch: 409,
+  stream_not_authorizable: 400,
+  not_reported: 502,
+  // A payment reminder about an invoice already settled: the send guard's stop codes.
+  invoice_paid: 409,
+  invoice_credited: 409,
+  invoice_voided: 409,
   not_transmitted: 409,
   approval_unavailable: 409,
   booking_disabled: 409,
@@ -237,6 +360,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   provider_failed: 502,
   // A deposit call that failed mid-flight: the platform may have it, the next tick asks first.
   einvoice_outcome_unknown: 502,
+  // An approved run threw before anything landed: nothing changed, it can be retried.
+  handler_threw_no_effect: 503,
   contracts_unavailable: 503,
   // E-invoicing regime and readiness reason codes (P1): carried in `code` fields of reasons and
   // blockers; a refusal carrying one is the caller's data to fix, never a server fault.
@@ -255,6 +380,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   fx_rate_unavailable: 503,
   gate_warning: 422,
   internal_cancellation: 409,
+  issuer_incomplete: 422,
   issuer_out_of_scope: 422,
   not_invoice_document: 422,
   public_entity_chorus_pro: 422,
@@ -271,6 +397,42 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // The `code` an attention event carries when it RESOLVES an e-invoicing item (Factur-X built
   // after a failure); never a tool error, classified so the source scan stays exhaustive.
   resolved: 409,
+  // Recurring schedules: a schedule that does not exist, has ended or has not started, a repeat
+  // or end date it cannot take, and issuing by itself asked for at creation (it is set by an update).
+  // A change made from an older version than the schedule now holds is refused, never written over.
+  schedule_not_found: 404,
+  schedule_ended: 409,
+  // An item of a month-end run whose schedule was paused or ended before it issued: left out, no number used.
+  schedule_stopped: 409,
+  schedule_changed: 409,
+  schedule_not_started: 409,
+  invalid_schedule: 422,
+  invalid_until: 422,
+  auto_needs_update: 422,
+  // The month-end run: a run or row that does not exist, a run not in the state the step needs,
+  // a run's draft reached outside its run, a row not approved or already issued, and a draft
+  // changed after its approval (it waits for a new one). The caller's state to act on.
+  run_not_found: 404,
+  item_not_found: 404,
+  run_not_drafted: 409,
+  run_not_approved: 409,
+  run_already_issuing: 409,
+  run_item_draft: 409,
+  item_not_approved: 409,
+  already_issued: 409,
+  changed_since_approval: 409,
+  // A row asked to issue outside its run's issue window, and a run draft written without its key.
+  outside_issue_window: 409,
+  not_a_run_draft: 422,
+  // A row whose run stopped issuing, whose draft is gone, or whose draft lost its period key
+  // between its approval and its issue: nothing was written and no number was used.
+  run_not_issuing: 409,
+  draft_missing: 409,
+  draft_without_key: 409,
+  // A Shopify-linked quote sent to the local convert (it converts by completing its draft order).
+  shopify_linked: 409,
+  // The local convert step failed; the quote is unchanged and no number was used.
+  convert_failed: 502,
   // Upstream (mail, Shopify, the PDF renderer, another app) failed.
   send_dispatch_failed: 502,
   send_failed: 502,
@@ -281,7 +443,182 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   customs_fetch_failed: 502,
   thread_post_failed: 502,
   render_failed: 502,
+  // The invoice's activity report could not be made into a PDF: nothing was sent, retry the send.
+  activity_report_pdf_failed: 502,
   // The order could not be read just now: the address it would compare is unknown.
   order_unreadable: 503,
   target_app_unavailable: 503,
+  // ── agreements ────────────────────────────────────────────────────────────
+  // Bad or incomplete input.
+  INVALID_KIND: 400,
+  INVALID_PRICE: 400,
+  INVALID_CURRENCY: 400,
+  INVALID_SHARES: 400,
+  INVALID_FILE: 400,
+  INVALID_HOURS: 400,
+  INVALID_PROJECT: 400,
+  TITLE_REQUIRED: 400,
+  TEMPLATE_INVALID: 400,
+  USE_CHANGE_REQUEST: 400,
+  // A heading, paragraph or clause in a field or value the editor cannot show.
+  INVALID_SOURCE: 400,
+  // Who may do it: only a person sets a price or says a document is not a guarantee; only an
+  // editor on the list changes who can see it; an agent's change waits for a person.
+  PRICE_NEEDS_A_PERSON: 403,
+  NEEDS_A_PERSON: 403,
+  NOT_AN_EDITOR: 403,
+  APPROVAL_REQUIRED: 403,
+  TEMPLATE_NOT_FOUND: 404,
+  // The agreement's state stops it: not a draft, a stale draft, an empty list, a check failed.
+  NOT_A_DRAFT: 409,
+  VERSION_CONFLICT: 409,
+  ACCESS_LIST_EMPTY: 409,
+  PRICE_NOT_SET: 409,
+  SIGNATURE_DOES_NOT_FIT: 409,
+  PERSONAL_GUARANTEE: 409,
+  WHAT_IT_IS_REQUIRED: 409,
+  AGENT_TEXT_UNREAD: 409,
+  DOCUMENT_EMPTY: 409,
+  // A renewal retainer lacks the hours, price or first day that replace the current terms.
+  RENEWAL_TERMS_MISSING: 409,
+  // Freezing and sending for signature (agreements; client action links through the bridge).
+  BLANK_FIELD: 409,
+  FREEZE_TEXT_MISMATCH: 409,
+  // An uploaded PDF (the render service's file checks): the file itself is refused, or the
+  // service is missing or busy, or the signed copy of an upload did not read as the file did.
+  NOT_A_PDF: 422,
+  PDF_UNREADABLE: 422,
+  PDF_TOO_LARGE: 422,
+  PDF_ENCRYPTED: 422,
+  PDF_ACTIVE_CONTENT: 422,
+  PDF_VARIES_BY_VIEWER: 422,
+  PDF_INFECTED: 422,
+  NOT_READABLE: 404,
+  // A passage read: a section number that is not one, or one the signed text does not hold.
+  INVALID_SECTION: 400,
+  SECTION_NOT_FOUND: 404,
+  PDF_RENDER_UNAVAILABLE: 503,
+  PDF_RENDER_BUSY: 429,
+  COPY_DIFFERS: 409,
+  // A change request's reply states its own hours or amount; the figures line comes from the card.
+  REPLY_STATES_FIGURES: 422,
+  // The legal layout refuses the text itself: a reference to nothing or to a hidden clause, a
+  // typed number of one of its own articles, a clause starting with a number, a character no
+  // face draws.
+  BROKEN_REFERENCE: 409,
+  TYPED_REFERENCE: 409,
+  NUMBERED_CLAUSE: 409,
+  CHARACTER_NOT_DRAWABLE: 422,
+  ALREADY_SENT: 409,
+  NOT_FROZEN: 409,
+  NOT_SENT: 409,
+  SIGNER_HAS_NO_EMAIL: 409,
+  NOT_THE_CONTACTS_ADDRESS: 409,
+  TARGET_SENT_BY_ITS_APP: 409,
+  // A quote's outcome: set once, on a quote only.
+  OUTCOME_ALREADY_SET: 409,
+  NOT_A_QUOTE: 409,
+  // An imported agreement is filed from its PDF, with its dates as days.
+  FILE_REQUIRED: 400,
+  INVALID_DATE: 400,
+  SIGNERS_REQUIRED: 400,
+  TOO_MANY_SIGNERS: 400,
+  INVALID_SIGNER: 400,
+  INVALID_SIGNERS: 400,
+  INVALID_MODE: 400,
+  INVALID_ORDER: 400,
+  INVALID_EXPIRY: 400,
+  REASON_REQUIRED: 400,
+  TARGET_NOT_REGISTERED: 400,
+  KIND_NOT_ALLOWED: 400,
+  EMAIL_REQUIRED: 400,
+  MINT_NEEDS_A_PERSON: 403,
+  REVOKE_NEEDS_A_PERSON: 403,
+  // A change request: only on a signed agreement that is not itself one, with its work, hours
+  // and their source, rate, reply and client mail, quoting the parent's signed text; a reply
+  // that did not leave withdraws the approval link.
+  PARENT_NOT_SIGNED: 409,
+  PARENT_IS_A_CHANGE_REQUEST: 409,
+  PASSAGE_NOT_SIGNED_TEXT: 409,
+  NO_CLIENT_CONTACT: 409,
+  WORK_REQUIRED: 400,
+  HOURS_REQUIRED: 400,
+  HOURS_SOURCE_REQUIRED: 400,
+  RATE_REQUIRED: 400,
+  REPLY_REQUIRED: 400,
+  MAIL_REQUIRED: 400,
+  REPLY_NOT_SENT: 502,
+  FREEZE_FAILED: 409,
+  // A signed agreement's evidence: not signed or not sealed yet, a frozen file that no longer
+  // matches its fingerprint (never sealed, never repaired), a name no font can draw.
+  NOT_SIGNED: 409,
+  SENDER_CALL_UNAVAILABLE: 409,
+  NOT_SEALED: 409,
+  DOCUMENT_CHANGED: 409,
+  NOT_THIS_VERSION_FILE: 409,
+  EVIDENCE_INCONSISTENT: 409,
+  SIGNATURE_NAME_NOT_DRAWABLE: 422,
+  // A verify asked with neither an agreement id nor a version id.
+  INVALID_PARAMS: 400,
+  MERGE_FAILED: 503,
+  // What this server offers: signatures off on the hosted edition, no timestamp authority set up,
+  // no renderer or link door on this build. The operator can change these, the caller cannot.
+  SIGNING_NOT_AVAILABLE: 422,
+  TIMESTAMP_NOT_CONFIGURED: 422,
+  FREEZE_NOT_AVAILABLE: 422,
+  LINKS_NOT_AVAILABLE: 422,
+  NOT_AVAILABLE: 422,
+  // The host offers no call made as the sender (an older host): the change request waits.
+  UNAVAILABLE: 422,
+  // A send's pinned mail check, held again when the approved send goes: the card no longer
+  // matches, or the address stopped taking mail since the card (a reply, a bounce, an opt-out).
+  // A new link for one signer: they already answered, declined after proving the code, or
+  // still wait for the signer before them.
+  ALREADY_DECIDED: 409,
+  DECLINED_BY_SIGNER: 409,
+  NOT_THEIR_TURN: 409,
+  // A send whose links could not be written (asking again asks nobody twice), and a save or a
+  // void that waits for an answer not recorded yet.
+  SEND_NOT_CONFIRMED: 409,
+  ANSWER_BEING_RECORDED: 409,
+  // Another person in a withdrawn signer's place: a signer who was not withdrawn, more than one
+  // person named, someone who already holds a link, or a place already taken.
+  SIGNER_NOT_WITHDRAWN: 409,
+  ONE_SIGNER_IN_PLACE: 400,
+  HOLDS_A_LINK: 409,
+  ALREADY_REPLACED: 409,
+  // The client's mail is already answered by a change request, or this one was closed meanwhile.
+  CHANGE_REQUEST_ALREADY_SENT: 409,
+  CHANGE_REQUEST_CLOSED: 409,
+  // mail: the run may read no mailbox, so it can send from none.
+  MISSING_SCOPE: 403,
+  REMIND_FAILED: 409,
+  NEW_LINK_FAILED: 409,
+  SEND_GUARD_MISMATCH: 409,
+  SEND_GUARD_REPLIED: 409,
+  SEND_GUARD_BOUNCED: 409,
+  SEND_GUARD_OPTED_OUT: 409,
+  SEND_GUARD_HELD: 409,
+  SEND_GUARD_REF_STOP: 409,
+  SEND_GUARD_UNAVAILABLE: 503,
+  // The client portal's staff side (modules/portal/access.ts): who may be invited, what a
+  // share may point at, a company whose access ended, the hour's invitation budget.
+  NO_MAIL_ON_DEMO: 403,
+  PORTAL_EMAIL_IN_USE: 409,
+  PORTAL_EMAIL_IS_STAFF: 409,
+  CONTACT_NOT_THIS_COMPANY: 409,
+  PORTAL_ACCESS_ENDED: 409,
+  PORTAL_INVITE_LIMIT: 429,
+  SHARE_NOT_THIS_COMPANY: 409,
+  SHARE_OBJECT_REQUIRED: 422,
+  PORTAL_SETTINGS_INVALID: 422,
+  ERASE_FAILED: 500,
+  // Client reports (apps/projects/service/client-reports.ts): a section of a share that is
+  // closed, a report already sent or no longer a draft, a recipient without an address, a
+  // project with no client company.
+  SHARE_CLOSED: 409,
+  REPORT_SENT: 409,
+  REPORT_NOT_DRAFT: 409,
+  NO_RECIPIENT: 422,
+  no_client_company: 422,
 }

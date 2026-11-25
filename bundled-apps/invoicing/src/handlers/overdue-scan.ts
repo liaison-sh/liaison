@@ -126,6 +126,8 @@ export async function overdueScanJob(
       continue
     }
     if (overdueDays <= 0) continue
+    // Nothing is owed on an invoice of zero (a final whose advances paid it all): never overdue.
+    if (BigInt(String(doc.grand_total_minor).split(".")[0] || "0") <= 0n) continue
 
     // `entity: "detail"` anchors the attention item to the document detail tab
     // (`invoicing:detail`); the frontend deep-links by opening tab type

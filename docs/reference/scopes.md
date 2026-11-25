@@ -30,6 +30,10 @@ Scopes are hierarchical capability strings, `app:resource:action`. Granting `app
 | `kernel:audit:write` | Write to audit log |
 | `kernel:billing:read` | Read AI credit usage: the Usage settings page, usage chart and credit transactions (own transactions only unless also an org admin) |
 | `kernel:bug_reports:file` | Report a bug about Liaison under your own name (every active member holds it) |
+| `kernel:client_actions:read` | See the requests sent to clients to sign, accept or approve |
+| `kernel:client_actions:write` | Send and withdraw requests to clients to sign, accept or approve |
+| `kernel:companies:read` | Read companies |
+| `kernel:companies:write` | Create and edit companies |
 | `kernel:contacts:admin` | Change who can see contacts nobody owns (shared-mailbox and imported contacts) |
 | `kernel:contacts:export` | Export the contact registry |
 | `kernel:contacts:read` | Read contacts |
@@ -51,6 +55,9 @@ Scopes are hierarchical capability strings, `app:resource:action`. Granting `app
 | `kernel:policies:admin` | Configure the org's approval policies, an admin authority: APPROVAL-TIGHTENING ones via approval_policy_set (require approval / N-eyes per tool + condition) and AUTO-APPROVE (loosening) ones via policy_set |
 | `kernel:policies:read` | Read the org's auto-approve (loosening) and approval-tightening policies |
 | `kernel:policies:write` | Read the org's auto-approve (loosening) policies; setting them (policy_set) requires kernel:policies:admin |
+| `kernel:portal:admin` | See and manage clients' portal accounts |
+| `kernel:portal:logs` | Read what clients did in the portal |
+| `kernel:portal:share` | Choose what a client company sees in its portal |
 | `kernel:products:read` | Read product attributes (short codes) |
 | `kernel:products:write` | Write product attributes (short codes) |
 | `kernel:roles:admin` | Create and edit roles |
@@ -69,6 +76,8 @@ Scopes are hierarchical capability strings, `app:resource:action`. Granting `app
 | `kernel:threads:write` | Write threads |
 | `kernel:users:admin` | Manage users, roles, and invitations |
 | `kernel:users:read` | Read user list |
+| `mail:suppressions:read` | See which addresses opted out of mail |
+| `mail:suppressions:write` | Remove an address's opt-out from mail |
 
 ## ads
 
@@ -90,6 +99,20 @@ Manage Meta and Google ad campaigns, with every spending change approved by a pe
 | `ads:insights:read` | manifest scopes; roles admin, member; tools graph_get, insights_query |  |
 | `ads:internal` | manifest scopes; roles admin, member; tools audience_erasure_sweep, dealer_profile_upsert, dealer_profiles_list, experiment_close, experiment_list, experiment_open and 7 more |  |
 | `ads:merchant:read` | manifest scopes; roles admin, member; tools merchant_feed_status, merchant_product_issues |  |
+
+## agreements
+
+Agreements: drafts, versions, templates and simple electronic signatures.
+
+| Scope | Declared by | Description |
+| --- | --- | --- |
+| `agreements:agreements:read` | manifest scopes; entity agreement; role member; tools activity_read, agreement_get, agreement_passage_get, agreements_search, approval_route_read, home_load and 2 more |  |
+| `agreements:agreements:write` | manifest scopes; role lead; tools agreement_create, agreement_import, agreement_new_link, agreement_prepare, agreement_price_set, agreement_reminder_send and 4 more |  |
+| `agreements:approve` | approver scope | Decide (approve, edit, or deny) agreements approvals raised by its gated tools |
+| `agreements:evidence:devices` | manifest scopes; role admin |  |
+| `agreements:evidence:read` | manifest scopes; role lead; tools agreement_evidence_get, agreement_verify |  |
+| `agreements:internal` | manifest scopes; tool client_action_view_get |  |
+| `agreements:templates:write` | manifest scopes; role lead; tool template_save |  |
 
 ## api-connector
 
@@ -116,7 +139,7 @@ Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and c
 | `boxtal:documents:read` | manifest scopes; tool get_documents |  |
 | `boxtal:internal` | manifest scopes |  |
 | `boxtal:quotes:read` | manifest scopes; tools create_shipment, list_content_categories, quote, quote_batch |  |
-| `boxtal:shipments:read` | manifest scopes; entities order, shipment; tools attention_rules_list, exceptions_list, get_shipment, order_print_record_get, prep_document_pdf, prep_list and 16 more |  |
+| `boxtal:shipments:read` | manifest scopes; entities order, shipment; tools attention_rules_list, exceptions_list, get_shipment, order_print_record_get, prep_document_pdf, prep_list and 17 more |  |
 | `boxtal:shipments:write` | manifest scopes; tools attention_rule_delete, attention_rule_upsert, cancel_shipment, claim_open, create_shipment, import_label_document and 13 more |  |
 | `invoicing:documents:write` | manifest scopes |  |
 
@@ -130,7 +153,7 @@ Month and week calendar that syncs both ways with Google Calendar.
 | `calendar:accounts:read` | role member |  |
 | `calendar:approve` | approver scope | Decide (approve, edit, or deny) calendar approvals raised by its gated tools |
 | `calendar:calendars:read` | role member |  |
-| `calendar:events:read` | entity event; role member; tools list_accounts, list_calendars, list_events, search_events |  |
+| `calendar:events:read` | entity event; role member; tools activity_read, list_accounts, list_calendars, list_events, search_events |  |
 | `calendar:events:write` | role member; tools create_event, delete_event, retry_import, set_selected, update_event |  |
 
 ## calls
@@ -154,6 +177,17 @@ Read-only access to your deployment's own database for troubleshooting and suppo
 | `database:approve` | approver scope | Decide (approve, edit, or deny) database approvals raised by its gated tools |
 | `database:query:read` | manifest scopes; role admin; tool db_query |  |
 | `database:reads:read` | manifest scopes; role member; tools db_describe, db_list_reads, db_probe, db_read |  |
+
+## github
+
+Read repositories, commits, pull requests and issues on GitHub, read-only.
+
+| Scope | Declared by | Description |
+| --- | --- | --- |
+| `github:accounts:admin` | manifest scopes; role admin; settings section connection |  |
+| `github:accounts:read` | manifest scopes; role member |  |
+| `github:approve` | approver scope | Decide (approve, edit, or deny) github approvals raised by its gated tools |
+| `github:repo:read` | manifest scopes; role member; tools github_get_commit, github_get_pull_request, github_list, github_list_commits, github_list_issues, github_list_labels and 8 more |  |
 
 ## gitlab
 
@@ -186,14 +220,14 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `invoicing:approve` | approver scope | Decide (approve, edit, or deny) invoicing approvals raised by its gated tools |
 | `invoicing:contacts:read` | manifest scopes; tools contact_relationships_get, counterparty_identity_get, counterparty_identity_lookup, vat_lookup, vat_validate |  |
 | `invoicing:contacts:write` | manifest scopes; tools contact_relationships_set, counterparty_identity_set, counterparty_territory_set, einvoicing_backfill_identities |  |
-| `invoicing:documents:read` | manifest scopes; entity document; tools customer_history, deferred_list, documents_download_pdf, documents_for_orders, documents_get, documents_preview_pdf and 12 more |  |
-| `invoicing:documents:write` | manifest scopes; tools credit_note_create_and_issue, credit_note_issue, deferred_tax_override, documents_convert_to_invoice, documents_mark_paid, documents_record_refund and 21 more |  |
-| `invoicing:internal` | manifest scopes |  |
+| `invoicing:documents:read` | manifest scopes; entities document, recurring_run, recurring_schedule; tools activity_read, approval_route_read, billing_plan_get, client_action_view_get, customer_history, deferred_list and 22 more |  |
+| `invoicing:documents:write` | manifest scopes; tools advance_draft_create, advance_refund_prepare, billing_plan_set, billing_step_add, credit_note_create_and_issue, credit_note_from_reconcile and 44 more |  |
+| `invoicing:internal` | manifest scopes; tool card_stream_issuer |  |
 | `invoicing:issuer:admin` | manifest scopes |  |
 | `invoicing:received:read` | manifest scopes; entity received_einvoice; tools received_einvoices_get, received_einvoices_list |  |
 | `invoicing:received:write` | manifest scopes; tools received_einvoice_action_request, received_einvoice_set_status, received_einvoices_refresh |  |
-| `invoicing:settings:read` | manifest scopes; settings sections hs-codes, issuers, shop-mappings, tax-regimes; tools documents_issue_preview, einvoicing_provider_options, einvoicing_settings_get, einvoicing_settings_values, settings_hs_code_list, settings_issuer_profile_list and 2 more |  |
-| `invoicing:settings:write` | manifest scopes; settings section einvoicing; tools einvoicing_settings_set, hs_codes_library_delete, hs_codes_library_upsert, settings_issuer_profile_create, settings_issuer_profile_delete, settings_issuer_profile_update |  |
+| `invoicing:settings:read` | manifest scopes; settings sections hs-codes, issuers, shop-mappings, tax-regimes; tools documents_issue_preview, einvoicing_provider_options, einvoicing_settings_get, einvoicing_settings_values, issuer_stream_get, settings_hs_code_list and 3 more |  |
+| `invoicing:settings:write` | manifest scopes; settings section einvoicing; tools einvoice_standing_off, einvoicing_settings_set, hs_codes_library_delete, hs_codes_library_upsert, issuer_emails_confirm, issuer_stream_set and 3 more |  |
 
 ## knowledge
 
@@ -205,7 +239,7 @@ Your team's shared documents, policies and curated source links.
 | `knowledge:attachments:download` | role member |  |
 | `knowledge:attachments:upload` | role member |  |
 | `knowledge:cache:manage` | role admin |  |
-| `knowledge:collections:manage` | role curator; tools add_to_collection, collection_create, collection_delete, collection_update, remove_from_collection |  |
+| `knowledge:collections:manage` | role member; tools add_to_collection, collection_create, collection_delete, collection_update, remove_from_collection |  |
 | `knowledge:documents:admin` | role admin |  |
 | `knowledge:documents:archive` | role curator; tools archive, restore |  |
 | `knowledge:documents:assign-owner` | role curator |  |
@@ -228,9 +262,11 @@ Read, write and reply to email from Gmail or any IMAP/SMTP mailbox.
 | `mail:accounts:read` | tools getAccount, getSyncStatus, listAccounts, providers.get |  |
 | `mail:accounts:write` | tool disconnectAccount |  |
 | `mail:approve` | approver scope | Decide (approve, edit, or deny) mail approvals raised by its gated tools |
-| `mail:conversations:read` | entities conversation, message; tools export_conversations, read, search |  |
-| `mail:conversations:write` | tools appendInboundMessage, archive, compose, composeForApp, convertToTicket, createFromTicket and 3 more |  |
+| `mail:conversations:read` | entities conversation, message; tools activity_read, export_conversations, read, search |  |
+| `mail:conversations:write` | tools appendInboundMessage, archive, compose, composeForApp, convertToTicket, createFromTicket and 4 more |  |
 | `mail:drafts:read` | entity draft |  |
+| `mail:suppressions:read` | role member; tool suppression_check |  |
+| `mail:suppressions:write` | tool suppression_remove |  |
 
 ## mcp-manager
 
@@ -280,12 +316,26 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | Scope | Declared by | Description |
 | --- | --- | --- |
 | `projects:approve` | approver scope | Decide (approve, edit, or deny) projects approvals raised by its gated tools |
+| `projects:capacity:read` | roles finance, lead; tools capacity_get, capacity_move |  |
+| `projects:capacity:write` | role lead |  |
+| `projects:cost_rates:write` | role finance; tool cost_rate_set |  |
+| `projects:dated_sheet:read` | roles finance, lead, member; tools task_time_correct, timesheet_export, timesheet_get |  |
+| `projects:deals:read` | roles lead, sales; tool deals_rollup |  |
+| `projects:deals:write` | roles lead, sales |  |
 | `projects:labels:admin` | role admin; settings section labels; tools labels.archive, labels.create, labels.reorder, labels.update |  |
-| `projects:projects:read` | entities project, task; role member; tools get, labels.list, labels.tree, search, templates_list |  |
-| `projects:projects:write` | role lead; tools createProject, fields_set, instantiate_template, status_add, status_delete, status_update and 2 more |  |
-| `projects:settings:admin` | role admin; settings section ci; tool webhook_info |  |
-| `projects:tasks:read` | role member; tools attentionItems, checklist_get, comments, portfolio_rollup, tasks_aggregate, tasks_byAssignee and 1 more |  |
-| `projects:tasks:write` | role member; tools add_dependency, checklist_add_items, checklist_remove_item, checklist_set_validation, checklist_update_item, comment and 5 more |  |
+| `projects:margin:read` | role finance; tools cost_rate_set, cost_rates_list, margin_get |  |
+| `projects:money:read` | roles finance, lead |  |
+| `projects:money:write` | roles finance, lead; tool billing_terms_set |  |
+| `projects:projects:read` | entities project, task; role member; tools budget_get, company_context, company_work, days_off_list, deal_send_state, deals_followup_candidates and 9 more |  |
+| `projects:projects:write` | role lead; tools createProject, deals_pipeline_create, fields_set, instantiate_template, period_timebox_set, status_add and 5 more |  |
+| `projects:reconcile:read` | roles finance, lead; tools reconcile_facts, reconcile_get, reconcile_line_update, reconcile_lines_read, reconcile_propose |  |
+| `projects:reconcile:write` | roles finance, lead; tools reconcile_create_invoice, reconcile_mark, reconcile_undo |  |
+| `projects:reports:read` | role lead; tools client_report_get, client_report_sources_get, client_reports_list |  |
+| `projects:reports:write` | role lead; tools client_report_save_draft, client_report_send |  |
+| `projects:settings:admin` | role admin; settings sections ci, time; tools days_off_remove, days_off_set, webhook_info |  |
+| `projects:tasks:read` | role member; tools activity_read, approval_route_read, attentionItems, checklist_get, comments, milestone_client_action_view and 5 more |  |
+| `projects:tasks:write` | role member; tools add_dependency, capacity_move, checklist_add_items, checklist_remove_item, checklist_set_validation, checklist_update_item and 9 more |  |
+| `projects:timesheet:read` | role finance |  |
 
 ## shopify
 
@@ -299,8 +349,8 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `shopify:approve` | approver scope | Decide (approve, edit, or deny) shopify approvals raised by its gated tools |
 | `shopify:customers:read` | manifest scopes; entity customer; tools companies_get, companies_search, customers_get, customers_get_by_external_id, customers_search, customers_segment_search and 1 more |  |
 | `shopify:customers:write` | manifest scopes; tools customers_email_marketing_consent_update, customers_sms_marketing_consent_update, customers_tag, customers_update |  |
-| `shopify:discounts:read` | manifest scopes; tool discounts_search |  |
-| `shopify:discounts:write` | manifest scopes; tools discounts_bulk_create, discounts_create, discounts_delete, discounts_update |  |
+| `shopify:discounts:read` | manifest scopes; tools discounts_get, discounts_search |  |
+| `shopify:discounts:write` | manifest scopes; tools discounts_bulk_create, discounts_create, discounts_delete, discounts_set_status, discounts_update |  |
 | `shopify:draft-orders:read` | manifest scopes; entity draftOrder; tools draft_orders_get, draft_orders_list |  |
 | `shopify:draft-orders:write` | manifest scopes; tools draft_orders_complete, draft_orders_create, draft_orders_delete, draft_orders_send, draft_orders_update |  |
 | `shopify:fulfillments:read` | manifest scopes; tool fulfillments_get |  |
@@ -338,6 +388,23 @@ Watch Facebook, Instagram and YouTube activity and answer with approved replies.
 | `social:watched:read` | manifest scopes; tool watched_list |  |
 | `social:watched:write` | manifest scopes; tools unwatch_object, watch_object |  |
 
+## stripe
+
+Stripe: customers, subscriptions, invoices and payments from your Stripe account, read through a restricted key.
+
+| Scope | Declared by | Description |
+| --- | --- | --- |
+| `stripe:admin:connection` | manifest scopes; role admin; settings section connection; tools connection_check, connection_precheck, settings_load |  |
+| `stripe:approve` | approver scope | Decide (approve, edit, or deny) stripe approvals raised by its gated tools |
+| `stripe:customers:read` | manifest scopes; entity customer; role member; tools activity_read, approval_route_read, card_update_link, customers_get, customers_search, home_load |  |
+| `stripe:customers:write` | manifest scopes; role billing; tool customer_link |  |
+| `stripe:internal` | manifest scopes; tools billing_status_for_counterparty, invoice_document_link, invoice_payload, payment_payload, reconcile_candidates, refund_document_link and 2 more |  |
+| `stripe:invoices:read` | manifest scopes; role member; tools invoice_send_state, invoices_search |  |
+| `stripe:payments:read` | manifest scopes; role member; tools disputes_list, payments_search |  |
+| `stripe:refunds:write` | manifest scopes; role billing; tool refunds_create |  |
+| `stripe:subscriptions:read` | manifest scopes; role member; tools customer_context, mrr_query, subscription_cancel_effect, subscriptions_search |  |
+| `stripe:subscriptions:write` | manifest scopes; role billing; tool subscription_cancel |  |
+
 ## tickets
 
 Track customer requests, returns and warranty cases to resolution.
@@ -352,6 +419,6 @@ Track customer requests, returns and warranty cases to resolution.
 | `tickets:inboxes:read` | role support; tool inboxes.list |  |
 | `tickets:settings:admin` | role admin; settings sections api-keys, id-segments, response-times; tools apiKeys.create, apiKeys.list, apiKeys.revoke, approveFromHome.get, approveFromHome.set, idSegment.get and 1 more |  |
 | `tickets:tickets:close` | role support_lead; tool close |  |
-| `tickets:tickets:read` | entities message, ticket; role support; tools backlogHealth, categories.list, categories.tree, csat.list, csat.summary, ensureSummary and 9 more |  |
+| `tickets:tickets:read` | entities message, ticket; role support; tools activity_read, approval_route_read, backlogHealth, categories.list, categories.tree, company_tickets and 12 more |  |
 | `tickets:tickets:reply` | role support; tools nudge, reply |  |
 | `tickets:tickets:write` | role support; tools addNote, assign, clearFollowup, convertToMail, create, createFromMail and 20 more |  |

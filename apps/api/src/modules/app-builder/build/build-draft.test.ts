@@ -337,6 +337,26 @@ describe("the build subprocess limits", () => {
     expect(BUILD_ADDRESS_SPACE_BYTES).toBeGreaterThanOrEqual(4 * BUILD_MEMORY_LIMIT_BYTES)
   })
 
+  test("the ceiling is a number in a process that loaded pdf.js first", async () => {
+    // pdf.js replaces globalThis.navigator, and Bun's availableParallelism() reads its
+    // hardwareConcurrency: the ceiling read as NaN, which prlimit refuses, so no draft built.
+    const proc = Bun.spawn(
+      [
+        process.execPath,
+        "-e",
+        `globalThis.navigator = { language: "en-US", platform: "", userAgent: "" }
+         const m = await import(${JSON.stringify(join(import.meta.dir, "build-draft.ts"))})
+         console.log("ceiling " + m.BUILD_ADDRESS_SPACE_BYTES)
+         process.exit(0)`,
+      ],
+      { cwd: join(import.meta.dir, "../../../.."), stdout: "pipe", stderr: "pipe" },
+    )
+    const out = await new Response(proc.stdout).text()
+    await proc.exited
+    const ceiling = Number(out.match(/ceiling (\S+)/)?.[1])
+    expect(ceiling).toBeGreaterThanOrEqual(4 * BUILD_MEMORY_LIMIT_BYTES)
+  }, 30_000)
+
   test("a hung build and the children it started are killed at the timeout", async () => {
     const marker = join(scripts, "grandchild-alive")
     const path = script(

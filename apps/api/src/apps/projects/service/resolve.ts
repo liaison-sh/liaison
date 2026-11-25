@@ -129,6 +129,7 @@ export async function resolveAssignee(
         SELECT id FROM ${kernelRel("users")}
         WHERE id = ${input.assigneeId}::uuid
           AND org_id = ${orgId}::uuid
+          AND user_type = 'member'
           ${options.allowInactive ? drizzleSql`` : drizzleSql`AND status = 'active'`}
         LIMIT 1
       `),
@@ -154,6 +155,7 @@ export async function resolveAssignee(
       SELECT id, name FROM ${kernelRel("users")}
       WHERE org_id = ${orgId}::uuid
         AND status = 'active'
+        AND user_type = 'member'
         AND lower(name) = lower(${name})
     `),
   )
@@ -168,6 +170,7 @@ export async function resolveAssignee(
       SELECT id, name FROM ${kernelRel("users")}
       WHERE org_id = ${orgId}::uuid
         AND status = 'active'
+        AND user_type = 'member'
         AND lower(${name}) = ANY(string_to_array(lower(name), ' '))
     `),
   )
@@ -183,6 +186,7 @@ export async function resolveAssignee(
         SELECT id, name FROM ${kernelRel("users")}
         WHERE org_id = ${orgId}::uuid
           AND status = 'active'
+          AND user_type = 'member'
           AND btrim(name) <> ''
           AND regexp_split_to_array(lower(btrim(name)), '[[:space:]]+')
               <@ regexp_split_to_array(lower(${name}), '[[:space:]]+')

@@ -28,7 +28,7 @@
 // targets these to assert the approval-card → mail send loop.
 
 import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
-import { app, fetchBlob, navigate, openFile } from "@liaison/host"
+import { app, fetchBlob, fetch as hostFetch, navigate, openFile } from "@liaison/host"
 import {
   type Component,
   createEffect,
@@ -42,6 +42,10 @@ import {
   Suspense,
 } from "solid-js"
 import { formatMoneyMinor } from "../money"
+import { type DocumentType, transition } from "../state"
+import { AdvanceLedgerPanel } from "./AdvanceLedger"
+import { loadViewerAccess } from "./access"
+import { shipsGoods } from "./Editor"
 import { RegimeLine } from "./einvoicing/RegimeLine"
 import { TransmissionPanel } from "./einvoicing/TransmissionPanel"
 import { tr } from "./i18n"
@@ -51,11 +55,14 @@ import {
   Button,
   ConfirmDialog,
   cx,
+  isUserId,
   Money,
   SectionLabel,
   StatusBadge,
   TypeLabel,
 } from "./kit"
+import { type EinvoiceFacts, einvoiceStatusWord } from "./RecurringStates"
+import { SourcedDraftPanel } from "./SourcedDraft"
 import { rememberDocumentLabel } from "./tab-labels"
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -94,6 +101,16 @@ export interface DocumentSummary {
   counterparty_country?: string | null
   issuer_profile_id?: string | null
   external_refs?: Record<string, unknown>
+  /** The source a draft was made from (`reconcile:`, `milestone:`, ...), null when typed by hand. */
+  external_ref?: string | null
+  /** Who approved the draft for issue; null while it waits. */
+  approved_by?: string | null
+  /** `advance`, `final` or `standard` for an invoice (documents_get); null when unset. */
+  invoice_role?: string | null
+  /** The project the document bills, when it bills one (documents_get). */
+  billing_project_id?: string | null
+  /** The draft's latest issue day (the end of its service month). */
+  latest_issue_on?: string | null
   /** The HUMAN store order reference ("#1149") this document bills, resolved by
    *  documents_get from the column or external_refs. Absent on manual documents. */
   shopify_order_number?: string | null
@@ -137,6 +154,8 @@ export interface DocumentLine {
   hs_code?: string | null
   country_of_origin?: string | null
   customs_description?: string | null
+  /** The line's source key (`reconcile_line:`, `advance_deduction:`, ...), when it has one. */
+  external_id?: string | null
 }
 
 export interface LifecycleEntry {
@@ -146,7 +165,12 @@ export interface LifecycleEntry {
   note?: string
 }
 
-export type PdfStatus = "pending" | "ready" | "failed" | "pdf_a3_normalization_skipped"
+export type PdfStatus =
+  | "pending"
+  | "ready"
+  | "failed"
+  | "facturx_failed"
+  | "pdf_a3_normalization_skipped"
 
 export interface DocumentDetailTabContribution {
   id: string
@@ -225,6 +249,29 @@ export const FOOTER_ACTIONS = {
 // confirmation dialog rather than firing the tool straight away; the human
 // confirmation IS the approval (agents still hit the kernel gate).
 // ─────────────────────────────────────────────────────────────────────────
+
+/** Sending mails the issued document: a draft has nothing to send yet. */
+export function canSendToCustomer(doc: { status: string }): boolean {
+  return doc.status !== "draft"
+}
+
+/** A payment is recorded on an issued, unpaid document. Credit notes are never payable, and
+ *  Stripe settles an invoice it collects. */
+export function canMarkPaid(doc: {
+  type: DocumentSummary["type"]
+  status: string
+  payment_status?: string | null
+  external_refs?: unknown
+}): boolean {
+  // The server's own rule (state.ts): only an issued invoice is marked paid, never a cancelled or
+  // credited one, a quote or a proforma.
+  return (
+    transition({ type: doc.type as DocumentType, status: doc.status }, "mark_paid").status ===
+      "ok" &&
+    doc.payment_status !== "paid" &&
+    !stripeCollection(doc.external_refs as Record<string, unknown> | undefined)
+  )
+}
 
 /** A quote can be converted once it is out with the customer (`sent`) or the
  *  customer said yes (`accepted`); a proforma once it is `sent`. Nothing else
@@ -342,12 +389,24 @@ export interface PdfAffordance {
 
 /** What the header's Preview and Download say when there is no PDF to open. */
 export function pdfNotReadyNote(s: PdfStatus | undefined | null): string {
-  return s === "failed"
+  return s === "failed" || s === "facturx_failed"
     ? tr("This PDF could not be rendered. Use Retry render on the PDF tab.")
     : tr("This PDF is not ready yet. If it stays that way, use Retry render on the PDF tab.")
 }
 
-export function pdfStatusAffordance(s: PdfStatus | undefined | null): PdfAffordance {
+export function pdfStatusAffordance(
+  s: PdfStatus | undefined | null,
+  opts: { issued?: boolean } = {},
+): PdfAffordance {
+  // An issued document whose PDF was never made (an imported or seeded one): made on request.
+  if ((s === null || s === undefined) && opts.issued) {
+    return {
+      showRetry: true,
+      downloadEnabled: false,
+      showA3SkippedNote: false,
+      statusLabel: "Not made yet",
+    }
+  }
   switch (s) {
     case "ready":
       return {
@@ -362,6 +421,14 @@ export function pdfStatusAffordance(s: PdfStatus | undefined | null): PdfAfforda
         downloadEnabled: false,
         showA3SkippedNote: false,
         statusLabel: "Render failed",
+      }
+    case "facturx_failed":
+      // An e-invoice whose legal original (its Factur-X) could not be built: the reason is shown.
+      return {
+        showRetry: true,
+        downloadEnabled: false,
+        showA3SkippedNote: false,
+        statusLabel: "The e-invoice could not be made",
       }
     case "pending":
       // Normally a moment. A render that never ran stays pending until someone asks for it again.
@@ -524,6 +591,16 @@ export function shopifyOrderUrl(refs: Record<string, unknown> | undefined): stri
   return `https://${host}/admin/orders/${orderId}`
 }
 
+/** The payment processor's records an invoice it collects names, or null for any other invoice. */
+export function stripeCollection(
+  refs: Record<string, unknown> | undefined,
+): { invoiceId: string; customerId: string | null } | null {
+  const invoiceId = refs?.stripe_invoice_id
+  if (typeof invoiceId !== "string" || !invoiceId) return null
+  const customerId = refs?.stripe_customer_id
+  return { invoiceId, customerId: typeof customerId === "string" && customerId ? customerId : null }
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Payment-status badge. `payment_status` is a separate axis from the
 // lifecycle `status` (an "issued" invoice can be paid/partial/refunded
@@ -533,6 +610,75 @@ export function shopifyOrderUrl(refs: Record<string, unknown> | undefined): stri
 // once the customer had paid. Credit notes are never payable, so they never
 // render this badge (mirrors the header's mark-paid gate).
 // ─────────────────────────────────────────────────────────────────────────
+/** What the header chips read: who issued an invoice and who took its payment. */
+export interface MoneyChipFacts {
+  status: string
+  type: string
+  stream: "card" | "transfer" | null
+  payment_status: string | null
+}
+
+/**
+ * "Issued by Liaison" on an issued invoice from a Stripe payment or a recurring schedule, and
+ * "Collected by Stripe" once a card payment through Stripe is in. Nothing on drafts or other types.
+ */
+export function moneyChips(f: MoneyChipFacts): string[] {
+  if (f.type !== "invoice" || f.status === "draft" || !f.stream) return []
+  const chips = ["Issued by Liaison"]
+  if (f.stream === "card" && f.payment_status === "paid") chips.push("Collected by Stripe")
+  return chips
+}
+
+/** The header's quiet chips and the e-invoice status word, from the transmission read. */
+function MoneyChips(p: { documentId: string; status: string; type: string }): JSX.Element {
+  const [facts] = createResource(
+    () => (p.type === "invoice" && p.status !== "draft" ? p.documentId : null),
+    async (id) => {
+      try {
+        return await app.invokeTool<
+          EinvoiceFacts & { status?: string; stream?: "card" | "transfer" | null }
+        >("einvoice_transmission_get", { document_id: id })
+      } catch {
+        return null
+      }
+    },
+  )
+  // Read only once settled: a pending read here would take the page's Suspense, and with it the
+  // whole detail (tab strip included), back to "Loading…" until the chips' read returns.
+  return (
+    <Show when={facts.state === "ready" ? facts() : undefined}>
+      {(f) => (
+        <>
+          <For
+            each={moneyChips({
+              status: p.status,
+              type: p.type,
+              stream: f().stream ?? null,
+              payment_status: f().payment_status ?? null,
+            })}
+          >
+            {(chip) => (
+              <Badge
+                tone="neutral"
+                testid={`document-detail-chip-${chip.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                {tr(chip)}
+              </Badge>
+            )}
+          </For>
+          <Show when={einvoiceStatusWord(f())}>
+            {(word) => (
+              <Badge tone="neutral" testid="document-detail-einvoice-word">
+                {tr("E-invoice: {{word}}", { word: tr(word()) })}
+              </Badge>
+            )}
+          </Show>
+        </>
+      )}
+    </Show>
+  )
+}
+
 const PAYMENT_TONE: Record<string, BadgeTone> = {
   paid: "success",
   partial: "warning",
@@ -545,6 +691,17 @@ const PAYMENT_LABEL: Record<string, string> = {
   partial: "Partial",
   refunded: "Refunded",
   unpaid: "Unpaid",
+}
+
+/** Whether the header shows the payment chip: never on a credit note (never payable), a draft
+ *  (nothing is owed yet), or beside a status that already says it ("Paid Paid"). */
+export function showsPaymentChip(d: Pick<DocumentSummary, "type" | "status" | "payment_status">) {
+  return (
+    d.type !== "credit_note" &&
+    d.status !== "draft" &&
+    !!d.payment_status &&
+    d.status !== d.payment_status
+  )
 }
 
 function PaymentBadge(p: { paymentStatus: string }): JSX.Element {
@@ -702,12 +859,15 @@ function OverviewBody(p: { doc: DocumentSummary; lines: DocumentLine[] }): JSX.E
                   ),
                 },
                 {
+                  // Excluding VAT on every document, draft or issued: the VAT is in the totals.
                   key: "total",
-                  header: tr("Total"),
+                  header: tr("Total excl. VAT"),
                   role: "meta",
                   numeric: true,
                   align: "right",
-                  cell: (l) => <Money minor={l.total_minor} currency={p.doc.currency} codeless />,
+                  cell: (l) => (
+                    <Money minor={l.subtotal_minor} currency={p.doc.currency} codeless />
+                  ),
                 },
               ] as Array<CardTableColumn<DocumentLine>>
             }
@@ -717,7 +877,7 @@ function OverviewBody(p: { doc: DocumentSummary; lines: DocumentLine[] }): JSX.E
 
       {/* Totals — right-aligned summary, grand total emphasised. */}
       <div class="ml-auto w-full max-w-xs flex-col gap-1.5">
-        <div class="flex items-center justify-between py-1">
+        <div class="flex items-center justify-between py-1" data-testid="document-subtotal">
           <span class="text-text-secondary">{tr("Subtotal")}</span>
           <Money
             minor={p.doc.subtotal_minor}
@@ -725,7 +885,7 @@ function OverviewBody(p: { doc: DocumentSummary; lines: DocumentLine[] }): JSX.E
             class="text-text-secondary"
           />
         </div>
-        <div class="flex items-center justify-between py-1">
+        <div class="flex items-center justify-between py-1" data-testid="document-tax">
           <span class="text-text-secondary">{tr("Tax")}</span>
           <Money
             minor={p.doc.tax_total_minor}
@@ -733,7 +893,10 @@ function OverviewBody(p: { doc: DocumentSummary; lines: DocumentLine[] }): JSX.E
             class="text-text-secondary"
           />
         </div>
-        <div class="mt-1 flex items-center justify-between border-t border-border pt-2">
+        <div
+          class="mt-1 flex items-center justify-between border-t border-border pt-2"
+          data-testid="document-grand-total"
+        >
           <span class="font-medium text-text">{tr("Grand total")}</span>
           <Money
             minor={p.doc.grand_total_minor}
@@ -756,12 +919,14 @@ function CustomsBody(p: { doc: DocumentSummary; lines: DocumentLine[] }): JSX.El
         </div>
         <div class="font-medium text-text">{p.doc.tax_treatment ?? "-"}</div>
       </div>
-      <div>
-        <div class="mb-1 text-text-secondary text-[11px] uppercase tracking-wider">
-          {tr("Incoterm")}
+      <Show when={shipsGoods(p.doc)}>
+        <div>
+          <div class="mb-1 text-text-secondary text-[11px] uppercase tracking-wider">
+            {tr("Incoterm")}
+          </div>
+          <div class="font-mono text-text">{p.doc.incoterm ?? "DAP"}</div>
         </div>
-        <div class="font-mono text-text">{p.doc.incoterm ?? "DAP"}</div>
-      </div>
+      </Show>
 
       <div>
         <div class="mb-1 text-text-secondary text-[11px] uppercase tracking-wider">
@@ -829,9 +994,22 @@ function hasPdfViewer(): boolean {
   return typeof navigator === "undefined" || navigator.pdfViewerEnabled !== false
 }
 
+/** Why the last render failed, as the issue recorded it: the reason a person can act on. */
+export function pdfFailureReason(doc: DocumentSummary): string | null {
+  const log = doc.lifecycle_log ?? []
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i] as LifecycleEntry & { detail?: unknown }
+    if (e.event !== "pdf_render_failed") continue
+    return typeof e.detail === "string" && e.detail.trim() ? e.detail.trim() : null
+  }
+  return null
+}
+
 function PdfBody(p: {
   doc: DocumentSummary
   affordance: PdfAffordance
+  /** The viewer may re-run the render (they may write documents). */
+  canRetry: boolean
   onRetry: () => void
   onPreview: () => void
   onDownload: () => void
@@ -843,8 +1021,10 @@ function PdfBody(p: {
     () => (p.doc.pdf_file_id ? { id: p.doc.id, fileId: p.doc.pdf_file_id } : null),
     (key) => fetchPdfBlobUrl(key.id),
   )
+  // Read only once settled: a pending read would hold back the PDF tab's own status and buttons.
+  const embedUrl = () => (embed.state === "ready" ? embed() : undefined)
   createEffect(() => {
-    const url = embed()
+    const url = embedUrl()
     onCleanup(() => {
       if (url) URL.revokeObjectURL(url)
     })
@@ -871,14 +1051,22 @@ function PdfBody(p: {
             }
             class="text-text"
           >
-            {p.affordance.statusLabel}
+            {tr(p.affordance.statusLabel)}
           </div>
+          <Show when={!p.affordance.downloadEnabled && pdfFailureReason(p.doc)}>
+            {(reason) => (
+              <div data-testid="document-detail-pdf-reason" class="mt-1 text-text-secondary">
+                {reason()}
+              </div>
+            )}
+          </Show>
         </div>
         <div class="flex items-center gap-2">
           <Button
             variant="secondary"
             testid="document-detail-pdf-preview-inline"
             onClick={p.onPreview}
+            disabled={!p.affordance.downloadEnabled}
           >
             {tr("Preview")}
           </Button>
@@ -892,12 +1080,7 @@ function PdfBody(p: {
           </Button>
         </div>
       </div>
-      <Show when={p.doc.pdf_file_id}>
-        <div class="text-text-tertiary">
-          {tr("file_id:")} <span class="font-mono">{p.doc.pdf_file_id}</span>
-        </div>
-      </Show>
-      <Show when={p.affordance.showRetry}>
+      <Show when={p.affordance.showRetry && p.canRetry}>
         <button
           type="button"
           data-testid="document-detail-action-retry-pdf"
@@ -912,7 +1095,7 @@ function PdfBody(p: {
           {tr("Long-term archival metadata absent (PDF/A-3 normalization skipped).")}
         </div>
       </Show>
-      <Show when={embed()}>
+      <Show when={embedUrl()}>
         {(url) => (
           <Show
             when={hasPdfViewer()}
@@ -938,8 +1121,70 @@ function PdfBody(p: {
   )
 }
 
+/** A lifecycle event as a person reads it; an event this table does not know reads as itself. */
+const LIFECYCLE_EVENT_LABELS: Record<string, string> = {
+  issued: "Issued",
+  pdf_render_failed: "The PDF could not be made",
+  pdf_rendered: "PDF made",
+  sent: "Sent to the customer",
+  paid: "Marked paid",
+  voided: "Voided",
+  credit_note_issued: "Credit note issued",
+  po_number_changed: "PO number changed",
+}
+
+/** An entry as stored (`ts`, the acting user's id) or as older rows hold it (`at`, `actor`). */
+export function lifecycleFacts(entry: LifecycleEntry): {
+  at: string | null
+  actorId: string | null
+} {
+  const raw = entry as LifecycleEntry & { ts?: string; actor?: unknown }
+  const actor = raw.actor as string | { id?: string } | undefined
+  return {
+    at: raw.at ?? raw.ts ?? null,
+    actorId: typeof actor === "string" ? actor : (actor?.id ?? null),
+  }
+}
+
+/** The day and time of an entry, in the reader's zone: "2026-11-16 09:42". */
+function fmtDateTime(iso: string | null): string {
+  if (!iso) return "-"
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 16)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+async function lifecycleNames(ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  for (const id of ids) {
+    if (!isUserId(id)) continue
+    try {
+      const p = await hostFetch<{ data?: { name?: string }; name?: string }>(
+        `/api/users/${encodeURIComponent(id)}/preview`,
+      )
+      const name = p?.data?.name ?? p?.name
+      if (name) out.set(id, name)
+    } catch {
+      // A name that cannot be read is left out: the entry still shows what and when.
+    }
+  }
+  return out
+}
+
 function LifecycleBody(p: { doc: DocumentSummary }): JSX.Element {
   const log = createMemo(() => p.doc.lifecycle_log ?? [])
+  const [names] = createResource(
+    () =>
+      [
+        ...new Set(
+          log()
+            .map((e) => lifecycleFacts(e).actorId)
+            .filter(isUserId),
+        ),
+      ].join(","),
+    (ids) => lifecycleNames(ids ? ids.split(",") : []),
+  )
   return (
     <div
       data-testid="document-detail-lifecycle"
@@ -951,23 +1196,30 @@ function LifecycleBody(p: { doc: DocumentSummary }): JSX.Element {
       >
         <ul class="flex flex-col gap-1">
           <For each={log()}>
-            {(entry) => (
-              <li
-                data-testid={`document-detail-lifecycle-${entry.event}`}
-                class="flex gap-2 border-l-2 border-border-subtle pl-2"
-              >
-                <span class="font-mono text-text-tertiary">{fmtDate(entry.at)}</span>
-                <span class="font-medium text-text">{entry.event}</span>
-                <Show when={entry.actor}>
-                  <span class="text-text-secondary">
-                    {tr("by")} {entry.actor?.type}
-                  </span>
-                </Show>
-                <Show when={entry.note}>
-                  <span class="text-text-tertiary">({entry.note})</span>
-                </Show>
-              </li>
-            )}
+            {(entry) => {
+              const facts = lifecycleFacts(entry)
+              const label = LIFECYCLE_EVENT_LABELS[entry.event]
+              const who = () => (facts.actorId ? names()?.get(facts.actorId) : undefined)
+              return (
+                <li
+                  data-testid={`document-detail-lifecycle-${entry.event}`}
+                  class="flex gap-2 border-l-2 border-border-subtle pl-2"
+                >
+                  <span class="font-mono text-text-tertiary">{fmtDateTime(facts.at)}</span>
+                  <span class="font-medium text-text">{label ? tr(label) : entry.event}</span>
+                  <Show when={who()}>
+                    {(name) => (
+                      <span class="text-text-secondary">
+                        {tr("by")} {name()}
+                      </span>
+                    )}
+                  </Show>
+                  <Show when={entry.note}>
+                    <span class="text-text-tertiary">({entry.note})</span>
+                  </Show>
+                </li>
+              )
+            }}
           </For>
         </ul>
       </Show>
@@ -981,11 +1233,21 @@ function LifecycleBody(p: { doc: DocumentSummary }): JSX.Element {
 export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
   const [activeTab, setActiveTab] = createSignal<string>("overview")
   const [data, { refetch }] = createResource(() => props.documentId, loadDocument)
+  // The document once it has loaded, kept on screen while a refetch runs. Everything outside the
+  // detail's own <Suspense> reads it through this, never through `data()`: a pending read there
+  // would suspend the host's tab boundary instead, leaving a blank pane (no "Loading…") on a cold
+  // open and blanking the whole detail, tab strip included, on every refetch.
+  const loaded = () =>
+    data.state === "ready" || data.state === "refreshing" ? data.latest : undefined
 
-  const tabs = createMemo(() => mergeTabs(data()?.externalTabs ?? []))
+  const tabs = createMemo(() => mergeTabs(loaded()?.externalTabs ?? []))
   const affordance = createMemo(() =>
-    pdfStatusAffordance(data()?.document?.pdf_status ?? undefined),
+    pdfStatusAffordance(loaded()?.document?.pdf_status ?? undefined, {
+      issued: !!loaded()?.document?.number,
+    }),
   )
+  // Re-running a render is a write: offered to whoever may write documents.
+  const [access] = createResource(() => loadViewerAccess())
   // The active external (non-built-in) tab, if any. Carries the contributing
   // `app` needed to resolve the cross-app body via the host bridge.
   const activeExternalTab = createMemo(() =>
@@ -1126,8 +1388,10 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
         </div>
       }
     >
+      {/* `data()` is read here, under the detail's own boundary, for the first load only; a
+          refetch keeps the loaded document on screen (`loaded()`) instead of going back to it. */}
       <Show
-        when={data()}
+        when={loaded() ?? data()}
         fallback={
           <Show when={data.state === "ready"}>
             <div
@@ -1167,9 +1431,13 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                         Shopify-sourced invoice can be "issued" (boxtal still ships
                         it) yet already paid underneath. Credit notes are never
                         payable, so they never carry a meaningful payment_status. */}
-                    <Show when={doc().type !== "credit_note" && doc().payment_status}>
+                    <Show when={showsPaymentChip(doc()) && doc().payment_status}>
                       {(paymentStatus) => <PaymentBadge paymentStatus={paymentStatus()} />}
                     </Show>
+                    {/* Its own boundary: a secondary read can only hold back these chips. */}
+                    <Suspense>
+                      <MoneyChips documentId={doc().id} status={doc().status} type={doc().type} />
+                    </Suspense>
                   </div>
                   {/* Actions — spec §12. Pinned to the top of the panel: the chat dock
                       floats over the panel's bottom-right corner, so a bottom action row
@@ -1221,8 +1489,7 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                         </span>
                       </Show>
                     </Show>
-                    {/* Credit notes are never payable — no mark-paid. */}
-                    <Show when={doc().type !== "credit_note"}>
+                    <Show when={canMarkPaid(doc())}>
                       <Button
                         variant="ghost"
                         testid="document-detail-action-mark-paid"
@@ -1231,13 +1498,15 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                         {tr(FOOTER_ACTIONS.mark_paid.label)}
                       </Button>
                     </Show>
-                    <Button
-                      variant="secondary"
-                      testid="document-detail-action-send-to-customer"
-                      onClick={sendToCustomer}
-                    >
-                      {tr(FOOTER_ACTIONS.send_to_customer.label)}
-                    </Button>
+                    <Show when={canSendToCustomer(doc())}>
+                      <Button
+                        variant="secondary"
+                        testid="document-detail-action-send-to-customer"
+                        onClick={sendToCustomer}
+                      >
+                        {tr(FOOTER_ACTIONS.send_to_customer.label)}
+                      </Button>
+                    </Show>
                     <Show when={canConvertToInvoice(doc())}>
                       <Button
                         variant="secondary"
@@ -1254,14 +1523,18 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                     >
                       {tr(FOOTER_ACTIONS.preview_pdf.label)}
                     </Button>
-                    <Button
-                      variant="primary"
-                      testid="document-detail-action-download-pdf"
-                      onClick={downloadPdf}
-                      disabled={!affordance().downloadEnabled}
-                    >
-                      {FOOTER_ACTIONS.download_pdf.label}
-                    </Button>
+                    {/* A draft has no PDF of its own to keep: it is previewed, and downloaded
+                        once it is issued. */}
+                    <Show when={doc().status !== "draft"}>
+                      <Button
+                        variant="primary"
+                        testid="document-detail-action-download-pdf"
+                        onClick={downloadPdf}
+                        disabled={!affordance().downloadEnabled}
+                      >
+                        {tr(FOOTER_ACTIONS.download_pdf.label)}
+                      </Button>
+                    </Show>
                   </div>
                 </div>
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-text-tertiary">
@@ -1270,7 +1543,12 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                     <span class="text-text-secondary">{fmtDate(doc().issued_at)}</span>
                   </span>
                   <span>
-                    {tr("Due")} <span class="text-text-secondary">{fmtDate(doc().due_at)}</span>
+                    {tr("Due")}{" "}
+                    <span class="text-text-secondary">
+                      {doc().status === "draft" && doc().type === "invoice" && !doc().due_at
+                        ? tr("by the payment terms, counted from the issue date")
+                        : fmtDate(doc().due_at)}
+                    </span>
                   </span>
                   {/* Shopify-sourced invoices carry external_refs pointing back at
                       the originating order — link out to the real Shopify admin
@@ -1304,6 +1582,53 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                       <span data-testid="document-detail-draft-order-ref">
                         {tr("Shopify draft order")}{" "}
                         <span class="text-text-secondary">{draftOrderName()}</span>
+                      </span>
+                    )}
+                  </Show>
+                  {/* The hops out: the customer's contact (their company is on it), and the Stripe
+                      customer whose invoice this one is, when Stripe collects it. */}
+                  <Show when={doc().counterparty_contact_id}>
+                    {(contactId) => (
+                      <a
+                        data-testid="document-detail-open-contact"
+                        class="inline-flex items-center gap-1 text-accent hover:underline"
+                        href={`/contacts/${encodeURIComponent(contactId())}`}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          navigate(`/contacts/${encodeURIComponent(contactId())}`)
+                        }}
+                      >
+                        {tr("Open the customer")}
+                      </a>
+                    )}
+                  </Show>
+                  <Show when={stripeCollection(doc().external_refs)}>
+                    {(stripe) => (
+                      <span
+                        data-testid="document-detail-stripe"
+                        class="inline-flex items-center gap-1"
+                      >
+                        {tr("Collected by Stripe")}{" "}
+                        <Show
+                          when={stripe().customerId}
+                          fallback={
+                            <span class="font-mono text-text-secondary">{stripe().invoiceId}</span>
+                          }
+                        >
+                          {(customerId) => (
+                            <a
+                              data-testid="document-detail-open-stripe"
+                              class="font-mono text-accent hover:underline"
+                              href={`/stripe/customers/${encodeURIComponent(customerId())}`}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                navigate(`/stripe/customers/${encodeURIComponent(customerId())}`)
+                              }}
+                            >
+                              {stripe().invoiceId}
+                            </a>
+                          )}
+                        </Show>
                       </span>
                     )}
                   </Show>
@@ -1345,6 +1670,11 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                   `assertKnownParams`) renders in the error tone instead of
                   the neutral one, so a broken call is visible instead of
                   silently doing nothing. */}
+              {/* A draft from planned vs done, a milestone, a retainer month or an advance: where
+                  it came from, what stays inside, and its one issue button, at the top. */}
+              <SourcedDraftPanel doc={doc()} lines={lines()} onDone={props.onMutate} />
+              {/* An advance: its own number, where it goes, and what became of it. */}
+              <AdvanceLedgerPanel doc={doc()} lines={lines()} onDone={props.onMutate} />
               <Show when={footerActionNote()}>
                 {(note) => (
                   <div
@@ -1399,61 +1729,74 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                 </For>
               </nav>
 
-              {/* Tab body */}
+              {/* Tab body, under its own boundary: a panel's pending read (the PDF preview, the
+                  regime line, the e-invoice panel, a contributed tab) can only hold back the body,
+                  never the header and tab strip above it. */}
               <div class="flex-1 overflow-y-auto">
-                <Show when={activeTab() === "overview"}>
-                  <OverviewBody doc={doc()} lines={lines()} />
-                </Show>
-                <Show when={activeTab() === "customs"}>
-                  <CustomsBody doc={doc()} lines={lines()} />
-                </Show>
-                <Show when={activeTab() === "pdf"}>
-                  <PdfBody
-                    doc={doc()}
-                    affordance={affordance()}
-                    onRetry={retryPdf}
-                    onPreview={previewPdf}
-                    onDownload={downloadPdf}
-                  />
-                </Show>
-                <Show when={activeTab() === "lifecycle"}>
-                  <LifecycleBody doc={doc()} />
-                </Show>
-                {/* External (slot-host) tab body. The host bridge resolves the
+                <Suspense
+                  fallback={
+                    <div data-testid="document-detail-body-loading" class="p-4 text-text-tertiary">
+                      {tr("Loading…")}
+                    </div>
+                  }
+                >
+                  <Show when={activeTab() === "overview"}>
+                    <OverviewBody doc={doc()} lines={lines()} />
+                  </Show>
+                  <Show when={activeTab() === "customs"}>
+                    <CustomsBody doc={doc()} lines={lines()} />
+                  </Show>
+                  <Show when={activeTab() === "pdf"}>
+                    <PdfBody
+                      doc={doc()}
+                      affordance={affordance()}
+                      canRetry={access()?.documents_write === true}
+                      onRetry={retryPdf}
+                      onPreview={previewPdf}
+                      onDownload={downloadPdf}
+                    />
+                  </Show>
+                  <Show when={activeTab() === "lifecycle"}>
+                    <LifecycleBody doc={doc()} />
+                  </Show>
+                  {/* External (slot-host) tab body. The host bridge resolves the
                     contributing app's registered component and mounts it into
                     the anchor — invoicing never imports the contributor's
                     component (portable to the future iframe boundary). On a
                     genuine resolution miss (bundle-load failure) the K5
                     "Tab unavailable" fallback is preserved. */}
-                <Show when={activeExternalTab()}>
-                  {(tab) => {
-                    let anchor!: HTMLDivElement
-                    const [resolved, setResolved] = createSignal(true)
-                    createEffect(() => {
-                      const ext = tab()
-                      const handle = app.mountSlot(anchor, {
-                        slot: "invoicing.document_detail.tabs",
-                        app: ext.app as string,
-                        id: ext.id,
-                        entityId: props.documentId,
+                  <Show when={activeExternalTab()}>
+                    {(tab) => {
+                      let anchor!: HTMLDivElement
+                      const [resolved, setResolved] = createSignal(true)
+                      createEffect(() => {
+                        const ext = tab()
+                        const handle = app.mountSlot(anchor, {
+                          slot: "invoicing.document_detail.tabs",
+                          app: ext.app as string,
+                          id: ext.id,
+                          entityId: props.documentId,
+                        })
+                        setResolved(handle.resolved)
+                        onCleanup(() => handle.dispose())
                       })
-                      setResolved(handle.resolved)
-                      onCleanup(() => handle.dispose())
-                    })
-                    return (
-                      <div data-testid={`document-detail-tab-body-${tab().id}`} class="h-full">
-                        <div ref={anchor} class="h-full" />
-                        <Show when={!resolved()}>
-                          {/* K5 contract: agreed copy when the contributing app's
+                      return (
+                        <div data-testid={`document-detail-tab-body-${tab().id}`} class="h-full">
+                          <div ref={anchor} class="h-full" />
+                          <Show when={!resolved()}>
+                            {/* K5 contract: agreed copy when the contributing app's
                               component fails to resolve (genuine bundle-load failure). */}
-                          <div class="px-4 py-3 text-[12.5px] text-text-tertiary">
-                            {tr("Tab unavailable: the contributing app's component is not loaded.")}
-                          </div>
-                        </Show>
-                      </div>
-                    )
-                  }}
-                </Show>
+                            <div class="px-4 py-3 text-[12.5px] text-text-tertiary">
+                              {tr(
+                                "Tab unavailable: the contributing app's component is not loaded.",
+                              )}
+                            </div>
+                          </Show>
+                        </div>
+                      )
+                    }}
+                  </Show>
+                </Suspense>
               </div>
 
               <ConfirmDialog

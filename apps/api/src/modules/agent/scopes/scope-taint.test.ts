@@ -175,6 +175,24 @@ describe("checkScopeTaint", () => {
     })
   }
 
+  it("the low-sensitivity allowance never covers a taint narrower than any role", () => {
+    const restricted = "restricted:agreements.agreement:5b0c3f0e-8d1f-4a51-9a0e-2f3c8e1d7a10"
+    for (const sink of [
+      SINK_APP_PROJECTS_TASKS,
+      SINK_APP_PROJECTS_TASK_CHECKLIST_ITEMS,
+      SINK_APP_PROJECTS_TASK_DEPENDENCIES,
+    ]) {
+      // A record closed to the organization, an exact-only scope, a bare marker scope.
+      expect(checkScopeTaint(["a:b:read", restricted], sink)).toEqual(BLOCKED)
+      expect(checkScopeTaint(["projects:margin:read"], sink)).toEqual(BLOCKED)
+      expect(checkScopeTaint(["clevel"], sink)).toEqual(BLOCKED)
+      // The unknown sentinel alone keeps the allowance as before.
+      expect(checkScopeTaint([...UNKNOWN_TURN_TAINT], sink)).toEqual({ allowed: true })
+    }
+    // The enforcing sinks still take it: their readers are filtered per row.
+    expect(checkScopeTaint([restricted], "kernel.messages")).toEqual({ allowed: true })
+  })
+
   it("the low-sensitivity allowance is closed to project task tables", () => {
     for (const table of [
       "app_projects.projects",
@@ -315,6 +333,11 @@ describe("writesToTable annotations on kernel tools", () => {
       memory_delete: "kernel.agent_memory",
       memory_rename: "kernel.agent_memory",
       capture_business_knowledge: "app_knowledge.documents",
+      companies_link_batch: "kernel.companies",
+      companies_link_contacts: "kernel.contacts",
+      companies_mark_not_same: "kernel.companies",
+      companies_merge: "kernel.companies",
+      companies_write: "kernel.companies",
       // The person's own computer sessions: a command lands in the session's own
       // queue, read back only by its owner and the session on their computer.
       computer_session_answer: "kernel.node_session_commands",
@@ -377,6 +400,9 @@ describe("writesToTable annotations on kernel tools", () => {
       // so each is still refused on a turn whose taint is relevant.
       approval_update_payload: "kernel.approval_requests",
       approval_withdraw: "kernel.approval_requests",
+      // A client action to sign, accept or approve, made or withdrawn (client-actions tools).
+      client_action_create: "kernel.client_actions",
+      client_action_revoke: "kernel.client_actions",
       // S24: turning an app On/Off and setting who may use it write kernel.apps.
       apps_set_access: "kernel.apps",
       ai_models_set: "kernel.organizations",
@@ -390,12 +416,18 @@ describe("writesToTable annotations on kernel tools", () => {
       notify_user: "kernel.attention_events",
       // Lifts the thread's outside-text mark on a person's approval (outside-text-tools.ts).
       outside_text_clear: "kernel.threads",
+      // The client portal: invite, end access, remove a person, and what is shared with a company.
+      portal_end_access: "kernel.portal_people",
+      portal_invite: "kernel.portal_people",
+      portal_remove_person: "kernel.portal_people",
+      portal_share_set: "kernel.portal_shares",
       merge_imported_user: "kernel.users",
       // The bug report tool files a ticket.
       report_bug: "app_tickets.tickets",
       // S17: the user's own notification settings. Self rows, none an enforcing
       // sink, so a tainted turn is refused these like any other kernel write.
       notifications_set: "kernel.user_preferences",
+      set_away: "kernel.away_ranges",
       notification_rules_set: "kernel.attention_subscriptions",
       thread_mute_set: "kernel.user_thread_state",
       // The caller's (or, with kernel:users:admin, a member's) hidden sidebar
@@ -505,18 +537,20 @@ describe("writesToTable annotations on kernel tools", () => {
     // tool counts as a write.
     expect(marked.sort()).toEqual(
       [
-        // Its OpenRouter search fetches the public model list (fixed host, no query) and
-        // filters it locally: nothing from the turn leaves.
-        "ai_models_get",
         // Its only write is the result cache on the file row, and that holds an unbriefed
         // analysis only (drawn from the file alone, none of the turn's data).
         "analyze_media",
+        // The org's model settings; its OpenRouter search filters the catalogue fetched whole
+        // from the fixed host, so no text of the turn goes out. Writes nothing.
+        "ai_models_get",
         "approval_policy_get",
         "approvals_list",
         "audit_search",
         // The entry a deferred tool is called through (call-tool.ts, #499): marked readOnly
         // as it runs nothing itself; the tool it reaches carries its own annotation.
         "call_tool",
+        // The client actions of a record, with their state: one select.
+        "client_actions_list",
         // Listing the sessions importable from the person's computer: its only write is
         // the owner-bound, expiring import offer per row (bookkeeping, none of the turn's data).
         "computer_session_import_list",
@@ -526,10 +560,19 @@ describe("writesToTable annotations on kernel tools", () => {
         // Config as code: the plan and the export read the org's configuration, never write it.
         "config_export",
         "config_plan",
+        // Company reads: search, one company, the duplicate scan and the proposals write nothing.
+        "companies_find_duplicates",
+        "companies_propose_from_contacts",
+        "companies_read",
+        "companies_search",
+        // A company's timeline reads each app as the caller and stores nothing.
+        "company_timeline",
         "contacts_addresses_list",
         "contacts_find_duplicates",
         "contacts_group_members",
         "contacts_groups_list",
+        // A contact's identifiers (id, email, company id) for an app's own check: one select.
+        "contacts_identity",
         "contacts_read",
         "contacts_search",
         // Dashboards and the app data store: reads of saved dashboards, the eligible sources,
@@ -607,6 +650,8 @@ describe("writesToTable annotations on kernel tools", () => {
         // Lists what marked the conversation, from its own history; writes nothing.
         "outside_text_sources",
         "policy_get",
+        // Who signed in to the client portal and what they opened, read under the caller's RLS.
+        "portal_access_log",
         // Product attributes by SKU, read under the caller's RLS; writes nothing.
         "product_attributes_list",
         "roles_list",
@@ -622,6 +667,9 @@ describe("writesToTable annotations on kernel tools", () => {
         "skill_search",
         "subagent_get",
         "subagent_list",
+        // Chips under the reply, drawn on the requester's own screen; a chip only sends its
+        // label as the person's next message, so it writes nothing.
+        "suggest_next_steps",
         "threads_list",
         "threads_read",
         "threads_search",
@@ -647,6 +695,15 @@ describe("rule 8: the card line and the no-decider refusal of a parked tainted w
     expect(taintSourceApps([...TAINT, "*"])).toEqual(["boxtal", "contacts", "shopify", "tickets"])
   })
 
+  it("names a restricted record's app, never the word restricted", () => {
+    expect(
+      taintSourceApps([
+        "restricted:agreements.agreement:5b0c3f0e-8d1f-4a51-9a0e-2f3c8e1d7a10",
+        "projects:tasks:read",
+      ]),
+    ).toEqual(["agreements", "projects"])
+  })
+
   it("says where it would be shown and that approving discloses it, within the card's line cap", () => {
     const tickets = [
       { name: "ticket", tableName: "tickets" },
@@ -664,8 +721,21 @@ describe("rule 8: the card line and the no-decider refusal of a parked tainted w
     expect(taintSurfaceLabel([undefined, "conversations"], mail)).toBe("this conversation")
     expect(
       taintSurfaceLabel(["app_boxtal.app_config"], [{ name: "shipment", tableName: "shipments" }]),
-    ).toBe("app_boxtal.app_config")
+    ).toBe("app config in boxtal")
+    // A table no entity names reads as its record kind and its app, never as the table.
+    expect(taintSurfaceLabel(["app_projects.days_off"], [])).toBe("days off in projects")
+    expect(taintSurfaceLabel(["kernel.away_ranges"], [])).toBe("away ranges")
     expect(taintSurfaceLabel([undefined], [])).toBe("where it is written")
+    // Two entities over one table: the one named for the table, whatever the manifest order.
+    expect(
+      taintSurfaceLabel(
+        ["app_invoicing.documents"],
+        [
+          { name: "pdf", tableName: "documents" },
+          { name: "document", tableName: "documents" },
+        ],
+      ),
+    ).toBe("this document")
     const many = Array.from({ length: 40 }, (_, i) => `app${i}:things:read`)
     expect(taintDisclosureLine(many, "this ticket").length).toBeLessThanOrEqual(200)
   })

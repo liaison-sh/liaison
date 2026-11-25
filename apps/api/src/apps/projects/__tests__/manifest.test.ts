@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
+import type { CardTemplate } from "@liaison/shared"
 import { validateAppManifest } from "~/modules/apps/contract"
+import { resolveToolCard } from "~/modules/apps/result-card"
 import projectsManifest from "../app.manifest.json"
 import { projectsAppManifest } from "../manifest-descriptor"
 
@@ -13,7 +15,27 @@ const guideText = (m: { agentInstructions?: unknown }): string => {
   return typeof g === "string" ? g : [g.core, ...(g.sections ?? []).map((s) => s.text)].join("\n\n")
 }
 
+/**
+ * The text the model reads about one part of a tool while the tool is loaded:
+ * that part (its description, or one argument's), then every guide section
+ * naming the tool. A sentence several tools shared, and a description's text
+ * past its first 600 characters, read from such a section.
+ */
+const withToolSections = (tool: string, text: string): string => {
+  const g = projectsManifest.agentInstructions as ManifestGuide
+  const sections =
+    typeof g === "string" ? [] : (g.sections ?? []).filter((s) => s.tools.includes(tool))
+  return [text, ...sections.map((s) => s.text)].join("\n\n")
+}
+
 describe("projects.manifest", () => {
+  it("declares the heading over its attention items, in the words and catalog key Home shows", () => {
+    expect(projectsManifest.attention.groupLabel).toEqual({
+      label: "Tasks",
+      labelKey: "kernel.homeGroupTasks",
+    })
+  })
+
   it("projects.manifest.validates", () => {
     const result = validateAppManifest(projectsManifest)
     if (!result.success) {
@@ -59,9 +81,188 @@ describe("projects.manifest", () => {
     // 1.7.6: the CI section moved to the declarative settings page.
     // 1.7.7: createProject takes the project's tasks (one approval for the whole plan).
     // 1.7.9: task labels
-    // 1.10.3: flow templates list the scopes their steps need (the project read)
-    // 1.10.4: tasks record who made their last edit (updatedBy*)
-    expect(projectsManifest.version).toBe("1.10.4")
+    // 1.10.2: more French and English tool search words
+    // 1.10.3: approval_route_read says who an approval about a task is for; Home passes on.
+    // 1.10.6: sentences shared by several tools, and the longest descriptions past 600 characters, read from guide sections.
+    // 1.10.7: its core tools load on a hard focus of its entity, the others by name.
+    // 1.10.8: search draws its result as a list card.
+    // 1.10.9: the sales role, and deal amounts for sales and leads.
+    // 1.11.0: deal tools, the deal board and the deal send check; a project's client.
+    // 1.14.0: the deal import kind.
+    // 1.15.0: time and budgets columns on projects and tasks.
+    // 1.16.0: the per-project time and budgets switch and its feature.
+    // 1.17.0: timeboxes, Took and the plan tools.
+    // 1.20.0: the reconcile card, its line changes and its read.
+    // 1.21.0: a reconcile line done for another client offers to move its task there.
+    // 1.22.0: capacity, company days off, time settings, the capacity tab and the time section.
+    // 1.24.0: merged with typed task fields, status transitions and templates v2.
+    // 1.25.0: the dated sheet of a project and month, its export and its tab.
+    // 1.26.0: the dated sheet's tools and corrections run only on a person's turn, in a DM,
+    // behind their own scope; the reconcile card's reads and edits stay in a DM.
+    // 1.27.0: a reconcile line changes only on a person's turn; dated sheet for members; keywords trimmed.
+    // 1.28.0: margin and cost rates, and the money half of the budget read from invoicing.
+    // 1.29.0: capacity_move for the board's Move to, and calendar days marked in the days-off list.
+    // 1.30.0: the project Automations view from main joins the time and budgets views.
+    // 1.31.0: main's task aggregates and project-backed tables join the time and budgets tools.
+    // 1.32.0: the reconcile skill and its guide section, the per-project time line, and the
+    // wording of the dated-sheet and metrics lines.
+    // 1.33.0: a money-bearing result taints the turn with the money scope, cost_rate_set runs only
+    //   in a person's DM, no instruction ranks people, and capacity_move can leave a task unassigned.
+    // 1.33.1: merged with main: flow templates list the scopes their steps need (the project read),
+    //   and the task tab resolves its label.
+    // 1.34.0: cost_rate_set asks for the currency of a new rate.
+    // 1.34.1: merged with main: tasks record who made their last edit.
+    // 1.35.0: a reconcile line no longer says whether it is in the plan; its tasks decide. The
+    //   company days-off list in settings carries its heading.
+    // 1.36.0: a day or hour-billed budget shows its rate; reconcile facts word their figures; the
+    //   card's next step and notes promise no step it lacks; a dated sheet that is off says so.
+    // 1.36.1: capacity on a week where nobody has planned work says so and how time gets planned.
+    // 1.37.0: internal reads and marks for invoicing (the billed lines, claims after an invoice
+    //   moved, milestone status), the claims sweep by the draft's key.
+    // 1.38.0: Create invoice and Undo on the reconcile card, priced by invoicing with VAT.
+    // 1.39.0: a retainer month's card drafts its fee and overage; Undo discards through the
+    //   card's own discard; turning time off is refused while a retainer bills the project.
+    // 1.39.1: a billed line with no task claims itself; a superseded drafted card is set aside;
+    //   the milestone status read carries no task title.
+    // 1.40.0: a task on a live billing claim refuses a move or a merge; the sweep records a
+    //   partial credit's billed figures; a card's draft and the timesheet tab file the month's
+    //   timesheet on the draft.
+    // 1.40.1: a retainer month already drafted from another card refuses a second card's Create;
+    //   a month credited in full is billed again under the next key; Undo names its own card; a
+    //   move refusal names the invoice only to someone who reads invoices.
+    // 1.41.0: a retainer month's card above its hours offers Create without this month's
+    //   overage.
+    // 1.41.1: the 1.40.1 and 1.41.0 changes together; Create bills the billing contact of the
+    //   project's company, and a company with none has no Create.
+    // 1.41.2: the reconcile skill says a person creates the invoice on the card.
+    // 1.42.0: a planned vs done card has its own page, the link a coding agent hands a person.
+    // 1.43.0: createProject takes another app's step as externalRef and returns the project it
+    //   already made; the reconcile card offers a line as a change request when agreements is on.
+    // 1.44.0: client reports (list, read, sources, draft, a person's send) and a milestone as
+    //   a client action target.
+    // 1.45.0: a rejected or expired send card closes the draft, opening a reports share turns
+    //   the report routine on in the org's time zone, a client's milestone answer moves nothing.
+    // 1.46.0: descriptions that repeated what the result says (a send parks, a template's
+    //   checks) are cut.
+    // 1.46.1: a client report read gives the guard key a person's send carries; report sources
+    //   leave out messages stamped with a restricted record.
+    // 1.46.2: report sources declare only the field both of their forms carry, so neither
+    //   form is refused as an invalid result.
+    // 1.47.0: deals and client reports are features an admin turns on (off by default), and
+    //   time and budgets is marked as derived from a project's own switch.
+    expect(projectsManifest.version).toBe("1.47.0")
+  })
+
+  it("puts deals and client reports behind admin switches, off until turned on", () => {
+    const m = projectsManifest as any
+    expect(m.features.deals.adminScope).toBe("kernel:apps:admin")
+    expect(m.features.client_reports.adminScope).toBe("kernel:apps:admin")
+    expect(m.features.time_budgets.derived).toBe(true)
+    for (const t of [
+      "deals_pipeline_create",
+      "deals_update",
+      "deals_search",
+      "deals_rollup",
+      "deals_followup_candidates",
+    ]) {
+      expect(m.tools[t].feature).toBe("deals")
+    }
+    for (const t of [
+      "client_reports_list",
+      "client_report_get",
+      "client_report_sources_get",
+      "client_report_save_draft",
+      "client_report_send",
+    ]) {
+      expect(m.tools[t].feature).toBe("client_reports")
+    }
+    // The send guard reads a deal's state for every mail: plumbing, never switched.
+    expect(m.tools.deal_send_state.feature).toBeUndefined()
+  })
+
+  it("capacity has no sort parameter and answers in name order only", () => {
+    const tool = (projectsManifest as any).tools.capacity_get
+    expect(Object.keys(tool.params.properties).sort()).toEqual(["taskId", "week"])
+    expect(JSON.stringify(tool.params)).not.toMatch(/sort|order|rank/i)
+  })
+
+  it("the board's move is the person's own act: hidden from the agent, never gated, task write scoped", () => {
+    const tool = (projectsManifest as any).tools.capacity_move
+    expect(tool.agentVisible).toBe(false)
+    expect(tool.useInstead).toBe("update")
+    expect(tool.feature).toBe("time_budgets")
+    expect(tool.requiredScopes).toEqual(["projects:tasks:write", "projects:capacity:read"])
+    expect(tool.gated ?? false).toBe(false)
+    expect(tool.approval).toBeUndefined()
+    expect(Object.keys(tool.params.properties).sort()).toEqual(["taskId", "toUserId"])
+    expect(JSON.stringify(tool)).not.toMatch(/sort|rank|utili|approv/i)
+  })
+
+  it("one person's days carry no label or reason in any time tool", () => {
+    const tools = (projectsManifest as any).tools
+    expect(Object.keys(tools.time_settings_set.params.properties).sort()).toEqual([
+      "daysOffCalendarId",
+      "daysPerWeek",
+      "hoursPerDay",
+      "userId",
+    ])
+    expect(tools.days_off_set.params.properties.userId).toBeUndefined()
+    for (const name of ["days_off_set", "time_settings_set", "capacity_get"]) {
+      expect(JSON.stringify(tools[name].params)).not.toMatch(/reason/i)
+    }
+  })
+
+  it("the member role holds no deal scope and sales and lead do", () => {
+    const roles = (
+      projectsManifest as unknown as {
+        roles: Record<string, { extends?: string; scopes: string[] }>
+      }
+    ).roles
+    const held = (name: string): string[] => {
+      const role = roles[name]
+      if (!role) return []
+      return [...role.scopes, ...(role.extends ? held(role.extends) : [])]
+    }
+    const deals = ["projects:deals:read", "projects:deals:write"]
+    for (const scope of deals) expect(held("member")).not.toContain(scope)
+    for (const name of ["sales", "lead", "admin"]) {
+      for (const scope of deals) expect(held(name), `${name} ${scope}`).toContain(scope)
+    }
+    expect(roles.sales?.extends).toBe("member")
+    expect(held("sales")).not.toContain("projects:projects:write")
+  })
+
+  it("projects.manifest.search-draws-a-list-card-from-fields-the-tool-returns", () => {
+    const search = projectsManifest.tools.search as {
+      returns?: { schema?: Record<string, string> }
+      resultCard?: { kind?: string; items?: { path?: string } }
+      runningLabel?: string
+      runningLabelKey?: string
+    }
+    expect(search.resultCard?.kind).toBe("list")
+    expect(search.resultCard?.items?.path).toBe("result.items")
+    expect(Object.keys(search.returns?.schema ?? {})).toContain("items")
+    expect(search.runningLabel).toBeTruthy()
+    expect(search.runningLabelKey).toBe("projects.card.runningSearch")
+    // The manifest as a whole still passes the deep card rules.
+    expect(validateAppManifest(projectsManifest).success).toBe(true)
+  })
+
+  it("projects.manifest.search-card-names-projects-and-tasks", () => {
+    // search returns projects (`name`) and matching tasks (`title`) in one list: each item's
+    // line names it, whichever it is.
+    const template = (projectsManifest.tools.search as { resultCard: unknown })
+      .resultCard as CardTemplate
+    const card = resolveToolCard(template, {
+      items: [
+        { type: "project", id: "p1", key: "WEB", name: "Website" },
+        { type: "task", id: "t1", key: "WEB-12", title: "Fix the footer" },
+      ],
+    })
+    expect(card?.items).toEqual([
+      { label: "WEB", meta: "Website" },
+      { label: "WEB-12", meta: "Fix the footer" },
+    ])
   })
 
   it("projects.manifest.task-labels", () => {
@@ -310,7 +511,10 @@ describe("projects.manifest", () => {
       tools: Record<string, { params?: { properties?: Record<string, { description?: string }> } }>
     }
     for (const name of ["create", "update"]) {
-      const desc = m.tools[name]?.params?.properties?.description?.description ?? ""
+      const desc = withToolSections(
+        name,
+        m.tools[name]?.params?.properties?.description?.description ?? "",
+      )
       expect(desc, `${name}.description`).toContain("knowledge:source_link:<id>")
       expect(desc, `${name}.description`).toContain("knowledge:document:<id>")
       expect(desc, `${name}.description`).toContain("kernel:file:<id>")
@@ -475,6 +679,8 @@ describe("projects.manifest", () => {
       ["merge", "mergeTasksPreflight", "summarizeMergeTasks"],
       ["status_delete", "deleteStatusPreflight", "summarizeDeleteStatus"],
       ["checklist_remove_item", "checklistRemoveItemPreflight", "summarizeRemoveChecklistItem"],
+      // A client report goes out only on a person's decision (never auto-approved).
+      ["client_report_send", "clientReportSendPreflight", "summarizeClientReportSend"],
     ]
     for (const [name, preflight, summarizer] of stillGated) {
       expect(tools[name]!.gated, `${name}.gated`).toBe(true)
@@ -485,7 +691,13 @@ describe("projects.manifest", () => {
       .filter(([, t]) => t.gated === true)
       .map(([n]) => n)
       .sort()
-    expect(gatedNames).toEqual(["checklist_remove_item", "delete", "merge", "status_delete"])
+    expect(gatedNames).toEqual([
+      "checklist_remove_item",
+      "client_report_send",
+      "delete",
+      "merge",
+      "status_delete",
+    ])
   })
 
   it("projects.manifest.get-accepts-explicit-taskId-and-projectId (task detail regression)", () => {
@@ -539,7 +751,7 @@ describe("projects.manifest", () => {
     // object exists. Assert both steers are present (root cause: the prose only mentioned per-unit
     // inside the budget-partial clause, reading as conditional rather than the default shape).
     const tools = (projectsManifest as { tools: Record<string, { description: string }> }).tools
-    const desc = tools.createProject.description
+    const desc = withToolSections("createProject", tools.createProject.description)
     // per-item scaffold default over an enumerated set
     expect(desc).toContain("ENUMERATED SET")
     expect(desc).toContain("ONE TASK PER ITEM")
@@ -568,7 +780,7 @@ describe("projects.manifest", () => {
         >
       }
     ).tools.create.params
-    const descParam = params?.properties?.description?.description ?? ""
+    const descParam = withToolSections("create", params?.properties?.description?.description ?? "")
     expect(descParam).toMatch(/SELF-CONTAINED/i)
     expect(descParam).toMatch(/source URL/i)
     expect(descParam).toMatch(/contrasting|angle/i)
@@ -598,12 +810,15 @@ describe("projects.manifest", () => {
         >
       }
     ).tools
-    const toolDesc = tools.create.description
+    const toolDesc = withToolSections("create", tools.create.description)
     expect(toolDesc).toMatch(/outreach|shortlist/i)
     expect(toolDesc).toMatch(/why[\s-]?relevant|relevance/i)
     // …and the description PARAM (the body-authoring surface) must carry the same requirement, so the
     // model is steered at the exact moment it writes the body, not only in the tool blurb.
-    const descParam = tools.create.params?.properties?.description?.description ?? ""
+    const descParam = withToolSections(
+      "create",
+      tools.create.params?.properties?.description?.description ?? "",
+    )
     expect(descParam).toMatch(/outreach|shortlist|researched[\s-]?entity/i)
     expect(descParam).toMatch(/why[\s-]?relevant|relevance/i)
     expect(descParam).toMatch(/required|not optional|incomplete/i)
@@ -647,5 +862,63 @@ describe("projects.manifest", () => {
     expect(tools.merge.gated).toBe(true)
     expect(tools.merge.summarizer).toBe("summarizeMergeTasks")
     expect(tools.merge.approvalCard).toBeUndefined()
+  })
+  describe("the time and budgets text the model reads", () => {
+    const guide = projectsManifest.agentInstructions as {
+      core: string
+      sections: Array<{ tools: string[]; text: string }>
+    }
+    const tools = projectsManifest.tools as unknown as Record<string, { description: string }>
+    const skills = projectsManifest.skills as unknown as Record<
+      string,
+      { kind?: string; feature?: string; description: string; body: string }
+    >
+
+    it("the core says planned time is per project and off by default, in every org", () => {
+      expect(guide.core).toContain("are per project and off by default")
+      expect(guide.core).toContain("`update_project` with `timeBudgets:true`")
+      expect(guide.core).toContain("only when the person asks in their own message")
+    })
+
+    it("the metrics line is true with time and budgets on or off", () => {
+      const metrics = guide.sections.find((s) => s.text.startsWith("METRICS / BURNDOWN"))
+      expect(metrics?.text).toContain("NO story points")
+      expect(metrics?.text).toContain(
+        "planned time exists only on a project using time and budgets",
+      )
+      expect(metrics?.text).not.toContain("estimate field")
+      expect(guide.core).toContain("per project and off by default")
+    })
+
+    it("a guide section about reconciling shows only with the reconcile tools", () => {
+      const section = guide.sections.find((s) => s.text.startsWith("RECONCILING A PERIOD"))
+      expect(section?.tools).toEqual(["reconcile_facts", "reconcile_propose"])
+      for (const t of section?.tools ?? []) {
+        expect((projectsManifest.tools as Record<string, { feature?: string }>)[t]?.feature).toBe(
+          "time_budgets",
+        )
+      }
+    })
+
+    it("the reconcile skill is a playbook of the time feature with its eight rules", () => {
+      const skill = skills.reconcile
+      expect(skill.kind).toBe("playbook")
+      expect(skill.feature).toBe("time_budgets")
+      expect(skill.description.length).toBeLessThanOrEqual(100)
+      expect(skill.body.split("\n")).toHaveLength(8)
+      expect(skill.body).toContain("Never rank, count or compare people")
+      expect(skill.body).toContain("Absence of activity is never evidence of anything")
+      expect(skill.body).toContain("Say what you could not see")
+      expect(skill.body).toContain("A person creates the invoice on the card; you never issue")
+    })
+
+    it("task_time_set takes only the person's own words in their own message", () => {
+      const d = tools.task_time_set.description
+      expect(d).toContain("Only when the person states their own time in their own message")
+      expect(d).toContain("pass their exact words as `quote`")
+      expect(d).toContain(
+        "Never propose, estimate or round a figure, in chat or from a coding agent",
+      )
+    })
   })
 })

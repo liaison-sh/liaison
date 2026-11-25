@@ -60,7 +60,9 @@ export interface GatedApprovalSeed {
  * `threadId`). `approverUserIds` get the deciding scope first; `lines` are the
  * test app's echo summary lines; `toolCallMessage: false` leaves the blocked
  * call out of the agent's message (no inline card); `mention` has the
- * requester name the approval in a message.
+ * requester name the approval in a message; `runId` makes the call inside
+ * that agent run (a chat turn), so its card records the run like a live
+ * turn's does.
  */
 export function seedGatedApproval(
   env: WorkerEnv,
@@ -77,6 +79,7 @@ export function seedGatedApproval(
     lines?: string[]
     toolCallMessage?: boolean
     mention?: boolean
+    runId?: string
   },
 ): Promise<GatedApprovalSeed> {
   const { lines, params, ...rest } = opts

@@ -31,6 +31,11 @@ export function contactLabel(c: Pick<PickerContact, "name" | "email" | "company"
   return c.email?.trim() || tr("Unnamed contact")
 }
 
+/** Who a document or a schedule bills: the company the contact belongs to, else the contact. */
+export function customerLabel(c: Pick<PickerContact, "name" | "email" | "company">): string {
+  return c.company?.trim() || contactLabel(c)
+}
+
 /**
  * The draft patch for a picked contact: the link itself, plus the customer name
  * and email when the operator has not typed them yet (never overwrites a value
@@ -81,6 +86,8 @@ export async function loadContact(id: string): Promise<PickerContact | null> {
 export const ContactPicker: Component<{
   contactId: string | null
   disabled?: boolean
+  /** The customer must be chosen: the search box does not say "Optional". */
+  required?: boolean
   onPick: (c: PickerContact) => void
   onClear: () => void
 }> = (props) => {
@@ -124,7 +131,7 @@ export const ContactPicker: Component<{
                 }
               }
             }}
-            placeholder={tr("Optional: search a contact")}
+            placeholder={props.required ? tr("Search a contact") : tr("Optional: search a contact")}
             class={inputClass}
           />
           <Show when={open() && query().trim().length >= 2 && !results.loading}>

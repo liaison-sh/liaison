@@ -361,14 +361,29 @@ describe("legal original at issue", () => {
     expect(legalRows(db)).toHaveLength(0)
   })
 
+  test("an issuer profile with no SIREN is refused before numbering: no document, no number", async () => {
+    const { ctx, db } = makeCtx()
+    await expect(
+      issueDocument(ctx, {
+        type: "invoice",
+        operation_category: "goods",
+        issuer: { ...issuer, siren: null },
+        counterparty: frBuyer,
+        draft: draft(),
+      }),
+    ).rejects.toThrow(/SIREN is missing/)
+    expect(db.__all("documents")).toHaveLength(0)
+    expect(db.__sequences.size).toBe(0)
+  })
+
   test("a Factur-X that cannot be built leaves facturx_failed, raises attention, records nothing; the retry fixes it", async () => {
     const { ctx, db, renders, events } = makeCtx()
-    const noSiren = { ...issuer, siren: null }
+    // The buyer's street line is the one gap the issue gate does not see.
     const r = await issueDocument(ctx, {
       type: "invoice",
       operation_category: "goods",
-      issuer: noSiren,
-      counterparty: frBuyer,
+      issuer,
+      counterparty: { ...frBuyer, billing_line1: null },
       draft: draft(),
     })
     expect(r.pdf_file_id).toBeNull()
@@ -377,11 +392,12 @@ describe("legal original at issue", () => {
     expect(doc.pdf_status).toBe("facturx_failed")
     expect(legalRows(db)).toHaveLength(0)
     expect(events.find((e) => e.action === "facturx_failed")?.data).toMatchObject({
-      code: "facturx_seller_incomplete",
+      code: "facturx_buyer_incomplete",
       resolved: false,
     })
-    // The administrator completes the issuer profile; the retry builds the Factur-X.
+    // The buyer's street line is completed on the document; the retry builds the Factur-X.
     await db.insert("issuer_profiles", { ...issuer, id: "issuer-1" })
+    await db.update("documents", String(doc.id), { billing_line1: "10 rue Domestic" })
     const retried = await ensureDocumentPdf(ctx, String(doc.id), { force: true })
     expect(retried.ok).toBe(true)
     expect(legalRows(db)).toHaveLength(1)
@@ -397,15 +413,15 @@ describe("legal original at issue", () => {
 
   test("a committed legal original whose call rolled back: the next render re-creates the XML copy and the pointers, never re-renders", async () => {
     const { ctx, db, renders, imports } = makeCtx()
-    const noSiren = { ...issuer, siren: null }
     const r = await issueDocument(ctx, {
       type: "invoice",
       operation_category: "goods",
-      issuer: noSiren,
-      counterparty: frBuyer,
+      issuer,
+      counterparty: { ...frBuyer, billing_line1: null },
       draft: draft(),
     })
     await db.insert("issuer_profiles", { ...issuer, id: "issuer-1" })
+    await db.update("documents", r.document_id, { billing_line1: "10 rue Domestic" })
     expect((await ensureDocumentPdf(ctx, r.document_id, { force: true })).ok).toBe(true)
     expect(renders[0]?.parent?.commitRow).toBeDefined()
     const committed = legalRows(db)[0]!
@@ -446,12 +462,11 @@ describe("legal original at issue", () => {
 
   test("BT-23 is the payment state AT ISSUE: a Factur-X first rendered after a mark-paid still says due", async () => {
     const { ctx, db, renders } = makeCtx()
-    const noSiren = { ...issuer, siren: null }
     const r = await issueDocument(ctx, {
       type: "invoice",
       operation_category: "goods",
-      issuer: noSiren,
-      counterparty: frBuyer,
+      issuer,
+      counterparty: { ...frBuyer, billing_line1: null },
       draft: draft(),
     })
     const issued = (db.__all("documents") as Array<Record<string, unknown>>).find(
@@ -464,6 +479,7 @@ describe("legal original at issue", () => {
       paid_at: "2026-11-20T10:00:00.000Z",
     })
     await db.insert("issuer_profiles", { ...issuer, id: "issuer-1" })
+    await db.update("documents", r.document_id, { billing_line1: "10 rue Domestic" })
     expect((await ensureDocumentPdf(ctx, r.document_id, { force: true })).ok).toBe(true)
     const xml = Buffer.from(renders.at(-1)!.attachments![0]!.bytesBase64, "base64").toString("utf8")
     expect(xml).toContain("<ram:ID>B1</ram:ID>")

@@ -33,6 +33,7 @@ import { formatMoneyMinor } from "../money"
 import { netLinesForIssuer } from "../mutations"
 import {
   applyNetToGrossOnLoad,
+  bpToPercentInput,
   buildDocumentsUpdatePatch,
   buildItems,
   canIssue,
@@ -58,6 +59,7 @@ import {
   minorToPriceInput,
   NOTES_MAX_LENGTH,
   pendingApprovalMessage,
+  percentInputToBp,
   priceInputToMinor,
   primaryActionEmailLabel,
   primaryActionLabel,
@@ -65,7 +67,9 @@ import {
   replaceLineAt,
   rollupTotals,
   rollupTotalsInclusive,
+  shipsGoods,
   shouldReseedPriceText,
+  showCustomsColumns,
   statedIssuedAt,
   validateDraft,
 } from "./Editor"
@@ -127,9 +131,11 @@ describe("Editor (Phase 17 F4)", () => {
     expect(r.warnings).toEqual([])
   })
 
-  it("validateDraft flags missing due_at", () => {
-    const r = validateDraft(validDraft({ due_at: null }))
-    expect(r.errors.find((e) => e.field === "due_at")).toBeDefined()
+  it("a quote needs its date; an invoice without one is due by its payment terms", () => {
+    const quote = validateDraft(validDraft({ type: "quote", due_at: null }))
+    expect(quote.errors.find((e) => e.field === "due_at")).toBeDefined()
+    const invoice = validateDraft(validDraft({ type: "invoice", due_at: null }))
+    expect(invoice.errors.find((e) => e.field === "due_at")).toBeUndefined()
   })
 
   // Recipient completeness. An issued document must say WHO it is addressed to, WHERE they are
@@ -259,7 +265,7 @@ describe("Editor (Phase 17 F4)", () => {
   })
 
   it("canIssue blocks when there are validation errors", () => {
-    expect(canIssue(validDraft({ due_at: null }))).toBe(false)
+    expect(canIssue(validDraft({ counterparty_name: null }))).toBe(false)
   })
 
   it("canIssue blocks when status is pending_approval", () => {
@@ -1325,5 +1331,42 @@ describe("issueDateNotice: a date the server will refuse shows before the click"
     expect(
       issueDateNotice({ ...defaultDraft("invoice"), issued_at: "2026-12-25" }, today, plain),
     ).toBeNull()
+  })
+})
+
+describe("the VAT rate is typed and read as a percent", () => {
+  it("shows 20 for 2000 basis points and reads typed percents back", () => {
+    expect(bpToPercentInput(2000)).toBe("20")
+    expect(bpToPercentInput(550)).toBe("5.5")
+    expect(percentInputToBp("20")).toBe(2000)
+    expect(percentInputToBp("5,5")).toBe(550)
+    expect(percentInputToBp("5.5 %")).toBe(550)
+    expect(percentInputToBp("")).toBe(0)
+    expect(percentInputToBp("abc")).toBeNull()
+  })
+
+  it("hides the customs columns on a domestic services invoice with no customs data", () => {
+    const line = { hs_code: null, country_of_origin: null } as unknown as DraftLine
+    expect(showCustomsColumns([line], "domestic")).toBe(false)
+    expect(showCustomsColumns([line], "eu_export_non_eu")).toBe(true)
+    expect(showCustomsColumns([{ ...line, hs_code: "8518" }], "domestic")).toBe(true)
+  })
+})
+
+describe("goods fields on a services document", () => {
+  it("a services invoice ships nothing: no incoterm and no ship-to", () => {
+    expect(shipsGoods({ operation_category: "services" })).toBe(false)
+    // Goods, mixed, or not said yet: the parcel fields stay.
+    expect(shipsGoods({ operation_category: "goods" })).toBe(true)
+    expect(shipsGoods({ operation_category: "mixed" })).toBe(true)
+    expect(shipsGoods({ operation_category: null })).toBe(true)
+  })
+
+  it("the editor and the document hold the incoterm and the ship-to behind it", () => {
+    const editor = readFileSync(join(import.meta.dir, "Editor.tsx"), "utf8")
+    expect(editor).toMatch(/when=\{shipsGoods\(draft\(\)\)\}>\s*<Field label=\{tr\("Incoterm"\)\}/)
+    expect(editor).toMatch(/when=\{!props\.compact && shipsGoods\(draft\(\)\)\}>/)
+    const detail = readFileSync(join(import.meta.dir, "DocumentDetail.tsx"), "utf8")
+    expect(detail).toMatch(/shipsGoods\(p\.doc\)/)
   })
 })

@@ -1,0 +1,18 @@
+{
+  "entry": "tool:client_action_view_get",
+  "params": {
+    "targetType": "document",
+    "targetId": "7f000000-0000-4000-8000-00000000b1a1"
+  },
+  "recordedFrom": "the contract org on a local stack, record-invoicing-billing-plan.recorder.test.ts",
+  "expectError": {
+    "reason": "no quote has this id, so there is nothing to show: pins that refusal; the shown quote and its fingerprint are proven by invoicing-quote-acceptance.integration.test.ts"
+  },
+  "calls": [
+    {
+      "method": "db_findOne",
+      "args": ["documents", "7f000000-0000-4000-8000-00000000b1a1"],
+      "reply": "null"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "entry": "job:seal-retry",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["agreement_versions", "{\"where\":{\"status\":\"signed\"},\"limit\":500}"],
+      "reply": "[]"
+    }
+  ]
+}

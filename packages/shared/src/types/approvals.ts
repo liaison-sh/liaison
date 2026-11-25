@@ -59,6 +59,8 @@ export const APPROVAL_SUMMARY_LONG_LINES_MAX = 50
 export const APPROVAL_SUMMARY_FULL_TEXT_KINDS: ReadonlySet<string> = new Set([
   // api-connector: a write whose adapter declares what its card shows (approval).
   "api-connector.write.full",
+  // agreements: the reply to a client's mail sent with a change request, read whole.
+  "change_request_send",
 ])
 export const APPROVAL_SUMMARY_FULL_TEXT_LINE_MAX = 8000
 export const APPROVAL_SUMMARY_FULL_TEXT_LINES_MAX = 16
@@ -97,6 +99,27 @@ export const approvalSummarySchema = z
     // The id of the record acted on (`ticket-B2B-123`), shown first on the card
     // as a monospace chip so a reviewer knows WHICH record before reading more.
     ref: z.string().max(40).optional(),
+    // The last day the request can be decided in time (`YYYY-MM-DD`, the org's calendar), when the
+    // thing it brings about has one: an invoice draft's latest issue day. From four days before it,
+    // and once it is past, the request sorts to the top of Home. Order only, no colour or count.
+    latestOn: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    // The consent line of a request whose approval shares data some of its readers cannot see
+    // ("approving shares it with them"). It is also the last of `lines`, for a reader of the lines
+    // alone; a card shows it on its face, never only behind its details.
+    consent: z.string().max(300).optional(),
+    // The texts above that stand for a record ("a task"), each with the form that names it. Only
+    // stored: the server names a record for each reader who may read it, as it serves the card,
+    // and never sends this.
+    names: z
+      .array(z.object({ shown: z.string().max(8000), named: z.string().max(16000) }))
+      .max(60)
+      .optional(),
+    // Set where a card is sent to many readers at once (a live event): the record's name is left
+    // out, and a reader who already holds the card by its name keeps it.
+    namesHeld: z.literal(true).optional(),
   })
   .refine((s) => s.lines.length <= approvalSummaryLinesMax(s.kind), {
     path: ["lines"],
@@ -117,6 +140,8 @@ export function truncateApprovalSummary(s: ApprovalSummary): ApprovalSummary {
     subtitle: s.subtitle !== undefined ? s.subtitle.slice(0, 200) : undefined,
     impact: s.impact,
     ref: s.ref !== undefined ? s.ref.slice(0, 40) : undefined,
+    latestOn: s.latestOn,
+    consent: s.consent !== undefined ? s.consent.slice(0, 300) : undefined,
     // A line past the cap ends on "…" so a reviewer can tell it was cut (the
     // full value stays in the card's exact payload).
     lines: s.lines.slice(0, approvalSummaryLinesMax(s.kind)).map((line) => {
@@ -155,7 +180,14 @@ export interface ApprovalEditableField {
   // a card edit a sparse map (e.g. line-item quantity overrides);
   // `checkbox` is a single boolean (e.g. "Notify customer");
   // `email-list` edits a recipient array (mail to/cc/bcc) before approving a send.
-  widget: "text" | "richtext" | "checkbox" | "checkbox-per-line" | "key-value-list" | "email-list"
+  widget:
+    | "text"
+    | "richtext"
+    | "number"
+    | "checkbox"
+    | "checkbox-per-line"
+    | "key-value-list"
+    | "email-list"
   /**
    * For `checkbox-per-line` and `key-value-list` widgets only — names the
    * dot-path under `currentPayload` whose entries the widget renders.
@@ -171,6 +203,13 @@ export interface ApprovalEditableField {
    * htmlBody, not the edited textBody).
    */
   invalidates?: string[]
+  /**
+   * The unit a person reads, when the param is stored in another one: `hours` shows and
+   * edits an integer count of minutes as hours; `money` shows and edits an amount in minor
+   * units (a string or integer) in major units, by the payload's `currency`. The payload
+   * keeps the stored unit.
+   */
+  unit?: "hours" | "money"
 }
 
 export interface ApprovalLastEdit {
@@ -189,6 +228,48 @@ export interface ApprovalLastFailure {
   code: string
   message: string
   at: string
+}
+
+/**
+ * What the send check says about an agent's mail draft, read fresh at each card read (never
+ * stored). `quote` is the start of the message that stopped or held it, read with the viewer's
+ * own access: a message in a mailbox the viewer cannot read gives no quote and no `record`.
+ */
+export interface ApprovalSendGuard {
+  state: "clear" | "replied" | "bounced" | "held" | "opted_out" | "ref_stop" | "unavailable"
+  /** Who wrote the message that stopped or held it. */
+  who?: string | null
+  /** When that message came in (ISO). */
+  at?: string
+  /** A hold's end (ISO): until then the draft waits, after it the hold clears by itself. */
+  holdUntil?: string
+  quote?: string
+  /** The stop's code (`send_guard_replied`, a provider's own), or why the check could not run. */
+  code?: string
+  /** A provider's or a check's own words for a stop. */
+  label?: string
+  optedOut?: string[]
+  /** Where the message sits, when the viewer can open it. */
+  record?: { kind: "conversation" | "ticket"; id: string }
+  /** Where the message came in, without naming it: set when the viewer cannot open it. */
+  source?: "conversation" | "ticket"
+  /**
+   * What is recorded about each recipient who is a contact, read as the composer
+   * reads it, whatever the mail is classified: the approver's send is theirs.
+   */
+  recipients?: RecipientFact[]
+}
+
+/** What the organization records about one mail recipient who is a contact. */
+export interface RecipientFact {
+  email: string
+  name: string | null
+  /** The recorded lawful basis for commercial mail, null when none (or two disagree). */
+  basis: "consent" | "customer" | "professional_interest" | "generic_address" | null
+  /** True a consumer, false a business, null not recorded (which counts as a consumer). */
+  isConsumer: boolean | null
+  /** When they opted out of commercial mail (ISO), null when they have not. */
+  optedOutAt: string | null
 }
 
 /** Who asked for an approval (see `ApprovalRequestSummary.requester`). */
@@ -268,6 +349,8 @@ export interface ApprovalRequestSummary {
    */
   resourceOwnerId?: string | null
   lastEdit: ApprovalLastEdit | null
+  /** A gated mail send's guard state (`mail:compose`, `mail:reply` drafted by an agent). */
+  sendGuard?: ApprovalSendGuard
   /** The most recent post-approval execution failure, when the request reverted
    *  to pending; null if it never failed. The card renders this inline so a
    *  no-effect failure is never a silent drop-back to pending. */

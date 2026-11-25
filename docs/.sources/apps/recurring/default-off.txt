@@ -1,0 +1,7 @@
+Features off until an admin turns them on (missing row is off) -> apps/api/src/modules/apps/org-apps.ts:445
+Admin switch route GET/PUT features -> apps/api/src/modules/apps/routes.ts:668
+Admin scope checked, derived feature refused -> apps/api/src/modules/apps/org-features.ts:227
+Feature labels -> packages/shared/src/i18n/locales/en/kernel.json:7571
+A declared cross-app call is not refused -> apps/api/src/modules/apps/execute-tool.ts:5090
+Recurring tools and tabs name the feature -> bundled-apps/invoicing/app.manifest.json:1967
+Sidebar hides Recurring when refused -> bundled-apps/invoicing/src/ui/sidebar.tsx:507

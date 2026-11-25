@@ -24,7 +24,7 @@ import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import { addWorkingTime, resolveWorkingCalendar, type WorkingCalendar } from "~/lib/working-time"
 import type { Column } from "~/modules/dashboards/tables/columns"
-import { dueBucketSql } from "./due-status"
+import { dueBucketSql, orgToday } from "./due-status"
 import { activeFields, fieldFilterConditions, parseStoredFields } from "./fields"
 import { releaseFilterSql } from "./release-filter"
 import { TASK_PRIORITIES } from "./resolve"
@@ -65,7 +65,7 @@ export interface TasksAggregateArgs {
   includeTerminal?: boolean
   ageBuckets?: number[]
   sla?: { toStatusIds?: string[]; withinWorkingDays?: number }
-  /** For tests: the instant ages and SLA deadlines are measured against. */
+  /** For tests: the instant ages, SLA deadlines and the org's today (due buckets) are read at. */
   now?: Date
 }
 
@@ -536,6 +536,7 @@ async function orgCalendar(tx: RlsClient, orgId: string): Promise<WorkingCalenda
 export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAggregateResult> {
   const ids = projectIdsOf(args)
   const now = args.now ?? new Date()
+  const today = await orgToday(args.tx, args.orgId, now)
   const includeTerminal = args.includeTerminal === true
   const where = args.where ?? {}
   if (typeof where !== "object" || Array.isArray(where)) {
@@ -604,7 +605,7 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
   }
   if (where.due !== undefined) {
     const bucket = where.due === "this_week" ? "due_soon" : where.due
-    conds.push(drizzleSql`${dueBucketSql("t", "s")} = ${bucket}`)
+    conds.push(drizzleSql`${dueBucketSql("t", "s", today)} = ${bucket}`)
   }
   if (where.assigneeId !== undefined) {
     if (where.assigneeId === null) conds.push(drizzleSql`t.assignee_id IS NULL`)
@@ -640,7 +641,7 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
         t.status_entered_at, t.fields, t.due_date,
         s.label AS status_label, s."order" AS status_order, s.terminal AS status_terminal,
         u.name AS assignee_name,
-        ${dueBucketSql("t", "s")} AS due_bucket
+        ${dueBucketSql("t", "s", today)} AS due_bucket
       FROM ${projectsRel("tasks")} t
       LEFT JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id AND s.org_id = t.org_id
       LEFT JOIN ${kernelRel("users")} u ON u.id = t.assignee_id AND u.org_id = t.org_id

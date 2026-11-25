@@ -8,7 +8,11 @@ import { type Agent, agents, type NewAgent } from "~/db/schema/kernel/agents"
 import { users } from "~/db/schema/kernel/users"
 import { rootLogger } from "~/lib/logger"
 import { AGENT_HANDLE_UNIQUE_INDEX, isUniqueViolationOn } from "~/lib/unique-violation"
-import { isScopeCovered } from "~/modules/agent/scopes/scope-coverage"
+import {
+  isExactOnlyScope,
+  isScopeCovered,
+  withinBounds,
+} from "~/modules/agent/scopes/scope-coverage"
 import {
   computeEffectivePermissions,
   dropAppScopes,
@@ -23,6 +27,32 @@ import { assertNoAdminScopesInRoleCeiling } from "./ceiling-guard"
 const log = rootLogger.child({ module: "personal-agent" })
 
 /**
+ * What an administrator's restriction (`agents.ceiling_restriction`, 0218) holds besides the
+ * scopes they kept: the exact-only scopes they REMOVED from the ceiling they were shown, each
+ * stored as `!<scope>`, and the bare `!` that marks a restriction recorded this way. A `!` entry
+ * is never a scope: no coverage check reads it, and in row security's scans of the column it
+ * names nothing.
+ */
+const REMOVED_MARK = "!"
+
+function splitRestriction(restriction: readonly string[]): {
+  kept: string[]
+  removed: Set<string>
+  marked: boolean
+} {
+  const kept: string[] = []
+  const removed = new Set<string>()
+  let marked = false
+  for (const entry of restriction) {
+    if (entry.startsWith(REMOVED_MARK)) {
+      marked = true
+      if (entry.length > REMOVED_MARK.length) removed.add(entry.slice(REMOVED_MARK.length))
+    } else kept.push(entry)
+  }
+  return { kept, removed, marked }
+}
+
+/**
  * A personal agent's ceiling from its owner's current scopes and the
  * administrator's deliberate narrowing (`agents.ceiling_restriction`, 0218):
  * the scopes of the owner the restriction covers, or the owner's scopes when
@@ -30,17 +60,75 @@ const log = rootLogger.child({ module: "personal-agent" })
  * so a recompute after a grant change neither drops a narrowing nor widens past
  * it. Coverage is `isScopeCovered`'s (`*`, `:*` globs, bare prefixes), the one
  * the turn's intersection uses.
+ *
+ * An exact-only scope the owner holds by its exact grant also stays when the
+ * restriction keeps its area (`withinBounds`: `*`, its app's glob or a parent)
+ * and the administrator did not remove it: a grant given after the narrowing
+ * reaches the agent. The restriction grants nothing here; it only filters what
+ * the owner holds exactly. A restriction recorded before removals were kept
+ * (no `!` entry) names its exact-only scopes, as before.
  */
 export function personalCeiling(
   ownerScopes: readonly string[],
   restriction: readonly string[] | null | undefined,
 ): string[] {
   if (!restriction) return [...ownerScopes]
-  const fromOwner = ownerScopes.filter((s) => isScopeCovered([s], [...restriction]))
-  const fromRestriction = restriction.filter(
+  const { kept, removed, marked } = splitRestriction(restriction)
+  const fromOwner = ownerScopes.filter(
+    (s) =>
+      isScopeCovered([s], kept) ||
+      (marked && isExactOnlyScope(s) && !removed.has(s) && withinBounds(s, kept)),
+  )
+  const fromRestriction = kept.filter(
     (s) => isScopeCovered([s], [...ownerScopes]) && !fromOwner.includes(s),
   )
   return [...fromOwner, ...fromRestriction]
+}
+
+/**
+ * The restriction an administrator's ceiling write (`written`) records on a personal agent, or
+ * null when it narrows nothing. It records only what the administrator removed from the ceiling
+ * they were shown (`stored`): an exact-only scope of the owner the stored ceiling did not carry
+ * (a grant the ceiling has not caught up with yet) is one they could not name, since naming it
+ * takes its exact grant, so it is kept rather than silently dropped on every recompute. Under an
+ * earlier restriction (`previous`), a scope absent from the stored ceiling was left out by that
+ * restriction and stays out. An exact-only scope the administrator removed is recorded as
+ * removed (`!<scope>`), with the earlier restriction's removals they did not undo, so a later
+ * grant of it stays off the agent while one they never removed reaches it (`personalCeiling`).
+ * An earlier restriction recorded without removals is converted as narrow as it was: every
+ * exact-only scope of the owner it left out is recorded as removed.
+ */
+export function personalRestriction(
+  ownerScopes: readonly string[],
+  writtenCeiling: readonly string[],
+  stored: readonly string[],
+  previous: readonly string[] | null,
+): string[] | null {
+  // A ceiling names scopes only: an entry shaped like a removal is not one.
+  const written = writtenCeiling.filter((s) => !s.startsWith(REMOVED_MARK))
+  const unnamed =
+    previous === null
+      ? ownerScopes.filter(
+          (s) => isExactOnlyScope(s) && !written.includes(s) && !stored.includes(s),
+        )
+      : []
+  const restriction = [...new Set([...written, ...unnamed])]
+  const earlier = previous ? splitRestriction(previous) : null
+  // A restriction recorded before removals were kept (no `!` entry) kept an exact-only scope off
+  // unless it named it. Saved again in this format, each one it left out is recorded as removed,
+  // so the save never widens it: the stored ceiling did not carry them, so nothing else would.
+  const legacyExcluded =
+    earlier && !earlier.marked
+      ? ownerScopes.filter((s) => isExactOnlyScope(s) && !isScopeCovered([s], earlier.kept))
+      : []
+  const removed = new Set([
+    ...(earlier ? earlier.removed : []),
+    ...legacyExcluded,
+    ...stored.filter((s) => isExactOnlyScope(s)),
+  ])
+  for (const s of written) removed.delete(s)
+  if (removed.size === 0 && isScopeCovered([...ownerScopes], restriction)) return null
+  return [...restriction, REMOVED_MARK, ...[...removed].map((s) => `${REMOVED_MARK}${s}`)]
 }
 
 export interface CreatePersonalAgentInput {

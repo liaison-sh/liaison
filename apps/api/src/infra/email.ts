@@ -31,6 +31,17 @@ const log = rootLogger.child({ service: "email" })
  */
 export type EmailTemplateId =
   | "auth.sign-in-code"
+  | "portal.sign-in-link"
+  | "client-action.link"
+  | "client-action.code"
+  | "client-action.copy"
+  | "client-action.staff"
+  | "agreements.signed-copy"
+  | "agreements.claimed"
+  | "projects.client-report"
+  | "portal.request-reply"
+  | "portal.invite"
+  | "portal.totp-reset"
   | "auth.step-up-code"
   | "auth.password-reset"
   | "users.invitation"
@@ -52,6 +63,16 @@ export interface EmailMessage {
   from?: string
   replyTo?: string
   idempotencyKey?: string
+  /** Extra headers, `X-` names only (the client action mail's random id). */
+  headers?: Record<string, string>
+  /** Files sent with the mail (a signer's copy of a signed agreement). */
+  attachments?: EmailAttachment[]
+}
+
+export interface EmailAttachment {
+  filename: string
+  contentType: string
+  content: Uint8Array
 }
 
 export class EmailRateLimitError extends Error {
@@ -325,6 +346,16 @@ export class SmtpEmailProvider implements EmailProvider {
       html: message.html,
       text: message.text,
       replyTo: message.replyTo,
+      ...(message.headers ? { headers: message.headers } : {}),
+      ...(message.attachments?.length
+        ? {
+            attachments: message.attachments.map((a) => ({
+              filename: a.filename,
+              contentType: a.contentType,
+              content: Buffer.from(a.content),
+            })),
+          }
+        : {}),
     })
     log.info(emailLogFields(message), "Email sent (SMTP)")
   }
@@ -369,6 +400,16 @@ export class ResendEmailProvider implements EmailProvider {
       html: message.html,
       ...(message.text ? { text: message.text } : {}),
       ...(message.replyTo ? { reply_to: message.replyTo } : {}),
+      ...(message.headers ? { headers: message.headers } : {}),
+      ...(message.attachments?.length
+        ? {
+            attachments: message.attachments.map((a) => ({
+              filename: a.filename,
+              content: Buffer.from(a.content).toString("base64"),
+              content_type: a.contentType,
+            })),
+          }
+        : {}),
     }
 
     let res: Response
@@ -713,6 +754,7 @@ export class CapturedDemoMailProvider implements EmailProvider {
 
 let _demoCapture: CapturedDemoMailProvider | null = null
 let _demoResend: ResendEmailProvider | null = null
+let _demoSmtp: SmtpEmailProvider | null = null
 let _demoSystemOverride: EmailProvider | null | undefined
 
 /** The capture sender, created on first use. Read by tests. */
@@ -741,12 +783,30 @@ export function getDemoSystemMailProvider(): EmailProvider | null {
     return capturedDemoMail()
   }
   const apiKey = env.LIAISON_DEMO_MAIL_RESEND_API_KEY || env.SYSTEM_RESEND_API_KEY
-  if (!apiKey) return null
-  if (!_demoResend) {
-    _demoResend = new ResendEmailProvider({ apiKey, from: systemEmailFrom() })
-    log.info("Demo system mail channel: resend")
+  if (apiKey) {
+    if (!_demoResend) {
+      _demoResend = new ResendEmailProvider({ apiKey, from: systemEmailFrom() })
+      log.info("Demo system mail channel: resend")
+    }
+    return _demoResend
   }
-  return _demoResend
+  // A box that sends its mail over SMTP has a channel too (demoMailConfigured counts SMTP_HOST):
+  // without it, an SMTP-only demo box could never turn visitor agents on.
+  if (env.SMTP_HOST) {
+    if (!_demoSmtp) {
+      _demoSmtp = new SmtpEmailProvider({
+        host: env.SMTP_HOST,
+        port: env.SMTP_PORT,
+        user: env.SMTP_USER,
+        pass: env.SMTP_PASS,
+        from: systemEmailFrom(),
+        secure: env.SMTP_SECURE,
+      })
+      log.info({ host: env.SMTP_HOST, port: env.SMTP_PORT }, "Demo system mail channel: SMTP")
+    }
+    return _demoSmtp
+  }
+  return null
 }
 
 /** Does this box have a demo system mail channel at all? Never throws. */

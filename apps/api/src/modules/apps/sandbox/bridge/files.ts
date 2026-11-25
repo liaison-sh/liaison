@@ -12,6 +12,8 @@ import {
   validateSandboxFetchUrl,
 } from "~/modules/apps/sandbox/bridge/shared"
 import { maybeDemoBoxtalResponse } from "~/modules/demo/boxtal/responder"
+import { maybeDemoPaymentsResponse } from "~/modules/demo/worlds/saas/payments/provider"
+import { maybeDemoGithubResponse } from "~/modules/demo/worlds/studio/github/provider"
 
 /** Headers a sandbox may set on a `files_importFromUrl` download. */
 const IMPORT_HEADER_ALLOWLIST = new Set(["authorization", "accept"])
@@ -224,8 +226,25 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
           { filename: p.filename || "attachment", mimeType: p.mimeType, bytes: received },
           { orgId, where: p.targetApp },
         )
-        const bytes = Buffer.from(scan.attachment.bytes)
         const mimeType = scan.attachment.mimeType
+        // A mail attached as a file (a forwarded signing mail) keeps no live signing link, as
+        // a mail's own text keeps none (client-actions/quoted-link.ts).
+        const { cutSigningLinksInMailFile, isMailFile } = await import(
+          "~/modules/client-actions/quoted-link"
+        )
+        // A demo workspace's invoice data says specimen (modules/pdf/specimen.ts).
+        const { storedBytesWithSpecimen } = await import("~/modules/pdf/specimen")
+        const bytes = Buffer.from(
+          !scan.quarantined && isMailFile(mimeType, scan.attachment.filename)
+            ? cutSigningLinksInMailFile(scan.attachment.bytes)
+            : scan.quarantined
+              ? scan.attachment.bytes
+              : await storedBytesWithSpecimen(orgId, {
+                  mimeType,
+                  bytes: scan.attachment.bytes,
+                  fromNetwork: p.fromNetwork === true,
+                }),
+        )
         const disposition = scan.quarantined ? "attachment" : (p.disposition ?? "attachment")
         const safeName = sanitizeFilename(scan.attachment.filename)
         const storageKey = `orgs/${orgId}/${p.targetApp}/${p.targetEntityType}/${p.targetEntityId}/${fileId}/${safeName}`
@@ -304,7 +323,10 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
         const UUID_USER_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
         // A file downloaded from a provider (`files_importFromUrl`) came from
         // outside the org, whoever's run fetched it (modules/files/origin.ts).
-        const uploaderId = p.fromNetwork !== true && UUID_USER_RE.test(userId) ? userId : null
+        // The nil id is the system actor (a client's decision handled by the app), never a user.
+        const NIL_ID = "00000000-0000-0000-0000-000000000000"
+        const uploaderId =
+          p.fromNetwork !== true && UUID_USER_RE.test(userId) && userId !== NIL_ID ? userId : null
         // kernel.files is FORCE RLS with NO liaison_rls INSERT policy ("INSERT/
         // DELETE are kernel-only; liaison_admin BYPASSRLS handles them"). When
         // this bridge runs under a SYSTEM/privileged tx (inbound mail/ticket
@@ -527,13 +549,27 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
       // DEMO INSTANCE ONLY, the gate `ctx.fetch` applies (egress.ts): a demo org's download from
       // a Boxtal host (its booking's specimen label) is answered in-process and never put on the
       // wire. One module-local boolean on a normal deployment.
-      const demoResponse = await maybeDemoBoxtalResponse({
-        orgId,
-        url: p.url,
-        method: "GET",
-        body: undefined,
-        headers,
-      })
+      // The card-payments stand-in too: a demo org's download from the payments host is answered
+      // (or refused) in-process, whatever app asks.
+      const demoResponse =
+        (await maybeDemoBoxtalResponse({
+          orgId,
+          url: p.url,
+          method: "GET",
+          body: undefined,
+          headers,
+        })) ??
+        (await maybeDemoPaymentsResponse({
+          orgId,
+          appName,
+          allowedDomains,
+          url: p.url,
+          method: "GET",
+          body: undefined,
+          headers,
+        })) ??
+        // The services world's GitHub stand-in token never leaves either, on any box.
+        (await maybeDemoGithubResponse({ orgId, url: p.url, method: "GET", headers }))
       const response =
         demoResponse ??
         (await fetchWithPinnedHost(

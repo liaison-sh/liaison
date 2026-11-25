@@ -140,7 +140,8 @@ async function activeUser(orgId: string, userId: string | null): Promise<string 
   const rows = await withPrivilegedDb(orgId, "knowledge-approval-owner", (tx) =>
     tx.execute(drizzleSql`
       SELECT id::text AS id FROM ${kernelRel("users")}
-       WHERE id = ${userId}::uuid AND org_id = ${orgId}::uuid AND status = 'active'`),
+       WHERE id = ${userId}::uuid AND org_id = ${orgId}::uuid AND status = 'active'
+         AND user_type = 'member'`),
   )
   return extractRows<{ id: string }>(rows)[0]?.id ?? null
 }

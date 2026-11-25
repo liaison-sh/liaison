@@ -1,0 +1,6 @@
+{
+  "privileged": {
+    "seed/worlds/services-features.ts": "The seed engine's writer of the switches inside apps a seeded world turns on (companies, deals, client reports, recurring billing): one upsert of kernel.org_app_features rows in the org the seed names. Seed only, never reached from a request.",
+    "tests/helpers/org-features.ts": "Test helper: turns the same switches on for a test's org, as an admin would from Settings, before the suite exercises them."
+  }
+}

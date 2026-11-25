@@ -3,6 +3,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { APPROVING_WEDGE_GRACE_MS } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
+import { HTTPException } from "hono/http-exception"
+import { z } from "zod"
 import { extractRows, sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
@@ -257,6 +259,20 @@ describe("decideApproval lifecycle", () => {
         throw new Error(
           'Failed query: SELECT * FROM app_knowledge.collections WHERE id = $1::uuid — invalid input syntax for type uuid: "support"',
         )
+      },
+    } as any)
+    // An internal tool that owns its transactions commits once per write, so a
+    // throw with no protocol row may have left a commit behind: unknown, as external.
+    toolRegistry.set([ORG, "decide_test", "internalOwnsTxThrows"], {
+      appName: "decide_test",
+      name: "internalOwnsTxThrows",
+      description: "Internal tool on its own transactions that throws",
+      requiredScopes: ["decide_test:gated:write"],
+      gated: true,
+      approvalImpact: "internal",
+      ownsTransactions: true,
+      handler: async () => {
+        throw new Error("the last of its writes failed")
       },
     } as any)
     // Control: same throw, but the tool reaches OUTSIDE the kernel tx. Its
@@ -980,6 +996,7 @@ describe("decideApproval lifecycle", () => {
     it.each([
       ["internal", "internalThrows"],
       ["external", "externalThrows"],
+      ["owns-transactions", "internalOwnsTxThrows"],
     ])("a %s-impact tool that throws with no protocol row", async (impact, tool) => {
       await grantScopes(["decide_test:gated:write", "decide_test:approve"])
       const id = await createRequest(tool)
@@ -1008,6 +1025,132 @@ describe("decideApproval lifecycle", () => {
         expect(err).toMatchObject({ code: "handler_ambiguous" })
         expect(await statusOf(id)).toBe("approving")
       }
+    })
+
+    /** Stage a call of an external tool, then require a parameter its stored payload lacks (an app
+     *  upgraded while the request waited, a request written by a seed). */
+    async function stageThenRequireCharge() {
+      const register = (params: unknown) =>
+        toolRegistry.set([ORG, "decide_test", "externalNeedsCharge"], {
+          appName: "decide_test",
+          name: "externalNeedsCharge",
+          description: "External-impact tool with a required parameter",
+          requiredScopes: ["decide_test:gated:write"],
+          gated: true,
+          approvalImpact: "external",
+          params,
+          handler: async () => {
+            providerSends += 1
+            return { ok: true }
+          },
+        } as any)
+      await grantScopes(["decide_test:gated:write", "decide_test:approve"])
+      register(z.object({ chargeId: z.string() }))
+      const id = await createRequest("externalNeedsCharge", { chargeId: "ch_1" })
+      register(z.object({ charge: z.string(), chargeId: z.string() }))
+      return id
+    }
+
+    it("an external tool refused on its parameters never ran: the request is pending again, with the reason", async () => {
+      const id = await stageThenRequireCharge()
+      const sendsBefore = providerSends
+      const decide = (decision: "approve" | "deny") =>
+        decideApproval({ orgId: ORG, requestId: id, actor, decision })
+      const err = await decide("approve").catch((e) => e)
+      expect(err).toMatchObject({ code: "handler_failed" })
+      expect(JSON.stringify(err)).toContain('\\"charge\\"')
+      expect(providerSends).toBe(sendsBefore)
+      const [row] =
+        await sql`SELECT status, metadata FROM kernel.approval_requests WHERE id = ${id}`
+      expect(row?.status).toBe("pending")
+      expect((row?.metadata as Record<string, unknown>)?.ambiguousError).toBeUndefined()
+      const [exec] = await sql`SELECT status FROM kernel.approved_handler_executions
+        WHERE approval_request_id = ${id}`
+      expect(exec?.status).toBe("failed_no_effect")
+      // A person can close it, as any pending request.
+      expect((await decide("deny")).status).toBe("denied")
+    })
+
+    it("an external handler that answers HTTP 400 after its effect is not a parameter refusal: unknown, never pending", async () => {
+      await grantScopes(["decide_test:gated:write", "decide_test:approve"])
+      toolRegistry.set([ORG, "decide_test", "externalEffectThen400"], {
+        appName: "decide_test",
+        name: "externalEffectThen400",
+        description: "External-impact tool whose provider refuses after the effect",
+        requiredScopes: ["decide_test:gated:write"],
+        gated: true,
+        approvalImpact: "external",
+        params: z.object({ chargeId: z.string() }),
+        handler: async () => {
+          providerSends += 1
+          throw new HTTPException(400, { message: "the provider's receipt is malformed" })
+        },
+      } as any)
+      const id = await createRequest("externalEffectThen400", { chargeId: "ch_1" })
+      const sends = providerSends
+      const decide = () => decideApproval({ orgId: ORG, requestId: id, actor, decision: "approve" })
+      await expect(decide()).rejects.toMatchObject({ code: "handler_ambiguous" })
+      expect(await statusOf(id)).toBe("approving")
+      // A second click never sends again.
+      await expect(decide()).rejects.toThrow()
+      expect(providerSends).toBe(sends + 1)
+    })
+
+    it.each([
+      ["a check that breaks", () => new TypeError("schema is not a function")],
+      ["a check that answers another status", () => new HTTPException(503, { message: "down" })],
+    ])(
+      "%s is not a parameter refusal either: the request does not go back to pending",
+      async (_, broken) => {
+        await grantScopes(["decide_test:gated:write", "decide_test:approve"])
+        const register = (params: unknown) =>
+          toolRegistry.set([ORG, "decide_test", "externalBrokenCheck"], {
+            appName: "decide_test",
+            name: "externalBrokenCheck",
+            description: "External-impact tool whose parameter check breaks",
+            requiredScopes: ["decide_test:gated:write"],
+            gated: true,
+            approvalImpact: "external",
+            params,
+            handler: async () => {
+              providerSends += 1
+              return { ok: true }
+            },
+          } as any)
+        register(z.object({ chargeId: z.string() }))
+        const id = await createRequest("externalBrokenCheck", { chargeId: "ch_1" })
+        register({
+          shape: { chargeId: z.string() },
+          safeParse: () => {
+            throw broken()
+          },
+        })
+        const sends = providerSends
+        const err = await decideApproval({
+          orgId: ORG,
+          requestId: id,
+          actor,
+          decision: "approve",
+        }).catch((e) => e)
+        expect(err).toMatchObject({ code: "handler_ambiguous" })
+        expect(await statusOf(id)).toBe("approving")
+        expect(providerSends).toBe(sends)
+      },
+    )
+
+    it("a parameter refusal does not settle an earlier attempt whose outcome is unknown", async () => {
+      const id = await stageThenRequireCharge()
+      const started = {
+        ...(await latestApprovalCtx("decide_test:externalNeedsCharge")),
+        approvalDeciderId: actor.userId,
+      }
+      await withPrivilegedDb(ORG, "decide-test-earlier-start", (tx) =>
+        recordStarted(tx, started, started.toolName),
+      )
+      await expect(
+        decideApproval({ orgId: ORG, requestId: id, actor, decision: "approve" }),
+      ).rejects.toMatchObject({ code: "handler_ambiguous" })
+      expect(await statusOf(id)).toBe("approving")
     })
 
     it("an internal-impact failure can be re-approved once the input is fixed -- no wedge", async () => {

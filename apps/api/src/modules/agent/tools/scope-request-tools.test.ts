@@ -136,3 +136,61 @@ describe("list_locked_capabilities answers with a digest the agent can read", ()
     expect(res.total).toBe(1)
   })
 })
+
+describe("list_locked_capabilities finds locked tools by their own words", () => {
+  const WORDS_ORG = "00000000-0000-0000-0000-0000007c1201"
+  const ctx = {
+    userId: "00000000-0000-0000-0000-0000007c1202",
+    orgId: WORDS_ORG,
+    scopes: ["works:tasks:read"],
+    db: undefined as never,
+  }
+
+  beforeAll(() => {
+    toolRegistry.set([WORDS_ORG, "works", "billing_terms_set"], {
+      appName: "works",
+      name: "billing_terms_set",
+      description: "Set how a project is billed: rate per hour or day, or a fixed price.",
+      requiredScopes: ["works:money:write"],
+      handler: async () => ({ ok: true }),
+    } as any)
+    toolRegistry.set([WORDS_ORG, "works", "cost_rates_list"], {
+      appName: "works",
+      name: "cost_rates_list",
+      description: "Each person's cost per hour and the day it applies from.",
+      requiredScopes: ["works:margin:read"],
+      handler: async () => ({ ok: true }),
+    } as any)
+    toolRegistry.set([WORDS_ORG, "works", "margin_get"], {
+      appName: "works",
+      name: "margin_get",
+      description: "One project's margin: what is invoiced minus its time at cost.",
+      requiredScopes: ["works:margin:read"],
+      handler: async () => ({ ok: true }),
+    } as any)
+    toolRegistry.set([WORDS_ORG, "works", "labels_archive"], {
+      appName: "works",
+      name: "labels_archive",
+      description: "Archive a label.",
+      requiredScopes: ["works:labels:write"],
+      handler: async () => ({ ok: true }),
+    } as any)
+  })
+
+  afterAll(() => {
+    toolRegistry.deleteByPrefix([WORDS_ORG])
+  })
+
+  it("a query of several words no single tool holds all of lists the tools holding some, best first", async () => {
+    const res = await handleListLockedCapabilities({ query: "rate invoice price billing" }, ctx)
+    const names = res.locked.map((t) => t.name)
+    expect(names).toContain("works__billing_terms_set")
+    expect(names).toContain("works__cost_rates_list")
+    expect(names).toContain("works__margin_get")
+    expect(names).not.toContain("works__labels_archive")
+    expect(names[0]).toBe("works__billing_terms_set")
+    expect(res.locked.find((t) => t.name === "works__cost_rates_list")?.scope).toBe(
+      "works:margin:read",
+    )
+  })
+})

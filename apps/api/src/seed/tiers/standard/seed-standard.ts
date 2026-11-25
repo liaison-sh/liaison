@@ -14,6 +14,7 @@
 //
 // Not idempotent: a second run into the same org is refused (the teammates
 // exist), so a lane or a dev reset starts from an org with only its admin.
+
 import { and, eq } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { users } from "~/db/schema/kernel"
@@ -21,6 +22,7 @@ import { env } from "~/lib/env"
 import { type SeedContext, seedContext } from "~/seed/context"
 import { orgUserIdsByEmail } from "~/seed/factories/people/people"
 import { QA_MEMBERS, type QaContactSpec, type QaThreadKey } from "~/seed/world/qa"
+import { SERVICES_DEMO_FEATURES, turnOnSeedFeatures } from "~/seed/worlds/services-features"
 import { type StandardKnowledge, seedQaKnowledge } from "./knowledge"
 import {
   applyApproverSplit,
@@ -134,6 +136,9 @@ export async function seedStandardWorld(options: SeedStandardOptions): Promise<S
   )
   await step("saved views", () => seedQaSavedViews(ctx, people))
   const mail = await step("mail", () => seedQaMail(ctx, people, encryptionKey))
+  // Companies, deals, client reports and recurring billing are off in a new workspace; the
+  // developer's and QA's world shows them.
+  await step("features", () => turnOnSeedFeatures(admin.orgId, SERVICES_DEMO_FEATURES))
 
   return { orgId: admin.orgId, ...people, threads, contacts, knowledge, tickets, mail }
 }

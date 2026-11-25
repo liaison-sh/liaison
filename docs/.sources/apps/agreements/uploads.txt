@@ -1,0 +1,4 @@
+Upload first, then pass the file id on create or save; a copy is kept on the agreement and follows its row rules -> bundled-apps/agreements/src/agreements.ts (keepUploadOnAgreement) ; bundled-apps/agreements/app.manifest.json (agreement)
+Prepare freezes the uploaded bytes as they are, after the render service's checks and page pictures -> bundled-apps/agreements/src/agreements.ts (freezeUpload) ; apps/api/src/modules/pdf-render/upload.ts (checkUploadedPdf)
+A long check answers checking and the upload-freeze job finishes it -> bundled-apps/agreements/src/agreements.ts (uploadFreezeJob, UPLOAD_CHECK_DEADLINE_MS)
+Not checked for viruses: rescanned at send, every 15 minutes by a job, the card line; a hit refuses the send and drops the download -> bundled-apps/agreements/src/send.ts (rescannedState, cardLines, clientActionViewGet) ; bundled-apps/agreements/src/agreements.ts (uploadRescanJob) ; bundled-apps/agreements/app.manifest.json (upload-rescan)

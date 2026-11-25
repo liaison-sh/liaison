@@ -200,7 +200,10 @@ describe("instagram_unified connection", () => {
     expect(conn.tokenUrl).toBe("https://graph.facebook.com/v26.0/oauth/access_token")
     // The configuration carries the permissions: no `scope` is sent.
     expect(conn.scopes).toEqual([])
-    expect(conn.extraParams).toEqual({ override_default_response_type: "true" })
+    // prompt=login lets the person choose Instagram or Facebook credentials, as Meta's own login
+    // URL for an "Instagram Login Compatible" configuration does; without it Meta reuses a
+    // Facebook session and lists only that account's portfolios.
+    expect(conn.extraParams).toEqual({ override_default_response_type: "true", prompt: "login" })
     expect(conn.authorizeConfigParams).toEqual({
       config_id: { configKey: "instagramLoginConfigurationId", pattern: "^[0-9]{1,30}$" },
     })

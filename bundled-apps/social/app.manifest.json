@@ -191,7 +191,8 @@
       "tokenDebugUrl": "https://graph.facebook.com/v26.0/debug_token",
       "scopes": [],
       "extraParams": {
-        "override_default_response_type": "true"
+        "override_default_response_type": "true",
+        "prompt": "login"
       },
       "authorizeConfigParams": {
         "config_id": {

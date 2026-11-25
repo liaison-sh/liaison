@@ -31,6 +31,7 @@ import { withRlsContext } from "~/db/rls"
 import { initializedOrgRuntimes } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { grantScopesThroughRole } from "~/seed/factories/people/scoped-role"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -56,7 +57,7 @@ beforeAll(async () => {
   }
   const a = await member("Ana")
   const b = await member("Ben")
-  // Ana may also move pages to the Trash; Ben may not.
+  // A member may move the pages they edit to the Trash.
   await minimal.grantScope(a.id, "knowledge:documents:archive")
   anaId = a.id
   benId = b.id
@@ -633,9 +634,25 @@ describe("deleting the folder", () => {
   })
 
   it("an empty page stays, an ordinary page, when the person deleting may not trash it", async () => {
+    // A person who edits pages and manages folders, without the Trash scope.
+    const p = await minimal.person(orgId, { name: "Dee" })
+    await grantScopesThroughRole(orgId, {
+      adminUserId: adminId,
+      userId: p.id,
+      name: `Folders without Trash ${randomUUID()}`,
+      scopes: [
+        "knowledge:documents:read",
+        "knowledge:documents:create",
+        "knowledge:documents:update",
+        "knowledge:collections:manage",
+      ],
+      dimensions: {},
+    })
+    const dee = await minimal.sessionOf(p)
     const id = await folder(ana, "Empty kept")
     const index = (await start(ana, id)).data.id
-    expect((await call(ben, "POST", `/collections/${id}/archive`, {})).status).toBe(200)
+    expect((await view(dee, id)).data.page?.canEdit).toBe(true)
+    expect((await call(dee, "POST", `/collections/${id}/archive`, {})).status).toBe(200)
     expect((await storedDoc(index)).archived_at).toBeNull()
     expect((await storedFolder(id)).index_document_id).toBeNull()
   })

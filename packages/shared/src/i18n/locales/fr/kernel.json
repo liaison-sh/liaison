@@ -5015,8 +5015,8 @@
       "shop": "Boutique Shopify"
     },
     "social": {
-      "instagram": "Compte Instagram",
-      "instagram_unified": "Compte Instagram (connexion unifiée, aperçu)",
+      "instagram": "Compte Instagram (connexion Instagram, anciennes apps Meta)",
+      "instagram_unified": "Compte Instagram",
       "facebook": "Page Facebook",
       "google": "Compte Google"
     },

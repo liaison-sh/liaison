@@ -29,6 +29,7 @@ export const SOCIAL_CONNECTIONS: ReadonlyArray<{
 }> = [
   { name: "facebook", label: "Facebook Page", platform: "facebook" },
   { name: "instagram", label: "Instagram", platform: "instagram" },
+  { name: "instagram_unified", label: "Instagram (Unified login)", platform: "instagram" },
   { name: "google", label: "Google (YouTube)", platform: "youtube" },
 ]
 

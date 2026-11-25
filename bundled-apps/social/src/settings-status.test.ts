@@ -47,11 +47,12 @@ function makeCtx(db: MockDb, connections: unknown): SocialToolCtx {
 }
 
 describe("connections_status", () => {
-  test("lists facebook, instagram and google with each one's real kernel state", async () => {
+  test("lists facebook, instagram, instagram_unified and google with each one's real kernel state", async () => {
     const asked: string[] = []
     const byName: Record<string, ConnectionAccount[]> = {
       facebook: [account({ identifier: "fb-user", displayName: "Resonant Audio Labs Page" })],
       instagram: [account({ identifier: "ig-1", ownerType: "user", isMine: true })],
+      instagram_unified: [account({ identifier: "17841400000000101", displayName: "liaison.sh" })],
       google: [],
     }
     const ctx = makeCtx(createMockDb(), {
@@ -63,12 +64,14 @@ describe("connections_status", () => {
     })
     const res = await connectionsStatus({}, ctx, NOW)
     expect(res.available).toBe(true)
-    expect(asked).toEqual(["facebook", "instagram", "google"])
-    expect(res.connections.map((c) => [c.name, c.state])).toEqual([
-      ["facebook", "connected"],
-      ["instagram", "connected"],
-      ["google", "not_connected"],
+    expect(asked).toEqual(["facebook", "instagram", "instagram_unified", "google"])
+    expect(res.connections.map((c) => [c.name, c.state, c.platform])).toEqual([
+      ["facebook", "connected", "facebook"],
+      ["instagram", "connected", "instagram"],
+      ["instagram_unified", "connected", "instagram"],
+      ["google", "not_connected", "youtube"],
     ])
+    expect(res.connections[2]!.label).toBe("Instagram (Unified login)")
     expect(res.connections[0]!.primary?.displayName).toBe("Resonant Audio Labs Page")
     expect(res.connections[1]!.primary?.ownerType).toBe("user")
   })

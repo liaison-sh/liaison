@@ -5,6 +5,8 @@
 // [platform, external_id]; an edit updates the existing row's content.
 
 import { describe, expect, test } from "bun:test"
+import { facebookAdapter } from "./adapters/facebook"
+import { instagramParseWebhook } from "./adapters/instagram"
 import type { SocialToolCtx } from "./ctx"
 import {
   dmSnippet,
@@ -250,6 +252,138 @@ describe("parseWebhookJob (B5)", () => {
     await parseWebhookJob(ctx, { platform: "facebook", body })
     await parseWebhookJob(ctx, { platform: "facebook", body })
     expect(await ctx.db.count("finding", { where: { external_id: "c-1" } })).toBe(1)
+  })
+})
+
+// Instagram webhooks (`object: "instagram"`): comments arrive as
+// `changes[field=comments]` and DMs as `messaging[]`. Fixtures follow Meta's
+// documented payloads:
+// https://developers.facebook.com/documentation/instagram-platform/webhooks/examples
+describe("parseWebhookJob: Instagram deliveries", () => {
+  const IG_ID = "17841400000000101"
+  const commentBody = (fromId: string, id = "17865799348089039") => ({
+    object: "instagram",
+    entry: [
+      {
+        id: IG_ID,
+        time: 1520383571,
+        changes: [
+          {
+            field: "comments",
+            value: {
+              from: { id: fromId, username: "test" },
+              media: { id: "123123123", media_product_type: "FEED" },
+              id,
+              text: "This is an example.",
+            },
+          },
+        ],
+      },
+    ],
+  })
+  const messageBody = (echo: boolean) => ({
+    object: "instagram",
+    entry: [
+      {
+        id: IG_ID,
+        time: 1569262486134,
+        messaging: [
+          {
+            sender: { id: echo ? IG_ID : "IGSID_1" },
+            recipient: { id: echo ? "IGSID_1" : IG_ID },
+            timestamp: 1569262485349,
+            message: { mid: "MID_1", text: "hello there", ...(echo ? { is_echo: true } : {}) },
+          },
+        ],
+      },
+    ],
+  })
+  async function connected(): Promise<ReturnType<typeof ctxWith>> {
+    const ctx = ctxWith()
+    for (const source_type of ["discovery", "watch", "dm"]) {
+      await ctx.db.insert("sync_state", {
+        platform: "instagram",
+        account_external_id: IG_ID,
+        source_type,
+        active: true,
+      })
+    }
+    return ctx
+  }
+
+  test("a comments change becomes one instagram finding (the Facebook parser drops it)", async () => {
+    const body = commentBody("232323232")
+    expect(facebookAdapter.parseWebhook?.(body).findings ?? []).toEqual([])
+    const ctx = await connected()
+    const res = await parseWebhookJob(ctx, { platform: "instagram", body })
+    expect(res.ingested).toBe(1)
+    const rows = (await ctx.db.findMany("finding", {})) as Array<Record<string, unknown>>
+    expect(rows.length).toBe(1)
+    expect(rows[0]).toMatchObject({
+      platform: "instagram",
+      external_id: "17865799348089039",
+      relation: "comment_on_our_content",
+      parent_external_id: "123123123",
+      author_handle: "test",
+      author_external_id: "232323232",
+      content_text: "This is an example.",
+      occurred_at: new Date(1520383571 * 1000).toISOString(),
+    })
+    expect(ctx.__emitted).toContainEqual(
+      expect.objectContaining({ entity: "finding", action: "created" }),
+    )
+  })
+
+  test("a reply to a comment keeps the comment it answers", async () => {
+    const body = commentBody("232323232")
+    const value = body.entry[0]!.changes[0]!.value as Record<string, unknown>
+    value.parent_id = "1231231234"
+    const parsed = instagramParseWebhook(body)
+    expect(parsed.findings[0]?.replyToExternalId).toBe("1231231234")
+  })
+
+  test("the account's own comment is not a finding", async () => {
+    const ctx = await connected()
+    await parseWebhookJob(ctx, { platform: "instagram", body: commentBody(IG_ID) })
+    expect(await ctx.db.count("finding")).toBe(0)
+  })
+
+  test("a message becomes an inbound instagram message", async () => {
+    const ctx = await connected()
+    const res = await parseWebhookJob(ctx, { platform: "instagram", body: messageBody(false) })
+    expect(res.messagesIngested).toBe(1)
+    const convs = (await ctx.db.findMany("dm_conversation", {})) as Array<Record<string, unknown>>
+    expect(convs.map((c) => c.platform)).toEqual(["instagram"])
+    const msgs = (await ctx.db.findMany("dm_message", {})) as Array<Record<string, unknown>>
+    expect(msgs).toHaveLength(1)
+    expect(msgs[0]).toMatchObject({
+      external_id: "MID_1",
+      direction: "inbound",
+      body: "hello there",
+      occurred_at: new Date(1569262485349).toISOString(),
+    })
+  })
+
+  test("an echo of our own message is never an inbound message", async () => {
+    const ctx = await connected()
+    await parseWebhookJob(ctx, { platform: "instagram", body: messageBody(true) })
+    const inbound = await ctx.db.count("dm_message", { where: { direction: "inbound" } })
+    expect(inbound).toBe(0)
+  })
+
+  test("a delivery for an Instagram account with no active connection is dropped and logged", async () => {
+    const ctx = ctxWith()
+    const infos: string[] = []
+    ctx.logger = { info: (msg: string) => infos.push(msg), warn() {}, error() {}, debug() {} }
+    const res = await parseWebhookJob(ctx, {
+      platform: "instagram",
+      body: commentBody("232323232"),
+    })
+    expect(res).toEqual({ ingested: 0, messagesIngested: 0 })
+    expect(await ctx.db.count("finding")).toBe(0)
+    expect(
+      infos.some((m) => m.includes("Instagram accounts this workspace has not connected")),
+    ).toBe(true)
   })
 })
 

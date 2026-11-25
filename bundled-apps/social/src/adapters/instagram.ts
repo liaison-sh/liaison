@@ -10,6 +10,7 @@
 // exist under Instagram Login).
 
 import { packCursor, parseCursor, parseJsonCursor } from "./cursor"
+import { facebookAdapter, metaTimeToIso } from "./facebook"
 import {
   type GraphError,
   type GraphPage,
@@ -444,8 +445,70 @@ async function fetchListPage<T>(
   return { items: data, next, throttled: usageThrottled(res.headers) }
 }
 
+/**
+ * Parse a verified Instagram webhook delivery (`object: "instagram"`), per
+ * entry (`entry.id` = the IG professional account):
+ *  - `changes[field=comments]`: value `{id, text, from{id,username},
+ *    media{id}, parent_id?}` → a comment finding on that media; `parent_id`
+ *    names the comment it answers. The payload has no comment time, so
+ *    `occurredAt` is the delivery's `entry.time`. A comment by the account
+ *    itself (`from.id === entry.id`) is flagged `authoredByOwner` and dropped
+ *    at upsert.
+ *  - `messaging[]`: the Messenger envelope, read by the Facebook parser (an
+ *    echo is our own outbound message, never inbound).
+ */
+export function instagramParseWebhook(body: unknown): {
+  findings: NormalizedFinding[]
+  messages: NormalizedMessage[]
+} {
+  const findings: NormalizedFinding[] = []
+  const payload = body as {
+    entry?: Array<{
+      id?: unknown
+      time?: unknown
+      changes?: Array<{ field?: string; value?: Record<string, unknown> }>
+      messaging?: Array<Record<string, unknown>>
+    }>
+  }
+  const entries = Array.isArray(payload?.entry) ? payload.entry : []
+  for (const entry of entries) {
+    const ownId =
+      typeof entry.id === "string" || typeof entry.id === "number" ? String(entry.id) : null
+    for (const change of entry.changes ?? []) {
+      const v = change.value ?? {}
+      if (change.field !== "comments" || typeof v.id !== "string") continue
+      const from = (typeof v.from === "object" && v.from ? v.from : {}) as {
+        id?: unknown
+        username?: unknown
+      }
+      const media = (typeof v.media === "object" && v.media ? v.media : {}) as { id?: unknown }
+      const authorId = from.id === undefined || from.id === null ? null : String(from.id)
+      findings.push({
+        platform: "instagram",
+        externalId: v.id,
+        relation: "comment_on_our_content",
+        parentExternalId: typeof media.id === "string" ? media.id : null,
+        authorHandle: typeof from.username === "string" ? from.username : null,
+        authorExternalId: authorId,
+        contentText: typeof v.text === "string" ? v.text : null,
+        authoredByOwner: authorId !== null && authorId === ownId,
+        replyToExternalId: typeof v.parent_id === "string" ? v.parent_id : null,
+        occurredAt: metaTimeToIso(entry.time),
+        commentCount: 0,
+        metadata: { siblingsAccessible: true },
+      })
+    }
+  }
+  const { messages } = facebookAdapter.parseWebhook?.({
+    entry: entries.map((e) => ({ id: e.id, time: e.time, messaging: e.messaging })),
+  }) ?? { messages: [] }
+  return { findings, messages }
+}
+
 export const instagramAdapter: PlatformAdapter = {
   platform: "instagram",
+
+  parseWebhook: instagramParseWebhook,
 
   /**
    * Sync DM conversations + messages via the Messaging API on the connection's

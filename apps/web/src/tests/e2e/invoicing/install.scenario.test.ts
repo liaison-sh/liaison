@@ -56,10 +56,11 @@ test.describe("Invoicing: install smoke", () => {
     expect(manifest.capabilities).toEqual(
       expect.arrayContaining(["messages.post", "pdf.render", "sequences.allocate"]),
     )
-    expect(manifest.pdf_templates).toHaveLength(5)
+    expect(manifest.pdf_templates).toHaveLength(6)
     // The corrected (suffixed) `kind` strings: `invoicing:<doc>_v1`.
     const kinds = manifest.pdf_templates.map((t) => t.kind).sort()
     expect(kinds).toEqual([
+      "invoicing:activity_report_v1",
       "invoicing:credit_note_v1",
       "invoicing:invoice_v1",
       "invoicing:po_v1",

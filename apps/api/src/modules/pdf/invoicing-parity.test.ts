@@ -18,6 +18,7 @@
 import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs"
+import { renderTemplate as activityReportTemplate } from "../../../../../bundled-apps/invoicing/templates/activity_report"
 import { renderTemplate as creditNoteTemplate } from "../../../../../bundled-apps/invoicing/templates/credit_note"
 import { renderTemplate as invoiceTemplate } from "../../../../../bundled-apps/invoicing/templates/invoice"
 import { renderTemplate as poTemplate } from "../../../../../bundled-apps/invoicing/templates/po"
@@ -374,5 +375,39 @@ describe("invoicing pdf templates — host byte parity (DSL → replay)", () => 
     const hash = createHash("sha256").update(stripped).digest("hex")
     expect(hash).toMatch(/^[0-9a-f]{64}$/)
     expect(stripped.length).toBeGreaterThan(500)
+  })
+})
+
+describe("the activity report template", () => {
+  test("renders a real PDF with each billed line, its proof and the signature, over pages when long", async () => {
+    const rows = Array.from({ length: 70 }, (_, i) => ({
+      wording: `Lot ${i + 1} livré`,
+      billed: "1,5 jours",
+      proofs: "Recette signée",
+    }))
+    const bytes = await replayDrawCommands(
+      activityReportTemplate({
+        kind: "activity_report",
+        title: "Rapport d'activité",
+        project: "Maison Alpine platform",
+        period: "Du 01/10/2026 au 31/10/2026",
+        invoice: "Annexe à la facture F-2026-0001",
+        issuer: "Maison Studio SAS",
+        customer: "Maison Alpine SA",
+        columns: { work: "Travail livré", billed: "Facturé", proofs: "Preuves" },
+        rows,
+        signature: "Signé : Claire Martin",
+      }),
+    )
+    const parsed = await pdfParse(bytes)
+    expect(parsed.numpages).toBeGreaterThan(1)
+    for (const s of [
+      "Rapport d'activité",
+      "Annexe à la facture F-2026-0001",
+      "Lot 70 livré",
+      "Recette signée",
+      "Signé : Claire Martin",
+    ])
+      expect(parsed.text).toContain(s)
   })
 })

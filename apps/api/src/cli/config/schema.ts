@@ -13,7 +13,7 @@
  * roles are checked against `kernel.roles` at plan time (the users provisioner),
  * env interpolation is `parse.ts`.
  */
-import { googleOAuthClientIdSchema, orgCapsSchema } from "@liaison/shared"
+import { commercialIdentitySchema, googleOAuthClientIdSchema, orgCapsSchema } from "@liaison/shared"
 import { z } from "zod"
 import { MAIL_PROVIDER_IDS } from "~/modules/mail/provider-ids"
 
@@ -118,6 +118,8 @@ export const emailSchema = z
   .object({
     from: z.string().optional(),
     replyTo: z.string().optional(),
+    // The legal name and postal address every commercial mail states (its footer).
+    commercialIdentity: commercialIdentitySchema.optional(),
   })
   .optional()
 
@@ -317,6 +319,10 @@ const appSchema = z
     // field path, written like `PATCH /api/apps/:app/settings/org`: each path must be
     // an org field the manifest declares, and the value must pass its type.
     settings: z.record(z.string().min(1), z.unknown()).optional(),
+    // Switches inside the app (`kernel.org_app_features`), by feature name, written like
+    // Settings > Apps > <app> > Features: each must be a feature the app declares an admin
+    // switches, and the actor must hold its adminScope. A feature left out is left as it is.
+    features: z.record(z.string().min(1), z.boolean()).optional(),
     // Refused with where it went (the database app's own provisioning), so a
     // file that still carries it fails instead of being silently ignored.
     domainAccess: z.unknown().optional(),
@@ -335,6 +341,10 @@ const appSchema = z
   .refine((a) => a.config === undefined || a.enable, {
     message: "config requires enable: true (a disabled app entry is skipped)",
     path: ["config"],
+  })
+  .refine((a) => a.features === undefined || a.enable, {
+    message: "features requires enable: true (a disabled app entry is skipped)",
+    path: ["features"],
   })
   .refine((a) => a.connection?.sharedDrives === undefined, {
     message:

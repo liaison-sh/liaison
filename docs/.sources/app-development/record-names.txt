@@ -1,0 +1,1 @@
+A generic summary stores each id as a record, named per reader and by its kind to the rest -> apps/api/src/modules/apps/approval-summarizers.ts (genericApprovalSummary) ; apps/api/src/modules/apps/approval-record-names.ts (resolveRecordRefs, withViewerNames)

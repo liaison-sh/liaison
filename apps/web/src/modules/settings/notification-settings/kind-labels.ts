@@ -24,6 +24,7 @@ export const KERNEL_RULE_KINDS: readonly string[] = [
   "routine_mailbox_wait",
   "scope_request",
   "scope_request_decided",
+  "client_action",
   "system_alert",
 ]
 

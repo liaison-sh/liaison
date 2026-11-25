@@ -3,7 +3,13 @@ import { foreignKey, index, jsonb, text, timestamp, uniqueIndex, uuid } from "dr
 import { agents } from "./agents"
 import { kernel } from "./organizations"
 
-export const actorTypeEnum = kernel.enum("actor_type", ["user", "agent", "system", "mcp"])
+export const actorTypeEnum = kernel.enum("actor_type", [
+  "user",
+  "agent",
+  "system",
+  "mcp",
+  "external",
+])
 
 export const auditLog = kernel.table(
   "audit_log",

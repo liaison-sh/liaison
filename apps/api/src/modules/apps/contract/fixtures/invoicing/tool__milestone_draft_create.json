@@ -1,0 +1,20 @@
+{
+  "entry": "tool:milestone_draft_create",
+  "params": {
+    "taskId": "7e000000-0000-4000-8000-00000000b1a1"
+  },
+  "recordedFrom": "the contract org on a local stack, record-invoicing-billing-plan.recorder.test.ts",
+  "expectError": {
+    "reason": "the task invoices no plan step, so nothing is drafted: pins that refusal; the drafting path is proven by billing-plan.test.ts"
+  },
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "billing_steps",
+        "{\"where\":{\"task_id\":\"7e000000-0000-4000-8000-00000000b1a1\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

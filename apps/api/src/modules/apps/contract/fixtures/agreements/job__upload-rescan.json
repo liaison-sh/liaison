@@ -1,0 +1,15 @@
+{
+  "entry": "job:upload-rescan",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "agreement_versions",
+        "{\"where\":{\"scan_state\":\"not_run\",\"source_kind\":\"uploaded\"},\"limit\":20}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

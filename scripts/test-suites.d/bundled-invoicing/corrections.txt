@@ -1,0 +1,2 @@
+# Corrections of an invoice made from planned vs done: a credit note per corrected line.
+src/credit-from-reconcile.test.ts

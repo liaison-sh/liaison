@@ -60,6 +60,8 @@ export interface FacturxLine {
   tax_rate_bp: number
   subtotal_minor: bigint
   tax_minor: bigint
+  /** The period the line covers (BT-134, BT-135), YYYY-MM-DD both ends: a month of service. */
+  period?: { start: string; end: string } | null
 }
 
 export interface FacturxInput {
@@ -85,8 +87,14 @@ export interface FacturxInput {
   bic?: string | null
   /** Credit notes: the invoice they correct. */
   original?: { number: string; issue_date: string } | null
+  /** An advance (386) or a final after deposit; anything else is a standard invoice (380). */
+  invoice_role?: "standard" | "advance" | "final" | null
+  /** A final after deposit: the advance invoices it deducts (BG-3, BT-25 and BT-26). */
+  preceding?: Array<{ number: string; issue_date: string }> | null
   /** Non-EUR: VAT total in EUR minor units at the stored ECB rate. */
   tax_total_eur_minor?: bigint | null
+  /** The invoicing period (BG-14: BT-73, BT-74), the service month a document bills. */
+  service_period?: { start: string; end: string } | null
   lines: FacturxLine[]
   subtotal_minor: bigint
   tax_total_minor: bigint
@@ -99,6 +107,8 @@ export type FacturxBuildErrorCode =
   | "facturx_buyer_incomplete"
   | "facturx_fx_missing"
   | "facturx_original_missing"
+  | "facturx_advance_final"
+  | "facturx_preceding_missing"
   | "facturx_totals_inconsistent"
   | "facturx_no_lines"
   | "facturx_data_missing"
@@ -127,6 +137,19 @@ const PAYMENT_DIGIT: Record<PaymentState, string> = {
   due: "1",
   paid: "2",
   final_after_deposit: "4",
+}
+
+/**
+ * BT-3, the invoice type code (UNTDID 1001): 381 a credit note, 386 an advance (prepayment)
+ * invoice, 380 any other invoice. A final invoice after deposit stays 380: it carries the deposit
+ * in BT-23 (B4, S4, M4), and a type of the advance family is refused with those codes. Read in the
+ * DGFiP external specifications of electronic invoicing, version 3.2, and XP Z12-012.
+ */
+export function typeCode(
+  input: Pick<FacturxInput, "type" | "invoice_role">,
+): "380" | "381" | "386" {
+  if (input.type === "credit_note") return "381"
+  return input.invoice_role === "advance" ? "386" : "380"
 }
 
 /** BT-23: one of B1 S1 M1 B2 S2 M2 B4 S4 M4. */
@@ -241,6 +264,17 @@ function date102(iso: string): string {
   return d.replace(/-/g, "")
 }
 
+/** BG-14 / BG-26: the period a document or a line covers. Nothing when it has none. */
+function billingPeriod(p: { start: string; end: string } | null | undefined): string {
+  if (!p || blank(p.start) || blank(p.end)) return ""
+  return (
+    "<ram:BillingSpecifiedPeriod>" +
+    `<ram:StartDateTime><udt:DateTimeString format="102">${date102(p.start)}</udt:DateTimeString></ram:StartDateTime>` +
+    `<ram:EndDateTime><udt:DateTimeString format="102">${date102(p.end)}</udt:DateTimeString></ram:EndDateTime>` +
+    "</ram:BillingSpecifiedPeriod>"
+  )
+}
+
 function blank(v: string | null | undefined): boolean {
   return v == null || v.trim() === ""
 }
@@ -283,18 +317,41 @@ function party(p: FacturxParty): string {
   )
 }
 
+/** The identity fields a Factur-X party lacks, in the order a person reads them. */
+export type FacturxPartyGap =
+  | "legal_name"
+  | "siren"
+  | "address_line1"
+  | "postcode"
+  | "city"
+  | "country_code"
+
+export function facturxPartyGaps(p: FacturxParty): FacturxPartyGap[] {
+  const missing: FacturxPartyGap[] = []
+  if (blank(p.legal_name)) missing.push("legal_name")
+  if (blank(p.siren) || !/^\d{9}$/.test((p.siren ?? "").trim())) missing.push("siren")
+  if (blank(p.address.line1)) missing.push("address_line1")
+  if (blank(p.address.postcode)) missing.push("postcode")
+  if (blank(p.address.city)) missing.push("city")
+  if (blank(p.address.country_code)) missing.push("country_code")
+  return missing
+}
+
+const GAP_SAID: Record<FacturxPartyGap, string> = {
+  legal_name: "legal name",
+  siren: "SIREN",
+  address_line1: "address line",
+  postcode: "postcode",
+  city: "city",
+  country_code: "country code",
+}
+
 function checkParty(
   p: FacturxParty,
   code: "facturx_seller_incomplete" | "facturx_buyer_incomplete",
   who: string,
 ): void {
-  const missing: string[] = []
-  if (blank(p.legal_name)) missing.push("legal name")
-  if (blank(p.siren) || !/^\d{9}$/.test((p.siren ?? "").trim())) missing.push("SIREN")
-  if (blank(p.address.line1)) missing.push("address line")
-  if (blank(p.address.postcode)) missing.push("postcode")
-  if (blank(p.address.city)) missing.push("city")
-  if (blank(p.address.country_code)) missing.push("country code")
+  const missing = facturxPartyGaps(p).map((g) => GAP_SAID[g])
   if (missing.length) throw new FacturxBuildError(code, `${who} is missing: ${missing.join(", ")}`)
 }
 
@@ -349,6 +406,19 @@ export function buildCii(raw: FacturxInput): string {
       `A ${currency} e-invoice needs its VAT total in EUR at the ECB rate, and no rate is stored on the document.`,
     )
   }
+  // A final after deposit (B4, S4, M4) is never of the advance family, and cites its advances.
+  if (input.type === "invoice" && input.payment_state === "final_after_deposit") {
+    if (input.invoice_role === "advance")
+      throw new FacturxBuildError(
+        "facturx_advance_final",
+        "An advance invoice (386) cannot be a final invoice after deposit.",
+      )
+    if (input.invoice_role === "final" && !input.preceding?.length)
+      throw new FacturxBuildError(
+        "facturx_preceding_missing",
+        "A final invoice after deposit must cite the number and date of the advances it deducts.",
+      )
+  }
   if (
     input.type === "credit_note" &&
     (!input.original || blank(input.original.number) || blank(input.original.issue_date))
@@ -396,6 +466,7 @@ export function buildCii(raw: FacturxInput): string {
           input,
           false,
         ) +
+        billingPeriod(l.period) +
         (l.discount_minor > 0n
           ? "<ram:SpecifiedTradeAllowanceCharge><ram:ChargeIndicator><udt:Indicator>false</udt:Indicator></ram:ChargeIndicator>" +
             `<ram:ActualAmount>${amount(l.discount_minor, exp)}</ram:ActualAmount><ram:Reason>Remise</ram:Reason></ram:SpecifiedTradeAllowanceCharge>`
@@ -440,7 +511,7 @@ export function buildCii(raw: FacturxInput): string {
     "</rsm:ExchangedDocumentContext>" +
     "<rsm:ExchangedDocument>" +
     el("ram:ID", input.number.replace(/\s+/g, "")) +
-    `<ram:TypeCode>${input.type === "credit_note" ? "381" : "380"}</ram:TypeCode>` +
+    `<ram:TypeCode>${typeCode(input)}</ram:TypeCode>` +
     `<ram:IssueDateTime><udt:DateTimeString format="102">${date102(input.issue_date)}</udt:DateTimeString></ram:IssueDateTime>` +
     note("BAR", "B2B") +
     note("PMT", PAYMENT_NOTES.PMT) +
@@ -463,6 +534,7 @@ export function buildCii(raw: FacturxInput): string {
     `<ram:InvoiceCurrencyCode>${currency}</ram:InvoiceCurrencyCode>` +
     paymentMeans +
     groups.map((g) => taxGroup(g, exp, input, true)).join("") +
+    billingPeriod(input.service_period) +
     (dueDate
       ? `<ram:SpecifiedTradePaymentTerms><ram:DueDateDateTime><udt:DateTimeString format="102">${date102(dueDate)}</udt:DateTimeString></ram:DueDateDateTime></ram:SpecifiedTradePaymentTerms>`
       : "") +
@@ -477,6 +549,17 @@ export function buildCii(raw: FacturxInput): string {
     `<ram:TotalPrepaidAmount>${amount(prepaid, exp)}</ram:TotalPrepaidAmount>` +
     `<ram:DuePayableAmount>${amount(duePayable, exp)}</ram:DuePayableAmount>` +
     "</ram:SpecifiedTradeSettlementHeaderMonetarySummation>" +
+    (input.type === "invoice" && input.preceding?.length
+      ? input.preceding
+          .map(
+            (p) =>
+              "<ram:InvoiceReferencedDocument>" +
+              el("ram:IssuerAssignedID", p.number.replace(/\s+/g, "")) +
+              `<ram:FormattedIssueDateTime><qdt:DateTimeString format="102">${date102(p.issue_date)}</qdt:DateTimeString></ram:FormattedIssueDateTime>` +
+              "</ram:InvoiceReferencedDocument>",
+          )
+          .join("")
+      : "") +
     (input.type === "credit_note" && input.original
       ? "<ram:InvoiceReferencedDocument>" +
         el("ram:IssuerAssignedID", input.original.number.replace(/\s+/g, "")) +

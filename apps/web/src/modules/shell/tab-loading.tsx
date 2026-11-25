@@ -82,13 +82,15 @@ export const TabLoadingBar: Component = () => {
         active() ? "opacity-100 delay-150 duration-300" : "opacity-0 delay-0 duration-200",
       )}
     >
+      {/* Decorative sweep: the progress bar above carries the role and label. */}
       <div
+        aria-hidden="true"
         class={cn(
           "h-full w-2/5 bg-gradient-to-r from-transparent via-accent to-transparent motion-reduce:hidden",
           active() && "animate-loading-sweep",
         )}
       />
-      <div class="hidden h-full w-full bg-accent/30 motion-reduce:block" />
+      <div aria-hidden="true" class="hidden h-full w-full bg-accent/30 motion-reduce:block" />
     </div>
   )
 }

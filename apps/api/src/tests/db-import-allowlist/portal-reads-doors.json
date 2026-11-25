@@ -1,0 +1,5 @@
+{
+  "sql": {
+    "tests/security/portal-doors/reads-world.ts": "The portal read doors' rows: projects, tickets, files and invoicing documents written on the privileged connection, so every read under test runs on the portal's own login. Loaded by the portal read door tests only."
+  }
+}

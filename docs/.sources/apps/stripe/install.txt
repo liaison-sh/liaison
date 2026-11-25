@@ -1,0 +1,2 @@
+A catalog app reaches an org only when listed or installed -> apps/api/src/modules/apps/catalog.ts:534
+Install from config apply -> apps/api/src/cli/provisioners/apps.ts:6

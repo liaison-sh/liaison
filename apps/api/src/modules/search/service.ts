@@ -28,6 +28,7 @@ import {
 } from "~/modules/search/permission-filter"
 import {
   collectSearchableRegistrations,
+  indexFiltersOf,
   type SearchableEntityRegistration,
 } from "~/modules/search/searchable-entities"
 import { actorSearchKeys } from "~/modules/sharing/service"
@@ -1362,9 +1363,9 @@ async function directMentionFallback(
     // permission filter (org_id) still applies. Order by updated_at when
     // available, otherwise created_at, otherwise id.
     const whereClauses: string[] = [`org_id = ${sqlLiteral(params.orgId)}`]
-    if (reg.indexFilter) {
+    for (const f of indexFiltersOf(reg)) {
       whereClauses.push(
-        `${quoteIdent(reg.indexFilter.field)}::text IN (${reg.indexFilter.includeValues.map(sqlLiteral).join(", ")})`,
+        `${quoteIdent(f.field)}::text IN (${f.includeValues.map(sqlLiteral).join(", ")})`,
       )
     }
     if (reg.archivedField) whereClauses.push(`${quoteIdent(reg.archivedField)} IS NULL`)

@@ -226,3 +226,66 @@ describe("a card drawn under a tool call backs a card claim", () => {
     expect(claimedCards("The card is waiting for you below.").has("any")).toBe(true)
   })
 })
+
+// The next steps an answer offers close it. They are not work, so an answer closed by them is still
+// the answer the guard reads, and a correction that only offers steps has acted on nothing.
+describe("an answer closed by its next steps is still judged", () => {
+  const closing: Chunk[] = [
+    { type: "tool-call", toolCallId: "c9", toolName: "kernel__suggest_next_steps" },
+    { type: "tool-result", toolCallId: "c9", output: { ok: true, shown: 1 } },
+    { type: "finish-step", finishReason: "tool-calls" },
+    { type: "finish", finishReason: "tool-calls" },
+  ]
+  const closed = (text: string): Chunk[] => [{ type: "text-delta", text }, ...closing]
+
+  it("hands the guard the text before the chips, and replaces it", async () => {
+    const seen: string[] = []
+    const cuts: Array<Retraction | null> = []
+    let streamed = ""
+    for await (const raw of withFalseApprovalGuard({
+      first: run(closed(FIRST)),
+      shouldCorrect: async (r) => {
+        seen.push(r.finalText)
+        return true
+      },
+      continueWith: () => run(textRun("No shipping app is connected.")),
+      onRetract: (r) => cuts.push(r),
+    })) {
+      const chunk = raw as Chunk
+      if (chunk.type === "text-delta") streamed += chunk.text as string
+    }
+    expect(seen).toEqual([FIRST])
+    expect(cuts.map((cut) => cut && retractFromText(streamed, cut))).toEqual([
+      "No shipping app is connected.",
+    ])
+  })
+
+  it("does not judge an answer the turn cut on a tool that works", async () => {
+    let asked = false
+    const cut = closed(FIRST).map((c) =>
+      c.type === "tool-call" ? { ...c, toolName: "boxtal__create_shipment" } : c,
+    )
+    for await (const _ of withFalseApprovalGuard({
+      first: run(cut),
+      shouldCorrect: async () => {
+        asked = true
+        return true
+      },
+      continueWith: () => run(textRun("x")),
+      onRetract: () => {},
+    })) {
+      // drained
+    }
+    expect(asked).toBe(false)
+  })
+
+  it("a correction that only offers steps called no tool", async () => {
+    const asked: Array<{ text: string; calledTool: boolean }> = []
+    const { streamed } = await drive(closed("I'll book it now, as I said."), (t) => {
+      asked.push(t)
+      return t.calledTool
+    })
+    expect(asked).toEqual([{ text: "I'll book it now, as I said.", calledTool: false }])
+    expect(streamed).not.toContain("as I said")
+  })
+})

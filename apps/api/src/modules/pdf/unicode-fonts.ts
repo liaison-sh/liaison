@@ -44,26 +44,54 @@ import type { PDFDocument, PDFFont } from "pdf-lib"
  * wrap point (see the note on metric compatibility above). It is reached only
  * for the characters Liberation cannot draw.
  */
-export type UnicodeFace = "regular" | "bold" | "italic" | "cjk"
+export type UnicodeFace =
+  | "regular"
+  | "bold"
+  | "italic"
+  | "cjk"
+  | "serif"
+  | "serifBold"
+  | "serifItalic"
+  | "serifBoldItalic"
 
 const FILES: Record<UnicodeFace, string> = {
   regular: "LiberationSans-Regular.ttf",
   bold: "LiberationSans-Bold.ttf",
   italic: "LiberationSans-Italic.ttf",
   cjk: "NotoSansJP-Regular.otf",
+  // Liberation Serif: same family, release and licence file as Liberation Sans, and metrically
+  // compatible with Times New Roman, which is what a classic contract layout prints in.
+  serif: "LiberationSerif-Regular.ttf",
+  serifBold: "LiberationSerif-Bold.ttf",
+  serifItalic: "LiberationSerif-Italic.ttf",
+  serifBoldItalic: "LiberationSerif-BoldItalic.ttf",
 }
 
 /**
- * Maps the schema's standard-font enum onto a face. Only the Helvetica family
- * is remapped -- a template that explicitly asks for Times or Courier wants a
- * serif or a monospace and must keep getting one, even at the cost of the
- * Latin-1 ceiling.
+ * Maps the schema's standard-font enum onto a face. The Helvetica family goes to
+ * Liberation Sans and the Times family to Liberation Serif, each metrically
+ * compatible with the font asked for, so a template keeps the serif or sans it
+ * chose and gains the characters above Latin-1. Courier keeps its base-14 font:
+ * a template asking for a monospace wants one, even at the Latin-1 ceiling.
  */
 export const HELVETICA_FACE: Record<string, UnicodeFace> = {
   Helvetica: "regular",
   HelveticaBold: "bold",
   HelveticaOblique: "italic",
   HelveticaBoldOblique: "bold",
+}
+
+/** The Times family, served by the embedded Liberation Serif faces. */
+export const TIMES_FACE: Record<string, UnicodeFace> = {
+  TimesRoman: "serif",
+  TimesRomanBold: "serifBold",
+  TimesRomanItalic: "serifItalic",
+  TimesRomanBoldItalic: "serifBoldItalic",
+}
+
+/** The embedded face a standard font name is served by, or undefined (Courier). */
+export function unicodeFaceFor(standardFont: string): UnicodeFace | undefined {
+  return HELVETICA_FACE[standardFont] ?? TIMES_FACE[standardFont]
 }
 
 // Read once per process, not once per render: three files, ~1.2 MB, on the
@@ -81,6 +109,46 @@ export function faceBytes(face: UnicodeFace): Uint8Array {
   const bytes = new Uint8Array(readFileSync(join(fontsDir(), FILES[face])))
   bytesCache.set(face, bytes)
   return bytes
+}
+
+/** The parts of a fontkit font a layout measures with. */
+export interface FaceMetrics {
+  unitsPerEm: number
+  hasGlyphForCodePoint(codePoint: number): boolean
+  layout(text: string): { glyphs: Array<{ advanceWidth: number }> }
+}
+
+const metricsCache = new Map<UnicodeFace, FaceMetrics>()
+
+/**
+ * A face's metrics, read from the same bytes the replayer embeds, so a layout
+ * measures exactly what the page will draw. Read once per process.
+ */
+export function faceMetrics(face: UnicodeFace): FaceMetrics {
+  const hit = metricsCache.get(face)
+  if (hit) return hit
+  const font = fontkit.create(Buffer.from(faceBytes(face))) as unknown as FaceMetrics
+  metricsCache.set(face, font)
+  return font
+}
+
+/** Whether a face holds a glyph for every character of `text`. */
+export function faceDraws(face: UnicodeFace, text: string): boolean {
+  const font = faceMetrics(face)
+  for (const ch of text) if (!font.hasGlyphForCodePoint(ch.codePointAt(0) ?? 0)) return false
+  return true
+}
+
+/**
+ * The width of `text` at `size` in one face, glyph by glyph as pdf-lib draws it
+ * (advance widths only: the replayer places glyphs without kerning).
+ */
+export function faceTextWidth(face: UnicodeFace, text: string, size: number): number {
+  if (text === "") return 0
+  const font = faceMetrics(face)
+  let units = 0
+  for (const g of font.layout(text).glyphs) units += g.advanceWidth
+  return (units / font.unitsPerEm) * size
 }
 
 /**

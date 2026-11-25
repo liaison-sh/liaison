@@ -50,6 +50,8 @@ export async function listActiveMembers(
   const filters = [
     eq(users.orgId, params.orgId),
     eq(users.status, "active"),
+    // A client's portal account is no colleague, whoever asks.
+    eq(users.userType, "member"),
     // Import placeholders author history but are not people anyone can work with.
     not(sql`lower(${users.email}) LIKE ${IMPORT_PLACEHOLDER_EMAIL_LIKE}`),
   ]

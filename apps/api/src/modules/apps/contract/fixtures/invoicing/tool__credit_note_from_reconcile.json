@@ -1,0 +1,22 @@
+{
+  "entry": "tool:credit_note_from_reconcile",
+  "params": {
+    "reconciliationId": "7a000000-0000-4000-8000-00000000c3a1",
+    "lineId": "7b000000-0000-4000-8000-00000000c3a1",
+    "correctedQuantity": 2.5
+  },
+  "recordedFrom": "the contract org on a local stack, record-invoicing-corrections.recorder.test.ts",
+  "expectError": {
+    "reason": "the contract org has no projects app, so the card cannot be read and no credit note is made: pins that refusal; the correction path is proven by credit-from-reconcile.test.ts"
+  },
+  "calls": [
+    {
+      "method": "executeTool",
+      "args": [
+        "projects:reconcile_lines_read",
+        "{\"reconciliationId\":\"7a000000-0000-4000-8000-00000000c3a1\"}"
+      ],
+      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"not_found\",\"message\":\"No reconciliation 7a000000-0000-4000-8000-00000000c3a1 you can read. Nothing was changed.\",\"retryable\":false}}"
+    }
+  ]
+}

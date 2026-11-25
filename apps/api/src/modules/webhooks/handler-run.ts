@@ -42,7 +42,7 @@ export async function resolveWebhookUserActorId(orgId: string): Promise<string |
     db
       .select({ id: users.id })
       .from(users)
-      .where(and(eq(users.orgId, orgId), eq(users.status, "active")))
+      .where(and(eq(users.orgId, orgId), eq(users.status, "active"), eq(users.userType, "member")))
       .orderBy(asc(users.createdAt))
       .limit(1),
   )

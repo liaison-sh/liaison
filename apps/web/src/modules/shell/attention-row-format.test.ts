@@ -4,7 +4,13 @@ import { dictionariesFor } from "@liaison/shared"
 import { flatten, resolveTemplate } from "@solid-primitives/i18n"
 import { CircleAlert } from "lucide-solid"
 import { describe, expect, test } from "vitest"
-import { getAppLabel, getKindIcon, getMetric, type RowLocale } from "./attention-row-format"
+import {
+  getAppLabel,
+  getKindIcon,
+  getMetric,
+  kernelAttentionTitle,
+  type RowLocale,
+} from "./attention-row-format"
 
 describe("attention row format — dm_window_closing (A9)", () => {
   test("getKindIcon('dm_window_closing') resolves a real glyph (not the unknown-kind fallback)", () => {
@@ -164,8 +170,9 @@ describe("attention row format — metric chip follows the reader's language", (
     [
       "approval_pending",
       item("approval_pending", { expiresInSeconds: 1500 }),
-      "25m left",
-      "25 min restant",
+      // What runs out, said (cold walk 2026-11-08): never "25m left".
+      "Expires in 25 minutes",
+      "Expire dans 25 minutes",
     ],
     ["admin_action", item("admin_action"), "admin", "admin"],
     [
@@ -193,5 +200,87 @@ describe("attention row format — metric chip follows the reader's language", (
   test("the tone is the reader's language's business too: it does not move", () => {
     expect(getMetric(item("task_overdue", { daysOver: 3 }), fr).tone).toBe("warning")
     expect(getMetric(item("task_blocked"), fr).tone).toBe("tertiary")
+  })
+})
+
+describe("attention row format — a routed request waiting a day", () => {
+  const flat = (locale: "en" | "fr") => {
+    const out: Record<string, unknown> = {}
+    for (const [ns, dict] of Object.entries(dictionariesFor(locale))) {
+      for (const [k, v] of Object.entries(flatten(dict as Record<string, unknown>))) {
+        out[`${ns}.${k}`] = v
+      }
+    }
+    return (key: string, params?: Record<string, string | number | boolean>) => {
+      const raw = out[key]
+      if (typeof raw !== "string") return key
+      return params ? resolveTemplate(raw, params) : raw
+    }
+  }
+  const reminder = {
+    app: "kernel",
+    kind: "agent_notification",
+    summary: "Waiting more than 24 hours for a decision: Pay supplier",
+    metadata: { routedReminder: { approvalId: "a1", hours: 24 } },
+  }
+
+  test("the line about withdrawn requests on a restricted document reads in French from the catalog", () => {
+    const line = {
+      app: "kernel",
+      kind: "system_alert",
+      summary:
+        "Requests about a restricted document were withdrawn: the people who asked are not on its list",
+    }
+    expect(kernelAttentionTitle(line, flat("en"))).toBe(line.summary)
+    expect(kernelAttentionTitle(line, flat("fr"))).toBe(
+      "Des demandes sur un document à accès restreint ont été retirées : les personnes qui les ont faites ne sont pas sur sa liste",
+    )
+  })
+
+  test("reads in English as written and in French from the catalog", () => {
+    expect(kernelAttentionTitle(reminder, flat("en"))).toBe(reminder.summary)
+    expect(kernelAttentionTitle(reminder, flat("fr"))).toBe(
+      "En attente d'une décision depuis plus de 24 heures : Pay supplier",
+    )
+  })
+})
+
+describe("attention row format — a decided request", () => {
+  const flat = (locale: "en" | "fr") => {
+    const out: Record<string, unknown> = {}
+    for (const [ns, dict] of Object.entries(dictionariesFor(locale))) {
+      for (const [k, v] of Object.entries(flatten(dict as Record<string, unknown>))) {
+        out[`${ns}.${k}`] = v
+      }
+    }
+    return (key: string, params?: Record<string, string | number | boolean>) => {
+      const raw = out[key]
+      if (typeof raw !== "string") return key
+      return params ? resolveTemplate(raw, params) : raw
+    }
+  }
+  const row = (status: string, title?: string) => ({
+    app: "kernel",
+    kind: "approval_decision",
+    summary: `Approval request-7 ${status}`,
+    ...(title ? { metadata: { decisionTitle: title } } : {}),
+  })
+
+  test("says what it was about, in the reader's language", () => {
+    const said = (status: string, locale: "en" | "fr") =>
+      kernelAttentionTitle(row(status, "Issue the invoice"), flat(locale))
+    expect(said("approved", "en")).toBe("Approved: Issue the invoice (request-7)")
+    expect(said("denied", "en")).toBe("Rejected: Issue the invoice (request-7)")
+    expect(said("expired", "en")).toBe("Expired without a decision: Issue the invoice (request-7)")
+    expect(said("approved", "fr")).toBe("Approuvée : Issue the invoice (request-7)")
+    expect(said("denied", "fr")).toBe("Refusée : Issue the invoice (request-7)")
+    expect(said("expired", "fr")).toBe("Expirée sans décision : Issue the invoice (request-7)")
+  })
+
+  test("a row that names nothing keeps its handle, in the reader's language", () => {
+    expect(kernelAttentionTitle(row("expired"), flat("en"))).toBe("Approval request-7 expired")
+    expect(kernelAttentionTitle(row("expired"), flat("fr"))).toBe("Demande request-7 expirée")
+    expect(kernelAttentionTitle(row("denied"), flat("fr"))).toBe("Demande request-7 refusée")
+    expect(kernelAttentionTitle(row("approved"), flat("fr"))).toBe("Demande request-7 approuvée")
   })
 })

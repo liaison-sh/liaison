@@ -5,6 +5,7 @@ import { sql } from "~/db"
 import { env } from "~/lib/env"
 import { signAccessToken } from "~/modules/auth/jwt"
 import * as minimal from "~/seed/tiers/minimal"
+import { restrictedBearer } from "~/tests/helpers/import-node"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 describe("contact endpoints", () => {
@@ -289,13 +290,13 @@ describe("contact endpoints", () => {
     expect(body.meta.page).toBe(1)
   })
 
-  it("POST /resolve keeps a new contact private unless the caller chooses the organisation; the owner shares it", async () => {
+  it("POST /resolve adds a person's new contact to the organisation unless they choose private; the owner shares a private one", async () => {
     const auth = { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
     const mine = (await (
       await app.request("/api/contacts/resolve", {
         method: "POST",
         headers: auth,
-        body: JSON.stringify({ email: `mine-${Date.now()}@example.com` }),
+        body: JSON.stringify({ email: `mine-${Date.now()}@example.com`, audience: "private" }),
       })
     ).json()) as any
     expect(mine.data.orgAccess).toBe("none")
@@ -303,7 +304,7 @@ describe("contact endpoints", () => {
       await app.request("/api/contacts/resolve", {
         method: "POST",
         headers: auth,
-        body: JSON.stringify({ email: `org-${Date.now()}@example.com`, audience: "org" }),
+        body: JSON.stringify({ email: `org-${Date.now()}@example.com` }),
       })
     ).json()) as any
     expect(org.data.orgAccess).toBe("editor")
@@ -327,13 +328,30 @@ describe("contact endpoints", () => {
     expect(invalid.status).toBe(400)
   })
 
+  it("POST /resolve from a restricted session (a program acting for the person) keeps the new contact theirs", async () => {
+    const [{ org_id: orgId }] = await sql<{ org_id: string }[]>`
+      SELECT org_id::text FROM kernel.users WHERE email = 'admin@test.com'`
+    const person = await minimal.session(orgId, { role: "member" })
+    const res = await app.request("/api/contacts/resolve", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${await restrictedBearer(person)}`,
+      },
+      body: JSON.stringify({ email: `program-${Date.now()}@example.com` }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.data).toMatchObject({ orgAccess: "none", ownerUserId: person.userId })
+  })
+
   it("POST /api/contacts/:id/discussion opens the contact's thread to whoever sees the contact, and only them", async () => {
     const auth = { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
     const contact = (await (
       await app.request("/api/contacts/resolve", {
         method: "POST",
         headers: auth,
-        body: JSON.stringify({ email: `discussed-${Date.now()}@example.com` }),
+        body: JSON.stringify({ email: `discussed-${Date.now()}@example.com`, audience: "private" }),
       })
     ).json()) as any
     const open = (headers: Record<string, string>) =>

@@ -16,6 +16,8 @@
 import { eq } from "drizzle-orm"
 import type { UserContext } from "~/db/rls"
 import { approvalRequests } from "~/db/schema/kernel/agent-memory"
+import { runContextStore } from "~/modules/agent/runtime/run-context"
+import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { runApprovalExpiry } from "~/modules/approvals/expiry"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { sendMessage } from "~/modules/threads/message"
@@ -44,6 +46,11 @@ export interface GatedApprovalInput {
   toolCallMessage: boolean
   /** The requester then names the approval in a message (a mention pill). */
   mention: boolean
+  /**
+   * The agent run (a chat turn) the call is made in, as a top-level run: its card records the
+   * run, as a live turn's does. Absent: a call with no run behind it.
+   */
+  runId?: string
 }
 
 export interface GatedApprovalResult {
@@ -108,14 +115,28 @@ export async function stageGatedApproval(
     ),
   )
 
-  const result = await executeTool({
-    toolName: input.toolName,
-    orgId,
-    actor: requester,
-    threadId: inThread,
-    params: input.params,
-    origin: "in-app-agent",
-  })
+  const call = () =>
+    executeTool({
+      toolName: input.toolName,
+      orgId,
+      actor: requester,
+      threadId: inThread,
+      params: input.params,
+      origin: "in-app-agent",
+    })
+  const runId = input.runId
+  const result = runId
+    ? await runContextStore.run(
+        {
+          runId,
+          parentRunId: null,
+          rootRunId: runId,
+          nestingDepth: 0,
+          turnScopeAccumulator: createTurnScopeAccumulator(),
+        },
+        call,
+      )
+    : await call()
   if (!("blocked" in result) || !result.blocked) {
     throw new Error(
       `${input.toolName} was not parked for approval: ${JSON.stringify(

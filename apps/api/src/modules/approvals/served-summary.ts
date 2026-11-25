@@ -24,6 +24,7 @@ import { loadRequesterContext } from "~/modules/approvals/event-data"
 import { withLiveTicketRefs } from "~/modules/approvals/live-ticket-ref"
 import { splitToolName } from "~/modules/approvals/tool-name"
 import { approvalSummarizerRegistry } from "~/modules/apps/app-registries"
+import { withViewerNames } from "~/modules/apps/approval-record-names"
 import {
   generateApprovalSummary,
   genericApprovalSummary,
@@ -127,13 +128,17 @@ async function computeMissingSummaries<T extends RowWithPayload>(
   return out
 }
 
-/** Stored summaries (generic where missing), then each ticket ref brought to the ticket's current handle. */
+/**
+ * Stored summaries (generic where missing), each ticket ref brought to the ticket's current handle,
+ * and each record a card names called what `tx`'s own reader may call it (approval-record-names.ts).
+ */
 export async function withServedSummaries<T extends RowWithPayload>(
   tx: RlsClient,
   orgId: string,
   rows: T[],
 ): Promise<T[]> {
-  return withLiveTicketRefs(tx, orgId, withGenericSummaries(orgId, rows))
+  const served = await withLiveTicketRefs(tx, orgId, withGenericSummaries(orgId, rows))
+  return withViewerNames(tx, orgId, served)
 }
 
 /**

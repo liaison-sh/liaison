@@ -1,0 +1,2 @@
+A quote's outcome is set once, accepted, rejected or expired; an agent's call waits for approval -> bundled-apps/invoicing/src/quote-outcome.ts (setQuoteOutcome, quoteOutcomePreflight) ; bundled-apps/invoicing/app.manifest.json (quote_set_outcome)
+A client's answer on a quote's link records the outcome; no outcome creates an invoice -> bundled-apps/invoicing/src/quote-outcome.ts (onQuoteClientActionDecided)

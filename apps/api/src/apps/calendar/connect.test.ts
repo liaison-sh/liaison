@@ -16,6 +16,7 @@ import {
 } from "~/apps/calendar/sync"
 import { withSystemDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
+import { createExternalUser } from "~/modules/users/external-user"
 import { acquireAppSchemaJsLock, releaseAppSchemaJsLock } from "~/tests/helpers/app-schema-lock"
 
 let orgId: string
@@ -248,6 +249,40 @@ describe("calendar connect lifecycle", () => {
         .map((r) => r.user_id)
       expect(grantedUserIds).toContain(userId)
       expect(grantedUserIds).toContain(otherUserId)
+    })
+  })
+
+  it("an org-wide account grants no access to a client of a company on the portal", async () => {
+    await withSystemDb("calendar-grant-org-external", async (tx) => {
+      const c = (await tx.execute(drizzleSql`
+        INSERT INTO kernel.companies (id, org_id, name, handle)
+        VALUES (gen_random_uuid(), ${orgId}::uuid, 'Client Co', ${`client-co-${crypto.randomUUID().slice(0, 8)}`})
+        RETURNING id
+      `)) as any
+      const made = await createExternalUser(tx as any, {
+        orgId,
+        companyId: (c.rows ?? c)[0].id,
+        email: `client-${crypto.randomUUID()}@client.example`,
+        name: "Client",
+      })
+      if (!made.ok) throw new Error(made.code)
+      const event = connectedAccountEvent("org", null, "grant-org-external@gmail.com")
+      const { accountId } = await onAccountConnected(tx as any, orgId, event, async () => {})
+      await runCalendarImport(
+        tx as any,
+        orgId,
+        accountId,
+        async () => [],
+        async () => {},
+      )
+      const grants = (await tx.execute(drizzleSql`
+        SELECT user_id FROM kernel.user_dimension_grants
+        WHERE org_id = ${orgId}::uuid AND dimension_key = 'calendar:calaccess'
+          AND dimension_values @> ${JSON.stringify([accountId])}::jsonb
+      `)) as any
+      const granted = ((grants.rows ?? grants) as Array<{ user_id: string }>).map((r) => r.user_id)
+      expect(granted).toContain(userId)
+      expect(granted).not.toContain(made.userId)
     })
   })
 
@@ -886,7 +921,7 @@ describe("calendar grants queue the permission event that carries the invalidati
     const accountId = await connectAndImport("org", null)
     const active = await withSystemDb("calendar-gi-active", async (tx) => {
       const rows = (await tx.execute(drizzleSql`
-        SELECT id FROM kernel.users WHERE org_id = ${orgId}::uuid AND status = 'active' ORDER BY id
+        SELECT id FROM kernel.users WHERE org_id = ${orgId}::uuid AND status = 'active' AND user_type = 'member' ORDER BY id
       `)) as any
       return ((rows.rows ?? rows) as Array<{ id: string }>).map((r) => r.id)
     })

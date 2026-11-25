@@ -3,6 +3,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test"
 import crypto from "node:crypto"
 import { sql as drizzleSql, eq } from "drizzle-orm"
+import { z } from "zod"
 import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
@@ -28,6 +29,7 @@ import { createSubAgentDefinition } from "~/modules/agent/subruns/sub-agent-defi
 import * as subRunAwaitModule from "~/modules/agent/subruns/subrun-await"
 import { awaitSubRunResult } from "~/modules/agent/subruns/subrun-await"
 import { startSubrunWorker, sweepStuckSubRuns } from "~/modules/agent/subruns/subrun-worker"
+import { toolRegistry } from "~/modules/apps/app-registries"
 import * as appsInitModule from "~/modules/apps/init"
 import * as minimal from "~/seed/tiers/minimal"
 import { stubStreamText } from "~/tests/helpers/agent-stub"
@@ -35,6 +37,9 @@ import { createTestOrg } from "~/tests/helpers/org"
 import { seededApps } from "~/tests/helpers/seeded-app-rows"
 import { waitFor } from "~/tests/helpers/wait-for"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { ownSubrunHandler } from "../../../../test-support/harness/subrun-handler"
+
+ownSubrunHandler({ live: true })
 
 const SEEDED = seededApps()
 
@@ -394,6 +399,66 @@ describe("subrun worker — end-to-end", () => {
     } finally {
       spy.mockRestore()
     }
+  })
+
+  it("a sub-agent reads a tool result's time in the person's zone", async () => {
+    // The main agent reads a tool result's instants in the person's zone with the offset
+    // written out (model-times.ts); a sub-agent working for the same person reads them the
+    // same way, never as UTC with `Z`.
+    await withPrivilegedDb(orgId, "subrun-person-zone", (tx) =>
+      tx.update(users).set({ timezone: "Europe/Paris" }).where(eq(users.id, userId)),
+    )
+    const appName = await installTestApp(["mcp:jira:read"])
+    const agentType = `inv-${crypto.randomUUID().slice(0, 6)}`
+    await createSubAgentDefinition({
+      orgId,
+      appName,
+      agentType,
+      whenToUse: "test",
+      scopeCeiling: ["mcp:jira:read"],
+      systemPrompt: "Investigate.",
+    })
+    // A read the sub-agent holds, so its tool set has a tool whose result the model reads.
+    toolRegistry.set([orgId, appName, "readTicket"], {
+      appName,
+      name: "readTicket",
+      description: "Reads a ticket",
+      requiredScopes: ["mcp:jira:read"],
+      handler: async () => ({}),
+      params: z.object({ ref: z.string() }),
+    })
+    let captured: { tools?: Record<string, unknown> } | null = null
+    const inner = stubStreamText.cleanStopWithText("Read it.")
+    AgentServiceTestAccess.setStreamText(((params: never) => {
+      captured = params
+      return inner(params)
+    }) as never)
+    await startSubrunWorker()
+
+    const parentThreadId = await makeParentThread(orgId, userId)
+    const handle = await spawnAgent({
+      parentRun: {
+        id: null,
+        threadId: parentThreadId,
+        actor: userActor(orgId, userId, ["mcp:jira:*"]),
+        nestingDepth: 0,
+      },
+      subagentType: agentType,
+      description: "zone",
+      prompt: "When did the client write?",
+    })
+    await awaitSubRunResult(handle.runId, orgId, { timeoutMs: 10_000 })
+    expect(captured).not.toBeNull()
+    const withModelOutput = Object.values(captured!.tools ?? {}).find(
+      (t) => typeof (t as { toModelOutput?: unknown }).toModelOutput === "function",
+    ) as { toModelOutput: (o: { output: unknown }) => unknown } | undefined
+    expect(withModelOutput).toBeDefined()
+    const seen = JSON.stringify(
+      withModelOutput!.toModelOutput({ output: { createdAt: "2026-11-19T06:05:00.000Z" } }),
+    )
+    expect(seen).toContain("2026-11-19T07:05:00+01:00")
+    expect(seen).not.toContain("06:05")
+    toolRegistry.delete([orgId, appName, "readTicket"])
   })
 
   it("fails the run with schema_failure when the model never finalizes", async () => {

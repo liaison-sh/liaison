@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "bun:test"
 import { eq } from "drizzle-orm"
 import { sql } from "~/db"
-import { withSystemDb } from "~/db/privileged"
+import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { mcpConnections, users } from "~/db/schema/kernel"
 import { env } from "~/lib/env"
 import { createSession } from "~/modules/auth/auth"
@@ -27,11 +27,36 @@ import {
   sqlUpdateCeiling,
 } from "~/modules/mcp/test-helpers"
 import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
+import { createExternalUser } from "~/modules/users/external-user"
+import { createTestCompany } from "~/tests/helpers/company"
 
 describe("mcp connection service", () => {
   const orgs: string[] = []
   afterEach(async () => {
     for (const o of orgs.splice(0)) await cleanupSeededOrg(o)
+  })
+
+  it("an external row's connection mints no token, on first mint or on refresh", async () => {
+    const { orgId } = await seedOrgWithUser()
+    orgs.push(orgId)
+    const companyId = await createTestCompany(orgId)
+    const created = await withPrivilegedDb(orgId, "mcp-external-test", (tx) =>
+      createExternalUser(tx, {
+        orgId,
+        companyId,
+        email: `client-${crypto.randomUUID().slice(0, 8)}@client.example`,
+        name: "Client",
+      }),
+    )
+    if (!created.ok) throw new Error(created.code)
+    const { connection, refreshToken } = await createMcpConnection({
+      orgId,
+      userId: created.userId,
+      clientId: "client-x",
+      label: "Claude Code",
+    })
+    await expect(mintAccessToken(connection.id)).rejects.toThrow("external user")
+    await expect(refreshAccessToken(refreshToken)).rejects.toThrow("external user")
   })
 
   it("TTL is 15 minutes", () => {
@@ -376,6 +401,49 @@ describe("mcp connection service", () => {
       db.select().from(mcpConnections).where(eq(mcpConnections.id, connection.id)),
     )
     expect(row.mintScopeSnapshot).toEqual(["finance:read"])
+  })
+
+  it("an agent bound token carries an exact-only scope only for a grantor who holds it exactly", async () => {
+    const margin = "projects:margin:read"
+    const wildcard = await seedOrgWithUser()
+    orgs.push(wildcard.orgId)
+    await grantScope(wildcard.orgId, wildcard.userId, "*")
+    const desk = await seedAgentForOrg(wildcard.orgId, {
+      scopeCeiling: ["finance:read", margin],
+    })
+    const asWildcard = await createMcpConnection({
+      orgId: wildcard.orgId,
+      userId: wildcard.userId,
+      clientId: "c",
+      label: "L",
+      agentId: desk.agentId,
+    })
+    const minted = await verifyAccessToken(
+      (await mintAccessToken(asWildcard.connection.id)).token,
+      env.JWT_SECRET,
+    )
+    expect(minted.scopes).toEqual(["finance:read"])
+    const resolved = await resolveConnectionFromToken(
+      (await mintAccessToken(asWildcard.connection.id)).token,
+    )
+    expect(resolved.scopes).not.toContain(margin)
+
+    const exact = await seedGrantor()
+    orgs.push(exact.orgId)
+    await grantScope(exact.orgId, exact.userId, margin)
+    const exactDesk = await seedAgentForOrg(exact.orgId, { scopeCeiling: ["finance:read", margin] })
+    const asExact = await createMcpConnection({
+      orgId: exact.orgId,
+      userId: exact.userId,
+      clientId: "c",
+      label: "L",
+      agentId: exactDesk.agentId,
+    })
+    const exactToken = await verifyAccessToken(
+      (await mintAccessToken(asExact.connection.id)).token,
+      env.JWT_SECRET,
+    )
+    expect([...(exactToken.scopes ?? [])].sort()).toEqual(["finance:read", margin])
   })
 
   it("mintAccessToken does not narrow a connection with no agentId", async () => {

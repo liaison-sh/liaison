@@ -443,6 +443,24 @@ export async function withPrivilegedReusing<T>(
   return withPrivilegedDb(orgId, reason, fn)
 }
 
+/**
+ * Run a READ privileged on the privileged transaction this async context already holds,
+ * when that one runs as liaison_admin with `orgId` as its org context, and in its own
+ * withPrivilegedDb transaction otherwise: for a lookup that runs both on its own and from
+ * inside a privileged write (an attention recipient resolved while a portal request is
+ * created), so it never takes a second slot. It sees the holder's uncommitted rows. Never
+ * for writes: they would commit or roll back with the holder's.
+ */
+export async function withPrivilegedReadReusingHeld<T>(
+  orgId: string,
+  reason: string,
+  fn: (ptx: PrivilegedDb) => Promise<T>,
+): Promise<T> {
+  const outer = heldSlot.getStore()
+  if (outer?.held && (await isPrivilegedTxOf(outer.tx, orgId))) return fn(outer.tx)
+  return withPrivilegedDb(orgId, reason, fn)
+}
+
 /** Whether `tx` runs as liaison_admin with `orgId` as its org context. */
 async function isPrivilegedTxOf(tx: ExecuteTx, orgId: string): Promise<boolean> {
   const [row] = extractRows<{ role: string; org: string | null }>(

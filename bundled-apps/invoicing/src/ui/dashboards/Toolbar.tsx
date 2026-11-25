@@ -11,6 +11,8 @@ import { Button, dateRangeInputClass, inputClass, Segmented } from "../kit"
 import type { ChannelFilter, DashboardFilter, MarketFilter, SortOrder, StatusFilter } from "./types"
 
 interface ToolbarProps {
+  /** The Shopify / Manual filter, offered only when some document came from a shop. Default on. */
+  channels?: boolean
   filter: DashboardFilter
   onChange: (next: DashboardFilter) => void
   onExportCsv?: () => void
@@ -193,13 +195,15 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
             testidPrefix="invoicing-dashboard-market"
             ariaLabel={tr("Filter by market")}
           />
-          <Segmented
-            options={CHANNEL_OPTS.map((o) => ({ ...o, label: tr(o.label) }))}
-            value={props.filter.channel}
-            onChange={(v) => set("channel", v)}
-            testidPrefix="invoicing-dashboard-channel"
-            ariaLabel={tr("Filter by channel")}
-          />
+          <Show when={props.channels !== false}>
+            <Segmented
+              options={CHANNEL_OPTS.map((o) => ({ ...o, label: tr(o.label) }))}
+              value={props.filter.channel}
+              onChange={(v) => set("channel", v)}
+              testidPrefix="invoicing-dashboard-channel"
+              ariaLabel={tr("Filter by channel")}
+            />
+          </Show>
 
           <div class="flex-1" />
           {props.trailing}

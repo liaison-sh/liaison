@@ -1,0 +1,1 @@
+Hours and amounts are edited as a person reads them -> apps/web/src/modules/approvals/edit-units.ts (shownValue, storedValue) ; apps/web/src/modules/approvals/ApprovalCard.tsx (ApprovalCard) ; bundled-apps/agreements/app.manifest.json (tools.change_request_send.editableFields)

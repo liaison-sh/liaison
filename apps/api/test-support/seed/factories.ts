@@ -54,11 +54,13 @@ import {
   setCreditBalance,
 } from "./agent"
 import { refreshStoredAppAttention } from "./attention"
+import { seedBillableProject } from "./billable-project"
 import { forceCalendarReauth, seedCalendarAccount } from "./calendar"
 import { expireApproval, stageGatedApproval } from "./gated-approval"
 import { injectInboundMail, injectThreadMessage } from "./inject"
 import { appendMailMessages, ensureMailAccount, seedMailConversation, seedMailDraft } from "./mail"
 import { ensureMockConnection } from "./mock-connections"
+import { seedMonthEndClient } from "./month-end"
 import { ensureSecondOrg } from "./second-org"
 
 export interface SeedRouteFactory<A extends z.ZodTypeAny = z.ZodTypeAny> {
@@ -185,6 +187,7 @@ export const SEED_FACTORIES: Record<string, SeedRouteFactory> = {
       approveScope: zod.string().min(1).optional(),
       toolCallMessage: zod.boolean().default(true),
       mention: zod.boolean().default(false),
+      runId: uuid.optional(),
     }),
     async (ctx, a, call) => {
       const admin = await orgAdmin(ctx.orgId)
@@ -855,5 +858,49 @@ export const SEED_FACTORIES: Record<string, SeedRouteFactory> = {
       const userId = createdBy ?? (await orgAdmin(ctx.orgId)).id
       return createTicketApiKey(ctx, { userId, ...a })
     },
+  ),
+
+  /** One subscription customer of an issuer: its contact and billing address, a paid invoice and the active monthly schedule continuing it. */
+  /** A project billed by the day, its company and its billing contact, tasks closed this month with time. */
+  "projects.billableMonth": factory(
+    zod.object({
+      ownerId: uuid,
+      key: zod.string().regex(/^[A-Z][A-Z0-9]{1,9}$/),
+      name: zod.string().min(1),
+      company: zod.string().min(1),
+      contactName: zod.string().min(1),
+      contactEmail: zod.string().min(3),
+      billingAddress: zod.object({
+        street1: zod.string().min(1),
+        postalCode: zod.string().min(1),
+        city: zod.string().min(1),
+        countryIso2: zod.string().length(2),
+      }),
+      rateMinor: zod.number().int().positive(),
+      currency: zod.string().length(3),
+      tasks: zod
+        .array(zod.object({ title: zod.string().min(1), days: zod.number().positive() }))
+        .min(1)
+        .max(10),
+    }),
+    (ctx, a) => seedBillableProject(ctx, a),
+  ),
+  "invoicing.monthEndClient": factory(
+    zod.object({
+      issuerId: uuid,
+      previousDocumentId: uuid,
+      scheduleKey: zod.string().min(1),
+      name: zod.string().min(1),
+      street: zod.string().min(1),
+      postalCode: zod.string().min(1),
+      city: zod.string().min(1),
+      email: zod.string().min(3),
+      priceMinor: zod.number().int().positive(),
+      taxRateBp: zod.number().int().min(0),
+      nextIssueOn: zod.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      nextDraftOn: zod.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      createdBy: zod.string().min(1),
+    }),
+    (ctx, a) => seedMonthEndClient(ctx, a),
   ),
 }

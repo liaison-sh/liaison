@@ -218,6 +218,8 @@ const toolAppSchema = z
     config: z.record(z.string().min(1), z.unknown()).optional(),
     // Org fields of the app's settings page by path, e.g. { "fullOrderHistory": true }.
     settings: z.record(z.string().min(1), z.unknown()).optional(),
+    // Switches inside the app by feature name, e.g. { "deals": true } on projects.
+    features: z.record(z.string().min(1), z.boolean()).optional(),
   })
   .strict()
   .refine((a) => a.providers === undefined || a.name === "mail", {
@@ -226,9 +228,13 @@ const toolAppSchema = z
   })
   .refine(
     (a) =>
-      (a.providers === undefined && a.config === undefined && a.settings === undefined) || a.enable,
+      (a.providers === undefined &&
+        a.config === undefined &&
+        a.settings === undefined &&
+        a.features === undefined) ||
+      a.enable,
     {
-      message: "providers, config and settings require enable: true",
+      message: "providers, config, settings and features require enable: true",
       path: ["enable"],
     },
   )

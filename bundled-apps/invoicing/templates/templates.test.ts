@@ -569,8 +569,9 @@ describe("invoicing pdf templates — command shape", () => {
     expect(t).toContain("CN-2026-0001")
     expect(texts(cmds).join("\n")).toMatch(/Credit note for invoice INV-2026-0042/)
     expect(texts(cmds).join("\n")).toContain("Reason: partial return")
+    // The line excluding VAT, the total including it.
     expect(t).toContain("-100.00")
-    expect(t).toContain("-120.00")
+    expect(t.some((x) => x.includes("-120.00"))).toBe(true)
     expect(title(cmds)).toMatch(/Credit Note/i)
     // Page footer (issuer name + "Page N of M") is present like every other type.
     expect(texts(cmds).join("\n")).toMatch(/Page 1 of 1/)
@@ -1022,6 +1023,24 @@ describe("exempt documents print no tax column", () => {
     expect(t).toContain("Tax (20.00%)")
   })
 
+  test("an invoice of services alone prints no Incoterm, an invoice of goods does", () => {
+    const services = texts(
+      invoiceTemplate(
+        shortInput({ document: { ...shortInput().document, operation_category: "services" } }),
+      ),
+    )
+    expect(services).not.toContain("Incoterm:")
+    expect(texts(invoiceTemplate(shortInput()))).toContain("Incoterm:")
+  })
+
+  test("a taxed invoice prints each line excluding VAT under a column that says so", () => {
+    const t = texts(invoiceTemplate(exportInput(725, 725n)))
+    expect(t).toContain("Amount excl. VAT")
+    expect(t).not.toContain("Amount")
+    // 100.00 excluding VAT on the line; 107.25 only once, in the totals.
+    expect(t.filter((x) => x.includes("107.25"))).toHaveLength(1)
+  })
+
   test("an exempt invoice that carries tax keeps the figures its total includes", () => {
     const t = texts(invoiceTemplate(exportInput(725, 725n)))
     expect(t).toContain("Tax %")
@@ -1131,6 +1150,56 @@ describe("S25 identity blocks and mentions", () => {
     expect(all(cmds)).toContain("Operation:")
     expect(texts(cmds)).toContain("Livraison de biens")
     expect(all(invoiceTemplate(shortInput()))).not.toContain("Operation:")
+  })
+
+  test("a long operation label never runs into its own label", () => {
+    const cmds = textCmds(
+      invoiceTemplate(
+        shortInput({
+          document: { ...shortInput().document, operation_label: "Provision of services" },
+        }),
+      ),
+    )
+    const label = cmds.find((c) => c.text === "Operation:")
+    const value = cmds.find((c) => c.text === "Provision of services")
+    expect(label && value).toBeTruthy()
+    if (!label || !value) return
+    expect(label.y).toBe(value.y)
+    expect(label.x + textWidth(label.text, label.size)).toBeLessThan(value.x)
+    // Short values keep the labels' shared column; only the long one's label moves left.
+    const right = (text: string) => {
+      const c = cmds.find((x) => x.text === text)
+      return c ? c.x + textWidth(c.text, c.size) : Number.NaN
+    }
+    expect(right("Issued:")).toBeCloseTo(right("Due:"), 3)
+    expect(right("Operation:")).toBeLessThan(right("Issued:"))
+  })
+
+  test("a party whose address already ends with its country prints the country once", () => {
+    const cmds = invoiceTemplate(
+      shortInput({
+        counterparty: {
+          legal_name: "Acheteur SA",
+          country: "FR",
+          vat_id: null,
+          address: "2 rue B\n69001 Lyon\nFR",
+        },
+      }),
+    )
+    // An address without it still gets the country line: the same count, issuer's line included.
+    const plain = invoiceTemplate(
+      shortInput({
+        counterparty: {
+          legal_name: "Acheteur SA",
+          country: "FR",
+          vat_id: null,
+          address: "2 rue B, 69001 Lyon",
+        },
+      }),
+    )
+    const fr = (c: DrawCommand[]) => texts(c).filter((t) => t === "FR").length
+    expect(fr(plain)).toBe(2)
+    expect(fr(cmds)).toBe(fr(plain))
   })
 
   test("VAT-on-debits literal prints under the mention only when set", () => {

@@ -1,0 +1,1 @@
+sharedRows: self form with a list table, via form one hop, no grant satisfies it, system work passes -> apps/api/src/modules/apps/manifest-schema.ts (sharedRows) ; apps/api/src/modules/permissions/rls-generator.ts (sharedRowsSql)

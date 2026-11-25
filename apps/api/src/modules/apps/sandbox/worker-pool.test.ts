@@ -2,9 +2,9 @@
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { readFileSync } from "node:fs"
 import { appsLogger } from "~/lib/logger"
+import { readProcessRssBytes } from "~/lib/process-rss"
 import {
   MAX_NESTED_BREADTH_PER_PARENT,
-  readProcessRssBytes,
   resolveSandboxPoolWarmSize,
   SandboxWorkerMemoryError,
   SandboxWorkerPool,
@@ -2330,6 +2330,44 @@ describe("SandboxWorkerPool: worker runtime", () => {
       expect(argv[0]).toBe(process.execPath)
     } finally {
       spawn.mockRestore()
+      await onePool.shutdown()
+    }
+  })
+})
+
+describe("SandboxWorkerPool: a bridge call belongs to no run that happened to grow the pool", () => {
+  it("a worker spawned inside a run's frame answers later bridge calls outside that frame", async () => {
+    const {
+      currentRunContext,
+      currentToolCallScopesBefore,
+      runContextStore,
+      runWithToolCallScopesBefore,
+    } = await import("~/modules/agent/runtime/run-context")
+    const onePool = new SandboxWorkerPool({ size: 1, maxSize: 1 })
+    try {
+      // The pool grows while an approved action runs (its frame carries the turn's taint).
+      await runContextStore.run(
+        { runId: "grew-the-pool", parentRunId: null, rootRunId: "grew-the-pool", nestingDepth: 0 },
+        () => runWithToolCallScopesBefore(["mail:conversations:read"], () => onePool.init()),
+      )
+      // Later, an event handler with no run of its own makes a bridge call on that worker.
+      const seen: Array<{ runId: string | null; before: string[] | null }> = []
+      await onePool.execute({
+        bundleSource: `async function onEvent(params, ctx) { return await ctx.probe() }`,
+        exportName: "onEvent",
+        params: {},
+        bridge: {
+          probe: async () => {
+            seen.push({
+              runId: currentRunContext()?.runId ?? null,
+              before: currentToolCallScopesBefore() ?? null,
+            })
+            return true
+          },
+        },
+      })
+      expect(seen).toEqual([{ runId: null, before: null }])
+    } finally {
       await onePool.shutdown()
     }
   })

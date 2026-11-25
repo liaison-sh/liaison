@@ -288,7 +288,13 @@ function formatAjvParamError(
     const field = (e.instancePath ?? "").replace(/^\//, "").replace(/\//g, ".")
     const p = (e.params ?? {}) as Record<string, unknown>
     if (e.keyword === "required") {
-      lines.push(`- "${String(p.missingProperty)}" is required but was not provided.`)
+      // A nested shape names the whole path (`source.body.blocks.0.text`), so the model
+      // knows which object lacks it.
+      const missing = String(p.missingProperty)
+      lines.push(`- "${field ? `${field}.${missing}` : missing}" is required but was not provided.`)
+    } else if (e.keyword === "if") {
+      // A conditional shape (one per block type) fails with its `then` errors, named above
+      // or below; the bare "must match then schema" line says nothing more.
     } else if (e.keyword === "enum") {
       const allowed = (Array.isArray(p.allowedValues) ? p.allowedValues : []).map(String)
       lines.push(`- "${field}" must be one of: ${allowed.join(", ")}.`)

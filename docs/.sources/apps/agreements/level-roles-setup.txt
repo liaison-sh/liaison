@@ -1,0 +1,10 @@
+The level sentence, a code by email and a typed name -> packages/shared/src/i18n/locales/en/client-action.json (page.levelLead, page.levelBody) ; apps/api/src/modules/client-actions/copy-guard.test.ts
+Simple level only; signature pages added, nothing embedded -> apps/api/src/modules/agreement-evidence/signature-pages.ts (appendSignaturePages) ; bundled-apps/agreements/src/seal.ts (sealVersion)
+One outside timestamp per sealed package; each signer's time is the server's clock -> bundled-apps/agreements/src/seal.ts (sealVersion, timestampRetry)
+The server's copy is the weakest proof; signers' copies and the timestamp do not depend on it -> apps/api/src/modules/apps/ddl.ts ; apps/api/src/modules/agreement-evidence/copy-mail.ts (sendSignedCopyMail)
+Demo stand-ins: verify answers stand-in, no evidence file -> bundled-apps/agreements/src/stand-in.ts (agreementVerifyNamed, agreementEvidenceGetNamed, STAND_IN_SENTENCE)
+An agent's sends, reminders, new links, voids and template saves wait for a person; it never prices, signs or decides -> bundled-apps/agreements/app.manifest.json (agreement_send, agreement_reminder_send, agreement_new_link, agreement_void, template_save, agreement_price_set) ; apps/api/src/modules/client-actions/no-agent-sign.guard.test.ts
+Evidence and device scopes -> bundled-apps/agreements/src/seal.ts (agreementEvidenceGet, holdsDevices)
+No timestamp authority: a send for signature refuses TIMESTAMP_NOT_CONFIGURED; accept and approve need none -> apps/api/src/modules/apps/sandbox/bridge/client-actions.ts
+The chain from LIAISON_TSA_CHAIN_FILE or LIAISON_TSA_CHAIN_PEM; a URL with no chain is a configuration error -> apps/api/src/modules/signing/timestamp.ts ; apps/api/src/lib/env.ts (LIAISON_TSA_URL, LIAISON_TSA_CHAIN_FILE, LIAISON_TSA_CHAIN_PEM, LIAISON_TSA_ALLOW_PRIVATE)
+Without the render service an upload is refused PDF_RENDER_UNAVAILABLE; written agreements need none -> docs/self-hosting/docker.md ; apps/api/src/modules/pdf-render/client.ts

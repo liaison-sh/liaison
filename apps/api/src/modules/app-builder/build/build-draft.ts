@@ -34,7 +34,7 @@ import {
   realpathSync,
   rmSync,
 } from "node:fs"
-import { availableParallelism, tmpdir } from "node:os"
+import { availableParallelism, cpus, tmpdir } from "node:os"
 import { join } from "node:path"
 import ts from "typescript"
 import { forbiddenCustomAppDeclaration } from "~/modules/apps/app-org-scope"
@@ -57,7 +57,9 @@ export const BUILD_OUTPUT_CAP_BYTES = 4 * 1024 * 1024
 export const BUILD_MEMORY_LIMIT_BYTES = 1024 * 1024 * 1024
 /** The hard address-space ceiling behind the RSS limit (Linux): 1 GiB per core, 4 GiB at least. */
 export const BUILD_ADDRESS_SPACE_BYTES =
-  BUILD_MEMORY_LIMIT_BYTES * Math.max(4, availableParallelism())
+  // Bun reads availableParallelism() from globalThis.navigator, which pdf.js replaces: undefined
+  // then, and a NaN ceiling is one prlimit refuses, so no draft built.
+  BUILD_MEMORY_LIMIT_BYTES * Math.max(4, availableParallelism() || cpus().length)
 
 const WORKER_SCRIPT = join(import.meta.dir, "build-worker.ts")
 const BASE_RE = /^[a-z][a-z0-9-]{1,40}$/

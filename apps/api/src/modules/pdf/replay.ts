@@ -19,9 +19,9 @@ import { PDFDocument, type PDFFont, type PDFImage, type PDFPage, rgb, StandardFo
 import { finalizePdfA, jpegComponents, type PdfAOptions } from "~/modules/pdf/pdfa/finalize"
 import {
   embedUnicodeFace,
-  HELVETICA_FACE,
   splitByFace,
   type UnicodeFace,
+  unicodeFaceFor,
 } from "~/modules/pdf/unicode-fonts"
 
 export type PdfReplayErrorCode = "invalid_commands" | "too_many_pages" | "pdfa_font_not_embeddable"
@@ -165,12 +165,12 @@ export async function replayDrawCommands(
       }
       case "embedFont": {
         // The Helvetica family is served by an embedded, metrically identical
-        // Liberation Sans so text above Latin-1 renders instead of being
-        // stripped to "?" by the template. Everything else keeps its base-14
-        // font: a template asking for Times or Courier wants a serif or a
-        // monospace, and substituting a sans to widen the charset would be a
-        // worse answer than the ceiling.
-        const face: UnicodeFace | undefined = HELVETICA_FACE[cmd.standardFont]
+        // Liberation Sans, and the Times family by Liberation Serif, so text
+        // above Latin-1 renders instead of being stripped to "?" by the
+        // template. Courier keeps its base-14 font: a template asking for a
+        // monospace wants one, and substituting another face to widen the
+        // charset would be a worse answer than the ceiling.
+        const face: UnicodeFace | undefined = unicodeFaceFor(cmd.standardFont)
         if (face) {
           fonts.set(cmd.ref, await embedUnicodeFace(doc, face, unicodeFonts))
           break

@@ -1,0 +1,12 @@
+{
+  "entry": "job:retainer-timebox-roll",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack, record-invoicing-retainer.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["recurring_schedules", "{\"where\":{\"status\":\"active\"},\"limit\":2000}"],
+      "reply": "[]"
+    }
+  ]
+}

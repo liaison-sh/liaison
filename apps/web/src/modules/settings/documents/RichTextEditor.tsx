@@ -145,6 +145,32 @@ export const RichTextEditor: Component<{
     })
   }
 
+  /** A written list's items: each a text like a paragraph's; a list keeps at least one. */
+  function listItems(b: RichTextBody, i: number): string[] | null {
+    const block = b.blocks[i]
+    return block?.type === "list" && Array.isArray(block.items) ? block.items : null
+  }
+
+  function setItem(i: number, n: number, value: string) {
+    edit((b) => {
+      const items = listItems(b, i)
+      if (items && n < items.length) items[n] = value
+    })
+  }
+
+  function addItem(i: number) {
+    edit((b) => {
+      listItems(b, i)?.push("")
+    })
+  }
+
+  function removeItem(i: number, n: number) {
+    edit((b) => {
+      const items = listItems(b, i)
+      if (items && items.length > 1) items.splice(n, 1)
+    })
+  }
+
   function setPage(key: "size" | "fontSize", value: string | number | undefined) {
     edit((b) => {
       const page: Record<string, unknown> = { ...(b.page ?? {}) }
@@ -308,7 +334,49 @@ export const RichTextEditor: Component<{
                     />
                   )}
                 </Show>
-                <Show when={block.type === "list" && block}>
+                <Show when={block.type === "list" && Array.isArray(block.items) && block.items}>
+                  {(items) => (
+                    <div class="space-y-1.5">
+                      <div class="text-[12px] text-text-secondary">
+                        {i18n.t("kernel.documentsUi.listItems")}
+                      </div>
+                      <For each={items()}>
+                        {(item, n) => (
+                          <div class="flex items-start gap-2">
+                            <div class="min-w-0 flex-1">
+                              <PlaceholderTextarea
+                                value={item}
+                                onChange={(v) => setItem(index(), n(), v)}
+                                fields={topFields()}
+                                rows={1}
+                                testId={`documents-block-${index()}-item-${n()}`}
+                              />
+                            </div>
+                            <Show when={items().length > 1}>
+                              <button
+                                type="button"
+                                class="text-[12px] text-text-tertiary hover:text-text"
+                                onClick={() => removeItem(index(), n())}
+                                data-testid={`documents-block-${index()}-item-${n()}-delete`}
+                              >
+                                {i18n.t("kernel.documentsUi.delete")}
+                              </button>
+                            </Show>
+                          </div>
+                        )}
+                      </For>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => addItem(index())}
+                        data-testid={`documents-block-${index()}-add-item`}
+                      >
+                        {i18n.t("kernel.documentsUi.listAddItem")}
+                      </Button>
+                    </div>
+                  )}
+                </Show>
+                <Show when={block.type === "list" && !Array.isArray(block.items) && block}>
                   {(b) => (
                     <div class="space-y-1.5">
                       <label class="block text-[12px] text-text-secondary">
@@ -318,7 +386,7 @@ export const RichTextEditor: Component<{
                           fallback={
                             <input
                               class={INPUT}
-                              value={b().from}
+                              value={b().from ?? ""}
                               onInput={(e) => setField(index(), "from", e.currentTarget.value)}
                               data-testid={`documents-block-${index()}-from`}
                             />
@@ -326,7 +394,7 @@ export const RichTextEditor: Component<{
                         >
                           <select
                             class={INPUT}
-                            value={b().from}
+                            value={b().from ?? ""}
                             onChange={(e) => setField(index(), "from", e.currentTarget.value)}
                             data-testid={`documents-block-${index()}-from`}
                           >
@@ -337,9 +405,9 @@ export const RichTextEditor: Component<{
                       <div class="block text-[12px] text-text-secondary">
                         {i18n.t("kernel.documentsUi.listLine")}
                         <PlaceholderTextarea
-                          value={b().line}
+                          value={b().line ?? ""}
                           onChange={(v) => setField(index(), "line", v)}
-                          fields={insertablePaths(props.recordType, b().from)}
+                          fields={insertablePaths(props.recordType, b().from ?? "")}
                           rows={1}
                           testId={`documents-block-${index()}-line`}
                         />

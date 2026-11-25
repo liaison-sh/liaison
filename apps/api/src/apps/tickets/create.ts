@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { displayTicketHandle } from "@liaison/shared"
+import {
+  displayTicketHandle,
+  maskHtmlWithNote,
+  maskPaymentSecrets,
+  maskWithNote,
+} from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { ACKNOWLEDGE_AFTER_COMMIT_METADATA } from "~/apps/tickets/ack-after-commit"
 import { loadSegmentConfig } from "~/apps/tickets/display-handle"
@@ -41,7 +46,7 @@ export async function requireUserInOrg(
   const rows = await onPrivilegedDb(orgId, "tickets-require-user", privilegedTx, async (tx) =>
     extractRows<{ id: string }>(
       await tx.execute(
-        drizzleSql`SELECT id FROM ${kernelRel("users")} WHERE id = ${userId}::uuid AND org_id = ${orgId}::uuid AND status = 'active' LIMIT 1`,
+        drizzleSql`SELECT id FROM ${kernelRel("users")} WHERE id = ${userId}::uuid AND org_id = ${orgId}::uuid AND status = 'active' AND user_type = 'member' LIMIT 1`,
       ),
     ),
   )
@@ -264,11 +269,72 @@ interface ActorRef {
 
 export type CreateTicketOptions = PrivilegedReadOptions & {
   /**
+   * A client's request from the portal: the channel is `portal` and the ticket is
+   * stamped with the client's company. An option rather than a param, so no tool
+   * input can set it.
+   */
+  portalRequest?: { companyId: string }
+  /**
    * The ticket records something from the past (an import, a mailbox backfill),
    * or our own mail: it is not news, so a "Notify on new ticket" inbox says
    * nothing. An option rather than a param, so no tool input can set it.
    */
   notNews?: boolean
+  /**
+   * The ticket's number, for a seed that tells a story with fixed ticket ids. The org must not
+   * hold it yet. An option rather than a param, so no tool input can set it.
+   */
+  handleNumber?: number
+}
+
+/**
+ * The next ticket handle of one org: the instance sequence's next value, or the number after the
+ * org's highest when the org already holds a higher one (a seeded story's fixed ids), so a new
+ * ticket never meets a number the org holds and numbers keep rising within the org.
+ */
+async function nextTicketHandle(
+  tx: SqlClient,
+  orgId: string,
+  privilegedTx: PrivilegedDb | undefined,
+): Promise<string> {
+  const drawn = await nextHandle(tx, `${schemaRef("app_tickets")}.tickets_handle_seq`, "ticket")
+  const drawnNumber = Number(drawn.slice("ticket-".length))
+  // Every ticket of the org, whatever the caller may read: a hidden one holds its number too.
+  const row = await onPrivilegedDb(
+    orgId,
+    "tickets-handle-top",
+    privilegedTx,
+    async (ptx) =>
+      extractRows<{ top: string | number | null }>(
+        await ptx.execute(drizzleSql`
+        SELECT max((substring(handle from '^ticket-([0-9]+)$'))::bigint) AS top
+        FROM ${ticketsRel("tickets")}
+        WHERE org_id = ${orgId}::uuid
+      `),
+      )[0],
+  )
+  const top = row?.top === null || row?.top === undefined ? 0 : Number(row.top)
+  return top >= drawnNumber ? `ticket-${top + 1}` : drawn
+}
+
+/**
+ * Who a client's portal request goes to on Home: the company's account manager while
+ * they are an active member, and their next in line while they are away today; with
+ * none, the inbox admins (`noAccountManager`). The ticket has no assignee yet, so nobody
+ * is on it before the manager. The next in line's row says whom they hold it for.
+ */
+async function portalRequestRecipient(
+  orgId: string,
+  companyId: string,
+): Promise<
+  | { portalRecipientIds: string[]; standingInFor?: Record<string, string> }
+  | { noAccountManager: true }
+> {
+  const { loadAccountManager, standInMark } = await import("~/modules/attention/translator")
+  const ids = await loadAccountManager(orgId, companyId)
+  return ids && ids.length > 0
+    ? { portalRecipientIds: ids, ...standInMark(ids) }
+    : { noAccountManager: true }
 }
 
 /** What a new-ticket notice calls the person who asked: name and address, whichever exist. */
@@ -450,7 +516,7 @@ export async function createTicket(
       }
     }
   }
-  const channel = params.channel ?? "manual"
+  const channel = opts.portalRequest ? "portal" : (params.channel ?? "manual")
   const priority = params.priority ?? "normal"
   let team = params.team ?? null
   let unlinkedContactEmail: string | null = null
@@ -723,7 +789,10 @@ export async function createTicket(
   const slaDeadlineValue = slaExempt ? null : slaDeadline.toISOString()
   const slaActiveStartedValue = slaExempt ? null : createdTs.toISOString()
 
-  const handle = await nextHandle(tx, `${schemaRef("app_tickets")}.tickets_handle_seq`, "ticket")
+  const handle =
+    opts.handleNumber !== undefined
+      ? `ticket-${opts.handleNumber}`
+      : await nextTicketHandle(tx, orgId, opts.privilegedTx)
 
   const initialForRequester = normalizeInitialMessage(params.initialMessage)
   const requesterEmail =
@@ -769,6 +838,14 @@ export async function createTicket(
       actorId: userId,
     })
   }
+  // The client company the ticket is for, stamped now and never followed: the
+  // portal person's company, else the company of the contact the ticket links to
+  // at this moment. Built after every contactId check and fallback above, so it
+  // reads the contact id the row is written with, never the caller's raw value.
+  const companyStamp = opts.portalRequest
+    ? drizzleSql`${opts.portalRequest.companyId}::uuid`
+    : drizzleSql`(SELECT c.company_id FROM ${kernelRel("contacts")} c
+        WHERE c.id = ${params.contactId ?? null}::uuid AND c.org_id = ${orgId}::uuid)`
   let lastErr: unknown = null
   for (let attempt = 0; attempt < 3; attempt++) {
     const replyToken = base32Token(10)
@@ -784,16 +861,16 @@ export async function createTicket(
             category_id, contact_id, assigned_to, reply_token, source_inbox_id, source_account_id, external_ref,
             closed_reason, first_response_at, requester_email, related_ticket_id,
             sla_target_seconds, sla_deadline, sla_active_started_at, sla_elapsed_seconds,
-            message_count, created_at, updated_at
+            message_count, created_at, updated_at, company_id
           ) VALUES (
-            gen_random_uuid(), ${orgId}::uuid, ${handle}, ${params.subject}, ${status}, ${priority}, ${channel},
+            gen_random_uuid(), ${orgId}::uuid, ${handle}, ${maskPaymentSecrets(params.subject).text}, ${status}, ${priority}, ${channel},
             ${team}, ${audience}, ${params.language ?? null}, ${sensitivity},
             ${params.categoryId ?? null}::uuid, ${params.contactId ?? null}::uuid, ${params.assignedTo ?? null}::uuid,
             ${replyToken}, ${params.sourceInboxId ?? null}::uuid, ${sourceAccountId}::uuid, ${params.externalRef ?? null},
             ${closedReason}, ${firstResponseTs ? firstResponseTs.toISOString() : null}::timestamptz,
             ${requesterEmail}, ${params.relatedTicketId ?? null}::uuid,
             ${slaTargetSeconds}, ${slaDeadlineValue}::timestamptz, ${slaActiveStartedValue}::timestamptz, 0,
-            0, ${createdTs.toISOString()}::timestamptz, now()
+            0, ${createdTs.toISOString()}::timestamptz, now(), ${companyStamp}
           )
           RETURNING id
         `)
@@ -815,6 +892,8 @@ export async function createTicket(
             m.fromEmail = params.contactEmail.trim().toLowerCase()
             m.fromName = m.fromName ?? params.contactName ?? null
           }
+          // Card numbers and payment keys are masked in the values below, before
+          // the row is written (and so before any reader or index meets them).
           const messageInsert = await sp.execute(drizzleSql`
             INSERT INTO ${ticketsRel("messages")} (
               id, org_id, ticket_id, kind,
@@ -826,7 +905,10 @@ export async function createTicket(
               gen_random_uuid(), ${orgId}, ${ticketId}, ${m.kind ?? "note"},
               ${m.fromEmail ?? null}, ${m.fromName ?? null},
               ${JSON.stringify(m.toEmails ?? [])}::jsonb, ${JSON.stringify(m.ccEmails ?? [])}::jsonb,
-              ${m.subject ?? null}, ${m.htmlBody ?? null}, ${m.textBody ?? null}, ${m.snippet ?? null},
+              ${m.subject ? maskPaymentSecrets(m.subject).text : null},
+              ${m.htmlBody ? maskHtmlWithNote(m.htmlBody).text : null},
+              ${m.textBody ? maskWithNote(m.textBody).text : null},
+              ${m.snippet ? maskPaymentSecrets(m.snippet).text : null},
               ${m.externalMessageId ?? null}, ${m.inReplyTo ?? null},
               ${JSON.stringify(m.headerReferences ?? [])}::jsonb,
               ${sentAt}, ${userId}, now(), now(), ${params.senderAuth ?? null}
@@ -914,7 +996,7 @@ export async function createTicket(
           data: {
             ticketId,
             handle: displayHandle,
-            subject: params.subject,
+            subject: maskPaymentSecrets(params.subject).text,
             priority,
             channel,
             // The ticket's dimension values, so the WS frame filter keeps its
@@ -922,6 +1004,13 @@ export async function createTicket(
             "tickets:team": team,
             "tickets:sensitivity": sensitivity,
             ...newTicketNotice,
+            // A client's portal request: its company and who its Home row goes to.
+            ...(opts.portalRequest
+              ? {
+                  companyId: opts.portalRequest.companyId,
+                  ...(await portalRequestRecipient(orgId, opts.portalRequest.companyId)),
+                }
+              : {}),
           },
           actorId: actor.userId,
           actorType: actor.auditActorType ?? actor.actorType,

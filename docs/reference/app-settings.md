@@ -95,6 +95,14 @@ Section `accounts`, scope `user`.
 |  | (every connection) | connections |
 |  | CalendarChoices | custom |
 
+### Away days
+
+Section `away`, scope `user`.
+
+| Key | Label | Type |
+| --- | --- | --- |
+| `awayFromCalendar` | Read my away days from my calendar | toggle |
+
 ## calls
 
 Turn call transcripts into searchable knowledge linked to contacts and deals.
@@ -126,6 +134,18 @@ Section `report-access`, scope `org`, edited with `database:access:admin`.
 | Key | Label | Type |
 | --- | --- | --- |
 |  | DatabaseReportAccess | custom |
+
+## github
+
+Read repositories, commits, pull requests and issues on GitHub, read-only.
+
+### Connection
+
+Section `connection`, scope `org`, edited with `github:accounts:admin`.
+
+| Key | Label | Type |
+| --- | --- | --- |
+|  | github | connections |
 
 ## gitlab
 
@@ -171,6 +191,7 @@ Section `issuers`, scope `org`, edited with `invoicing:settings:read`.
 | Key | Label | Type |
 | --- | --- | --- |
 |  | InvoicingIssuerProfiles | custom |
+|  | InvoicingIssuerStreams | custom |
 
 ### Shopify shop mappings
 
@@ -309,6 +330,20 @@ Section `labels`, scope `org`, edited with `projects:labels:admin`.
 | --- | --- | --- |
 |  | labels.tree | tree |
 
+### Time and budgets
+
+Section `time`, scope `org`, edited with `projects:settings:admin`.
+
+| Key | Label | Type |
+| --- | --- | --- |
+| `hoursPerDay` | Hours in a day | number |
+| `daysOffCalendarId` | Read a shared calendar | select |
+|  | days_off_list | list |
+| `from` | From | list create field: date |
+| `to` | To | list create field: date |
+| `label` | Label | list create field: text |
+| `yearly` | Every year | list create field: toggle |
+
 ## shopify
 
 Shopify orders, customers, products, refunds, fulfilments and returns.
@@ -369,6 +404,18 @@ Section `quota`, scope `org`, edited with `social:findings:read`.
 | Key | Label | Type |
 | --- | --- | --- |
 |  | SocialQuota | custom |
+
+## stripe
+
+Stripe: customers, subscriptions, invoices and payments from your Stripe account, read through a restricted key.
+
+### Stripe account
+
+Section `connection`, scope `org`, edited with `stripe:admin:connection`.
+
+| Key | Label | Type |
+| --- | --- | --- |
+|  | stripe | connections |
 
 ## tickets
 

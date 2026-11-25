@@ -1,0 +1,1 @@
+an invite to a client's portal address stops the run with EMAIL_IS_PORTAL_USER -> apps/api/src/cli/provisioners/users.ts (provisionUsers) ; apps/api/src/modules/users/invites.ts (createInvitation)

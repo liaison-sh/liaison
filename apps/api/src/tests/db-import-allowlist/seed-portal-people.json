@@ -1,0 +1,7 @@
+{
+  "privileged": {
+    "seed/factories/people/portal-people.ts": "The seed engine's one no-mail writer of a portal person for a seeded contact of a demo world (no route, tool or bridge reaches it, proven by its guard test): writes that person's portal row and reads it back in the seeded org.",
+    "seed/worlds/studio/agreements.ts": "The services world's agreements layer: writes the seeded agreements' stand-in rows and advances the series counters in the org its SeedContext names, as the seed engine's other factories do (seed-org.ts refuses a non-demo org first). Seed only, never reached from a request.",
+    "seed/worlds/studio/portal.ts": "The services world's portal layer: writes the seeded portal people's shares and stamps in the org its SeedContext names, through the seed-only portal person factory. Seed only, never reached from a request."
+  }
+}

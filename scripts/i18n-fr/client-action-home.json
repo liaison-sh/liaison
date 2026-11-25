@@ -1,0 +1,15 @@
+{
+  "text": {
+    "{{title}}: signed by {{name}}": "{{title}} : signé par {{name}}",
+    "{{title}}: accepted by {{name}}": "{{title}} : accepté par {{name}}",
+    "{{title}}: approved by {{name}}": "{{title}} : approuvé par {{name}}",
+    "{{title}}: declined by {{name}}": "{{title}} : refusé par {{name}}",
+    "{{name}} opened your request": "{{name}} a ouvert votre demande",
+    "{{name}} asked something about your request": "{{name}} a posé une question sur votre demande",
+    "The link sent to {{name}} is locked after too many wrong codes": "Le lien envoyé à {{name}} est bloqué après trop de codes erronés",
+    "{{name}} entered a wrong code on your request three times in a row": "{{name}} a saisi trois fois de suite un code erroné pour votre demande",
+    "{{title}}: the link to {{name}} did not send": "{{title}} : le lien pour {{name}} n'a pas été envoyé",
+    "{{title}}: open it in Liaison to read and sign": "{{title}} : ouvrez-le dans Liaison pour le lire et le signer",
+    "{{title}}: {{decision}} by {{name}}": "{{title}} : {{decision}} par {{name}}"
+  }
+}

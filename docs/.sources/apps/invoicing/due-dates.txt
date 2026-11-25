@@ -1,0 +1,7 @@
+An invoice with no date of its own is due by the schedule's, the customer's or the issuer's terms, from its issue -> bundled-apps/invoicing/src/payment-terms.ts (paymentTermsOf) ; bundled-apps/invoicing/src/issue.ts (issueDocument)
+The card says the terms before it issues -> bundled-apps/invoicing/src/mutations/from-reconcile.ts (dueLine) ; bundled-apps/invoicing/src/mutations/quote-proforma-po.ts (draftIssuePreview)
+The customer's days are recorded with counterparty_identity_set -> bundled-apps/invoicing/src/einvoicing/identity-tools.ts (counterpartyIdentitySet)
+An invoice of zero is never overdue -> bundled-apps/invoicing/src/handlers/overdue-scan.ts (overdueScanJob)
+An added run row gets the run's period, a due date and an operation type -> bundled-apps/invoicing/src/mutations/drafts.ts (joinRun, addedRowTerms)
+A patch naming a field drafts_update does not change is refused -> bundled-apps/invoicing/src/mutations/drafts.ts (refuseUnknownFields)
+An issue approval holds the tax country, the payment terms and the amount; a change of them redraws its card -> bundled-apps/invoicing/src/mutations/issue-fingerprint.ts (issueFingerprint, restageIssueApprovals, restageForTerms, draftChangedSinceCard)

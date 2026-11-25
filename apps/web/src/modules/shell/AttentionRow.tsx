@@ -38,6 +38,7 @@ import RoutineMailboxWaitsRow from "~/modules/agent/RoutineMailboxWaitsRow"
 import ApprovalCard, { shortApprovalId } from "~/modules/approvals/ApprovalCard"
 import {
   approvalActionLabel,
+  approvalKindLabel,
   approvalRowTitle,
   localizeApprovalText,
 } from "~/modules/approvals/approval-copy"
@@ -49,9 +50,15 @@ import {
 } from "~/modules/approvals/decide-error"
 import {
   isDecisionInFlight,
+  isDecisionNotSent,
   isDecisionUndone,
   queueDecision,
 } from "~/modules/approvals/decision-queue"
+import {
+  type ApprovalRunGroup,
+  approvalRunGroupMembers,
+  approvalRunGroupOf,
+} from "~/modules/approvals/run-group"
 import { SummaryLineText } from "~/modules/approvals/SummaryLineText"
 import { openExternal } from "~/modules/desktop/external-links"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -60,6 +67,21 @@ import { nodePermissionPromptOf } from "~/modules/nodes/NodePermissionCard"
 import { openNotificationRoute } from "~/modules/notifications/open-route"
 import { useApi } from "~/modules/shell/ApiContext"
 import { AppPill, appIdOfTool } from "~/modules/shell/AppPill"
+import {
+  AskDraftButton,
+  AskReassignButton,
+  BackToFiveDaysButton,
+  DismissButton,
+  GuardLine,
+  isStaffTurn,
+  isStoppedDraft,
+  isStoppedSendNotice,
+  NotNowButton,
+  offersAskDraft,
+  offersNotNow,
+  rowSendGuard,
+  StoppedDraftActions,
+} from "~/modules/shell/AttentionRowExtras"
 import { clearApprovalFocus, focusedApproval } from "~/modules/shell/approval-focus"
 import {
   formatMetaLine,
@@ -73,9 +95,11 @@ import {
 } from "~/modules/shell/attention-row-format"
 import { attentionStore } from "~/modules/shell/attention-store"
 import { markAttentionRead, openAttentionLink, openEntity } from "~/modules/shell/entity-opener"
+import { AwayRecapLines, RouteWhyLine } from "~/modules/shell/route-line"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { addToast } from "~/modules/shell/toast-store"
 import { openReplyPanel } from "~/modules/threads/reply-panel-store"
+import { createNow } from "~/primitives/createNow"
 
 interface AttentionRowProps {
   item: AttentionItem
@@ -85,6 +109,13 @@ const TONE_TEXT: Record<MetricTone, string> = {
   warning: "text-warning",
   tertiary: "text-text-tertiary",
   secondary: "text-text-secondary",
+}
+
+/** The app part of an action label ("Workspace: update skill" → "Workspace"), for the phone
+ *  row's pill. A label with no app part is kept whole. */
+export function shortActionLabel(label: string): string {
+  const i = label.indexOf(": ")
+  return i > 0 ? label.slice(0, i) : label
 }
 
 function isHttpUrl(value: string): boolean {
@@ -104,6 +135,10 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
   }
   const i18n = useI18n()
   const rowLocale = () => rowLocaleFrom(i18n)
+  // The row's age keeps time, as the open card's does: one age per request, never two.
+  const now = createNow(30_000)
+  const age = () =>
+    formatRelativeTime(props.item.occurredAt, { now: new Date(now()), i18n: rowLocale() })
   // The phone tier gets a genuinely compact row. The desktop row's 40px icon
   // rail plus its `min-w-[300px]` body cannot share a 390px line, so the kind
   // glyph wrapped onto a line of its OWN above the title, the metric and the
@@ -168,7 +203,13 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
   // 77-day-old RGPD delete) and no countdown: Details opens the card, which
   // explains the state and offers the close-out.
   const wedged = (): boolean => isApproval() && props.item.metadata?.wedged === true
-  const hasInlineActions = (): boolean => isApproval() && !decideInContext() && !wedged()
+  // A draft the send check stopped can no longer go out as written: Dismiss only.
+  const stoppedDraft = (): boolean => isApproval() && isStoppedDraft(props.item)
+  // A draft held by an auto-reply: the viewer's decision, made on its card (Keep holding, Send
+  // now, Discard), never by an inline Approve. The row opens that card in place.
+  const heldDraft = (): boolean => isApproval() && rowSendGuard(props.item)?.state === "held"
+  const hasInlineActions = (): boolean =>
+    isApproval() && !decideInContext() && !wedged() && !stoppedDraft() && !heldDraft()
   // The cause of the last approve that ran and failed with no effect (the
   // request is back at pending). Set from this row's own failed decide so the
   // banner shows at once, and read from the feed item (`metadata.lastFailure`,
@@ -187,6 +228,14 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
     const f = props.item.metadata?.lastFailure as { message?: unknown } | undefined
     return f && typeof f.message === "string" && f.message.length > 0 ? f.message : null
   }
+  // A decision this device stored too long ago was dropped at boot, unsent (decision-queue.ts).
+  const NotSentLine = (): ReturnType<Component> => (
+    <Show when={approvalId() !== null && isDecisionNotSent("approval", approvalId() as string)}>
+      <div data-testid={`${testId()}-not-sent`} class="text-[12px] text-text-secondary">
+        {i18n.t("kernel.decisionToast.notSent")}
+      </div>
+    </Show>
+  )
   const LastFailureBanner = (): ReturnType<Component> => (
     <Show when={!expanded() ? lastFailureMessage() : null}>
       {(message) => (
@@ -203,8 +252,14 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
   // (the scope-request inbox is admin-only), so it's informational-only:
   // not clickable, no Open button, and no approve/deny.
   const isScopeRequestDecided = (): boolean => props.item.kind === "scope_request_decided"
+  // A stopped draft's Open only toggled its card, beside Details: its row offers the card's own
+  // ways forward instead (StoppedDraftActions).
   const isNavigable = (): boolean =>
-    (!hasInlineActions() && !isScopeRequestDecided() && !wedged()) ||
+    (!hasInlineActions() &&
+      !isScopeRequestDecided() &&
+      !wedged() &&
+      !stoppedDraft() &&
+      !heldDraft()) ||
     (isApproval() && decideInContext())
 
   // Gated-action chip data (approval rows). `actionLabel` is the humanized
@@ -215,6 +270,16 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
   const namedToolName = (): unknown =>
     props.item.metadata?.outcomeToolName ?? props.item.metadata?.toolName
   const actionLabel = (): string | null => {
+    // A declared pill names the row: a send-guard provider's for the mail's record ("Billing:
+    // payment reminder"), else the tool's own (attention.ts).
+    const pill = props.item.metadata?.pill as { label?: unknown; labelKey?: unknown } | undefined
+    if (pill && typeof pill.label === "string" && pill.label.length > 0) {
+      if (typeof pill.labelKey === "string") {
+        const said = i18n.t(pill.labelKey)
+        if (said !== pill.labelKey) return said
+      }
+      return pill.label
+    }
     const v = props.item.metadata?.actionLabel
     const tool = namedToolName()
     return approvalActionLabel(
@@ -245,14 +310,29 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
   // fall back to the prefix so the row still has a citable reference.
   const approvalRef = (): string | null => {
     if (!isApproval()) return null
+    // A held or stopped draft is the viewer's to read, not to cite: no request handle on it.
+    const guardState = rowSendGuard(props.item)?.state
+    if (guardState === "held" || stoppedDraft()) return null
     const h = props.item.metadata?.requestHandle
     return typeof h === "string" && h.length > 0 ? h : shortApprovalId(props.item.entityId)
+  }
+  /** The consent line of a request whose approval shares data some readers cannot see. It is
+   *  shown on the row's face, on every tier: approving is that decision, so it never waits
+   *  behind Details. */
+  const consentLineRaw = (): string | null => {
+    const v = props.item.metadata?.consentLine
+    return isApproval() && typeof v === "string" && v.length > 0 ? v : null
+  }
+  const consentLine = (): string | null => {
+    const raw = consentLineRaw()
+    return raw ? localizeApprovalText(raw, copyCtx()) : null
   }
   /** The summarizer's WHAT-changes lines ("Label -> Idea"), when carried. */
   const summaryLines = (): string[] => {
     const v = props.item.metadata?.summaryLines
+    const consent = consentLineRaw()
     return Array.isArray(v)
-      ? readableSummaryLines(v.filter((l): l is string => typeof l === "string"))
+      ? readableSummaryLines(v.filter((l): l is string => typeof l === "string" && l !== consent))
           .slice(0, 3)
           .map((line) => localizeApprovalText(line, copyCtx()))
       : []
@@ -463,6 +543,8 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
               bundleSequence().length > 1
                 ? bundleSequence().map((t) => humanizeRefTokens(t))
                 : null,
+            // A stopped draft's Dismiss is a deny that reads as Dismissing.
+            ...(decision === "deny" && stoppedDraft() ? { verb: "dismiss" as const } : {}),
           },
         },
       )
@@ -566,6 +648,11 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
     const tool = props.item.metadata?.toolName
     return isApproval() && typeof tool === "string" ? tool : undefined
   }
+  /** Why the row is the reader's (`standing_in`: they hold it for someone away), for a tour to ring it. */
+  const placement = (): string | undefined => {
+    const p = props.item.metadata?.placement
+    return typeof p === "string" ? p : undefined
+  }
 
   const testId = (): string =>
     `attention-row-${props.item.app}-${props.item.entity}-${props.item.entityId}`
@@ -611,11 +698,11 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
   const compactSecondary = (): string => {
     const parts: string[] = []
     if (isApproval()) {
-      const ref = approvalRef()
-      if (ref) parts.push(ref)
+      // No request handle here: on a phone it led the line ("demo-reply-kestrel-10-…") where the
+      // reader looks for who asked. It stays citable on the desktop row and in the card's chip.
       const by = requesterName()
       if (by) parts.push(i18n.t("kernel.shellUi.byName", { name: by }))
-      parts.push(formatRelativeTime(props.item.occurredAt, { i18n: rowLocale() }))
+      parts.push(age())
     } else {
       parts.push(formatMetaLine(props.item, rowLocale()))
     }
@@ -661,6 +748,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
           /* Which tool an approval runs, so a guided tour can ring one kind of
              request in Home (the routine's web lookup), as on its card. */
           data-tool-name={approvalToolName()}
+          data-placement={placement()}
           data-compact="true"
           onClick={handleClick}
         >
@@ -678,8 +766,12 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
                   testid={`${testId()}-action-chip`}
                   data-impact={approvalImpact()}
                   class="shrink-0 px-1.5 py-px text-[11px] font-semibold leading-tight"
+                  title={label()}
                 >
-                  {label()}
+                  {/* The app alone ("Workspace"), so the title leads the phone row; the
+                      action itself is the title's own words (P-05). A title that only
+                      repeats the badge is not shown, so the badge then stays whole. */}
+                  {titleRepeatsBadge() ? label() : shortActionLabel(label())}
                 </AppPill>
               )}
             </Show>
@@ -702,7 +794,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
                   e.stopPropagation()
                   setExpanded((v) => !v)
                 }}
-                class="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary"
+                class="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary"
               >
                 <span
                   aria-hidden="true"
@@ -731,8 +823,27 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
             </Show>
           </span>
           <LastFailureBanner />
+          <NotSentLine />
+          <GuardLine item={props.item} testId={testId()} />
+          <RouteWhyLine item={props.item} testId={testId()} />
+          <AwayRecapLines item={props.item} testId={testId()} />
+          <Show when={consentLine()}>
+            {(text) => (
+              <span
+                data-testid={`${testId()}-consent`}
+                class="text-[12px] leading-snug text-text-secondary"
+              >
+                {text()}
+              </span>
+            )}
+          </Show>
           <Show
-            when={hasInlineActions() || isNavigable() || (props.item.persisted && !isNavigable())}
+            when={
+              hasInlineActions() ||
+              isNavigable() ||
+              stoppedDraft() ||
+              (props.item.persisted && !isNavigable())
+            }
           >
             <div data-testid={`${testId()}-actions`} class="mt-1 flex items-stretch gap-2">
               {/* One live pair at a time. Expanding the row renders the full
@@ -761,7 +872,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
                     e.stopPropagation()
                     openLinked()
                   }}
-                  class="flex h-9 shrink-0 items-center justify-center rounded-md border border-border px-3 text-[13px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
+                  class="flex min-h-11 shrink-0 items-center justify-center rounded-md border border-border px-3 text-[13px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
                 >
                   {i18n.t("kernel.homeRowOpen")}
                 </button>
@@ -774,14 +885,39 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
                     e.stopPropagation()
                     handleClick()
                   }}
-                  class="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border border-accent-border bg-accent-glow px-3 text-[13px] font-medium text-accent transition-colors hover:bg-accent-wash"
+                  class="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-accent-border bg-accent-glow px-3 text-[13px] font-medium text-accent transition-colors hover:bg-accent-wash"
                 >
                   {isApproval() && decideInContext()
                     ? i18n.t("kernel.homeRowOpenTicket")
-                    : i18n.t("kernel.homeRowOpen")}
+                    : isStaffTurn(props.item)
+                      ? i18n.t("kernel.nav.readAndSign")
+                      : i18n.t("kernel.homeRowOpen")}
                 </button>
               </Show>
-              <Show when={props.item.persisted && !hasInlineActions()}>
+              <Show when={offersAskDraft(props.item)}>
+                <AskDraftButton item={props.item} testId={testId()} compact />
+              </Show>
+              <AskReassignButton item={props.item} testId={testId()} compact />
+              <BackToFiveDaysButton item={props.item} testId={testId()} compact />
+              <Show when={offersNotNow(props.item)}>
+                <NotNowButton item={props.item} testId={testId()} compact />
+              </Show>
+              <Show when={stoppedDraft()}>
+                <StoppedDraftActions item={props.item} testId={testId()} compact />
+              </Show>
+              <Show when={stoppedDraft() || isStoppedSendNotice(props.item)}>
+                <DismissButton
+                  item={props.item}
+                  testId={testId()}
+                  compact
+                  {...(stoppedDraft() ? { onDismiss: () => void decide("deny") } : {})}
+                />
+              </Show>
+              <Show
+                when={
+                  props.item.persisted && !hasInlineActions() && !isStoppedSendNotice(props.item)
+                }
+              >
                 <button
                   type="button"
                   data-testid={`${testId()}-mark-read`}
@@ -790,7 +926,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
                     e.stopPropagation()
                     markAttentionRead(api, props.item.app, props.item.entity, props.item.entityId)
                   }}
-                  class="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
+                  class="flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
                 >
                   <Check size={13} />
                   {i18n.t("kernel.homeRowRead")}
@@ -799,11 +935,19 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
             </div>
           </Show>
           <Show when={expanded() && approvalId()}>
-            <div data-testid={`${testId()}-expanded`} onClick={(e) => e.stopPropagation()}>
+            <div
+              data-testid={`${testId()}-expanded`}
+              onClick={(e) => e.stopPropagation()}
+              // A held draft's row opens its own card: brought into view, not left below the fold.
+              ref={(el) => {
+                if (heldDraft()) queueMicrotask(() => el.scrollIntoView?.({ block: "nearest" }))
+              }}
+            >
               <ApprovalCard
                 requestId={approvalId()!}
                 compact={false}
                 approveOnOpen={approveOnOpen()}
+                inFeed
               />
             </div>
           </Show>
@@ -819,6 +963,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
           /* Which tool an approval runs, so a guided tour can ring one kind of
              request in Home (the routine's web lookup), as on its card. */
           data-tool-name={approvalToolName()}
+          data-placement={placement()}
           onClick={handleClick}
         >
           {/* Accent rail — appears only on row hover, anchored to the left edge. */}
@@ -931,6 +1076,20 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
               </span>
             </Show>
             <LastFailureBanner />
+            <NotSentLine />
+            <GuardLine item={props.item} testId={testId()} />
+            <RouteWhyLine item={props.item} testId={testId()} />
+            <AwayRecapLines item={props.item} testId={testId()} />
+            <Show when={consentLine()}>
+              {(text) => (
+                <span
+                  data-testid={`${testId()}-consent`}
+                  class="text-[12px] leading-snug text-text-secondary"
+                >
+                  {text()}
+                </span>
+              )}
+            </Show>
             <span class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] leading-snug text-text-tertiary">
               <Show
                 when={isApproval()}
@@ -938,29 +1097,31 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
               >
                 {/* The reference an agent or a colleague cites ("approve
                 request-42"), citable from the collapsed row. */}
-                <Show when={approvalRef()}>
-                  {(ref) => (
-                    <span
-                      data-testid={`${testId()}-ref`}
-                      class="font-mono"
-                      title={props.item.entityId}
-                    >
-                      {ref()}
-                    </span>
-                  )}
-                </Show>
+                {/* Who asked and when lead; the handle comes last, a reference to cite and
+                    never the line's main text (cold walk: "demo-…" slugs read as the summary). */}
                 <Show when={requesterName()}>
                   {(name) => (
                     <span data-testid={`${testId()}-requester`}>
-                      <span aria-hidden="true">· </span>
                       {i18n.t("kernel.shellUi.by")} {name()}
+                      <span aria-hidden="true"> ·</span>
                     </span>
                   )}
                 </Show>
-                <span>
-                  <span aria-hidden="true">· </span>
-                  {formatRelativeTime(props.item.occurredAt, { i18n: rowLocale() })}
-                </span>
+                <span data-testid={`${testId()}-age`}>{age()}</span>
+                <Show when={approvalRef()}>
+                  {(ref) => (
+                    <span>
+                      <span aria-hidden="true">· </span>
+                      <span
+                        data-testid={`${testId()}-ref`}
+                        class="font-mono"
+                        title={props.item.entityId}
+                      >
+                        {ref()}
+                      </span>
+                    </span>
+                  )}
+                </Show>
               </Show>
             </span>
           </div>
@@ -1001,7 +1162,28 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
             clear through their decision instead. Dimmed at rest,
             never hidden (ticket-10174): opacity only, so nothing resizes under
             the cursor (ticket-10226). */}
-            <Show when={props.item.persisted && !hasInlineActions()}>
+            <Show when={offersAskDraft(props.item)}>
+              <AskDraftButton item={props.item} testId={testId()} compact={false} />
+            </Show>
+            <AskReassignButton item={props.item} testId={testId()} compact={false} />
+            <BackToFiveDaysButton item={props.item} testId={testId()} compact={false} />
+            <Show when={offersNotNow(props.item)}>
+              <NotNowButton item={props.item} testId={testId()} compact={false} />
+            </Show>
+            <Show when={stoppedDraft()}>
+              <StoppedDraftActions item={props.item} testId={testId()} compact={false} />
+            </Show>
+            <Show when={stoppedDraft() || isStoppedSendNotice(props.item)}>
+              <DismissButton
+                item={props.item}
+                testId={testId()}
+                compact={false}
+                {...(stoppedDraft() ? { onDismiss: () => void decide("deny") } : {})}
+              />
+            </Show>
+            <Show
+              when={props.item.persisted && !hasInlineActions() && !isStoppedSendNotice(props.item)}
+            >
               <button
                 type="button"
                 data-testid={`${testId()}-mark-read`}
@@ -1036,7 +1218,9 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
               >
                 {isApproval() && decideInContext()
                   ? i18n.t("kernel.homeRowOpenTicket")
-                  : i18n.t("kernel.homeRowOpen")}
+                  : isStaffTurn(props.item)
+                    ? i18n.t("kernel.nav.readAndSign")
+                    : i18n.t("kernel.homeRowOpen")}
                 <KbdHint k="O" />
               </button>
             </Show>
@@ -1090,6 +1274,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
                 requestId={approvalId()!}
                 compact={false}
                 approveOnOpen={approveOnOpen()}
+                inFeed
               />
             </div>
           </Show>
@@ -1100,7 +1285,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
 }
 
 const ApprovalActions: Component<{
-  /** Phone tier: Approve and Reject as two equal 36px buttons on their own
+  /** Phone tier: Approve and Reject as two equal 44px buttons on their own
    *  row, no keyboard hints (there is no keyboard behind them). */
   compact?: boolean
   testId: string
@@ -1134,7 +1319,7 @@ const ApprovalActions: Component<{
               type="text"
               class={
                 props.compact
-                  ? "h-9 min-w-0 flex-1 rounded-md border border-border bg-bg px-2.5 text-[13px] text-text outline-none focus:border-accent-border"
+                  ? "min-h-11 min-w-0 flex-1 rounded-md border border-border bg-bg px-2.5 text-[13px] text-text outline-none focus:border-accent-border"
                   : "w-full min-w-0 flex-1 rounded-md border border-border bg-bg px-2.5 py-1.5 text-[12.5px] text-text outline-none focus:border-accent-border sm:w-44 sm:flex-none"
               }
               placeholder={i18n.t("kernel.reasonOptional")}
@@ -1147,7 +1332,7 @@ const ApprovalActions: Component<{
               data-testid={`${props.testId}-reject-submit`}
               class={
                 props.compact
-                  ? "flex h-9 shrink-0 items-center gap-1 rounded-md border border-warning-border bg-warning-glow px-3 text-[13px] font-medium text-warning hover:bg-warning-glow/80 disabled:opacity-50"
+                  ? "flex min-h-11 shrink-0 items-center gap-1 rounded-md border border-warning-border bg-warning-glow px-3 text-[13px] font-medium text-warning hover:bg-warning-glow/80 disabled:opacity-50"
                   : "flex shrink-0 items-center gap-1 rounded-md border border-warning-border bg-warning-glow px-2.5 py-1.5 text-[12.5px] font-medium text-warning hover:bg-warning-glow/80 disabled:opacity-50"
               }
               disabled={props.submitting}
@@ -1169,7 +1354,7 @@ const ApprovalActions: Component<{
           data-testid={`${props.testId}-approve`}
           class={
             props.compact
-              ? "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-accent px-3 text-[13px] font-medium text-bg shadow-sm transition-colors hover:bg-accent-hover disabled:opacity-50"
+              ? "flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md bg-accent px-3 text-[13px] font-medium text-bg shadow-sm transition-colors hover:bg-accent-hover disabled:opacity-50"
               : "flex flex-1 items-center justify-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[12.5px] font-medium text-bg shadow-sm transition-colors hover:bg-accent-hover disabled:opacity-50 sm:flex-initial"
           }
           disabled={props.submitting}
@@ -1186,7 +1371,7 @@ const ApprovalActions: Component<{
           data-testid={`${props.testId}-reject`}
           class={
             props.compact
-              ? "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text disabled:opacity-50"
+              ? "flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text disabled:opacity-50"
               : "flex flex-1 items-center justify-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[12.5px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text disabled:opacity-50 sm:flex-initial"
           }
           disabled={props.submitting}
@@ -1224,6 +1409,90 @@ const KbdHint: Component<{ k: string }> = (props) => (
 )
 
 /**
+ * The cards one run staged for this viewer, or one day's cards of the same action with no run,
+ * as one row (approvals/run-group.ts): who asked (or which action) and how many, opening to the
+ * cards themselves, each decided on its own. Once one card is left
+ * (the others decided), the row is that card again.
+ */
+const ApprovalRunGroupRow: Component<{ item: AttentionItem; group: ApprovalRunGroup }> = (
+  props,
+) => {
+  const i18n = useI18n()
+  const t = i18n.t
+  const [open, setOpen] = createSignal(false)
+  const members = (): AttentionItem[] =>
+    approvalRunGroupMembers(props.group.key, attentionStore.items).filter(
+      (m) =>
+        !(
+          m.action?.type === "decide_approval" &&
+          isDecisionInFlight("approval", m.action.approvalId)
+        ),
+    )
+  const title = (): string => {
+    const count = String(members().length)
+    if (props.group.basis === "batch") {
+      const action = approvalKindLabel(props.group.toolName ?? null, null, {
+        t,
+        locale: i18n.locale(),
+      })
+      return action
+        ? t("kernel.approvalRunGroup.batchTitle", { count, action })
+        : t("kernel.approvalRunGroup.batchTitleNoAction", { count })
+    }
+    return props.group.label
+      ? t("kernel.approvalRunGroup.title", { count, name: props.group.label })
+      : t("kernel.approvalRunGroup.titleNoName", { count })
+  }
+  const why = (): string =>
+    props.group.basis === "batch"
+      ? t("kernel.approvalRunGroup.batchWhy")
+      : t("kernel.approvalRunGroup.why")
+  return (
+    <Show
+      when={members().length > 1}
+      fallback={<AttentionRowBody item={members()[0] ?? props.item} />}
+    >
+      <li
+        class="group/row relative flex flex-col gap-1 px-3 py-2.5 transition-colors hover:bg-surface-hover/50"
+        data-testid="approval-run-group-row"
+        data-kind="approval_pending"
+        data-count={String(members().length)}
+      >
+        <div class="flex min-w-0 items-center gap-2">
+          <span
+            data-testid="approval-run-group-title"
+            class="min-w-0 flex-1 truncate text-[13px] font-medium text-text"
+          >
+            {title()}
+          </span>
+          <button
+            type="button"
+            data-testid="approval-run-group-toggle"
+            aria-expanded={open()}
+            class="shrink-0 rounded-md border border-border px-2.5 py-1 text-[12.5px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
+            onClick={(e) => {
+              e.stopPropagation()
+              setOpen((v) => !v)
+            }}
+          >
+            {open() ? t("kernel.approvalRunGroup.hide") : t("kernel.approvalRunGroup.show")}
+          </button>
+        </div>
+        <span class="text-[12px] text-text-tertiary">{why()}</span>
+        <Show when={open()}>
+          <ul
+            data-testid="approval-run-group-list"
+            class="mt-1 divide-y divide-border-subtle rounded-lg border border-border-subtle"
+          >
+            <For each={members()}>{(member) => <AttentionRowBody item={member} />}</For>
+          </ul>
+        </Show>
+      </li>
+    </Show>
+  )
+}
+
+/**
  * One attention row. A computer chat's permission request is decided in its
  * chat (ThreadNodePermissions): here it is only a notification that the agent
  * needs you, which opens that chat.
@@ -1241,8 +1510,12 @@ const AttentionRow: Component<AttentionRowProps> = (props) => {
   // mailbox (Run now / Dismiss) and an access request (Grant / Deny).
   const wait = () => routineMailboxWaitOf(props.item)
   const access = () => accessRequestOf(props.item)
+  const runGroup = () => approvalRunGroupOf(props.item)
   return (
     <Switch fallback={<AttentionRowBody item={item()} />}>
+      <Match when={runGroup()}>
+        {(g) => <ApprovalRunGroupRow item={props.item} group={g()} />}
+      </Match>
       <Match when={wait()}>{(w) => <RoutineMailboxWaitsRow item={props.item} wait={w()} />}</Match>
       <Match when={access()}>{(a) => <AccessRequestRow item={props.item} facts={a()} />}</Match>
     </Switch>

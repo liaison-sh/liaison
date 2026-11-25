@@ -18,6 +18,7 @@ import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { seededApps } from "~/tests/helpers/seeded-app-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { ownSubrunHandler } from "../../../../test-support/harness/subrun-handler"
 import {
   clamp,
   intersectScopes,
@@ -29,6 +30,8 @@ import {
   spawnAgent,
 } from "./spawn-agent"
 import { createSubAgentDefinition } from "./sub-agent-definitions"
+
+ownSubrunHandler({ live: false })
 
 const SEEDED = seededApps()
 
@@ -617,6 +620,39 @@ describe("spawnAgent: bounded by the turn effective scope", () => {
       ),
     ).rejects.toThrow("E_ROLE_UNAVAILABLE")
     expect(await runsFromThread(orgId, threadId)).toHaveLength(0)
+  })
+
+  it("a parent holding * spawns a role whose ceiling names an exact-only scope: the child has no such scope", async () => {
+    const agentType = await setupRole(orgId, ["a:b:read", "projects:margin:read"])
+    const threadId = await makeParentThread(orgId, userId)
+    const handle = await spawnAgent({
+      parentRun: { id: null, threadId, actor: userActor(orgId, userId, ["*"]), nestingDepth: 0 },
+      parentFrame: null,
+      subagentType: agentType,
+      description: "wildcard parent",
+      prompt: "read margins",
+    })
+    const [row] = (await runsFromThread(orgId, threadId)).filter((r) => r.id === handle.runId)
+    expect(row.effectiveScopes).toEqual(["a:b:read"])
+  })
+
+  it("a parent holding the exact-only scope exactly passes it to the child", async () => {
+    const agentType = await setupRole(orgId, ["a:b:read", "projects:margin:read"])
+    const threadId = await makeParentThread(orgId, userId)
+    const handle = await spawnAgent({
+      parentRun: {
+        id: null,
+        threadId,
+        actor: userActor(orgId, userId, ["*", "projects:margin:read"]),
+        nestingDepth: 0,
+      },
+      parentFrame: null,
+      subagentType: agentType,
+      description: "exact parent",
+      prompt: "read margins",
+    })
+    const [row] = (await runsFromThread(orgId, threadId)).filter((r) => r.id === handle.runId)
+    expect([...row.effectiveScopes].sort()).toEqual(["a:b:read", "projects:margin:read"])
   })
 
   it("a role holding both scopes gets only the turn scope intersection", async () => {

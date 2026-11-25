@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 import type { DimensionDefinition } from "~/modules/permissions/dimensions"
 
@@ -300,7 +301,8 @@ export interface RequiredScopesVisibility {
  * coverage following `hasScope` (permissions.ts) rule for rule:
  * - an empty or NULL required entry is never covered, and a NULL column never
  *   satisfies the scope branch; an empty column is covered by anyone;
- * - grant `*` covers everything;
+ * - grant `*` covers everything, but an exact-only scope (`isExactOnlyScope`,
+ *   `kernel.scope_is_exact_only`): only its exact grant covers that one;
  * - a grant with more segments than the required scope never covers it;
  * - a `*` segment is honoured only as the LAST segment of the grant (a
  *   mid-segment wildcard makes the grant cover nothing);
@@ -311,6 +313,8 @@ export interface RequiredScopesVisibility {
  * split with `regexp_split_to_array`, because `string_to_array('', ':')` is an
  * empty array where JavaScript's `''.split(':')` is `['']`. The `__none__`
  * sentinel `withRlsContext` writes for an empty grant list is no grant at all.
+ * A `restricted:` entry (a restricted record's scope) is covered by no grant: such a row is
+ * read only through the disclosure list, by people who also hold the rest of its stamp.
  * The disclosure match compares as text, like the JS `includes`, and yields
  * false (not NULL) for a NULL list or an empty user GUC. No semicolons: callers
  * split generated SQL on ';'.
@@ -318,6 +322,7 @@ export interface RequiredScopesVisibility {
 export function generateRequiredScopesVisibilityClause(opts: RequiredScopesVisibility): string {
   const required = quoteIdent(snake(opts.requiredScopesColumn))
   const disclosure = quoteIdent(snake(opts.disclosureListColumn))
+  const exactOnly = `${quoteIdent(schemaRef("kernel"))}.scope_is_exact_only`
   return `(
       (
         ${required} IS NOT NULL
@@ -325,6 +330,7 @@ export function generateRequiredScopesVisibilityClause(opts: RequiredScopesVisib
           SELECT 1 FROM unnest(${required}) AS req(scope)
           WHERE (
             req.scope <> ''
+            AND left(req.scope, 11) <> 'restricted:'
             AND EXISTS (
               SELECT 1
               FROM unnest(string_to_array(
@@ -334,20 +340,61 @@ export function generateRequiredScopesVisibilityClause(opts: RequiredScopesVisib
                 regexp_split_to_array(grant_row.scope, ':') AS gp,
                 regexp_split_to_array(req.scope, ':') AS rp
               ) AS parts
-              WHERE grant_row.scope = '*'
-                OR (
-                  cardinality(parts.gp) <= cardinality(parts.rp)
-                  AND COALESCE(array_position(parts.gp, '*'), cardinality(parts.gp)) = cardinality(parts.gp)
-                  AND NOT EXISTS (
-                    SELECT 1 FROM generate_subscripts(parts.gp, 1) AS i
-                    WHERE parts.gp[i] <> '*' AND parts.gp[i] IS DISTINCT FROM parts.rp[i]
+              WHERE CASE WHEN ${exactOnly}(req.scope)
+                THEN grant_row.scope = req.scope
+                ELSE grant_row.scope = '*'
+                  OR (
+                    cardinality(parts.gp) <= cardinality(parts.rp)
+                    AND COALESCE(array_position(parts.gp, '*'), cardinality(parts.gp)) = cardinality(parts.gp)
+                    AND NOT EXISTS (
+                      SELECT 1 FROM generate_subscripts(parts.gp, 1) AS i
+                      WHERE parts.gp[i] <> '*' AND parts.gp[i] IS DISTINCT FROM parts.rp[i]
+                    )
                   )
-                )
+              END
             )
           ) IS NOT TRUE
         )
       )
-      OR COALESCE(NULLIF(rls_ctx.user_id(), '') = ANY(${disclosure}::text[]), false)
+      OR (
+        COALESCE(NULLIF(rls_ctx.user_id(), '') = ANY(${disclosure}::text[]), false)
+        AND NOT EXISTS (
+          SELECT 1 FROM unnest(${required}) AS rreq(scope)
+          WHERE left(rreq.scope, 11) = 'restricted:'
+        )
+      )
+      OR (
+        COALESCE(NULLIF(rls_ctx.user_id(), '') = ANY(${disclosure}::text[]), false)
+        AND NOT EXISTS (
+          SELECT 1 FROM unnest(${required}) AS req(scope)
+          WHERE left(req.scope, 11) <> 'restricted:'
+            AND (
+              req.scope <> ''
+              AND EXISTS (
+                SELECT 1
+                FROM unnest(string_to_array(
+                  NULLIF(NULLIF(rls_ctx.scopes(), ''), '__none__'), ','
+                )) AS grant_row(scope)
+                CROSS JOIN LATERAL (SELECT
+                  regexp_split_to_array(grant_row.scope, ':') AS gp,
+                  regexp_split_to_array(req.scope, ':') AS rp
+                ) AS parts
+                WHERE CASE WHEN ${exactOnly}(req.scope)
+                  THEN grant_row.scope = req.scope
+                  ELSE grant_row.scope = '*'
+                    OR (
+                      cardinality(parts.gp) <= cardinality(parts.rp)
+                      AND COALESCE(array_position(parts.gp, '*'), cardinality(parts.gp)) = cardinality(parts.gp)
+                      AND NOT EXISTS (
+                        SELECT 1 FROM generate_subscripts(parts.gp, 1) AS i
+                        WHERE parts.gp[i] <> '*' AND parts.gp[i] IS DISTINCT FROM parts.rp[i]
+                      )
+                    )
+                END
+              )
+            ) IS NOT TRUE
+        )
+      )
     )`
 }
 
@@ -406,6 +453,77 @@ export function assertRlsManagementAllowed(desc: {
   }
 }
 
+/** Manifest `sharedRows`: the self form names the list, the via form one hop to a sharedRows table. */
+export type SharedRowsDecl =
+  | { list: { table: string; column: string }; via?: undefined }
+  | { via: { table: string; localColumn: string }; list?: undefined }
+
+/** The helper that answers "may the current user see this row of `table`" (by row id). */
+export function sharedRowsHelperName(schemaName: string, table: string): string {
+  return `${quoteIdent(schemaName)}.${quoteIdent(`${table}_shared_visible`)}`
+}
+
+/**
+ * The helper and the policy condition of a `sharedRows` table. The helper is SECURITY
+ * DEFINER (owner: the registration role, which bypasses RLS) so it reads the root row and
+ * its list whatever their own policies say, and a policy never queries back through a
+ * table's RLS (the recursion `0002`'s document_shares comment warns of). `org_access` and
+ * the list are read for the row's own org only. The user comes from `rls_ctx.user_id()`;
+ * the empty or nil user (system work: jobs, event handlers) passes, as for `personalScope`.
+ * Function bodies hold no semicolon (callers split on ';'); body checking is off while they
+ * are created, since a helper may name a table or helper made later in the same registration.
+ */
+export function sharedRowsSql(
+  schemaName: string,
+  tableName: string,
+  decl: SharedRowsDecl,
+): { statements: string[]; condition: string } {
+  const q = quoteIdent
+  const own = sharedRowsHelperName(schemaName, tableName)
+  const statements: string[] = ["SET LOCAL check_function_bodies = off;"]
+  const user = `NULLIF(rls_ctx.user_id(), '')`
+  if (decl.list) {
+    const list = `${q(schemaName)}.${q(decl.list.table)}`
+    statements.push(`CREATE OR REPLACE FUNCTION ${own}(rid uuid) RETURNS boolean
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+    SELECT EXISTS (
+      SELECT 1 FROM ${q(schemaName)}.${q(tableName)} r
+      WHERE r.id = rid
+        AND (r.org_access <> 'none'
+          OR EXISTS (
+            SELECT 1 FROM ${list} s
+            WHERE s.${q(snake(decl.list.column))} = r.id
+              AND s.org_id = r.org_id
+              AND s.user_id = ${user}::uuid
+              AND to_jsonb(s)->>'removed_at' IS NULL
+          ))
+    )
+  $$;`)
+  } else {
+    const parent = sharedRowsHelperName(schemaName, decl.via.table)
+    statements.push(`CREATE OR REPLACE FUNCTION ${own}(rid uuid) RETURNS boolean
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+    SELECT COALESCE((
+      SELECT ${parent}(t.${q(snake(decl.via.localColumn))})
+      FROM ${q(schemaName)}.${q(tableName)} t WHERE t.id = rid
+    ), false)
+  $$;`)
+  }
+  statements.push("SET LOCAL check_function_bodies = on;")
+  // The self form reads its own `org_access` inline and the list through the helper; the via
+  // form asks the parent's helper about its column. A root row closed at creation is written
+  // open, its list filled, then closed, in one transaction (the one writer does this), since
+  // the helper cannot see a row before it exists.
+  const target = decl.list
+    ? `(org_access <> 'none' OR ${own}(id))`
+    : `${sharedRowsHelperName(schemaName, decl.via.table)}(${q(snake(decl.via.localColumn))})`
+  const condition = `(
+      COALESCE(${user}, '00000000-0000-0000-0000-000000000000') = '00000000-0000-0000-0000-000000000000'
+      OR ${target}
+    )`
+  return { statements, condition }
+}
+
 export function generateRlsPolicySql(
   schemaName: string,
   tableName: string,
@@ -451,6 +569,14 @@ export function generateRlsPolicySql(
    * policies are unchanged. Inline, no helper function: no cross-table lookup.
    */
   requiredScopesVisibility?: RequiredScopesVisibility,
+  /**
+   * OPTIONAL who-can-see restriction (manifest `sharedRows`). Every policy gains an
+   * AND-condition through a SECURITY DEFINER helper `<table>_shared_visible(id)`: the root
+   * row's `org_access <> 'none'`, or the current user is on the root's list. No scope or
+   * grant satisfies it (`*` included); a context without a user (system work) passes, like
+   * `personalScope`. See `sharedRowsSql`.
+   */
+  sharedRows?: SharedRowsDecl,
 ): string {
   const quotedSchema = quoteIdent(schemaName)
   const quotedTable = quoteIdent(tableName)
@@ -575,6 +701,13 @@ export function generateRlsPolicySql(
     )`
   }
 
+  let sharedCondition: string | null = null
+  if (sharedRows) {
+    const shared = sharedRowsSql(schemaName, tableName, sharedRows)
+    statements.push(...shared.statements)
+    sharedCondition = shared.condition
+  }
+
   let ownershipOrBlock: string | null = null
   if (hasOwnership && dimEntries.length > 0) {
     const ownerCheck = `(owner_type = 'user' AND owner_id = nullif(rls_ctx.user_id(), '')::uuid)`
@@ -593,6 +726,7 @@ export function generateRlsPolicySql(
       parts.push(...dimConditions)
     }
     if (personalCondition) parts.push(personalCondition)
+    if (sharedCondition) parts.push(sharedCondition)
     if (requiredScopesVisibility) {
       parts.push(generateRequiredScopesVisibilityClause(requiredScopesVisibility))
     }
@@ -617,6 +751,7 @@ export function generateRlsPolicySql(
       parts.push(...dimConditions)
     }
     if (personalCondition) parts.push(personalCondition)
+    if (sharedCondition) parts.push(sharedCondition)
     return withSublinkReaders(parts.join("\n    AND "))
   }
 
@@ -641,6 +776,7 @@ export function generateRlsPolicySql(
       })
     parts.push(...inheritedConditions)
     if (personalCondition) parts.push(personalCondition)
+    if (sharedCondition) parts.push(sharedCondition)
     return withSublinkReaders(parts.join("\n    AND "))
   }
 

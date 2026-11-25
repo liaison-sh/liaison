@@ -15,6 +15,7 @@ import { extractRows, sql } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
+import { runContextStore } from "~/modules/agent/runtime/run-context"
 import { decideApproval } from "~/modules/approvals/decide"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
@@ -214,6 +215,50 @@ describe("a held createProject with tasks", () => {
     const project = await projectByName(name)
     expect(project).toBeDefined()
     expect(await taskTitles(project!.id)).toEqual(["Theme", "Dates", "Speakers"])
+  })
+
+  it("a project with planned time, parked by the turn an approval handed back, is created once the person approves", async () => {
+    const name = `Planned plan ${Date.now()}`
+    const call: Parameters<typeof executeTool>[0] & { turnTaintScopes: string[] } = {
+      toolName: "projects:createProject",
+      orgId,
+      actor,
+      params: { name, timeBudgets: true, tasks: [{ title: "Design", timebox: "16 h" }] },
+      threadId,
+      origin: "in-app-agent",
+      turnTaintScopes: ["tickets:tickets:read"],
+    }
+    // The background turn that answers the person's message after they approved an earlier call.
+    const runId = crypto.randomUUID()
+    const handedBack = {
+      runId,
+      parentRunId: null,
+      rootRunId: runId,
+      nestingDepth: 0,
+      background: true,
+      answersApprovedCall: true as const,
+    }
+    const res = await runContextStore.run(handedBack, () => executeTool(call))
+    const requestId = res.blocked?.approvalRequestId
+    expect(requestId).toBeTruthy()
+    await decideApproval({ orgId, requestId: requestId as string, actor, decision: "approve" })
+    const [row] = extractRows<{ on: boolean; minutes: number | null }>(
+      await db.execute(drizzleSql`
+        SELECT p.time_budgets_on AS on, t.timebox_minutes AS minutes
+        FROM app_projects.projects p JOIN app_projects.tasks t ON t.project_id = p.id
+        WHERE p.org_id = ${orgId}::uuid AND p.name = ${name}`),
+    )
+    expect(row).toEqual({ on: true, minutes: 960 })
+  })
+
+  it("says on the card that approving it turns time and budgets on", async () => {
+    const summary = await withRlsContext(actor, (tx) =>
+      summarizeCreateProject(
+        { name: "Site", timeBudgets: true, tasks: [{ title: "Design", timebox: "16 h" }] },
+        { tx, orgId, userId },
+      ),
+    )
+    expect(summary.lines).toContain("Turns time and budgets on, with planned time on 1 task")
   })
 
   it("lists the tasks on the approval card", async () => {

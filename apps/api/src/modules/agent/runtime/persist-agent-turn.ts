@@ -21,7 +21,7 @@ import type { RlsClient } from "~/db"
 import { messages } from "~/db/schema/kernel"
 import { broadcastEphemeral } from "~/infra/events/event-bus"
 import { rootLogger } from "~/lib/logger"
-import { sendMessage } from "~/modules/threads/message"
+import { sendMessage, withRestrictedDisclosure } from "~/modules/threads/message"
 import { messageVisibilityFacts } from "~/services/security/visibility"
 
 const log = rootLogger.child({ module: "persist-agent-turn" })
@@ -127,7 +127,13 @@ export async function persistAgentTurn(
       metadata: params.broadcastMetadata ?? metadata,
       // The low-latency copy is tagged with the same turn scopes the row was
       // given, so the fan-out delivers it to exactly the readers RLS will.
-      ...messageVisibilityFacts({ requiredScopes: params.requiredScopes, disclosureList: null }),
+      // A restricted record's stamp is read through its list, as the writer put it on the row.
+      ...messageVisibilityFacts(
+        await withRestrictedDisclosure(params.orgId, {
+          requiredScopes: params.requiredScopes,
+          disclosureList: null,
+        }),
+      ),
       createdAt: sent.createdAt,
       // The same flag the outbox event carries: this copy may win the race.
       ...(params.unprompted ? { unprompted: true } : {}),

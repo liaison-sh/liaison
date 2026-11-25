@@ -1,0 +1,2 @@
+Each portal person of either company keeps what they read before; every portal person is signed out; the result names them -> apps/api/src/modules/portal/company-merge.ts (repointPortalForCompanyMerge, portalMergeSentence) ; apps/api/src/modules/contacts/companies.ts (mergeCompanies) ; apps/api/src/modules/portal/views.ts (INVOICING_VIEWS)
+Show one person the whole company from the client access panel, portal admins only -> apps/api/src/modules/portal/admin-routes.ts (portalAdminRoutes) ; apps/api/src/modules/portal/access.ts (showWholeCompany)

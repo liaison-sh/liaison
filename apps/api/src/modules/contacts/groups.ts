@@ -332,3 +332,61 @@ export function memberOfGroupCondition(groupId: string) {
      WHERE gm.segment_id = ${groupId}::uuid AND gm.contact_id = ${contacts.id}
   )`
 }
+
+/** A system key: `<app>:<key>`, lowercase. */
+export const SYSTEM_GROUP_KEY = /^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]{0,63}$/
+
+/**
+ * The manual group an app keeps for itself under `systemKey` (`<app>:<key>`), created once with
+ * `name` when the org has none. Runs under the caller's row security: a caller who cannot see
+ * or create contact groups gets a 403 or 404 like any group call. When a person's own group
+ * already holds the name, the app's group takes the name with the app in brackets.
+ */
+export async function ensureSystemGroup(
+  db: Db,
+  params: { orgId: string; userId: string; systemKey: string; name: string },
+): Promise<ContactGroup> {
+  if (!SYSTEM_GROUP_KEY.test(params.systemKey))
+    throw new HTTPException(400, { message: `Not a group key: ${params.systemKey}` })
+  const find = async () => {
+    const [row] = await db
+      .select(groupColumns)
+      .from(contactSegments)
+      .where(
+        and(
+          eq(contactSegments.orgId, params.orgId),
+          eq(contactSegments.kind, "manual"),
+          eq(contactSegments.systemKey, params.systemKey),
+        ),
+      )
+      .limit(1)
+    return row ?? null
+  }
+  const found = await find()
+  if (found) return found
+  const app = params.systemKey.split(":")[0] ?? ""
+  let name = cleanName(params.name)
+  if (await nameTaken(db, params.orgId, name)) name = cleanName(`${name} (${app})`)
+  const createdBy = UUID_RE.test(params.userId) ? params.userId : null
+  try {
+    await db.transaction(async (sp) =>
+      sp
+        .insert(contactSegments)
+        .values({
+          orgId: params.orgId,
+          name,
+          kind: "manual",
+          filter: {},
+          createdBy,
+          systemKey: params.systemKey,
+        })
+        .returning(),
+    )
+  } catch (err) {
+    // Another enable created it between the read and the insert: theirs stands.
+    if (!isUniqueViolation(err)) throw err
+  }
+  const made = await find()
+  if (!made) throw new HTTPException(404, { message: "Group not found" })
+  return made
+}

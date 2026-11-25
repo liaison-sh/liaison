@@ -1,0 +1,2 @@
+# deploy/pdf-render-check.sh against a docker shim.
+deploy/pdf-render-check.test.ts

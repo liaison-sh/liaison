@@ -17,6 +17,7 @@ import {
   runKnowledgeSearch as apiRunKnowledgeSearch,
   fetchKnowledgeHome,
   getCollectionsTree,
+  getKnowledgeDocument,
   listKnowledgeDocuments,
 } from "./knowledge-api"
 
@@ -387,6 +388,38 @@ const PULSE_MS = 3000
 
 export function setKnowledgeStoreDocument(doc: KnowledgeDocument): void {
   setKnowledgeStore("documentsById", doc.id, doc)
+}
+
+/** The pages open in a view (a page open in two views counts twice), with the API they read through. */
+const openPages = new Map<string, { views: number; api: ApiClient }>()
+
+/** A view shows this page; the returned function is its close. */
+export function noteKnowledgePageOpen(id: string, api: ApiClient): () => void {
+  const held = openPages.get(id)
+  openPages.set(id, { views: (held?.views ?? 0) + 1, api })
+  return () => {
+    const now = openPages.get(id)
+    if (!now) return
+    if (now.views <= 1) openPages.delete(id)
+    else openPages.set(id, { ...now, views: now.views - 1 })
+  }
+}
+
+/**
+ * The socket's first connect. A save made between a page's first read and the socket's
+ * hello never replays (frames are not kept), and the resync bus skips that first connect:
+ * a tab reloaded while someone typed kept the text it read. Each open page is read again
+ * once; its view takes the newer revision as it takes any save that arrives.
+ */
+export async function knowledgeSocketConnected(): Promise<void> {
+  await Promise.all(
+    [...openPages].map(async ([id, { api }]) => {
+      const fresh = (await getKnowledgeDocument(api, id).catch(
+        () => null,
+      )) as KnowledgeDocument | null
+      if (fresh && openPages.has(id)) setKnowledgeStore("documentsById", id, fresh)
+    }),
+  )
 }
 
 export function getPulseUpdated(id: string): boolean {

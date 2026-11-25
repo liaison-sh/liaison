@@ -23,6 +23,9 @@ import { toolRegistry } from "~/modules/apps/app-registries"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { ownSubrunHandler } from "../../../../test-support/harness/subrun-handler"
+
+ownSubrunHandler({ live: true })
 
 /** The refusal shape, whatever scopes the turn happened to carry (the message names them). */
 // The child's write never runs. The bridge defers it to the dispatch (scope-taint.ts, rule 8),

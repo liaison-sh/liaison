@@ -311,19 +311,24 @@ describe("Pennylane E2E — install → reach → behave (real app, mocked exter
     expect(scope).not.toBeNull()
     expect(scope).toEqual({ scope: "full", cash_status: "live" })
 
-    const reqs = await mockRequests()
-    const supplierProbe = reqs.find(
-      (r) =>
-        r.url.includes("/api/external/v2/supplier_invoices") &&
-        r.url.includes("limit=1") &&
-        r.method === "GET",
-    )
-    const bankProbe = reqs.find(
-      (r) =>
-        r.url.includes("/api/external/v2/bank_accounts") &&
-        r.url.includes("limit=1") &&
-        r.method === "GET",
-    )
+    // The verdict row can be one an earlier install wrote, so the probe of THIS install may
+    // still be in flight when it reads: wait for both probe requests, not for the row alone.
+    const probe = (reqs: MockRecord[], path: string) =>
+      reqs.find((r) => r.url.includes(path) && r.url.includes("limit=1") && r.method === "GET")
+    let reqs = await mockRequests()
+    const deadline = Date.now() + 10_000
+    while (
+      !(
+        probe(reqs, "/api/external/v2/supplier_invoices") &&
+        probe(reqs, "/api/external/v2/bank_accounts")
+      ) &&
+      Date.now() < deadline
+    ) {
+      await Bun.sleep(50)
+      reqs = await mockRequests()
+    }
+    const supplierProbe = probe(reqs, "/api/external/v2/supplier_invoices")
+    const bankProbe = probe(reqs, "/api/external/v2/bank_accounts")
     expect(supplierProbe).toBeDefined()
     expect(bankProbe).toBeDefined()
     // PennylaneClient sets a static Authorization: Bearer header on every call.

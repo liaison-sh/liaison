@@ -49,8 +49,8 @@ describe("Phase 17 G4 — build-bundled-app freeze round-trip", () => {
     expect(manifest.packageFormat).toBe(1)
     expect(manifest.license).toBe("FSL-1.1-ALv2")
     expect(Array.isArray(manifest.pdf_templates)).toBe(true)
-    // invoice, quote, proforma, purchase order, credit note (0.5.0+).
-    expect(manifest.pdf_templates.length).toBe(5)
+    // invoice, quote, proforma, purchase order, credit note (0.5.0+), activity report.
+    expect(manifest.pdf_templates.length).toBe(6)
   })
 
   it("packed ui.js exports the Phase 17 UI surfaces declared in the manifest", () => {

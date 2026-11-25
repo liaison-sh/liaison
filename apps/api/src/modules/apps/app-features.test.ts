@@ -622,9 +622,11 @@ describe("the row", () => {
       expect(res.status).toBe(200)
       return (await res.json()) as { data: Array<{ app: string; feature: string }> }
     }
-    expect((await read()).data).toEqual([])
+    // The test org has the services switches on (createTestOrg); this app's row is the subject.
+    const ofTestApp = async () => (await read()).data.filter((f) => f.app === "test")
+    expect(await ofTestApp()).toEqual([])
     await flip(true)
-    expect((await read()).data).toEqual([{ app: "test", feature: FEATURE }])
+    expect(await ofTestApp()).toEqual([{ app: "test", feature: FEATURE }])
   })
 
   it("cross-org", async () => {

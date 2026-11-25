@@ -71,7 +71,8 @@ describe("connections_status", () => {
       ["instagram_unified", "connected", "instagram"],
       ["google", "not_connected", "youtube"],
     ])
-    expect(res.connections[2]!.label).toBe("Instagram (Unified login)")
+    expect(res.connections[1]!.label).toBe("Instagram (Instagram login, older Meta apps)")
+    expect(res.connections[2]!.label).toBe("Instagram")
     expect(res.connections[0]!.primary?.displayName).toBe("Resonant Audio Labs Page")
     expect(res.connections[1]!.primary?.ownerType).toBe("user")
   })

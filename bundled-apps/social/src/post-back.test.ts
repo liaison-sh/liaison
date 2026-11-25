@@ -405,6 +405,81 @@ describe("instagram post-back by connection", () => {
   })
 })
 
+// A14: the Unified login sends without Meta's human agent tag, so its window is 24 hours; the
+// Instagram-login account keeps the tagged 7-day window.
+describe("instagram DM window by connection", () => {
+  const IG_ID = "17841400000000101"
+  async function seed(db: MockDb, accountId: string, lastInboundAt: string): Promise<void> {
+    await db.insert("sync_state", {
+      platform: "instagram",
+      account_external_id: accountId,
+      source_type: "discovery",
+      active: true,
+    })
+    await db.insert("dm_conversation", {
+      id: "c1",
+      platform: "instagram",
+      external_id: "CONV_1",
+      participant_external_id: "IGSID_9",
+      last_inbound_at: lastInboundAt,
+      status: "open",
+    })
+  }
+  function holding(connection: string, id: string) {
+    return {
+      getAccounts: async (name: string) =>
+        name === connection ? [{ identifier: id, status: "active" }] : [],
+    }
+  }
+  const threeDaysAgo = new Date(Date.now() - 3 * 86400_000).toISOString()
+  const twoHoursAgo = new Date(Date.now() - 2 * 3600_000).toISOString()
+
+  test("unified, past 24 h: the preflight answers dm_window_closed and nothing is staged", async () => {
+    const db = createMockDb()
+    await seed(db, IG_ID, threeDaysAgo)
+    const ctx = makeCtx({ db })
+    ctx.connections = holding("instagram_unified", IG_ID)
+    const res = await sendDmPreflight(ctx, { conversation_id: "c1" })
+    expect(res).toMatchObject({ error: { code: "dm_window_closed" } })
+    expect((ctx as TestCtx).__approvalInputs.length).toBe(0)
+  })
+
+  test("unified, past 24 h at send time: window_closed, no POST, no outbound row", async () => {
+    const db = createMockDb()
+    await seed(db, IG_ID, threeDaysAgo)
+    const ctx = makeCtx({ db, approval: { approvalRequestId: "appr-1" } })
+    ctx.connections = holding("instagram_unified", IG_ID)
+    const res = await sendDm(ctx, { conversation_id: "c1", body: "hi" })
+    expect(res).toMatchObject({ status: "window_closed" })
+    expect(ctx.fetch.calls.some((c) => c.method === "POST")).toBe(false)
+    expect(
+      await db.count("dm_message", { where: { conversation_id: "c1", direction: "outbound" } }),
+    ).toBe(0)
+  })
+
+  test("unified, within 24 h: the preflight passes and the send goes untagged", async () => {
+    const db = createMockDb()
+    await seed(db, IG_ID, twoHoursAgo)
+    const ctx = makeCtx({ db, approval: { approvalRequestId: "appr-1" } })
+    ctx.connections = holding("instagram_unified", IG_ID)
+    expect(await sendDmPreflight(ctx, { conversation_id: "c1" })).toEqual({ ok: true })
+    const res = await sendDm(ctx, { conversation_id: "c1", body: "hi" })
+    expect(res).toMatchObject({ status: "completed", sent_via_tag: "none" })
+  })
+
+  test("Instagram login, past 24 h: still the tagged 7-day window", async () => {
+    const db = createMockDb()
+    await seed(db, "ig-1", threeDaysAgo)
+    const ctx = makeCtx({ db, approval: { approvalRequestId: "appr-1" } })
+    ctx.connections = holding("instagram", "ig-1")
+    expect(await sendDmPreflight(ctx, { conversation_id: "c1" })).toEqual({ ok: true })
+    const res = await sendDm(ctx, { conversation_id: "c1", body: "hi" })
+    expect(res).toMatchObject({ status: "completed", sent_via_tag: "human_agent" })
+    const post = ctx.fetch.calls.find((c) => c.method === "POST")!
+    expect(JSON.parse(post.body as string)).toMatchObject({ tag: "HUMAN_AGENT" })
+  })
+})
+
 describe("sendDm (B6 window recompute)", () => {
   async function seedConversation(db: MockDb, lastInboundAt: string | null): Promise<void> {
     await db.insert("dm_conversation", {

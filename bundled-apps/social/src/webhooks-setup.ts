@@ -69,6 +69,9 @@ function appAuth(connection: "facebook" | typeof UNIFIED_CONNECTION): SocialAuth
 /** Where the admin sets the app's Instagram webhook (Meta offers no API for it). */
 const IG_DASHBOARD_STEP =
   "In the Meta App Dashboard, open Use cases > Manage messaging & content on Instagram > Customize > API setup with Unified login > Configure webhooks: enter the callback URL and the verify token below, click Verify and save, then subscribe the comments and messages fields."
+/** Managed edition: the server's Meta app belongs to its operator, who sets its Instagram webhook. */
+const IG_DASHBOARD_STEP_MANAGED =
+  "This server's operator configures the Meta app's Instagram webhook (the callback URL below, fields comments and messages); there is nothing for you to enter in the Meta App Dashboard. If it stays missing, ask the server operator."
 const WEBHOOK_ENDPOINT = "meta"
 
 type SetupCtx = SocialToolCtx & {
@@ -110,7 +113,8 @@ export interface InstagramSetup {
   /** What to enter in the App Dashboard; null once it is configured. */
   dashboard_step: string | null
   callback_url: string
-  /** The handshake token to type in the dashboard (self-hosted); null when the server owns it. */
+  /** The handshake token to type in the dashboard (self-hosted, while not configured); null
+   *  once configured or when the server owns it. */
   verify_token: string | null
   accounts: InstagramAccountResult[]
 }
@@ -549,8 +553,9 @@ async function instagramSetup(
         : "missing"
   // Self-hosted: the workspace's own handshake token, made now if none exists. A managed server
   // answers the handshake with its own token, set by its operator.
+  // Only while the dashboard step is still to do: once configured the token stays out of the result.
   let verifyToken: string | null = null
-  if (input.cellVerifyToken === null) {
+  if (input.cellVerifyToken === null && status !== "configured") {
     try {
       await ensureVerifyToken(ctx)
       const stored = await ctx.config.get(VERIFY_TOKEN_KEY)
@@ -590,7 +595,12 @@ async function instagramSetup(
   }
   return {
     app_subscription: { status, callback_url: sub?.callback_url ?? null, fields },
-    dashboard_step: status === "configured" ? null : IG_DASHBOARD_STEP,
+    dashboard_step:
+      status === "configured"
+        ? null
+        : input.cellVerifyToken === null
+          ? IG_DASHBOARD_STEP
+          : IG_DASHBOARD_STEP_MANAGED,
     callback_url: input.callbackUrl,
     verify_token: verifyToken,
     accounts,

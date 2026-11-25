@@ -220,8 +220,10 @@ describe("instagram_unified connection", () => {
     expect(conn.refreshTokenUrl).toBeUndefined()
   })
 
-  test("is an optional connection whose guide asks the three permissions, Never and how to revoke", () => {
-    expect(conn.optional).toBe(true)
+  test("is the primary Instagram connection whose guide asks the three permissions, Never and how to revoke", () => {
+    // Unified login is "Instagram" in Settings; the older Instagram login is the optional alternative.
+    expect(conn.optional).toBeUndefined()
+    expect(legacy.optional).toBe(true)
     expect(conn.description).not.toContain("Preview")
     expect(conn.description).not.toContain("does not read or post")
     expect(conn.setupGuide.summary).not.toContain("Preview")

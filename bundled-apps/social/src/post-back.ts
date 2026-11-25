@@ -18,7 +18,7 @@
 // or `?x=1` cannot redirect the call.
 
 import { facebookAdapter } from "./adapters/facebook"
-import { instagramAdapter } from "./adapters/instagram"
+import { instagramAdapter, UNIFIED_CONNECTION } from "./adapters/instagram"
 import type {
   AdapterContext,
   OutboundRequest,
@@ -29,7 +29,7 @@ import type {
 import { youtubeAdapter } from "./adapters/youtube"
 import { resolveConnectedAccount } from "./connection"
 import type { SocialAuth, SocialToolCtx } from "./ctx"
-import { dmReplyWindow, dmWindowTag } from "./dm-window"
+import { type DmWindowOptions, dmReplyWindow, dmWindowTag } from "./dm-window"
 import { refreshConversationState } from "./ingest"
 import { pendingFindingApprovals } from "./pending"
 
@@ -161,6 +161,14 @@ async function postJson(
  */
 function postAuth(platform: Platform, adapterCtx: AdapterContext): SocialAuth | undefined {
   return platform === "instagram" ? adapterCtx.auth : undefined
+}
+
+/**
+ * An Instagram account connected with the Unified login sends without Meta's
+ * HUMAN_AGENT tag (instagram.ts `dmRequest`), so its reply window is 24 hours.
+ */
+function dmWindowOptions(adapterCtx: AdapterContext): DmWindowOptions {
+  return adapterCtx.auth?.connection === UNIFIED_CONNECTION ? { humanAgent: false } : {}
 }
 
 async function loadFinding(ctx: SocialToolCtx, id: string): Promise<FindingRow | null> {
@@ -689,8 +697,9 @@ export async function sendDm(
     }
   }
 
-  // Recompute the window AT SEND TIME.
-  const tag = dmWindowTag(convo.last_inbound_at)
+  // Recompute the window AT SEND TIME, for the account that will send it.
+  const adapterCtx = await resolveOutboundAdapterContext(ctx, convo.platform)
+  const tag = dmWindowTag(convo.last_inbound_at, new Date(), dmWindowOptions(adapterCtx))
   if (tag === "closed") {
     return { status: "window_closed", reason: "reply_window_closed" }
   }
@@ -704,7 +713,6 @@ export async function sendDm(
   // conversation synced before this fix; `dmRequest` falls back to the
   // first managed page in that case (documented there), never the user token.
   const pageId = typeof convo.metadata?.pageId === "string" ? convo.metadata.pageId : null
-  const adapterCtx = await resolveOutboundAdapterContext(ctx, convo.platform)
   // The Send API addresses the PERSON, not the thread: a synced conversation's
   // external_id is the Graph conversation id, the participant id is the PSID /
   // IGSID. (A webhook-created conversation is keyed on the sender id itself.)
@@ -774,7 +782,8 @@ export async function sendDmPreflight(
       },
     }
   }
-  const window = dmReplyWindow(convo.last_inbound_at)
+  const adapterCtx = await resolveOutboundAdapterContext(ctx, convo.platform)
+  const window = dmReplyWindow(convo.last_inbound_at, new Date(), dmWindowOptions(adapterCtx))
   if (!window.canSend) {
     return {
       error: {

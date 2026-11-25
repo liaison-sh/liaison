@@ -503,8 +503,34 @@ describe("webhooks_setup with an Instagram account (Unified login)", () => {
     expect(writes(g.calls)).toEqual([])
     expect(r.instagram?.app_subscription.status).toBe("configured")
     expect(r.instagram?.dashboard_step).toBeNull()
+    // Nothing left to type in: the handshake token stays out of the result.
+    expect(r.instagram?.verify_token).toBeNull()
     expect(r.instagram?.accounts.map((a) => a.status)).toEqual(["unchanged"])
     expect(r.status).toBe("completed")
+  })
+
+  test("on a managed server the operator owns the Instagram webhook: no verify token, no Page step", async () => {
+    const g = fakeGraph({
+      cell: {
+        callback: "https://cell-a.example.test/webhooks/_cell/meta",
+        verifyToken: "cell-token",
+      },
+    })
+    const ctx = await unifiedOnly(g)
+    expect(await webhooksSetupPreflight({}, ctx)).toEqual({ ok: true })
+    const r = await webhooksSetup({}, ctx)
+    if (!("pages" in r)) throw new Error(JSON.stringify(r))
+    expect(g.calls.some((c) => c.path === "/me/accounts")).toBe(false)
+    expect(g.calls.some((c) => c.body?.object === "page")).toBe(false)
+    expect(r.app).toBeNull()
+    expect(r.instagram?.callback_url).toBe("https://cell-a.example.test/webhooks/_cell/meta")
+    expect(r.instagram?.verify_token).toBeNull()
+    expect(g.getConfig()[VERIFY_TOKEN_KEY]).toBeUndefined()
+    expect(r.instagram?.app_subscription.status).toBe("missing")
+    const step = String(r.instagram?.dashboard_step)
+    expect(step).toContain("server operator")
+    expect(step).not.toContain("verify token")
+    expect(r.instagram?.accounts.map((a) => a.status)).toEqual(["subscribed"])
   })
 
   test("a dashboard subscription pointing elsewhere is reported, never changed", async () => {

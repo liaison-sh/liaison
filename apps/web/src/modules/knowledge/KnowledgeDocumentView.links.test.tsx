@@ -4,7 +4,7 @@
 // may open and "Page you cannot open" for any other, with no title in the DOM; a
 // rename shows at once; "Linked from" lists the pages and conversations that point
 // here, and each row opens it, in a sheet on a phone.
-import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
+import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
 import { ApiContext } from "~/modules/shell/ApiContext"
@@ -93,9 +93,9 @@ function makeApi(canEdit: boolean) {
   return api
 }
 
-function renderView(api: ReturnType<typeof makeApi>) {
+function renderView(api: ReturnType<typeof makeApi>, locale: "en" | "fr" = "en") {
   return render(() => (
-    <I18nProvider initialLocale="en">
+    <I18nProvider initialLocale={locale}>
       <ApiContext.Provider value={api as never}>
         <KnowledgeDocumentView entityId="doc1" />
       </ApiContext.Provider>
@@ -184,6 +184,29 @@ describe("Linked from", () => {
     // Asked again each time the list opens.
     const asked = api.get.mock.calls.filter(([p]) => String(p).endsWith("/backlinks")).length
     expect(asked).toBeGreaterThanOrEqual(3)
+  })
+
+  it("a conversation with no title is named in the reader's language", async () => {
+    for (const [locale, name] of [
+      ["en", "Untitled conversation"],
+      ["fr", "Conversation sans titre"],
+    ] as const) {
+      const api = makeApi(false)
+      const read = api.get.getMockImplementation()!
+      api.get.mockImplementation(async (path: string) => {
+        if (!path.endsWith("/backlinks")) return read(path)
+        return {
+          backlinks: [
+            { kind: "thread", app: "kernel", entityType: "thread", entityId: "t2", title: "" },
+          ],
+        }
+      })
+      renderView(api, locale)
+      fireEvent.click(await screen.findByTestId("knowledge-backlinks-button"))
+      const row = await screen.findByTestId("knowledge-backlink-thread")
+      expect(row.textContent).toBe(name)
+      cleanup()
+    }
   })
 
   it("opens as a sheet on a phone", async () => {

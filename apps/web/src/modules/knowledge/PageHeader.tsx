@@ -296,7 +296,8 @@ const BacklinksButton: Component<{
         <MessageSquare size={13} class="shrink-0 text-text-tertiary" />
       )}
       <span class="truncate text-[13px] text-text">
-        {link.title || i18n.t("knowledge.untitled")}
+        {link.title ||
+          i18n.t(isPageBacklink(link) ? "knowledge.untitled" : "knowledge.links.untitledThread")}
       </span>
     </button>
   )

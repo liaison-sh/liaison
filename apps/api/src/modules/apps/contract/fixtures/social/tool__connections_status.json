@@ -17,6 +17,11 @@
       "method": "connections_describe",
       "args": ["instagram"],
       "reply": "[]"
+    },
+    {
+      "method": "connections_describe",
+      "args": ["instagram_unified"],
+      "reply": "[]"
     }
   ]
 }

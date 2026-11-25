@@ -239,10 +239,46 @@ export async function dropDoorWorld(w: DoorWorld): Promise<void> {
       `DELETE FROM ${k("role_scope_grants")} WHERE role_id IN (SELECT id FROM ${k("roles")} WHERE org_id = $1)`,
       [orgId],
     )
+    await dropAppRowsNamingUsers(orgId)
     for (const table of ["roles", "users", "contacts", "companies"]) {
       await sql.unsafe(`DELETE FROM ${k(table)} WHERE org_id = $1`, [orgId])
     }
     await sql.unsafe(`DELETE FROM ${k("organizations")} WHERE id = $1`, [orgId])
+  }
+}
+
+/**
+ * The org's rows in app tables whose foreign key names a person (a signed copy filed in
+ * Knowledge by its sender, say): they would stop the users' delete. Read from the catalog,
+ * so a flow that starts writing to another app table needs no change here. A row another
+ * app row still references is retried on the next pass.
+ */
+async function dropAppRowsNamingUsers(orgId: string): Promise<void> {
+  const kernelSchema = schemaRef("kernel")
+  const tables: { schema: string; table: string }[] = await sql.unsafe(
+    `SELECT DISTINCT ns.nspname AS schema, c.relname AS table
+       FROM pg_constraint con
+       JOIN pg_class c ON c.oid = con.conrelid
+       JOIN pg_namespace ns ON ns.oid = c.relnamespace
+       JOIN pg_class ref ON ref.oid = con.confrelid
+       JOIN pg_namespace refns ON refns.oid = ref.relnamespace
+      WHERE con.contype = 'f' AND refns.nspname = $1 AND ref.relname = 'users'
+        AND ns.nspname <> $1
+        AND EXISTS (SELECT 1 FROM pg_attribute a
+                     WHERE a.attrelid = c.oid AND a.attname = 'org_id' AND NOT a.attisdropped)`,
+    [kernelSchema],
+  )
+  let left = tables
+  for (let pass = 0; pass < 5 && left.length > 0; pass++) {
+    const failed: typeof left = []
+    for (const t of left) {
+      try {
+        await sql.unsafe(`DELETE FROM "${t.schema}"."${t.table}" WHERE org_id = $1`, [orgId])
+      } catch {
+        failed.push(t)
+      }
+    }
+    left = failed
   }
 }
 

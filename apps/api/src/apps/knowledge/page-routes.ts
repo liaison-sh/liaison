@@ -4,9 +4,11 @@ import { sql } from "drizzle-orm"
 import type { Context, Hono } from "hono"
 import { z } from "zod"
 import type { AppEnv } from "~/app"
+import { ensureIndexDocument, readFolderPage } from "~/apps/knowledge/folder-pages"
 import { MAX_RESOLVE_IDS, pageBacklinks, pickPages, readablePages } from "~/apps/knowledge/links"
 import { moveDocument } from "~/apps/knowledge/move"
 import {
+  archiveKnowledgeDocument,
   assertCanReadDocumentRow,
   assertCanWriteDocumentRow,
   type KnowledgeActor,
@@ -16,6 +18,14 @@ import {
   loadKnowledgeDocument,
   updateKnowledgeDocument,
 } from "~/apps/knowledge/service"
+import {
+  alertTrash,
+  assertCanDeleteForGood,
+  DeleteForGoodScopeError,
+  deleteForGood,
+  listTrash,
+  PurgeResidueError,
+} from "~/apps/knowledge/trash"
 import { getVersion, listVersions, saveUnapplied } from "~/apps/knowledge/versions"
 import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
@@ -30,6 +40,8 @@ export interface PageRouteHelpers {
   pageWriteRefusal(c: Context<AppEnv>, err: unknown): Response
   /** A refused read: the same 404 as an unknown id, naming nothing. */
   pageNotFound(c: Context<AppEnv>, err: unknown): Response
+  /** A refused write on a folder: 403 without the scope it needs, else the zero-knowledge 404. */
+  folderWriteRefusal(c: Context<AppEnv>, err: unknown): Response
 }
 
 const idParamSchema = z.object({ id: z.uuid() })
@@ -45,6 +57,8 @@ const unappliedSchema = z.object({
 
 const resolveSchema = z.object({ ids: z.array(z.uuid()).max(MAX_RESOLVE_IDS) })
 const pickQuerySchema = z.object({ q: z.string().max(200).optional() })
+/** The first text of a folder's page, written when the page is made. */
+const folderPageStartSchema = z.object({ body: z.string().max(1_000_000).optional() }).strict()
 
 const notFound = () => new KnowledgeError("NOT_FOUND", "Knowledge item not found")
 
@@ -127,6 +141,39 @@ async function threadBacklinks(tx: RlsClient, orgId: string, id: string) {
 }
 
 export function mountPageRoutes(routes: Hono<AppEnv>, helpers: PageRouteHelpers): void {
+  // A folder's page and what is inside that the reader may open (folder-pages.ts).
+  routes.get("/collections/:id/page", zValidator("param", idParamSchema), async (c) => {
+    try {
+      const actor = helpers.getActor(c)
+      const { id } = c.req.valid("param")
+      const view = await withRequestRls(c, (tx) => readFolderPage(tx, id, actor))
+      return success(c, view)
+    } catch (err) {
+      return helpers.pageNotFound(c, err)
+    }
+  })
+
+  // The first edit of a folder's page: made now when the folder has none, else the
+  // existing one (201 when made here, 200 otherwise).
+  routes.post(
+    "/collections/:id/page",
+    zValidator("param", idParamSchema),
+    zValidator("json", folderPageStartSchema),
+    async (c) => {
+      try {
+        const actor = helpers.getActor(c)
+        const { id } = c.req.valid("param")
+        const { body } = c.req.valid("json")
+        const { page, created } = await withRequestRls(c, (tx) =>
+          ensureIndexDocument(tx, id, actor, body === undefined ? {} : { body }),
+        )
+        return success(c, page, undefined, created ? 201 : 200)
+      } catch (err) {
+        return helpers.folderWriteRefusal(c, err)
+      }
+    },
+  )
+
   // Titles of the pages a text links to, for this reader: live pages they may read only;
   // any other id is absent from the answer (the reader then shows "Page you cannot open").
   routes.post("/documents/resolve", zValidator("json", resolveSchema), async (c) => {
@@ -274,4 +321,73 @@ export function mountPageRoutes(routes: Hono<AppEnv>, helpers: PageRouteHelpers)
       }
     },
   )
+  // Trash (S19, D3, D4): what the caller may restore, with the days left.
+  routes.get("/trash", async (c) => {
+    const actor = helpers.getActor(c)
+    const items = await withRequestRls(c, (tx) => listTrash(tx, actor))
+    return success(c, items)
+  })
+
+  // One page's Trash entry, for a link that opens a trashed page: the same
+  // not-found as an unknown id when the caller cannot restore it.
+  routes.get("/trash/:id", zValidator("param", idParamSchema), async (c) => {
+    try {
+      const actor = helpers.getActor(c)
+      const { id } = c.req.valid("param")
+      const [entry] = await withRequestRls(c, (tx) => listTrash(tx, actor, { id }))
+      if (!entry) throw notFound()
+      return success(c, entry)
+    } catch (err) {
+      return helpers.pageNotFound(c, err)
+    }
+  })
+
+  // "Move to trash": the archive, by the name people see.
+  routes.post("/documents/:id/trash", zValidator("param", idParamSchema), async (c) => {
+    try {
+      const actor = helpers.getActor(c)
+      const { id } = c.req.valid("param")
+      const doc = await withRequestRls(c, (tx) => archiveKnowledgeDocument(tx, id, actor))
+      return success(c, doc)
+    } catch (err) {
+      return helpers.pageWriteRefusal(c, err)
+    }
+  })
+
+  // Delete for good (A23, K-R19): the checks run under the caller's own row view
+  // (edit right, else the not-found of an unknown id; then the admin scope; then
+  // in Trash with a clock); only then the privileged delete, which locks the row
+  // and checks the Trash rule again, so a restore committed meanwhile wins.
+  routes.delete("/documents/:id", zValidator("param", idParamSchema), async (c) => {
+    try {
+      const actor = helpers.getActor(c)
+      const { id } = c.req.valid("param")
+      await withRequestRls(c, (tx) => assertCanDeleteForGood(tx, id, actor))
+      if (!(await deleteForGood(actor.orgId, id, actor.userId))) {
+        throw new KnowledgeError("VALIDATION", "This page is no longer in Trash")
+      }
+      return success(c, { id, deleted: true })
+    } catch (err) {
+      if (err instanceof DeleteForGoodScopeError) {
+        return c.json({ error: { message: err.message, code: err.code } }, 403)
+      }
+      if (err instanceof PurgeResidueError) {
+        alertTrash(
+          err,
+          { orgId: c.get("orgId"), documentId: err.documentId, residue: err.residue },
+          "knowledge: delete for good left rows, page kept in Trash",
+        )
+        return c.json(
+          {
+            error: {
+              message: "This page could not be deleted for good. It stays in Trash.",
+              code: "PURGE_INCOMPLETE",
+            },
+          },
+          500,
+        )
+      }
+      return helpers.pageWriteRefusal(c, err)
+    }
+  })
 }

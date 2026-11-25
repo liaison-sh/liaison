@@ -410,4 +410,43 @@ describe("the Imports view's routes: transforms, preview, start", () => {
     })
     expect(bad.status).toBe(404)
   }, 120_000)
+
+  it("a built-in import: the label is the server's, and a member without the run scope is told which scope", async () => {
+    const fileId = await uploadPrivateImportFile(orgId, adminId, "{}\n")
+    const withLabel = await call(adminToken, "POST", "/previews", {
+      builtin: "notion-export",
+      fileIds: [fileId],
+      sourceLabel: "builtin:notion",
+    })
+    expect(withLabel.status).toBe(400)
+    expect(JSON.stringify(withLabel.json)).toContain("set by the server")
+    const unknown = await call(adminToken, "POST", "/previews", {
+      builtin: "../reference/slack-export.js",
+      fileIds: [fileId],
+    })
+    expect(unknown.status).toBe(400)
+    // Without the run scope: told which scope, and to ask an admin.
+    const viewerId = (
+      await ensureUser({
+        orgId,
+        email: `viewer-${tag()}@fabrikam.example`,
+        name: "viewer",
+        password: "pw-import-1!",
+        role: "viewer",
+      })
+    ).userId
+    const viewer = await call(await minimal.token(viewerId), "POST", "/previews", {
+      builtin: "notion-export",
+      fileIds: [fileId],
+    })
+    expect(viewer.status).toBe(403)
+    expect(JSON.stringify(viewer.json)).toContain("kernel:imports:run")
+    // With it but without the kinds' write scopes: told which ones, before any work.
+    const member = await call(await minimal.token(memberId), "POST", "/previews", {
+      builtin: "notion-export",
+      fileIds: [fileId],
+    })
+    expect(member.status).toBe(403)
+    expect(JSON.stringify(member.json)).toContain("missing scope")
+  }, 60_000)
 })

@@ -453,6 +453,53 @@ describe("KnowledgeDocumentView: around the text", () => {
     fireEvent.click(await screen.findByTestId("knowledge-share-button"))
     expect(await screen.findByTestId("knowledge-share-dialog")).toBeInTheDocument()
   })
+
+  it("B11: the badge changes after Verify without a reload", async () => {
+    let review = "needs_review"
+    const api = makeApi({ reviewStatus: review })
+    const get = api.get.getMockImplementation() as (path: string) => Promise<object>
+    const post = api.post.getMockImplementation() as (
+      path: string,
+      body: { revision?: number },
+    ) => Promise<object>
+    api.get.mockImplementation(async (path: string) => {
+      const out = await get(path)
+      return (
+        path === "/knowledge/documents/doc1" ? { ...out, reviewStatus: review } : out
+      ) as never
+    })
+    api.post.mockImplementation(async (path: string, body: { revision?: number }) => {
+      if (path.endsWith("/verify")) review = "verified"
+      return (await post(path, body)) as never
+    })
+    renderView(api)
+    expect(await screen.findByTestId("knowledge-doc-review-status")).toHaveTextContent(
+      "Needs review",
+    )
+    fireEvent.click(screen.getByTestId("knowledge-doc-menu"))
+    fireEvent.click(await screen.findByText("Verify"))
+    await waitFor(() =>
+      expect(screen.getByTestId("knowledge-doc-review-status")).toHaveTextContent("Verified"),
+    )
+  })
+
+  it("B12: the references count reads in the reader's language", async () => {
+    const api = makeApi()
+    const get = api.get.getMockImplementation() as (path: string) => Promise<object>
+    api.get.mockImplementation(
+      async (path: string) =>
+        (path.endsWith("/backlinks")
+          ? {
+              backlinks: [
+                { app: "knowledge", entityType: "document", entityId: "a", title: "A" },
+                { app: "knowledge", entityType: "document", entityId: "b", title: "B" },
+              ],
+            }
+          : await get(path)) as never,
+    )
+    renderView(api, "doc1", "fr")
+    expect(await screen.findByText("2 références")).toBeInTheDocument()
+  })
 })
 
 describe("KnowledgeDocumentView: images and files (S11, S12)", () => {

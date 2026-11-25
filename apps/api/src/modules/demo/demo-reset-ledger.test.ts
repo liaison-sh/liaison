@@ -33,7 +33,9 @@ describe("the nightly reset and the ceiling's ledger", () => {
 
   beforeAll(async () => {
     await acquireTestLock()
-    reservedOrgId = (await ensureOrg({ slug: "ledger-reserved", name: "Ledger Reserved" })).orgId
+    reservedOrgId = (
+      await ensureOrg({ slug: "ledger-reserved", name: "Ledger Reserved", class: "demo" })
+    ).orgId
     await markOrgAsDemo(reservedOrgId, reservedMarker())
   })
 

@@ -5,9 +5,11 @@ import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import {
   assertCanReadDocumentRow,
   assertCanWriteDocumentRow,
+  canEditDocumentRow,
   type KnowledgeActor,
   KnowledgeError,
   loadDocumentShareRole,
+  loadDocumentShareRoles,
   loadKnowledgeDocument,
   onlyMine,
 } from "~/apps/knowledge/service"
@@ -24,8 +26,13 @@ import { hasScope } from "~/modules/permissions/permissions"
  * answer 403 with the reason: it says nothing about any one folder or page.
  */
 export class FolderScopeError extends KnowledgeError {
-  constructor() {
-    super("FORBIDDEN", "Forbidden: you cannot manage Knowledge folders")
+  constructor(message?: string) {
+    // The reason names only the folder scope: another wording is another refusal.
+    super(
+      "FORBIDDEN",
+      message ?? "Forbidden: you cannot manage Knowledge folders",
+      message ? undefined : "folder_scope",
+    )
   }
 }
 
@@ -57,7 +64,7 @@ export function folderAudience(folder: Pick<KnowledgeCollectionRow, "ownerUserId
     : { orgWide: false, userIds: [folder.ownerUserId] }
 }
 
-async function queueFolderEvent(
+export async function queueFolderEvent(
   tx: RlsClient,
   action: "create" | "update" | "archive",
   row: Pick<KnowledgeCollectionRow, "id" | "ownerUserId">,
@@ -95,6 +102,8 @@ interface CollectionDbRow {
   archived_at: Date | string | null
   created_at: Date | string
   updated_at: Date | string
+  /** The folder's page, only when the reader may open it (readableIndex). */
+  readable_index_id?: string | null
 }
 
 export interface KnowledgeCollectionRow {
@@ -108,6 +117,8 @@ export interface KnowledgeCollectionRow {
   archivedAt: string | null
   createdAt: string
   updatedAt: string
+  /** The folder's page (folder-pages.ts), only when the reader may open it. */
+  indexDocumentId: string | null
 }
 
 function toIso(value: Date | string | null): string | null {
@@ -131,7 +142,19 @@ function rowFromDb(r: CollectionDbRow): KnowledgeCollectionRow {
     archivedAt: toIso(r.archived_at),
     createdAt: toIsoNonNull(r.created_at),
     updatedAt: toIsoNonNull(r.updated_at),
+    indexDocumentId: r.readable_index_id ?? null,
   }
+}
+
+/**
+ * The folder's page when the reader may open it: row security on documents hides
+ * any other, so an id the reader may not use never leaves the server.
+ */
+function readableIndex() {
+  return drizzleSql`(
+    SELECT d.id::text FROM ${knowledgeRel("documents")} d
+     WHERE d.id = c.index_document_id AND d.org_id = c.org_id AND d.archived_at IS NULL
+  ) AS readable_index_id`
 }
 
 // ---------------------------------------------------------------------------
@@ -167,8 +190,8 @@ export async function loadCollection(
   if (!isUuid(id)) return null
   const rows = extractRows<CollectionDbRow>(
     await tx.execute(drizzleSql`
-      SELECT * FROM ${knowledgeRel("collections")}
-      WHERE id = ${id}::uuid AND org_id = ${actor.orgId}::uuid
+      SELECT c.*, ${readableIndex()} FROM ${knowledgeRel("collections")} c
+      WHERE c.id = ${id}::uuid AND c.org_id = ${actor.orgId}::uuid
         AND ${ownOrShared(actor)}
       LIMIT 1
     `),
@@ -181,7 +204,7 @@ export async function loadCollection(
  * a privileged caller (an import) reads the same folders its person does.
  */
 function ownOrShared(actor: KnowledgeActor) {
-  return drizzleSql`(owner_user_id IS NULL OR owner_user_id::text = ${actor.userId})`
+  return drizzleSql`(c.owner_user_id IS NULL OR c.owner_user_id::text = ${actor.userId})`
 }
 
 /** A live folder the person sees, or NOT_FOUND. */
@@ -268,6 +291,7 @@ function syncedFolder(): KnowledgeError {
   return new KnowledgeError(
     "VALIDATION",
     "This folder is synced from another app. Change it there, or stop the sync first.",
+    "synced_folder",
   )
 }
 
@@ -289,6 +313,7 @@ async function assertHoldsNoSynced(tx: RlsClient, folderId: string): Promise<voi
     throw new KnowledgeError(
       "VALIDATION",
       "This folder holds a folder synced from another app, so it stays where people see it now.",
+      "holds_synced_folder",
     )
   }
 }
@@ -296,14 +321,22 @@ async function assertHoldsNoSynced(tx: RlsClient, folderId: string): Promise<voi
 /** Nobody writes the sync's own marker by hand: the next run would take the folder over. */
 function assertNotMarker(description: string | null | undefined): void {
   if (description && new RegExp(SYNCED_MARKER).test(description)) {
-    throw new KnowledgeError("VALIDATION", "This description is reserved for synced folders.")
+    throw new KnowledgeError(
+      "VALIDATION",
+      "This description is reserved for synced folders.",
+      "synced_marker",
+    )
   }
 }
 
 /** A folder is personal to the caller or shared, never someone else's. */
 function assertOwnOrShared(ownerUserId: string | null, actor: KnowledgeActor): void {
   if (ownerUserId !== null && ownerUserId !== actor.userId) {
-    throw new KnowledgeError("VALIDATION", "A personal folder can only be your own.")
+    throw new KnowledgeError(
+      "VALIDATION",
+      "A personal folder can only be your own.",
+      "not_your_folder",
+    )
   }
 }
 
@@ -313,11 +346,11 @@ export async function listKnowledgeCollections(
 ): Promise<KnowledgeCollectionRow[]> {
   const rows = extractRows<CollectionDbRow>(
     await tx.execute(drizzleSql`
-      SELECT * FROM ${knowledgeRel("collections")}
-      WHERE org_id = ${actor.orgId}::uuid
-        AND archived_at IS NULL
+      SELECT c.*, ${readableIndex()} FROM ${knowledgeRel("collections")} c
+      WHERE c.org_id = ${actor.orgId}::uuid
+        AND c.archived_at IS NULL
         AND ${ownOrShared(actor)}
-      ORDER BY name ASC
+      ORDER BY c.name ASC
     `),
   )
   return rows.map(rowFromDb)
@@ -341,9 +374,18 @@ export interface CollectionTreeNode {
    * surfaced here so the sidebar can render a cloud badge (T-9). NULL for
    * normal collections. */
   syncedSourceId?: string | null
+  /** The folder's page (folder-pages.ts), only when the reader may open it. */
+  indexDocumentId?: string | null
   virtual?: boolean
   children: CollectionTreeNode[]
-  documents: Array<{ id: string; title: string; syncedSourceId?: string | null }>
+  /** `canEdit`: may this reader rename, move or archive the page, by the very
+   *  check a write runs (`canEditDocumentRow`), so a client offers only those. */
+  documents: Array<{
+    id: string
+    title: string
+    syncedSourceId?: string | null
+    canEdit: boolean
+  }>
 }
 
 export async function listKnowledgeCollectionTree(
@@ -376,16 +418,24 @@ export async function listKnowledgeCollectionTree(
 
   // Two plain reads, put together here: joined in SQL, their plan depends on
   // statistics, and reads every membership for every page when those are behind.
-  const pages = extractRows<{
+  const rawPages = extractRows<{
     id: string
     title: string
     synced_source_id: string | null
     personal: boolean
     only_mine: boolean
     updated: number
+    org_id: string
+    document_scope: "organization" | "personal"
+    owner_user_id: string | null
+    created_by: string
+    org_access: "none" | "viewer" | "editor"
+    edit_scope: string | null
   }>(
     await tx.execute(drizzleSql`
       SELECT d.id, d.title, d.synced_source_id, d.document_scope = 'personal' AS personal,
+             d.org_id, d.document_scope, d.owner_user_id, d.created_by, d.org_access,
+             d.edit_scope,
              ${onlyMine(actor)} AS only_mine,
              extract(epoch FROM d.updated_at)::float8 AS updated
       FROM ${knowledgeRel("documents")} d
@@ -393,6 +443,26 @@ export async function listKnowledgeCollectionTree(
       ORDER BY lower(d.title), d.title, d.id
     `),
   )
+  // Whether each page is this reader's to edit: one read of the grants, then
+  // the write check itself per page.
+  const shareRoles = await loadDocumentShareRoles(tx, actor)
+  const pages = rawPages.map((p) => ({
+    ...p,
+    canEdit: canEditDocumentRow(
+      {
+        orgId: p.org_id,
+        documentScope: p.document_scope,
+        ownerUserId: p.owner_user_id,
+        createdBy: p.created_by,
+        orgAccess: p.org_access,
+        editScope: p.edit_scope,
+        archivedAt: null,
+        syncedSourceId: p.synced_source_id,
+      },
+      actor,
+      shareRoles.get(p.id) ?? null,
+    ),
+  }))
   const placesOf = new Map<string, string[]>()
   for (const m of extractRows<{ collection_id: string; target_id: string }>(
     await tx.execute(drizzleSql`
@@ -415,10 +485,13 @@ export async function listKnowledgeCollectionTree(
       parentId: c.parentCollectionId,
       ownerUserId: c.ownerUserId,
       syncedSourceId: syncedSourceByCollectionId.get(c.id) ?? null,
+      indexDocumentId: c.indexDocumentId,
       children: [],
       documents: [],
     })
   }
+  // A folder's page is the folder's own text: not one of its pages, nor Unfiled.
+  const folderPages = new Set(flat.flatMap((c) => (c.indexDocumentId ? [c.indexDocumentId] : [])))
 
   // Two virtual buckets, both of pages in no live folder this reader sees:
   //   - personal notes: personal documents (which belong to no folder by
@@ -430,17 +503,22 @@ export async function listKnowledgeCollectionTree(
   for (const page of pages) {
     const folders = (placesOf.get(page.id) ?? []).flatMap((id) => byId.get(id) ?? [])
     for (const node of folders) {
+      if (node.indexDocumentId === page.id) continue
       node.documents.push({
         id: page.id,
         title: page.title,
         syncedSourceId: page.synced_source_id ?? null,
+        canEdit: page.canEdit,
       })
     }
+    if (folderPages.has(page.id)) continue
     if (page.personal || (folders.length === 0 && page.only_mine)) personalNotes.push(page)
     else if (folders.length === 0) unfiled.push(page)
   }
   const newestFirst = (list: typeof pages) =>
-    list.sort((a, b) => b.updated - a.updated).map(({ id, title }) => ({ id, title }))
+    list
+      .sort((a, b) => b.updated - a.updated)
+      .map(({ id, title, canEdit }) => ({ id, title, canEdit }))
 
   const roots: CollectionTreeNode[] = []
   for (const node of byId.values()) {
@@ -488,7 +566,7 @@ export async function createKnowledgeCollection(
 ): Promise<KnowledgeCollectionRow> {
   requireCollectionsScope(actor)
   const name = input.name?.trim()
-  if (!name) throw new KnowledgeError("VALIDATION", "Collection name is required")
+  if (!name) throw new KnowledgeError("VALIDATION", "Collection name is required", "name_required")
 
   assertNotMarker(input.description)
   const id = randomUUID()
@@ -545,7 +623,11 @@ export async function updateKnowledgeCollection(
   let ownerUserId = patch.ownerUserId !== undefined ? patch.ownerUserId : existing.ownerUserId
   if (patch.parentCollectionId !== undefined || patch.ownerUserId !== undefined) {
     if (parentId === id) {
-      throw new KnowledgeError("VALIDATION", "Collection hierarchy cycle is not allowed")
+      throw new KnowledgeError(
+        "VALIDATION",
+        "Collection hierarchy cycle is not allowed",
+        "folder_cycle",
+      )
     }
     const parent = parentId ? await loadLiveCollection(tx, parentId, actor) : null
     if (parent) {
@@ -554,6 +636,7 @@ export async function updateKnowledgeCollection(
         throw new KnowledgeError(
           "VALIDATION",
           "A folder is seen by whoever sees the folder it is in. Move it out first.",
+          "subfolder_section",
         )
       }
       ownerUserId = parent.ownerUserId
@@ -569,7 +652,8 @@ export async function updateKnowledgeCollection(
   const sets: ReturnType<typeof drizzleSql>[] = []
   if (patch.name !== undefined) {
     const name = patch.name?.trim()
-    if (!name) throw new KnowledgeError("VALIDATION", "Collection name is required")
+    if (!name)
+      throw new KnowledgeError("VALIDATION", "Collection name is required", "name_required")
     sets.push(drizzleSql`name = ${name}`)
   }
   if (patch.description !== undefined) sets.push(drizzleSql`description = ${patch.description}`)
@@ -597,7 +681,11 @@ export async function updateKnowledgeCollection(
       .map((e) => (e instanceof Error ? e.message : ""))
       .join("\n")
     if (/cycle|parent collection|cannot parent itself/i.test(message)) {
-      throw new KnowledgeError("VALIDATION", "Collection hierarchy cycle is not allowed")
+      throw new KnowledgeError(
+        "VALIDATION",
+        "Collection hierarchy cycle is not allowed",
+        "folder_cycle",
+      )
     }
     throw err
   }
@@ -623,6 +711,11 @@ export async function updateKnowledgeCollection(
 
   const row = await loadCollection(tx, id, actor)
   if (!row) throw new KnowledgeError("NOT_FOUND", "Collection not found after update")
+  // The folder's page carries the folder's name (folder-pages.ts imports this module).
+  if (row.name !== existing.name) {
+    const { followFolderRename } = await import("~/apps/knowledge/folder-pages")
+    await followFolderRename(tx, row, actor)
+  }
   return row
 }
 
@@ -640,6 +733,7 @@ async function assertTreeIsOnlyMine(tx: RlsClient, folderId: string): Promise<vo
     throw new KnowledgeError(
       "VALIDATION",
       "This folder holds something that belongs to another person, so it stays shared.",
+      "holds_others",
     )
   }
 }
@@ -660,12 +754,16 @@ export async function archiveKnowledgeCollection(
 
   await assertNotSynced(tx, id)
 
+  // The folder's page is filed in it, so it moves with the rest (folder-pages.ts).
+  const folderPages = await import("~/apps/knowledge/folder-pages")
+  const pageId = await folderPages.storedPointer(tx, id, actor)
   await tx.execute(drizzleSql`SELECT ${knowledgeRel("empty_folder_into_parent")}(${id}::uuid)`)
   await tx.execute(drizzleSql`
     UPDATE ${knowledgeRel("collections")}
     SET archived_at = now(), updated_at = now()
     WHERE id = ${id}::uuid AND org_id = ${actor.orgId}::uuid
   `)
+  await folderPages.releaseFolderPage(tx, id, pageId, actor)
 
   await queueFolderEvent(tx, "archive", existing, existing, actor)
 
@@ -823,6 +921,10 @@ export async function removeCollectionMembership(
   requireCollectionsScope(actor)
   const folder = await assertCanUnfile(tx, input, actor)
   await assertTargetEditable(tx, input, actor)
+  const folderPages =
+    input.targetType === "document" ? await import("~/apps/knowledge/folder-pages") : null
+  // Folder first, then the page's memberships (folder-pages.ts).
+  await folderPages?.lockFoldersOfPage(tx, actor, input.targetId, folder.id)
   await tx.execute(drizzleSql`
     DELETE FROM ${knowledgeRel("collection_memberships")}
     WHERE org_id = ${actor.orgId}::uuid
@@ -830,6 +932,7 @@ export async function removeCollectionMembership(
       AND target_type = ${input.targetType}
       AND target_id = ${input.targetId}::uuid
   `)
+  await folderPages?.detachFolderPage(tx, actor, input.targetId, folder.id)
   await tx.queueEvent({
     app: "knowledge",
     entity: "collection_membership",

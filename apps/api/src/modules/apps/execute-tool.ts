@@ -5120,14 +5120,15 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // a call that uses it) is waited for once, so the call sees what that write made.
   // A call another app declared in its `cross_app_calls` is that app's plumbing (agreements
   // finding a client's company, a payments connector naming open deals): the switch hides a
-  // surface from people and agents, it does not break an app an admin turned on.
-  if (
-    !approvedCrossAppCall &&
-    isFeatureOffForTool(opts.orgId, tool) &&
-    !((await settleFeatureRecomputes(opts.orgId)) && !isFeatureOffForTool(opts.orgId, tool))
-  ) {
-    const { code, message, feature, next, retryable } = featureOffAnswer(opts.orgId, tool)
-    return { error: { code, message, retryable, status: 409, body: { feature, next } } }
+  // surface from people and agents, it does not break an app an admin turned on. Such a call
+  // still waits for a recompute in flight: the tool's own checks read the same row (agreements
+  // setting the plan of the project it just turned time and budgets on for).
+  if (isFeatureOffForTool(opts.orgId, tool)) {
+    const settled = await settleFeatureRecomputes(opts.orgId)
+    if (!approvedCrossAppCall && !(settled && !isFeatureOffForTool(opts.orgId, tool))) {
+      const { code, message, feature, next, retryable } = featureOffAnswer(opts.orgId, tool)
+      return { error: { code, message, retryable, status: 409, body: { feature, next } } }
+    }
   }
 
   // WHERE THE CALL COMES FROM (manifest `humanTurnOnly`, `dmOnly`, first-party apps only): a tool

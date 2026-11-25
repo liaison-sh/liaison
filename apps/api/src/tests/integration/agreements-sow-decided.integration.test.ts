@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { sql as dsql } from "drizzle-orm"
+import { timeFeatureTestHooks } from "~/apps/projects/service/time-feature"
 import { extractRows, sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
@@ -427,6 +428,34 @@ describe("the signed text's Knowledge copy from the decided handler", () => {
 })
 
 describe("a signed statement of work starts its project from the decided handler", () => {
+  // Runs first: the org's first project with time and budgets. Turning it on recomputes the org's
+  // row after the create commits; the plan call right behind it waits for that row instead of
+  // reading the feature as off (a busy machine's recompute is slower than the next call).
+  it("the first project with time and budgets gets its plan while the org's row is still being recomputed", async () => {
+    timeFeatureTestHooks.afterRead = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1_500))
+    }
+    try {
+      const { agreementId } = await sendAndSign(w.admin.userId, "Slow row", async () => {
+        await sql`UPDATE ${app("agreements")} SET kind = 'proposal', hours_minutes = 2400
+                   WHERE org_id = ${w.orgId} AND title = 'Slow row'`
+      })
+      const [project] = await projectsOf(agreementId)
+      expect(project?.time_budgets_on).toBe(true)
+      const [plan] = (await sql`
+        SELECT timebox_minutes FROM app_projects.project_time_plan
+         WHERE org_id = ${w.orgId} AND project_id = ${project?.id ?? ""}::uuid`) as unknown as Array<{
+        timebox_minutes: number | null
+      }>
+      expect(plan?.timebox_minutes).toBe(2400)
+      const a = await agreementProject(agreementId)
+      expect(a?.project_time_budgets).toBe(true)
+      expect(a?.project_timebox_minutes).toBe(2400)
+    } finally {
+      timeFeatureTestHooks.afterRead = undefined
+    }
+  }, 120_000)
+
   it("one project for the agreement, made as the person who approved the send; a proposal with a timebox starts it with time and budgets on and the timebox as its plan", async () => {
     const { agreementId } = await sendAndSign(w.admin.userId, "Statement of work", async () => {
       await sql`UPDATE ${app("agreements")} SET kind = 'proposal', hours_minutes = 2400

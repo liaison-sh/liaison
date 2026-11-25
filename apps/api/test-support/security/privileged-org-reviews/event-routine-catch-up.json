@@ -1,0 +1,5 @@
+{
+  "reviewedOrigins": {
+    "apps/api/src/infra/jobs/event-routine-subscriber.ts#ensureAndCatchUp": "the cell sync's own reads of kernel.routines (one row re-read by id, or the resync sweep): the org is that routine row's org_id, and the catch-up reads that org's audit log and runs that routine's guards and ticks in that org only, as routeEvent does for a live event"
+  }
+}

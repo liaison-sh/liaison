@@ -125,18 +125,18 @@ describe("sanitizeHtml: a page's file token and hostile content (S12)", () => {
   const ID = "11111111-1111-4111-8111-111111111111"
 
   it("keeps a file token's span with a uuid, and drops the attribute with anything else", () => {
-    expect(sanitizeHtml(`<span data-liaison-file="${ID}"></span>`)).toBe(
-      `<span data-liaison-file="${ID}"></span>`,
+    expect(sanitizeHtml(`<span data-page-file="${ID}"></span>`)).toBe(
+      `<span data-page-file="${ID}"></span>`,
     )
     for (const bad of ["https://evil.example/x.png", `${ID}" onerror="x`, "", "../x", `${ID}x`]) {
-      expect(
-        sanitizeHtml(`<span data-liaison-file="${bad.replace(/"/g, "&quot;")}">t</span>`),
-      ).toBe("<span>t</span>")
+      expect(sanitizeHtml(`<span data-page-file="${bad.replace(/"/g, "&quot;")}">t</span>`)).toBe(
+        "<span>t</span>",
+      )
     }
     // Only on a span.
-    expect(
-      sanitizeHtml(`<a data-liaison-file="${ID}" href="https://x.example">t</a>`),
-    ).not.toContain("data-liaison-file")
+    expect(sanitizeHtml(`<a data-page-file="${ID}" href="https://x.example">t</a>`)).not.toContain(
+      "data-page-file",
+    )
   })
 
   it("still strips a remote img, svg, picture, style url and srcset", () => {

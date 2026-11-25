@@ -20,10 +20,11 @@
 //                         pages inside its folder.
 // In a body, a link to an exported page is [label](notion-ref:<id>), a file of
 // the export is ![alt](import-file:<ref>) (an image) or [label](import-file:<ref>),
-// named in `attachments`. What does not come across is named in `losses`
-// ({what, where}): web images, embeds, unknown blocks, links to pages not in
-// the export, files missing from it, rows past 200, relation columns (kept as
-// text). Comments and synced blocks are not in a Markdown export at all.
+// named in `attachments`. A link to a page that is not in this export keeps
+// its id too: the knowledge import resolves it to a page an earlier import made,
+// or names it. What does not come across is named in `losses` ({what, where}):
+// web images, embeds, unknown blocks, files missing from the export, rows past
+// 200, relation columns (kept as text). Comments and synced blocks are not in a Markdown export at all.
 const PARAMS = { access: "private" }
 
 const LISTING = "(listing)"
@@ -117,6 +118,8 @@ function addListing(st, entries) {
     }
     const n = parseName(e.path)
     if (!n || (n.ext !== "md" && n.ext !== "csv")) continue
+    // A folder that holds a page (not only a page's files) makes its page a folder.
+    st.dirs[dirName(e.path)] = 2
     const known = st.raw[n.hex]
     if (known && known.k === "d" && n.ext === "csv") {
       if (n.all) known.all = 1
@@ -138,7 +141,7 @@ function settle(st, ctx) {
   for (const hex of Object.keys(st.raw)) {
     const r = st.raw[hex]
     for (const folder of [joinPath(r.d, r.t + " " + hex), joinPath(r.d, r.t)]) {
-      if (st.dirs[folder] && !owner[folder]) owner[folder] = hex
+      if (st.dirs[folder] === 2 && !owner[folder]) owner[folder] = hex
     }
   }
   const folderOf = {}
@@ -316,7 +319,9 @@ async function rewriteLink(st, ctx, dir, image, label, target, fileRefs, attachm
     }
     if (/notion\.so\//i.test(target)) {
       const hex = linkedHex(target)
-      if (hex && st.items[hex]) return "[" + label + "](notion-ref:" + hex + ")"
+      // A page of this export, or of an earlier one: the link pass resolves it
+      // once every page is written, and names it when there is no such page.
+      if (hex) return "[" + (label || target) + "](notion-ref:" + hex + ")"
       loss("link to a page not in the export (" + (label || target) + ")", false)
       return label
     }
@@ -325,9 +330,7 @@ async function rewriteLink(st, ctx, dir, image, label, target, fileRefs, attachm
   const path = resolvePath(dir, target)
   const named = parseName(path)
   if (!image && named && (named.ext === "md" || named.ext === "csv")) {
-    if (st.items[named.hex]) return "[" + label + "](notion-ref:" + named.hex + ")"
-    loss("link to a page not in the export (" + (label || named.title) + ")", false)
-    return label
+    return "[" + (label || named.title) + "](notion-ref:" + named.hex + ")"
   }
   let ref = fileRefs[path]
   if (ref === undefined) {

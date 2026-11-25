@@ -243,10 +243,13 @@ describe("notion-export: S16 mapping on the fixtures", () => {
     )
   }, 120_000)
 
-  it("a link to a page not in the export keeps its text and is named", async () => {
+  it("a link to a page not in the export keeps its id for the knowledge import's link pass", async () => {
+    // That pass resolves it to a page an earlier import made, or names it (import-kind.ts).
     const { docs } = await stage(both())
-    expect(docs.get(B)?.body).toContain("Our old wiki page and")
-    expect(lossesOf(docs.get(B))).toContain("link to a page not in the export (old wiki page)")
+    expect(docs.get(B)?.body).toContain(
+      "Our [old wiki page](notion-ref:c1000000000000000000000000000009) and",
+    )
+    expect(lossesOf(docs.get(B)).some((w) => w.includes("old wiki page"))).toBe(false)
   }, 120_000)
 
   it("images and files of the export become files; a missing one is named", async () => {

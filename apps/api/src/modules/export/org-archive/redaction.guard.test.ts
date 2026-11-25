@@ -5,10 +5,13 @@
 // fails here until someone decides; at run time it is redacted meanwhile.
 import { beforeAll, describe, expect, it } from "bun:test"
 import crypto from "node:crypto"
+import { readdirSync, readFileSync } from "node:fs"
+import { join } from "node:path"
 import { COLUMNS, JSON_COLUMNS } from "~/cli/keys-rotate"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { snakeCase } from "~/modules/apps/sandbox/bridge/shared"
 import { columnKey, discoverExportTables } from "~/modules/export/org-archive/catalog"
 import {
   decideColumn,
@@ -19,8 +22,30 @@ import {
   SENSITIVE_COLUMN_NAME,
   scrubsCiphertext,
 } from "~/modules/export/org-archive/redaction"
+import { appSchemaName } from "~/modules/imports/coverage"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+
+type Manifest = { name: string; schema?: Record<string, { fields?: Record<string, unknown> }> }
+
+/** Every app manifest of the repo: the built-in apps and the bundled ones. */
+function readManifests(): Manifest[] {
+  const out: Manifest[] = []
+  for (const dir of [
+    join(import.meta.dir, "../../../apps"),
+    join(import.meta.dir, "../../../../../../bundled-apps"),
+  ]) {
+    for (const d of readdirSync(dir, { withFileTypes: true })) {
+      if (!d.isDirectory()) continue
+      try {
+        out.push(JSON.parse(readFileSync(join(dir, d.name, "app.manifest.json"), "utf8")))
+      } catch {
+        // not an app directory
+      }
+    }
+  }
+  return out
+}
 
 beforeAll(async () => {
   await acquireTestLock()
@@ -43,6 +68,27 @@ describe("export redaction guard", () => {
         if (!SENSITIVE_COLUMN_NAME.test(c.name)) continue
         const key = columnKey(t, c.name)
         if (!REDACTED_COLUMNS[key] && !KEPT_COLUMNS[key]) unreviewed.push(key)
+      }
+    }
+    expect(unreviewed).toEqual([])
+  })
+
+  it("every sensitive-looking column an app manifest declares is denied or reviewed, installed or not", () => {
+    // The live catalog holds only the apps some test registered on this database
+    // first: an app installed from the catalog (off by default) is there in one
+    // run and absent in another. Its manifest is always here.
+    const manifests = readManifests()
+    expect(manifests.some((m) => m.name === "agreements")).toBe(true)
+    expect(manifests.some((m) => m.name === "mail")).toBe(true)
+    const unreviewed: string[] = []
+    for (const m of manifests) {
+      for (const [table, spec] of Object.entries(m.schema ?? {})) {
+        for (const field of Object.keys(spec?.fields ?? {})) {
+          const column = snakeCase(field)
+          if (!SENSITIVE_COLUMN_NAME.test(column)) continue
+          const key = `${appSchemaName(m.name)}.${table}.${column}`
+          if (!REDACTED_COLUMNS[key] && !KEPT_COLUMNS[key]) unreviewed.push(key)
+        }
       }
     }
     expect(unreviewed).toEqual([])

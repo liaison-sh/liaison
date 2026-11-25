@@ -108,6 +108,8 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
     "the name of the hash algorithm of a signature's evidence, not a key",
   "app_agreements.evidence_packages.last_verified_at": "when the evidence was last checked",
   "app_agreements.evidence_packages.last_verify_ok": "whether the last evidence check matched",
+  "app_agreements.agreements.send_key":
+    "a change request's dedup key (the parent agreement and the mail it answers), not a credential",
   "app_agreements.signature_events.code_verified_at":
     "when the signer proved the emailed code (the code itself is never stored)",
   "kernel.suppression_links.email_hash":

@@ -5,15 +5,17 @@
 // leader). A routine created or changed on another process must therefore reach
 // every process's bus: an announce on Redis, plus a resync that recovers a lost
 // announce (subscriber reconnect, leader takeover, a periodic timer).
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test"
 import crypto from "node:crypto"
 import { eq } from "drizzle-orm"
 import Redis from "ioredis"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
-import { routines, users } from "~/db/schema/kernel"
-import { EventBusTestAccess, initEventBus } from "~/infra/events/event-bus"
+import { auditLog, routines, users } from "~/db/schema/kernel"
+import { _publishEventInternal, EventBusTestAccess, initEventBus } from "~/infra/events/event-bus"
+import * as jobs from "~/infra/jobs/jobs"
 import {
   __resetEventRoutineSubscriber,
+  catchUpMissedEvents,
   disposeEventRoutineSubscription,
   EVENT_ROUTINE_SYNC_CHANNEL,
   EventRoutineSubscriberTestAccess,
@@ -25,6 +27,7 @@ import {
 import { LeadershipTestAccess, startLeadership } from "~/infra/leadership"
 import { env } from "~/lib/env"
 import { RESP_PROTOCOL } from "~/lib/redis"
+import { enableEventRoutine } from "~/seed/factories/agent/routines"
 import { createTestOrg } from "~/tests/helpers/org"
 
 const EVENT = "tickets:ticket:create"
@@ -100,6 +103,9 @@ afterEach(async () => {
 afterAll(async () => {
   await withPrivilegedDb(orgId, "ers-cleanup", (tx) =>
     tx.delete(routines).where(eq(routines.orgId, orgId)),
+  )
+  await withPrivilegedDb(orgId, "ers-cleanup-audit", (tx) =>
+    tx.delete(auditLog).where(eq(auditLog.orgId, orgId)),
   )
   peer.disconnect()
 })
@@ -255,5 +261,135 @@ describe("event-routine sync across the cell", () => {
     const added = await insertEventRoutine()
     await waitFor(() => registered(added) === EVENT)
     expect(full()).toBe(base + 1)
+  })
+})
+
+// The race the services demo's support tour hit: a routine is switched on, its
+// event comes in before the routine's subscription reaches the process that
+// publishes the event (its announce lost, or never sent), and the `once`
+// handler never sees that event again. The process that arms the routine late
+// catches it up from the audit log, once for the whole cell.
+describe("a routine armed after its event", () => {
+  // Each case logs its own events: none of another case's may fall in its window.
+  beforeEach(async () => {
+    await withPrivilegedDb(orgId, "ers-audit-reset", (tx) =>
+      tx.delete(auditLog).where(eq(auditLog.orgId, orgId)),
+    )
+  })
+
+  const ticks = (spy: ReturnType<typeof spyOn>, routineId: string) =>
+    spy.mock.calls.filter(
+      ([app, job, payload]) =>
+        app === "kernel" &&
+        job === "routine-tick" &&
+        (payload as { routineId?: string }).routineId === routineId,
+    )
+
+  /** An event of the routine's type, logged as the outbox's audit consumer logs it. */
+  async function logTicketCreated(at: Date): Promise<{ eventId: string; ticketId: string }> {
+    const eventId = crypto.randomUUID()
+    const ticketId = crypto.randomUUID()
+    await withPrivilegedDb(orgId, "ers-audit", (tx) =>
+      tx.insert(auditLog).values({
+        orgId,
+        timestamp: at,
+        actorId: userId,
+        actorType: "user",
+        app: "tickets",
+        entityType: "ticket",
+        entityId: ticketId,
+        action: "ticket.create",
+        changes: { subject: "Order question" },
+        eventId,
+      }),
+    )
+    return { eventId, ticketId }
+  }
+
+  async function armedAt(id: string): Promise<Date> {
+    const [row] = await withPrivilegedDb(orgId, "ers-armed", (tx) =>
+      tx.select({ at: routines.updatedAt }).from(routines).where(eq(routines.id, id)),
+    )
+    return row!.at
+  }
+
+  it("the event arrives before the subscription is ready: the routine still runs it, once", async () => {
+    const enqueue = spyOn(jobs, "enqueueAppJob").mockResolvedValue("job-id" as never)
+    try {
+      // Switched on, then its ticket comes in while no process routes the event to it.
+      const id = await insertEventRoutine()
+      const armed = await armedAt(id)
+      const { eventId, ticketId } = await logTicketCreated(new Date(armed.getTime() + 500))
+      expect(registered(id)).toBeNull()
+      // The subscription reaches this process only now (a late announce or resync).
+      await startEventRoutineSync({ resyncIntervalMs: 0 })
+      await announceFromPeer(id)
+      await waitFor(() => ticks(enqueue, id).length === 1)
+      const [, , payload] = ticks(enqueue, id)[0]!
+      const trigger = (payload as { triggerEvent: { eventId: string; entityId: string } })
+        .triggerEvent
+      expect(trigger.eventId).toBe(eventId)
+      expect(trigger.entityId).toBe(ticketId)
+      // The event's late live copy, and another process's catch-up, start nothing more.
+      await _publishEventInternal({
+        app: "tickets",
+        entity: "ticket",
+        action: "create",
+        entityId: ticketId,
+        orgId,
+        actorId: userId,
+        actorType: "user",
+        _eventId: eventId,
+      } as never)
+      expect(await catchUpMissedEvents({ routineId: id, orgId, event: EVENT }, armed)).toBe(0)
+      await new Promise((r) => setTimeout(r, 200))
+      expect(ticks(enqueue, id)).toHaveLength(1)
+    } finally {
+      enqueue.mockRestore()
+    }
+  })
+
+  it("an event from before the routine was armed is not its to run", async () => {
+    const enqueue = spyOn(jobs, "enqueueAppJob").mockResolvedValue("job-id" as never)
+    try {
+      const id = await insertEventRoutine()
+      const armed = await armedAt(id)
+      await logTicketCreated(new Date(armed.getTime() - 60_000))
+      expect(await catchUpMissedEvents({ routineId: id, orgId, event: EVENT }, armed)).toBe(0)
+      expect(ticks(enqueue, id)).toHaveLength(0)
+    } finally {
+      enqueue.mockRestore()
+    }
+  })
+
+  it("a routine armed long ago is never swept: catch-up is for a routine just armed", async () => {
+    const enqueue = spyOn(jobs, "enqueueAppJob").mockResolvedValue("job-id" as never)
+    try {
+      const id = await insertEventRoutine()
+      const armed = await armedAt(id)
+      await logTicketCreated(new Date(armed.getTime() + 500))
+      const later = new Date(armed.getTime() + 60 * 60_000)
+      expect(await catchUpMissedEvents({ routineId: id, orgId, event: EVENT }, armed, later)).toBe(0)
+      expect(ticks(enqueue, id)).toHaveLength(0)
+    } finally {
+      enqueue.mockRestore()
+    }
+  })
+
+  it("switching a seeded routine on announces it to the cell", async () => {
+    const id = await insertEventRoutine({ enabled: false })
+    const listener = new Redis(env.REDIS_URL, { protocol: RESP_PROTOCOL, maxRetriesPerRequest: null })
+    const heard: string[] = []
+    try {
+      listener.on("message", (_channel: string, message: string) => {
+        heard.push((JSON.parse(message) as { routineId: string }).routineId)
+      })
+      await listener.subscribe(EVENT_ROUTINE_SYNC_CHANNEL)
+      await enableEventRoutine(orgId, id)
+      await waitFor(() => heard.includes(id))
+    } finally {
+      listener.disconnect()
+      await disposeEventRoutineSubscription(id)
+    }
   })
 })

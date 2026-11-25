@@ -20,6 +20,7 @@ import { recordStarted, recordSucceeded } from "~/modules/approvals/handler-prot
 import { readDecidedResult } from "~/modules/approvals/read-decided-result"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const enqueueAppJobSpy = spyOn(jobsModule, "enqueueAppJob").mockImplementation(
@@ -50,20 +51,58 @@ async function recordSelf(toolName: string, result: Record<string, unknown>) {
 
 beforeAll(async () => {
   await acquireTestLock()
-  await sql`INSERT INTO kernel.organizations (id, name, slug)
-    VALUES (${ORG}, 'Call Tool Seq Org', 'call-tool-seq-org') ON CONFLICT DO NOTHING`
-  await sql`INSERT INTO kernel.users (id, org_id, email, name, status, password_hash)
-    VALUES (${USER}, ${ORG}, 'call-tool-seq@test.com', 'Requester', 'active', 'hash') ON CONFLICT DO NOTHING`
-  await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
-    VALUES (${THREAD}, ${ORG}, 'call-tool-seq-thread', 'agent_chat', ${USER}) ON CONFLICT DO NOTHING`
-  await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id, role)
-    VALUES (${THREAD}, ${USER}, ${ORG}, 'admin') ON CONFLICT DO NOTHING`
-  await sql`INSERT INTO kernel.user_thread_state (user_id, thread_id, org_id)
-    VALUES (${USER}, ${THREAD}, ${ORG}) ON CONFLICT DO NOTHING`
-  for (const scope of actor.scopes ?? []) {
-    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
-      VALUES (${USER}, ${ORG}, ${scope}) ON CONFLICT DO NOTHING`
-  }
+  const seed = { onConflictDoNothing: true }
+  await sql.unsafe(
+    insertSql(
+      "kernel.organizations",
+      { id: ORG, name: "Call Tool Seq Org", slug: "call-tool-seq-org" },
+      seed,
+    ),
+  )
+  await sql.unsafe(
+    insertSql(
+      "kernel.users",
+      {
+        id: USER,
+        org_id: ORG,
+        email: "call-tool-seq@test.com",
+        name: "Requester",
+        status: "active",
+        password_hash: "hash",
+      },
+      seed,
+    ),
+  )
+  await sql.unsafe(
+    insertSql(
+      "kernel.threads",
+      {
+        id: THREAD,
+        org_id: ORG,
+        handle: "call-tool-seq-thread",
+        type: "agent_chat",
+        created_by: USER,
+      },
+      seed,
+    ),
+  )
+  await sql.unsafe(
+    insertSql(
+      "kernel.thread_participants",
+      { thread_id: THREAD, user_id: USER, org_id: ORG, role: "admin" },
+      seed,
+    ),
+  )
+  await sql.unsafe(
+    insertSql("kernel.user_thread_state", { user_id: USER, thread_id: THREAD, org_id: ORG }, seed),
+  )
+  await sql.unsafe(
+    insertSql(
+      "kernel.user_scope_grants",
+      (actor.scopes ?? []).map((scope) => ({ user_id: USER, org_id: ORG, scope })),
+      seed,
+    ),
+  )
   await registerKernelAgentTools(ORG)
 
   // The gated head (the company the sales routines write first).

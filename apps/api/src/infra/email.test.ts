@@ -394,6 +394,18 @@ describe("system email channel (getSystemEmailProvider)", () => {
     expect(getEmailProvider()).toBe(def)
   })
 
+  it("restoring what the getter inherited keeps inheriting, so a later default is honored", () => {
+    // The save-and-restore a test does around an injected capture: restoring the
+    // inherited provider must not pin the default of that moment over the channel.
+    setEmailProvider(new ConsoleEmailProvider())
+    const previous = getSystemEmailProvider()
+    setSystemEmailProvider(new ConsoleEmailProvider())
+    setSystemEmailProvider(previous)
+    const later = new ConsoleEmailProvider()
+    setEmailProvider(later)
+    expect(getSystemEmailProvider()).toBe(later)
+  })
+
   it("routes a system send only to the system provider, leaving the default sink untouched", async () => {
     const def = new ConsoleEmailProvider()
     const sys = new ConsoleEmailProvider()

@@ -161,7 +161,7 @@ describe("KnowledgeCollectionTree", () => {
     expect(onCreateChild).toHaveBeenCalledWith("c1", null)
   })
 
-  it("a page's menu offers Rename, Move to, Copy link, and Archive only with the scope", async () => {
+  it("a page's menu offers Rename, Move to, Copy link, and Move to trash only with the scope", async () => {
     const onMoveRequest = vi.fn()
     const page = [
       {

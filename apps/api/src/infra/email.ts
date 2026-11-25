@@ -556,6 +556,13 @@ export function setEmailProvider(provider: EmailProvider): void {
 // CSAT survey (apps/tickets/admin.ts) uses getEmailProvider() — so none of it
 // follows this channel to a real inbox.
 let _systemProvider: EmailProvider | null = null
+/**
+ * What the getter handed out while inheriting the default. Setting one of these
+ * back restores inheritance instead of pinning the default of that moment, so
+ * a caller that saves `getSystemEmailProvider()` and restores it later leaves
+ * the channel as it found it (a later `setEmailProvider()` is honored again).
+ */
+const inheritedSystemProviders = new WeakSet<EmailProvider>()
 
 /** The From of system mail: SYSTEM_EMAIL_FROM when set, else EMAIL_FROM. */
 export function systemEmailFrom(): string {
@@ -611,7 +618,9 @@ export function getSystemEmailProvider(): EmailProvider {
   }
   // Inherit the default provider. NOT cached, so a later setEmailProvider()
   // (tests) is still honored by system sends.
-  return withSystemFrom(getEmailProvider())
+  const inherited = withSystemFrom(getEmailProvider())
+  inheritedSystemProviders.add(inherited)
+  return inherited
 }
 
 /**
@@ -688,7 +697,7 @@ export async function sendSystemEmailObserved(message: EmailMessage): Promise<vo
 
 /** Override the system provider — for tests only. Pass null to reset. */
 export function setSystemEmailProvider(provider: EmailProvider | null): void {
-  _systemProvider = provider
+  _systemProvider = provider && inheritedSystemProviders.has(provider) ? null : provider
 }
 
 // --- Org sender channel (managed edition) ---

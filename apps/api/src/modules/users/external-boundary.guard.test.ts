@@ -37,6 +37,10 @@ const TREATED: Record<string, [Treatment, string]> = {
     "a gated page write's decider: the page's owner only while an active member, else the requester",
   ],
   "apps/knowledge/import-kind.ts": ["by-address", "an imported document's author"],
+  "apps/knowledge/trash.ts": [
+    "stored-ids",
+    "the name of the person a Trash row says moved the page there (trashed_by), read in the reader's own row view",
+  ],
   "apps/projects/import-kind.ts": [
     "by-address",
     "an import's assignee, through imports/authority.ts",

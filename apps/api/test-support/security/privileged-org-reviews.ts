@@ -270,7 +270,9 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
  */
 export const REVIEWED_CALLERS: Record<string, readonly string[]> = {
   "apps/api/src/modules/agent/runtime/tool-card-store.ts#clearToolCardsByKey": [],
-  "apps/api/src/modules/apps/org-features.ts#setOrgAppFeature": [],
+  "apps/api/src/modules/apps/org-features.ts#setOrgAppFeature": [
+    "apps/api/src/modules/apps/org-features.ts",
+  ],
 }
 
 /**

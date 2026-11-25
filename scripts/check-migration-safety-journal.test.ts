@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test"
 import { resolve } from "node:path"
 import {
   branchWhenProblems,
+  headIsOn,
   type JournalEntry,
   journalOrderProblems,
   migrationFiles,
@@ -26,7 +27,15 @@ describe("migration journal order", () => {
   it("every branch-only migration's when is above the newest when on origin/main", () => {
     const main = readMainJournal(ROOT, MAIN_REF)
     if (!main) throw new Error(`${MAIN_REF} is not reachable from this checkout: fetch it first`)
+    // A release tag or a commit of main: nothing here is branch-only, and the
+    // migrations main gained since are not this checkout's to carry.
+    if (headIsOn(ROOT, MAIN_REF)) return
     expect(branchWhenProblems(readJournal(ROOT), main)).toEqual([])
+  })
+
+  it("tells a checkout already on the ref from one that is not", () => {
+    expect(headIsOn(ROOT, "HEAD")).toBe(true)
+    expect(headIsOn(ROOT, "refs/heads/no-such-branch-here")).toBe(false)
   })
 
   it("reports two migrations that took the same number and the same when", () => {

@@ -162,6 +162,17 @@ export function liveSavers(): PageSaver[] {
   return [...live]
 }
 
+/**
+ * A saver made outside `createPageSaver` (a folder's first text, before its page
+ * exists) joins the ones sign-out asks; the returned function lets it go.
+ */
+export function trackSaver(saver: PageSaver): () => void {
+  live.add(saver)
+  return () => {
+    live.delete(saver)
+  }
+}
+
 /** The session is over in this tab: every saver stops, its text left in the draft. */
 export async function destroyAllSavers(opts?: { discard?: boolean }): Promise<void> {
   await Promise.all(liveSavers().map((s) => s.destroy(opts)))
@@ -176,7 +187,7 @@ onSessionTeardown(endAllSavers)
 onAuthCleared(endAllSavers)
 onLogoutBroadcast(endAllSavers)
 
-function newSessionId(): string {
+export function newSessionId(): string {
   try {
     return crypto.randomUUID()
   } catch {

@@ -11,6 +11,7 @@ import {
   markSyncedSourceArchived,
   scheduleCollectionsTreeReload,
 } from "./knowledge-store"
+import { refreshPageTitle } from "./page-links"
 
 export { registerEntityPreviews } from "./entity-preview-renderers"
 export { default as KnowledgeIcon } from "./KnowledgeIcon"
@@ -18,6 +19,7 @@ export const KnowledgeWorkspace = lazy(() => import("./KnowledgeWorkspace"))
 export const KnowledgeSidebar = lazy(() => import("./KnowledgeSidebar"))
 export const KnowledgeDocumentView = lazy(() => import("./KnowledgeDocumentView"))
 export const KnowledgeLinkedSourceView = lazy(() => import("./KnowledgeLinkedSourceView"))
+export const KnowledgeFolderView = lazy(() => import("./KnowledgeFolderView"))
 export const SyncedSourceAddTab = lazy(() => import("./SyncedSourceAddTab"))
 // Custom block of the Knowledge settings page (manifest `settings`).
 export const SyncedSourceAdd = lazy(() =>
@@ -45,6 +47,20 @@ export function resolveKnowledgeDocLabel(entityId: string): string | undefined {
   return walk(knowledgeStore.collectionsTree)
 }
 
+// Dynamic tab label for knowledge:folder tabs: the folder's name, as the tree shows it.
+export function resolveKnowledgeFolderLabel(entityId: string): string | undefined {
+  if (!entityId) return undefined
+  const find = (nodes: typeof knowledgeStore.collectionsTree): string | undefined => {
+    for (const node of nodes) {
+      if (node.id === entityId) return node.name
+      const below = find(node.children)
+      if (below) return below
+    }
+    return undefined
+  }
+  return find(knowledgeStore.collectionsTree)
+}
+
 // WS handlers (manifest views.wsHandlers → these by name). Signatures/behavior
 // moved verbatim from the former kernel registration's inline handlers, with
 // the "create" branch added so the Knowledge home "Recently touched" feed
@@ -60,6 +76,12 @@ export async function handleKnowledgeDocumentWsEvent(
   _ctx?: unknown,
 ): Promise<void> {
   const api = getAttentionApi()
+  // Renamed, moved to Trash, restored, shared: the chips that show this page ask
+  // again for its title (only those this reader has on screen; the server decides).
+  if (action !== "create") {
+    const changed = data as { entityId?: string; id?: string } | null
+    refreshPageTitle(api, changed?.entityId ?? changed?.id)
+  }
   if (!api) return
   // Any change to a page can change its row (title, place, gone): the tree
   // reloads once per burst, this reader's own changes included.

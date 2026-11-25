@@ -12,12 +12,14 @@ import {
   createEffect,
   createResource,
   createSignal,
+  type JSX,
   on,
   onCleanup,
   onMount,
   Show,
   untrack,
 } from "solid-js"
+import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
 import { relativeTime } from "~/lib/relative-time"
 import { useDictation } from "~/modules/assist/useDictation"
@@ -64,6 +66,8 @@ import {
 import { PageBody } from "./PageBody"
 import { PageHeader } from "./PageHeader"
 import { PageHistory, versionAuthor } from "./PageHistory"
+import { pageFileView, uploadPageFile, uploadRefusal } from "./page-files"
+import { editorPages, pageLinkDeps } from "./page-links"
 import {
   canMoveToTrash,
   daysLeftLabel,
@@ -73,7 +77,7 @@ import {
   trashRefusalKey,
 } from "./trash"
 
-interface KnowledgeDocumentFetched {
+export interface KnowledgeDocumentFetched {
   id: string
   title: string
   body: string
@@ -100,12 +104,30 @@ interface TrashedPage {
   trashEntry: KnowledgeTrashEntry
 }
 
+/** A page shown as its folder's own page (KnowledgeFolderView). */
+export interface DocumentInFolder {
+  /** Shown under the text: what is inside the folder. */
+  below: JSX.Element
+  /** The page is no longer the folder's (gone, in the trash): the folder view asks again. */
+  onGone: () => void
+  /** The page was made a moment ago from this text (still being typed): it opens on
+   *  that row and that text at once, with no reload, and saves what came after. */
+  fresh?: {
+    row: KnowledgeDocumentFetched
+    text: string
+    /** The page was someone else's already (made meanwhile): the text meets it as a conflict. */
+    existing?: boolean
+  }
+}
+
 type Fetched = KnowledgeDocumentFetched | TrashedPage | null | "not-found"
 
 const isRow = (d: Fetched | undefined): d is KnowledgeDocumentFetched =>
   !!d && d !== "not-found" && !("trashEntry" in d)
 
-const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
+const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFolder }> = (
+  props,
+) => {
   const i18n = useI18n()
   const api = useOptionalApi()
   const apiForSidebar = useApi()
@@ -113,10 +135,19 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
   const me = () => userFromToken()?.userId ?? null
 
   let docController: AbortController | null = null
+  /** Pages opened on a fresh row already (a later fetch asks the server). */
+  const freshUsed = new Set<string>()
+  /** The page made from text being typed: its editor takes the caret when it opens. */
+  let focusOnOpen = false
   const [doc, { refetch, mutate }] = createResource(
     () => props.entityId,
     async (id: string | null): Promise<Fetched> => {
       if (!id || !api) return null
+      const fresh = untrack(() => props.folder?.fresh)
+      if (fresh && fresh.row.id === id && !freshUsed.has(id)) {
+        freshUsed.add(id)
+        return { ...fresh.row, canEdit: fresh.row.canEdit ?? true }
+      }
       docController?.abort()
       const ac = new AbortController()
       docController = ac
@@ -245,34 +276,15 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
     })
   })
 
-  const startEditing = async (d: KnowledgeDocumentFetched) => {
-    const userId = me()
-    if (!api || !userId) return
-    const drafts = pageDrafts()
-    const liveness = webLocks()
-    let opened: Awaited<ReturnType<typeof openDrafts>> = {
-      restore: null,
-      conflict: null,
-      extra: [],
-    }
-    try {
-      opened = await openDrafts({
-        drafts,
-        liveness,
-        userId,
-        docId: d.id,
-        current: d,
-        inHistory: draftInHistory(api, userId),
-      })
-    } catch {
-      // No drafts store here: the page opens on its stored text.
-    }
-    if (setupFor !== d.id) return
-    const draft = opened.restore ?? opened.conflict
-    setEditorText(draft ? draft.body : d.body)
-    if (draft && titleEl) titleEl.textContent = draft.title || d.title
-    const s = createPageSaver({
-      api,
+  const makeSaver = (
+    client: ApiClient,
+    userId: string,
+    d: KnowledgeDocumentFetched,
+    drafts: ReturnType<typeof pageDrafts>,
+    liveness: ReturnType<typeof webLocks>,
+  ): PageSaver =>
+    createPageSaver({
+      api: client,
       userId,
       docId: d.id,
       base: { title: d.title, body: d.body, revision: d.revision },
@@ -291,6 +303,51 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
         if (titleEl) titleEl.textContent = title
       },
     })
+
+  const startEditing = async (d: KnowledgeDocumentFetched) => {
+    const userId = me()
+    if (!api || !userId) return
+    const drafts = pageDrafts()
+    const liveness = webLocks()
+    let opened: Awaited<ReturnType<typeof openDrafts>> = {
+      restore: null,
+      conflict: null,
+      extra: [],
+    }
+    // Made a moment ago from the text in the folder view: no draft can be older than
+    // the page, and waiting for the drafts store would drop the keys typed meanwhile.
+    const fresh = props.folder?.fresh
+    if (fresh && fresh.row.id === d.id) {
+      focusOnOpen = true
+      setEditorText(fresh.text)
+      const s = makeSaver(api, userId, d, drafts, liveness)
+      saver = s
+      if (fresh.text === d.body) return
+      if (fresh.existing) {
+        // Someone else's text is the page: mine is never saved over it, the person
+        // chooses (Keep mine, Take theirs, See both).
+        s.markConflict({ ...d })
+        await s.persistDraft()
+      } else s.edit()
+      return
+    }
+    try {
+      opened = await openDrafts({
+        drafts,
+        liveness,
+        userId,
+        docId: d.id,
+        current: d,
+        inHistory: draftInHistory(api, userId),
+      })
+    } catch {
+      // No drafts store here: the page opens on its stored text.
+    }
+    if (setupFor !== d.id) return
+    const draft = opened.restore ?? opened.conflict
+    setEditorText(draft ? draft.body : d.body)
+    if (draft && titleEl) titleEl.textContent = draft.title || d.title
+    const s = makeSaver(api, userId, d, drafts, liveness)
     saver = s
     if (opened.restore) {
       s.edit()
@@ -307,8 +364,49 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
       await postDraftToHistory(api, drafts, extra, i18n.t("knowledge.untitled"))
   }
 
+  // ── Files ────────────────────────────────────────────────────────────────
+  const fileView = api ? pageFileView(api, i18n.t) : null
+  // Links to other pages: titles for this reader, and the writer's `@` / `[[` picker.
+  const pageLinks = api ? pageLinkDeps(api, i18n.t) : null
+  const pagePicker = api ? editorPages(api, i18n.t, props.entityId) : undefined
+  const refused = (message: string) => addToast({ type: "warning", message })
+  const upload = async (file: File): Promise<string> => {
+    const d = row()
+    if (!api || !d) throw new Error(i18n.t("knowledge.files.failed", { name: file.name }))
+    try {
+      return (await uploadPageFile(api, d.id, file)).id
+    } catch (err) {
+      throw new Error(uploadRefusal(i18n.t, err, file.name))
+    }
+  }
+  const editorFiles = fileView
+    ? {
+        view: fileView,
+        upload,
+        onRefused: refused,
+        unreadable: i18n.t("knowledge.files.unreadable"),
+        uploading: (name: string) => i18n.t("kernel.editor.uploadingFile", { name }),
+      }
+    : undefined
+  const addFiles = (files: File[]) => {
+    for (const file of files) void upload(file).catch((err: Error) => refused(err.message))
+  }
+  /** Files of other pages the save could not copy yet (storage full): said once each. */
+  const toldNotCopied = new Set<string>()
+  const filesOfSave = (stored: SavedRow) => {
+    const map = stored.fileIdMap as Record<string, string> | undefined
+    if (map && Object.keys(map).length) editor?.replaceFileIds(map)
+    const notCopied = (stored.notCopied as Array<{ id: string; reason: string }> | undefined) ?? []
+    const later = notCopied.filter(
+      (n) => (n.reason === "quota" || n.reason === "storage") && !toldNotCopied.has(n.id),
+    )
+    for (const n of later) toldNotCopied.add(n.id)
+    if (later.length) refused(i18n.t("knowledge.files.copyLater"))
+  }
+
   /** The server stored this view's text. */
   const saved = (stored: SavedRow) => {
+    filesOfSave(stored)
     const before = row()
     mutate((d) =>
       isRow(d) ? ({ ...d, ...stored, body: stored.body, title: stored.title } as Fetched) : d,
@@ -400,15 +498,19 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
   // not saved yet: that text stays on screen until the person has it (edge 3).
   createEffect(() => {
     if (doc() === "not-found" && !(saver?.hasUnsaved() ?? false)) {
-      evictTabByEntity("knowledge:document", props.entityId)
+      // A folder's page that went away leaves the folder open: it asks again.
+      if (props.folder) props.folder.onGone()
+      else evictTabByEntity("knowledge:document", props.entityId)
     }
   })
 
-  createEffect(() => {
-    const id = props.entityId
+  // What links here; asked again each time the list is opened, so titles are current.
+  let backlinksAsk: AbortController | undefined
+  const loadBacklinks = (id: string) => {
     if (!id || !api) return
+    backlinksAsk?.abort()
     const ac = new AbortController()
-    onCleanup(() => ac.abort())
+    backlinksAsk = ac
     void getKnowledgeDocumentBacklinks(api, id, { signal: ac.signal })
       .then((result) => {
         if (!ac.signal.aborted) setBacklinks(result.backlinks ?? [])
@@ -416,7 +518,9 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
       .catch(() => {
         if (!ac.signal.aborted) setBacklinks([])
       })
-  })
+  }
+  createEffect(() => loadBacklinks(props.entityId))
+  onCleanup(() => backlinksAsk?.abort())
 
   // ── Conflict choices ──────────────────────────────────────────────────────
   const theirs = () => {
@@ -534,7 +638,9 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
     setEditorText(null)
     setStatus({ state: "idle" })
     if (s) void s.destroy()
-    void refetch()
+    // In Trash it is no longer the folder's page: the folder view asks again.
+    if (props.folder) props.folder.onGone()
+    else void refetch()
   }
   const [restoring, setRestoring] = createSignal(false)
   const restoreTrashed = async (entry: KnowledgeTrashEntry) => {
@@ -684,6 +790,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                 status={status()}
                 edited={edited()}
                 backlinks={backlinks()}
+                onBacklinksOpen={() => loadBacklinks(props.entityId)}
                 dictation={bodyDictation}
                 editor={() => editor}
                 titleRef={(el) => {
@@ -759,7 +866,17 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                 hasApi={!!api}
                 editorRef={(handle) => {
                   editor = handle
+                  if (focusOnOpen) {
+                    focusOnOpen = false
+                    handle.focus()
+                  }
                 }}
+                below={props.folder?.below}
+                fileView={fileView}
+                editorFiles={editorText() !== null ? editorFiles : undefined}
+                pageLinks={pageLinks}
+                editorPages={editorText() !== null ? pagePicker : undefined}
+                onAddFiles={editorText() !== null && api ? addFiles : undefined}
                 onEdit={() => saver?.edit()}
                 onRefreshSynced={() => {
                   const sourceId = d().syncedSourceId

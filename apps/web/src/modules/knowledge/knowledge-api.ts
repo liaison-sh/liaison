@@ -34,6 +34,8 @@ export interface KnowledgeSearchResult {
 }
 
 export interface KnowledgeBacklink {
+  /** A page that links here, or a conversation that references the page. */
+  kind?: "page" | "thread"
   app: string
   entityType: string
   entityId: string
@@ -273,6 +275,42 @@ export interface CollectionTreeNode {
      *  server's own write check. Absent: editable (the server always sends it). */
     canEdit?: boolean
   }>
+}
+
+/** A folder's page and what is directly inside it that the reader may open. */
+export interface KnowledgeFolderPage {
+  folder: {
+    id: string
+    name: string
+    parentId: string | null
+    ownerUserId: string | null
+    synced: boolean
+  }
+  /** The folder's own page, when it has one the reader may open; null otherwise. */
+  page: { id: string; title: string; body: string; revision: number; canEdit?: boolean } | null
+  /** The reader may write the first text of a page this folder does not have. */
+  canStartPage: boolean
+  folders: Array<{ id: string; name: string }>
+  pages: Array<{ id: string; title: string }>
+  /** More is inside than listed. */
+  more: boolean
+}
+
+export async function getKnowledgeFolderPage(
+  api: ApiClient,
+  folderId: string,
+): Promise<KnowledgeFolderPage> {
+  return api.get<KnowledgeFolderPage>(`/knowledge/collections/${folderId}/page`)
+}
+
+/** The folder's page, made on its first text (the existing one when it has one). */
+export async function startKnowledgeFolderPage(
+  api: ApiClient,
+  folderId: string,
+  body: string,
+): Promise<{ id: string; title: string; body: string; revision: number; created?: boolean }> {
+  // `created: false`: the folder already had a page (someone made it meanwhile).
+  return api.post(`/knowledge/collections/${folderId}/page`, { body })
 }
 
 export async function getCollectionsTree(api: ApiClient): Promise<CollectionTreeNode[]> {

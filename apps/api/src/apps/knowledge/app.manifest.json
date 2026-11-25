@@ -61,7 +61,7 @@
       }
     ]
   },
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "Knowledge workspace for local documents and curated source links",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -713,6 +713,12 @@
         "writeScope": "knowledge:documents:update",
         "canWrite": "can_edit_document"
       }
+    },
+    "collection": {
+      "labelField": "name",
+      "tableName": "collections",
+      "archivedField": "archived_at",
+      "readScope": "knowledge:documents:read"
     },
     "source_link": {
       "labelField": "title",
@@ -1723,6 +1729,16 @@
         "icon": "KnowledgeIcon",
         "urlPattern": "/knowledge/documents/:entityId",
         "resolveLabel": "resolveKnowledgeDocLabel",
+        "referenceable": false
+      },
+      "folder": {
+        "component": "KnowledgeFolderView",
+        "sidebar": "KnowledgeSidebar",
+        "label": "Folder",
+        "icon": "KnowledgeIcon",
+        "urlPattern": "/knowledge/folders/:entityId",
+        "entity": "collection",
+        "resolveLabel": "resolveKnowledgeFolderLabel",
         "referenceable": false
       },
       "source_link": {

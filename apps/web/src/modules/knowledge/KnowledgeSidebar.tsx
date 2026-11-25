@@ -209,6 +209,10 @@ const KnowledgeSidebar: Component = () => {
     }
   }
 
+  function openFolder(id: string, name: string) {
+    openTab({ type: "knowledge:folder", entityId: id, label: name })
+  }
+
   function openDoc(docId: string, title?: string) {
     openTab({ type: "knowledge:document", entityId: docId, label: title ?? "" })
   }
@@ -469,6 +473,7 @@ const KnowledgeSidebar: Component = () => {
   const treeProps = () => ({
     activeDocId: activeDocId(),
     onOpenDoc: openDoc,
+    onOpenFolder: openFolder,
     onCreateChild: (parentId: string | null, ownerUserId: string | null) =>
       openCreateDialog(parentId, ownerUserId),
     onNewPage: (folderId: string | null, personal: boolean) => void newPage(folderId, personal),

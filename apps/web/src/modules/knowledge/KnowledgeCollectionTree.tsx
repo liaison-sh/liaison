@@ -52,6 +52,8 @@ export interface KnowledgeCollectionTreeProps {
   /** The page open in the active tab: its row is marked. */
   activeDocId?: string | null
   onOpenDoc: (docId: string, title?: string) => void
+  /** A folder's name opens its folder page (the chevron shows what is inside). */
+  onOpenFolder?: (id: string, name: string) => void
   onCreateChild?: (parentId: string | null, ownerUserId: string | null) => void
   /** "+" on a folder row: a new page in it (`personal` for a folder of mine). */
   onNewPage?: (folderId: string | null, personal: boolean) => void
@@ -316,9 +318,12 @@ const CollectionRow: Component<CollectionRowProps> = (props) => {
           <button
             type="button"
             data-testid={`knowledge-tree-toggle-${node().id}`}
-            aria-label={i18n.t(open() ? "knowledge.closeFolder" : "knowledge.openFolder", {
-              name: name(),
-            })}
+            aria-label={i18n.t(
+              open() ? "knowledge.closeFolder" : "knowledge.folderPage.showInside",
+              {
+                name: name(),
+              },
+            )}
             aria-expanded={open() ? "true" : "false"}
             onClick={() => toggleFolder(node().id)}
             class={toggleClass()}
@@ -328,14 +333,18 @@ const CollectionRow: Component<CollectionRowProps> = (props) => {
             </Show>
           </button>
         </span>
-        {/* Until folders have a page of their own, the name opens and closes it. */}
+        {/* The name opens the folder's page; a virtual bucket only folds. */}
         <button
           type="button"
           data-keep-navigator
           // The row itself is the keyboard stop; this is its pointer target.
           tabIndex={-1}
           class="flex min-w-0 flex-1 cursor-pointer items-center gap-1 text-left outline-none"
-          onClick={() => toggleFolder(node().id)}
+          onClick={() => {
+            // Unfiled and the personal-notes bucket are not folders: they only fold.
+            if (node().virtual || !props.tree.onOpenFolder) toggleFolder(node().id)
+            else props.tree.onOpenFolder(node().id, name())
+          }}
         >
           <Folder size={12} class="shrink-0 text-text-tertiary" />
           <span

@@ -4871,6 +4871,46 @@ export const FR: Record<string, string> = {
  * and "Désactivée" for a cadence. Keyed `namespace.key.path`.
  */
 export const FR_BY_KEY: Record<string, string> = {
+  // Settings > Apps, the switches inside an app (kernel.org_app_features).
+  "kernel.appFeatures.title": "Fonctionnalités",
+  "kernel.appFeatures.intro":
+    "Des parties de cette app qui restent désactivées tant qu'un administrateur ne les active pas pour l'espace. Les désactiver les masque à nouveau ; rien n'est supprimé.",
+  "kernel.appFeatures.on": "Activé",
+  "kernel.appFeatures.off": "Désactivé",
+  "kernel.appFeatures.saveFailed": "Impossible de modifier {{feature}}. Réessayez.",
+  "kernel.appFeatures.noRight":
+    "Seule une personne disposant de {{scope}} peut modifier ce réglage.",
+  "kernel.appFeatures.companies.label": "Entreprises",
+  "kernel.appFeatures.companies.description":
+    "Des fiches entreprise à côté des personnes : l'annuaire des entreprises, les pages entreprise, le portail client et les outils entreprise des agents.",
+  "kernel.appFeatures.companies.offMessage":
+    "Les entreprises sont désactivées pour cet espace : cet outil n'a pas été exécuté et rien n'a changé.",
+  "kernel.appFeatures.companies.offNext":
+    "Dites que les entreprises sont désactivées. Un administrateur peut les activer dans Réglages > Apps > Contacts.",
+  "kernel.appFeatures.deals.label": "Affaires et pipelines",
+  "kernel.appFeatures.deals.description":
+    "Des pipelines de vente et des affaires dans Projets, avec leurs outils pour les agents (pipelines, relances, prévisions).",
+  "kernel.appFeatures.deals.offMessage":
+    "Les affaires sont désactivées pour cet espace : cet outil n'a pas été exécuté et rien n'a changé.",
+  "kernel.appFeatures.deals.offNext":
+    "Dites que les affaires sont désactivées. Un administrateur peut les activer dans Réglages > Apps > Projets.",
+  "kernel.appFeatures.clientReports.label": "Rapports client",
+  "kernel.appFeatures.clientReports.description":
+    "Des rapports hebdomadaires qu'un projet partage avec son client, rédigés à partir du travail du projet et envoyés par une personne.",
+  "kernel.appFeatures.clientReports.offMessage":
+    "Les rapports client sont désactivés pour cet espace : cet outil n'a pas été exécuté et rien n'a changé.",
+  "kernel.appFeatures.clientReports.offNext":
+    "Dites que les rapports client sont désactivés. Un administrateur peut les activer dans Réglages > Apps > Projets.",
+  "kernel.appFeatures.recurring.label": "Facturation récurrente",
+  "kernel.appFeatures.recurring.description":
+    "Les échéanciers récurrents, la facturation de fin de mois, les plans de facturation, les forfaits, les jalons et les acomptes.",
+  "kernel.appFeatures.recurring.offMessage":
+    "La facturation récurrente est désactivée pour cet espace : cet outil n'a pas été exécuté et rien n'a changé.",
+  "kernel.appFeatures.recurring.offNext":
+    "Dites que la facturation récurrente est désactivée. Un administrateur peut l'activer dans Réglages > Apps > Facturation.",
+  "kernel.appFeatures.corporateTemplates.label": "Modèles juridiques de société",
+  "kernel.appFeatures.corporateTemplates.description":
+    "Ajoute les modèles juridiques de société (documents du conseil et des associés) à la liste des modèles.",
   // Projects time and capacity: the same English reads differently elsewhere.
   "projects.settingsPage.time.daysOff": "Jours non travaillés de l'entreprise",
   "projects.capacity.thisWeek": "Cette semaine",

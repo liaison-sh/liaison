@@ -136,13 +136,16 @@ const CATALOG_DEMO_APPS = [
  * over this Mac, with a spread of about 20 between runs; the pin is the top of that range.
  * Transactions re-pinned the same day on the same ground: this Mac counts 658-659, the runner
  * 662-666 warm across three runs of the branch (the same half percent), so the pin is 666.
+ * Re-pinned 2026-11-25 with main's Knowledge pages (Trash, page links, folder pages): this Mac
+ * counts 6 836 before that merge and 6 864 after it (+28: each seeded page's links are indexed
+ * and stamped), 658 transactions both; the runner counted 6 889 in 663, so the pin is 6 890.
  */
 const PRODUCTS_BASELINE = {
   outboxEvents: 369,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 6_820,
+  statements: 6_890,
   transactions: 666,
 }
 /**

@@ -30,6 +30,7 @@ import {
 } from "~/lib/transient-db-error"
 import { checkReadOnlyRun, isReadOnlyTool } from "~/modules/agent/runtime/read-only-run"
 import { captureReadOnlyRun } from "~/modules/agent/runtime/run-context"
+import { resolveHeldToolName } from "~/modules/agent/tools/tool-name-resolve"
 import { alreadyPendingMessage } from "~/modules/approvals/already-pending"
 import {
   type ApprovalPolicyDecision,
@@ -4106,6 +4107,43 @@ async function taintJudgedTool<T extends NonNullable<ReturnType<typeof toolRegis
   }
 }
 
+const CALL_TOOL_CANONICAL = "kernel:call_tool"
+
+/**
+ * The tool a `kernel:call_tool` call names, as its canonical id, with its arguments. The name is
+ * resolved the way the call-tool entry resolves it: against the tools the calling turn holds when
+ * a turn frame is present (it never widens what the turn may call), otherwise against the org's
+ * registry by its SDK or canonical name.
+ */
+function callToolRefTarget(
+  orgId: string,
+  params: unknown,
+): { toolName: string; params: unknown } | { error: ExecuteToolError } {
+  const { name, arguments: args } = (params ?? {}) as { name?: unknown; arguments?: unknown }
+  const refuse = (message: string) => ({
+    error: { code: "invalid_params", message, retryable: true } satisfies ExecuteToolError,
+  })
+  if (typeof name !== "string" || name.trim().length === 0) {
+    return refuse('kernel__call_tool needs the tool to call in "name".')
+  }
+  const bySdkName = new Map<string, string>()
+  for (const [key] of toolRegistry.entriesOf(orgId)) {
+    if (key[0] !== orgId) continue
+    bySdkName.set(`${key[1]}__${key[2].replace(/[^a-zA-Z0-9_-]/g, "_")}`, `${key[1]}:${key[2]}`)
+  }
+  const held = currentRunContext()?.turnToolNames
+  const resolution = resolveHeldToolName(name, held ? [...held] : [...bySdkName.keys()])
+  const sdkName =
+    resolution.kind === "exact" || resolution.kind === "resolved" ? resolution.name : null
+  const toolName = sdkName ? bySdkName.get(sdkName) : undefined
+  if (!toolName || toolName === CALL_TOOL_CANONICAL) {
+    return refuse(
+      `No tool named "${name}" is available to you, so nothing was staged. Call the tool by its exact name, with its arguments in "arguments".`,
+    )
+  }
+  return { toolName, params: args ?? {} }
+}
+
 export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<ExecuteToolEnvelope> {
   const callChain = opts.callChain ?? []
   // A non-empty INCOMING chain means this dispatch was made from inside another
@@ -4122,6 +4160,17 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         retryable: false,
       },
     }
+  }
+
+  // A call through `kernel:call_tool` that cites an @ref token is the named
+  // tool's call, and is dispatched as that tool: it defers into the bundle as
+  // that tool's step, under its own gate, summary and scopes. `kernel:call_tool`
+  // runs nothing itself, so staged as the step it approved "successfully" while
+  // the write it stood for never ran.
+  if (opts.toolName === CALL_TOOL_CANONICAL && findRefTokens(opts.params).length > 0) {
+    const inner = callToolRefTarget(opts.orgId, opts.params)
+    if ("error" in inner) return { error: inner.error }
+    return executeToolCore({ ...opts, toolName: inner.toolName, params: inner.params })
   }
 
   const colonIdx = opts.toolName.indexOf(":")

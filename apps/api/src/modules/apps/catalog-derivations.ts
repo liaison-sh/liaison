@@ -77,6 +77,8 @@ export interface ManifestFileParentDecl {
   writeScope: string
   /** Delete: the uploader, or a holder of this scope. Absent: writeScope alone. */
   deleteScope?: string
+  /** A function of the parent's schema answering whether the caller may change one row's files. */
+  canWrite?: string
   retention?: { retentionYears: number; anchor: string }
 }
 
@@ -107,6 +109,7 @@ export function manifestFileParentOf(
     ...(typeof fp.deleteScope === "string" && fp.deleteScope
       ? { deleteScope: fp.deleteScope }
       : {}),
+    ...(typeof fp.canWrite === "string" && fp.canWrite ? { canWrite: fp.canWrite } : {}),
   }
   const schema = isRecord(desc.schema) ? desc.schema : undefined
   const table = schema?.[fileParent.tableName]

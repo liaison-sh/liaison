@@ -52,6 +52,12 @@ Moving a document, or taking it out of a folder, needs the right to edit it, and
 
 Every change by a person or an agent is kept with its author and time. One person's edits in one tab within 10 minutes form one version; an agent's write is always its own. A page keeps its versions for a year and at most 200 of them, oldest first out, but each author's newest version and every text kept aside from a conflict are never removed to make room, and texts kept aside from a conflict are kept past a year too. Pages synced from another app have no history. Anyone who may edit a page sees its history.
 
+## Images and files in a document
+
+A document's images and files are read by the people who can read the document, and by nobody else. When someone loses access to the document, they lose access to its files too. Adding or removing a file needs the right to edit the document.
+
+A document shows only images stored in Liaison. When you save a document that shows an image or a file of another document, Liaison stores its own copy on this document, so it stays when the other document is deleted. A file you cannot read is not copied: its place in the text is kept, and readers see that it is not available. Only images and files of other documents, and files you have just uploaded, are copied: an email or ticket attachment, a template's file or an encrypted file is never copied onto a document, and readers see it as not available. A copy made by a save that then failed, which no version of the document names, is removed by an hourly cleanup. When your organization's storage is full, the document is still saved and the copy is made at a later save, once there is room.
+
 ## Share a document
 
 1. Open the document and click **Share**.
@@ -156,11 +162,11 @@ Knowledge ships three roles. See [roles](../admin/roles.md).
 | Tool | What it does | Scope |
 |---|---|---|
 | `search` | Search Knowledge and enabled remote sources | `knowledge:documents:read` |
-| `get` | Read a document or a remote source item | `knowledge:documents:read` |
+| `get` | Read a document or a remote source item, with the files its text shows | `knowledge:documents:read` |
 | `find_by_title` | Find a document by its exact title | `knowledge:documents:read` |
 | `review_queue` | List items that need review | `knowledge:documents:read` |
 | `create` | Create a document | `knowledge:documents:create` |
-| `update` | Update a document | `knowledge:documents:update` |
+| `update` | Update a document. Images, files and page links in the text are kept exactly | `knowledge:documents:update` |
 | `verify` | Mark a document verified | `knowledge:documents:update` |
 | `archive`, `restore` | Move a document to Trash (deleted after 30 days) or restore it | `knowledge:documents:archive` |
 | `collection_create`, `collection_update`, `collection_delete` | Create, change or delete a folder. A created folder is shared unless the user asks for a personal one | `knowledge:collections:manage` |

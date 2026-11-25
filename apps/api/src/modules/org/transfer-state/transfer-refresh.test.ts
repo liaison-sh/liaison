@@ -253,6 +253,10 @@ describe("this process's view", () => {
   })
 
   test("a change another process broadcasts is read after the broadcast", async () => {
+    // The previous test's own change comes back on the subscriber and starts a refresh of its
+    // own; the refresh below must start a read, not join that one. Nothing awaits between this
+    // wait and the refresh, so no other refresh can start in between.
+    await until(() => Reflect.get(orgTransferView, "refreshing") === null)
     let reads = 0
     await holdNextRead(async (release) => {
       const held = Reflect.get(orgTransferView, "read") as () => Promise<OrgTransferRecord[]>

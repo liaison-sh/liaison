@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Reference transforms: shipped EXAMPLES the agent reads (`import_reference`)
- * before writing its own transform, never importers in the product. Each is a
- * plain transform script in this folder, run through the real runner on
- * fictional data by `reference.test.ts` so it cannot rot. The CLI runs the
- * Freshdesk one for `liaison tickets import --freshdesk-xml`.
+ * before writing its own transform. Each is a plain transform script in this
+ * folder, run through the real runner on fictional data by
+ * `reference.test.ts` so it cannot rot. The CLI runs the Freshdesk one for
+ * `liaison tickets import --freshdesk-xml`. Importers the product itself runs
+ * for a person are built-in transforms (`../builtin/registry.ts`), not these.
  */
 import { readFileSync } from "node:fs"
 import { join } from "node:path"

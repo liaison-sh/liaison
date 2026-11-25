@@ -59,6 +59,7 @@ import {
   knowledgeStore,
   loadCollectionsTree,
   loadDocuments,
+  noteKnowledgePageOpen,
 } from "./knowledge-store"
 import { PageBody } from "./PageBody"
 import { PageHeader } from "./PageHeader"
@@ -386,6 +387,13 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
   onCleanup(() => {
     docController?.abort()
     leave()
+  })
+
+  // While the page is on screen, the socket's first connect reads it again (knowledge-store.ts).
+  createEffect(() => {
+    const id = props.entityId
+    if (!id || !api) return
+    onCleanup(noteKnowledgePageOpen(id, api))
   })
 
   // A page that is not found closes its tab, unless this view holds text that is

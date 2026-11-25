@@ -45,6 +45,7 @@ import DesktopConnectDialog from "~/modules/desktop/DesktopConnectDialog"
 import DesktopDeviceApprovalDialog from "~/modules/desktop/DesktopDeviceApprovalDialog"
 import { installDesktopNotices } from "~/modules/desktop/desktop-notices"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { knowledgeSocketConnected } from "~/modules/knowledge/knowledge-store"
 import { SignOutUnsavedDialog } from "~/modules/knowledge/SignOutUnsavedDialog"
 import { MailboxAgentHost } from "~/modules/mailbox/MailboxAgentHost"
 import { MailboxUnlockHost } from "~/modules/mailbox/MailboxUnlockHost"
@@ -404,13 +405,15 @@ export const Shell: Component = () => {
   createEffect(() => nodeReconnected(ws.status()))
   // The API clients skip their connection toast while the socket reconnects (S26).
   createEffect(() => noteSocketStatus(ws.status()))
-  // The first connect: a node change sent before the socket was up is lost,
-  // so the computers are read again (nodes-store.ts).
+  // The first connect: a node change or a page save sent before the socket was up
+  // is lost, so the computers and the open pages are read again (nodes-store.ts,
+  // knowledge-store.ts).
   let socketConnectedOnce = false
   createEffect(() => {
     if (socketConnectedOnce || ws.status() !== "connected") return
     socketConnectedOnce = true
     nodesSocketConnected()
+    void knowledgeSocketConnected()
   })
   // In the desktop or phone app, a reconnect after the server restarted (a
   // deploy) reads the app feed again, so an app whose settings page moved past

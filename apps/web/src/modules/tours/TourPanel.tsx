@@ -118,6 +118,8 @@ interface RoutineRunView {
   error: string | null
   /** The run row's status (`skipped_no_credits`, …); null unless skipped. */
   status: string | null
+  /** Waiting on a request the person can approve now (Do it for me approves it). */
+  asks?: boolean
 }
 
 /** The routine line of a step status (`TourBeatStatus`), or null for any other status. */
@@ -148,6 +150,7 @@ export function routineRunOf(status: TourBeatStatus | undefined): RoutineRunView
         startedAt: null,
         error: null,
         status: null,
+        asks: status.requestId !== null,
       }
     case "routine-failed":
       return {
@@ -518,6 +521,17 @@ export const TourPanel: Component<TourPanelProps> = (props) => {
     const s = props.progress.beatStatus
     return !passed() && !arrived() && s?.kind === "held-for-approval" ? s : null
   }
+  /**
+   * The routine this do step waits on paused on a request of its own (it asked
+   * for the company before the quote and the reply): Do it for me approves that
+   * request, as Approve on its card would, and the run carries on. A step that
+   * approves what the routine staged is the person's own press, never this.
+   */
+  const routineAsks = () => {
+    const s = props.progress.beatStatus
+    if (passed() || arrived() || props.beat.kind !== "do") return null
+    return s?.kind === "routine-waiting" && s.requestId !== null ? s : null
+  }
   const status = (): StatusLine | null => {
     if (passed() || arrived() || undo() || held()) return null
     const a = autoplay()
@@ -869,6 +883,20 @@ export const TourPanel: Component<TourPanelProps> = (props) => {
               </Button>
             )}
           </Match>
+          {/* The routine waits on a request it asked for: Do it for me approves that request. */}
+          <Match when={routineAsks()?.requestId}>
+            {(requestId) => (
+              <Button
+                size="sm"
+                data-testid="tour-do-for-me"
+                data-request-id={requestId()}
+                disabled={!props.onApproveHeld || props.heldApproved?.(requestId()) === true}
+                onClick={() => props.onApproveHeld?.(requestId())}
+              >
+                {i18n.t("tours.engine.doItForMe")}
+              </Button>
+            )}
+          </Match>
           <Match when={arrived()}>{nextButton(() => false)}</Match>
           {/* Waiting out the undo window: nothing to press here, Undo is on the toast. */}
           <Match when={undo()}>{null}</Match>
@@ -1052,6 +1080,11 @@ const RoutineRunLine: Component<{ run: RoutineRunView }> = (props) => {
           ? i18n.t("tours.engine.routineDone", { name })
           : i18n.t("tours.engine.routineDoneUnnamed")
       case "waiting":
+        if (props.run.asks) {
+          return name
+            ? i18n.t("tours.engine.routineWaitingAsks", { name })
+            : i18n.t("tours.engine.routineWaitingAsksUnnamed")
+        }
         return name
           ? i18n.t("tours.engine.routineWaiting", { name })
           : i18n.t("tours.engine.routineWaitingUnnamed")

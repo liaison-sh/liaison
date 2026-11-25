@@ -19,6 +19,7 @@ import {
 } from "@liaison/shared"
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { findTourMenuItem } from "./test-helpers"
 import type { TourApi } from "./tour-api"
 
 vi.mock("~/modules/shell/shell-tier", () => ({ shellTier: () => "desktop" }))
@@ -30,7 +31,27 @@ vi.mock("./tour-catalog", () => ({
   resolveTour: (id: string) => (fixtures.tours as { id: string }[]).find((t) => t.id === id),
 }))
 
+const approvals = vi.hoisted(() => ({ decided: [] as unknown[] }))
+vi.mock("~/modules/approvals/approvals-service", () => ({
+  decideApproval: async (_api: unknown, id: string, body: Record<string, unknown>) => {
+    approvals.decided.push({ id, ...body })
+    return {}
+  },
+  // The routine's request: two steps, the contact waiting on the company.
+  getApproval: async (_api: unknown, id: string) => ({
+    id,
+    bundleId: id,
+    status: "pending",
+    payloadHash: `hash-${id}`,
+  }),
+  listBundle: async (_api: unknown, bundleId: string) => [
+    { id: bundleId, status: "pending", payloadHash: `hash-${bundleId}` },
+    { id: "req-contact", status: "deferred", payloadHash: "hash-req-contact" },
+  ],
+}))
+
 const { dispatchWsEntityEvent } = await import("~/framework/app-registry")
+const { ApiContext } = await import("~/modules/shell/ApiContext")
 const { resetTourStore, setTourApi, tourStore } = await import("./tour-store")
 const { TourOverlay } = await import("./TourHost")
 
@@ -291,5 +312,51 @@ describe("a step waiting on a routine says what the server says the routine is d
     })
     await waitFor(() => expect(line()?.textContent).toContain("0:00"))
     await waitFor(() => expect(line()?.textContent).toMatch(/0:0[1-3]/), { timeout: 3000 })
+  })
+  // Demo walk 2026-11-25: the sales routine asked for the company and the
+  // contact first and paused there; the card only said "decide it in Home",
+  // and Approve on Home's row was refused for its missing step fingerprint.
+  it("a routine paused on a request it asked for: Do it for me approves that request, with its later steps", async () => {
+    approvals.decided = []
+    setTourApi(api())
+    render(() => (
+      <ApiContext.Provider value={{} as never}>
+        <TourOverlay />
+      </ApiContext.Provider>
+    ))
+    await tourStore.load()
+    await screen.findByTestId("tour-panel")
+    await serve({
+      kind: "routine-waiting",
+      routineName: "Prepare quotes for group requests",
+      requestId: "req-company",
+      toolName: "kernel:companies_write",
+    })
+    await waitFor(() => expect(line()?.textContent).toContain("Do it for me"))
+    expect(line()?.dataset.status).toBe("waiting")
+    const press = screen.getByTestId("tour-do-for-me")
+    expect(press.dataset.requestId).toBe("req-company")
+    // Skip stays in the menu: the person may go on without the routine.
+    expect(await findTourMenuItem("tour-skip")).toBeTruthy()
+    fireEvent.keyDown(screen.getByTestId("tour-menu"), { key: "Escape" })
+    fireEvent.click(screen.getByTestId("tour-do-for-me"))
+    await waitFor(() =>
+      expect(approvals.decided).toEqual([
+        {
+          id: "req-company",
+          decision: "approve",
+          payloadHash: "hash-req-company",
+          stepPayloadHashes: { "req-contact": "hash-req-contact" },
+        },
+      ]),
+    )
+    // Decided: the run carries on, nothing left to press.
+    await serve({
+      kind: "routine-waiting",
+      routineName: "Prepare quotes for group requests",
+      requestId: null,
+      toolName: null,
+    })
+    await waitFor(() => expect(screen.queryByTestId("tour-do-for-me")).toBeNull())
   })
 })

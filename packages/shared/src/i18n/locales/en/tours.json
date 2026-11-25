@@ -426,6 +426,8 @@
     "routineDone": "The routine “{{name}}” has finished.",
     "routineDoneUnnamed": "The routine has finished.",
     "routineWaiting": "The routine “{{name}}” is waiting for an approval it asked for. Decide it in Home and the routine carries on.",
+    "routineWaitingAsks": "The routine “{{name}}” asks for your approval before it goes on. Approve its request in Home, or press Do it for me, and the routine carries on.",
+    "routineWaitingAsksUnnamed": "The routine asks for your approval before it goes on. Approve its request in Home, or press Do it for me, and the routine carries on.",
     "routineWaitingUnnamed": "The routine is waiting for an approval it asked for. Decide it in Home and the routine carries on.",
     "routineFailed": "The routine “{{name}}” stopped with an error: {{error}} Try again later, or skip this step.",
     "routineFailedUnnamed": "The routine stopped with an error: {{error}} Try again later, or skip this step.",

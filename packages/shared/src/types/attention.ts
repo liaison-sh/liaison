@@ -41,7 +41,17 @@ export type AttentionAction =
   // resolved server-side so the click handler can open it synchronously without
   // tripping the browser popup blocker.
   | { type: "open_url"; url: string; label?: string }
-  | { type: "decide_approval"; approvalId: string; payloadHash?: string }
+  | {
+      type: "decide_approval"
+      approvalId: string
+      payloadHash?: string
+      /**
+       * A request of several steps: the fingerprint of each later step the row
+       * shows, by step id. An approve from the row carries them (the server
+       * refuses one without them, 409 `payload_changed`).
+       */
+      stepPayloadHashes?: Record<string, string>
+    }
 
 export type AttentionItem = {
   id: string

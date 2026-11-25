@@ -125,6 +125,8 @@ interface BundleOutcome extends BundleStepRow {
   /** Later steps run off earlier ones. A parallel bundle (independent
    *  requests, each decided on its own) has no single outcome to name. */
   sequenced: boolean
+  /** The fingerprint of each later step still waiting on the head, by id: what an approve binds. */
+  stepPayloadHashes: Record<string, string>
 }
 
 /**
@@ -623,9 +625,11 @@ export async function computeApprovalAttentionItems(
   if (headBundleIds.length > 0) {
     // Every step, in order: the outcome is the last, and a sequence's row also
     // says what happens in order (`bundleSequence`).
-    const steps = extractRows<BundleStepRow & { bundle_id: string; has_dep: boolean }>(
+    const steps = extractRows<
+      BundleStepRow & { id: string; status: string; bundle_id: string; has_dep: boolean }
+    >(
       await tx.execute(drizzleSql`
-        SELECT bundle_id, tool_name, summary, current_payload,
+        SELECT id, status, bundle_id, tool_name, summary, current_payload,
                depends_on_id IS NOT NULL AS has_dep
         FROM ${K}.approval_requests
         WHERE org_id = ${orgId}
@@ -638,7 +642,10 @@ export async function computeApprovalAttentionItems(
         ORDER BY bundle_id, bundle_position ASC NULLS FIRST, created_at ASC`),
     )
     const stepRows = await withViewerNames(tx, orgId, steps)
-    const byBundle = new Map<string, Array<BundleStepRow & { has_dep: boolean }>>()
+    const byBundle = new Map<
+      string,
+      Array<BundleStepRow & { id: string; status: string; has_dep: boolean }>
+    >()
     for (const s of stepRows) {
       const list = byBundle.get(s.bundle_id) ?? []
       list.push(s)
@@ -653,6 +660,13 @@ export async function computeApprovalAttentionItems(
         current_payload: last.current_payload,
         cnt: steps.length,
         sequenced: steps.some((s) => s.has_dep === true),
+        // The row shows every step (`bundleSequence`): its Approve binds the
+        // later ones as shown, as the card's does (decide.ts bindDeferredSteps).
+        stepPayloadHashes: Object.fromEntries(
+          steps
+            .filter((s) => s.id !== bundleId && s.status === "deferred")
+            .map((s) => [s.id, approvalPayloadHash(s.tool_name, s.current_payload)]),
+        ),
         steps: steps.map(({ tool_name, summary, current_payload }) => ({
           tool_name,
           summary,
@@ -801,6 +815,9 @@ export async function computeApprovalAttentionItems(
         type: "decide_approval",
         approvalId: r.id,
         payloadHash: approvalPayloadHash(r.tool_name, r.current_payload),
+        ...(outcome && Object.keys(outcome.stepPayloadHashes).length > 0
+          ? { stepPayloadHashes: outcome.stepPayloadHashes }
+          : {}),
       },
       metadata: {
         toolName: r.tool_name,

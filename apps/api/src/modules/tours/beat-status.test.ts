@@ -263,6 +263,8 @@ describe("a step waiting on a routine", () => {
     expect(await status(at("routine-note"))).toEqual({
       kind: "routine-waiting",
       routineName: "Draft a reply to new tickets",
+      requestId: null,
+      toolName: null,
     })
     // A run that failed still says so: there may be nothing to approve.
     await sql`DELETE FROM kernel.routine_runs WHERE org_id = ${orgId}`

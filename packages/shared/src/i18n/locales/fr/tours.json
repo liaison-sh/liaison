@@ -426,6 +426,8 @@
     "routineDone": "La routine « {{name}} » a fini.",
     "routineDoneUnnamed": "La routine a fini.",
     "routineWaiting": "La routine « {{name}} » attend une approbation qu’elle a demandée. Décidez-la dans Accueil et la routine reprend.",
+    "routineWaitingAsks": "La routine « {{name}} » demande votre approbation avant de continuer. Approuvez sa demande dans Accueil ou appuyez sur Faites-le pour moi, et la routine reprend.",
+    "routineWaitingAsksUnnamed": "La routine demande votre approbation avant de continuer. Approuvez sa demande dans Accueil ou appuyez sur Faites-le pour moi, et la routine reprend.",
     "routineWaitingUnnamed": "La routine attend une approbation qu’elle a demandée. Décidez-la dans Accueil et la routine reprend.",
     "routineFailed": "La routine « {{name}} » s'est arrêtée sur une erreur : {{error}} Réessayez plus tard ou passez cette étape.",
     "routineFailedUnnamed": "La routine s'est arrêtée sur une erreur : {{error}} Réessayez plus tard ou passez cette étape.",

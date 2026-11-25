@@ -221,8 +221,9 @@ function routineRowStatus(
       return { kind: "routine-running", routineName, startedAt: pauseState.resumingAt }
     }
     // Paused on an approval it asked for: it waits on the person, nothing
-    // failed. It carries on once the approval is decided.
-    return { kind: "routine-waiting", routineName }
+    // failed. It carries on once the approval is decided. Which request it
+    // waits on is read by the caller (`waitedRequest`).
+    return { kind: "routine-waiting", routineName, requestId: null, toolName: null }
   }
   if (status.startsWith("skipped")) return { kind: "routine-skipped", routineName, status, error }
   return { kind: "routine-failed", routineName, error }
@@ -284,9 +285,47 @@ async function routineStatus(
   }
   if (!last) return { kind: "pending" }
   const view = routineRowStatus(last.status, last.routineName, last.error, last.pauseState)
+  if (view.kind === "routine-waiting") {
+    const waited = await waitedRequest(orgId, last.pauseState?.approvalIds ?? [])
+    return waited ? { ...view, ...waited } : view
+  }
   return view.kind === "routine-running" && view.startedAt === ""
     ? { ...view, startedAt: (last.startedAt ?? last.ranAt).toISOString() }
     : view
+}
+
+/**
+ * The request a paused run waits on that a person decides now: the oldest of
+ * its approvals still `pending` (a request's first step; the later steps of a
+ * request are `deferred` and go with it). Null when none is (all decided, or
+ * the resume already claimed them).
+ *
+ * Demo walk 2026-11-25: a sales run on Auto asked for the company and the
+ * contact first and paused there, before the quote and the reply. The step
+ * waiting for the reply only said "decide it in Home", offering nothing to
+ * press: Do it for me now approves this request, and the run carries on.
+ */
+async function waitedRequest(
+  orgId: string,
+  approvalIds: readonly string[],
+): Promise<{ requestId: string; toolName: string } | null> {
+  const ids = approvalIds.filter((id) => UUID_RE.test(id))
+  if (ids.length === 0) return null
+  const [row] = await withPrivilegedDb(orgId, "tour-status-waited-request", (tx) =>
+    tx
+      .select({ id: approvalRequests.id, toolName: approvalRequests.toolName })
+      .from(approvalRequests)
+      .where(
+        and(
+          eq(approvalRequests.orgId, orgId),
+          eq(approvalRequests.status, "pending"),
+          inArray(approvalRequests.id, ids),
+        ),
+      )
+      .orderBy(asc(approvalRequests.createdAt))
+      .limit(1),
+  )
+  return row ? { requestId: row.id, toolName: row.toolName } : null
 }
 
 /**

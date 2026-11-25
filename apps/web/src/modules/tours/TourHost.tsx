@@ -33,7 +33,7 @@ import {
 } from "solid-js"
 import { registerWsEntityHandler } from "~/framework/app-registry"
 import { demoWorkspaceEnded } from "~/lib/demo-expired"
-import { decideApproval, getApproval } from "~/modules/approvals/approvals-service"
+import { decideApproval, getApproval, listBundle } from "~/modules/approvals/approvals-service"
 import { decisionToastItems } from "~/modules/approvals/decision-queue"
 import { sessionOrgId } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -188,12 +188,21 @@ export const TourOverlay: Component<TourOverlayProps> = (props) => {
     }
     if (!client) return
     // Off screen: approve what the request says now, by its fingerprint. A
-    // bare approve is refused (payload_hash_required).
+    // bare approve is refused (payload_hash_required), and so is a request of
+    // several steps approved without each later step's fingerprint
+    // (payload_changed): a routine's request is usually one.
     try {
       const request = await getApproval(client, requestId)
+      const steps = request.bundleId ? await listBundle(client, request.bundleId) : []
+      const stepPayloadHashes = Object.fromEntries(
+        steps
+          .filter((step) => step.id !== requestId && step.status === "deferred" && step.payloadHash)
+          .map((step) => [step.id, step.payloadHash as string]),
+      )
       await decideApproval(client, requestId, {
         decision: "approve",
         ...(request.payloadHash ? { payloadHash: request.payloadHash } : {}),
+        ...(Object.keys(stepPayloadHashes).length > 0 ? { stepPayloadHashes } : {}),
       })
     } catch {
       // The card itself says why a decision failed.

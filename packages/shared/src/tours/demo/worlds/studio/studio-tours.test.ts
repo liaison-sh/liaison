@@ -22,6 +22,7 @@ import {
 import {
   STUDIO_COMPANY_WRITE_TOOL,
   STUDIO_PRICE_SET,
+  STUDIO_PROPOSAL_TOOL,
   STUDIO_SALES_CFG,
   scenarioStudioSalesTour,
 } from "./sales"
@@ -154,7 +155,10 @@ describe("the services world's tours", () => {
   })
 
   it("the sales tour drafts a proposal and a quote whose price is left for the person", () => {
-    expect(STUDIO_SALES_CFG.bundleHeadTools).toEqual([STUDIO_COMPANY_WRITE_TOOL])
+    expect(STUDIO_SALES_CFG.bundleHeadTools).toEqual([
+      STUDIO_COMPANY_WRITE_TOOL,
+      STUDIO_PROPOSAL_TOOL,
+    ])
     expect(JSON.stringify(scenarioStudioSalesTour)).not.toMatch(/connector/)
     const ids = BEATS(scenarioStudioSalesTour)
     // One request approved once, then the price, which the person sets themselves.

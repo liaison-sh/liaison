@@ -9,6 +9,7 @@ import {
   type Component,
   createEffect,
   createSignal,
+  type JSX,
   lazy,
   on,
   onCleanup,
@@ -66,6 +67,8 @@ export interface PageBodyProps {
   onAddFiles?: (files: File[]) => void
   onEdit: () => void
   onRefreshSynced: () => void
+  /** Shown under the text (a folder's page: what is inside the folder). */
+  below?: JSX.Element
 }
 
 export const PageBody: Component<PageBodyProps> = (props) => {
@@ -208,6 +211,8 @@ export const PageBody: Component<PageBodyProps> = (props) => {
             />
           </Suspense>
         </Show>
+
+        {props.below}
 
         <Show when={hasScope(ATTACHMENTS_SCOPE)}>
           <Show

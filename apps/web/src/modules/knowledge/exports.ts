@@ -19,6 +19,7 @@ export const KnowledgeWorkspace = lazy(() => import("./KnowledgeWorkspace"))
 export const KnowledgeSidebar = lazy(() => import("./KnowledgeSidebar"))
 export const KnowledgeDocumentView = lazy(() => import("./KnowledgeDocumentView"))
 export const KnowledgeLinkedSourceView = lazy(() => import("./KnowledgeLinkedSourceView"))
+export const KnowledgeFolderView = lazy(() => import("./KnowledgeFolderView"))
 export const SyncedSourceAddTab = lazy(() => import("./SyncedSourceAddTab"))
 // Custom block of the Knowledge settings page (manifest `settings`).
 export const SyncedSourceAdd = lazy(() =>
@@ -44,6 +45,20 @@ export function resolveKnowledgeDocLabel(entityId: string): string | undefined {
     return undefined
   }
   return walk(knowledgeStore.collectionsTree)
+}
+
+// Dynamic tab label for knowledge:folder tabs: the folder's name, as the tree shows it.
+export function resolveKnowledgeFolderLabel(entityId: string): string | undefined {
+  if (!entityId) return undefined
+  const find = (nodes: typeof knowledgeStore.collectionsTree): string | undefined => {
+    for (const node of nodes) {
+      if (node.id === entityId) return node.name
+      const below = find(node.children)
+      if (below) return below
+    }
+    return undefined
+  }
+  return find(knowledgeStore.collectionsTree)
 }
 
 // WS handlers (manifest views.wsHandlers → these by name). Signatures/behavior

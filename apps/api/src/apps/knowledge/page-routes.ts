@@ -155,7 +155,8 @@ export function mountPageRoutes(routes: Hono<AppEnv>, helpers: PageRouteHelpers)
   })
 
   // The first edit of a folder's page: made now when the folder has none, else the
-  // existing one (201 when made here, 200 otherwise).
+  // existing one (201 and `created: true` when made here, 200 and `created: false`
+  // otherwise).
   routes.post(
     "/collections/:id/page",
     zValidator("param", idParamSchema),
@@ -168,7 +169,9 @@ export function mountPageRoutes(routes: Hono<AppEnv>, helpers: PageRouteHelpers)
         const { page, created } = await withRequestRls(c, (tx) =>
           ensureIndexDocument(tx, id, actor, body === undefined ? {} : { body }),
         )
-        return success(c, page, undefined, created ? 201 : 200)
+        // `created` too: a client that typed into an empty folder must know when the
+        // page it gets is someone else's (made meanwhile), and never save over it.
+        return success(c, { ...page, created }, undefined, created ? 201 : 200)
       } catch (err) {
         return helpers.folderWriteRefusal(c, err)
       }

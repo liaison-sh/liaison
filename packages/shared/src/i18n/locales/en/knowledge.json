@@ -318,5 +318,21 @@
     "linkedFrom": "Linked from",
     "untitledThread": "Untitled conversation",
     "conversations": "Conversations"
+  },
+  "folderPage": {
+    "inside": "In this folder",
+    "nothingHere": "Nothing here yet.",
+    "newPage": "New page",
+    "writeAbout": "Write about this folder",
+    "startFailed": "This folder's page could not be made. Your text is kept in this browser.",
+    "startRetry": "Try again",
+    "draftBack": "Your text from before is back. Type on to make the folder's page.",
+    "more": "Showing the first 500 folders and the first 500 pages.",
+    "folder": "Folder",
+    "notFound": "This folder no longer exists, or you cannot open it.",
+    "path": "Where this folder is",
+    "openFolder": "Open {{name}}",
+    "newPageFailed": "The page could not be made.",
+    "showInside": "Show what is inside {{name}}"
   }
 }

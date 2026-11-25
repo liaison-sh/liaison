@@ -749,10 +749,13 @@ async function checkDocument(
   }
   assertDocumentAllowed(ctx, record)
   await placeOf(tx, ctx, record, true)
-  return {
-    status: "created",
-    ...(record.losses?.length ? { report: { losses: record.losses } } : {}),
+  const files = record.attachments?.length ?? 0
+  // The preview counts the files the run would copy onto pages (summed by the runner).
+  const report = {
+    ...(files > 0 ? { filesToCopy: files } : {}),
+    ...(record.losses?.length ? { losses: record.losses } : {}),
   }
+  return { status: "created", ...(Object.keys(report).length > 0 ? { report } : {}) }
 }
 
 // ---------------------------------------------------------------------------

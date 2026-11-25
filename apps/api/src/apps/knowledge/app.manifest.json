@@ -61,7 +61,7 @@
       }
     ]
   },
-  "version": "1.0.16",
+  "version": "1.0.17",
   "description": "Knowledge workspace for local documents and curated source links",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1747,6 +1747,16 @@
         "label": "Linked Source",
         "icon": "KnowledgeIcon",
         "urlPattern": "/knowledge/sources/:entityId",
+        "referenceable": false
+      },
+      "import": {
+        "component": "KnowledgeImportView",
+        "sidebar": "KnowledgeSidebar",
+        "label": "Import from Notion",
+        "labelKey": "knowledge.notionImport.tabLabel",
+        "icon": "KnowledgeIcon",
+        "urlPattern": "/knowledge/import",
+        "singleton": true,
         "referenceable": false
       },
       "synced-source-add": {

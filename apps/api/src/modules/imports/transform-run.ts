@@ -1244,7 +1244,7 @@ export async function stageTransformSource(input: StageInput): Promise<StagedRun
       } catch (err) {
         // A built-in's refusals are the person's to read: why, before any work.
         if (builtin && err instanceof ParserError) {
-          throw new ImportError("invalid_source", err.message)
+          throw new ImportError("invalid_source", err.message, 400, err.code)
         }
         throw err
       }
@@ -1253,6 +1253,9 @@ export async function stageTransformSource(input: StageInput): Promise<StagedRun
         fileRules,
       )
       report.filesRead = planned.map((p) => p.name)
+      // What a built-in's upload holds, by type: a screen tells an export of the
+      // wrong format (HTML instead of Markdown) by it.
+      if (builtin) report.entryTypes = entryTypesOf(units.map((u) => u.name))
       const listingRules = (fileRules ?? []).filter((r) => r.as === "listing")
       const listed = listingRules.length
         ? units
@@ -1487,6 +1490,21 @@ async function copyEntryToFile(
  * `nestedZips` a zip entry ending in `.zip` is read too (one level), its
  * entries in the same namespace as the upload's (the first of a name wins).
  */
+/** How many of these names are Markdown, CSV, HTML or anything else. */
+export function entryTypesOf(
+  names: string[],
+): Record<"markdown" | "csv" | "html" | "other", number> {
+  const out = { markdown: 0, csv: 0, html: 0, other: 0 }
+  for (const raw of names) {
+    const name = raw.toLowerCase()
+    if (name.endsWith(".md")) out.markdown++
+    else if (name.endsWith(".csv")) out.csv++
+    else if (name.endsWith(".html") || name.endsWith(".htm")) out.html++
+    else out.other++
+  }
+  return out
+}
+
 async function uploadUnits(
   input: { actor: UserContext; mode: "api" | "cli" },
   src: TransformInput,
@@ -1525,6 +1543,9 @@ async function uploadUnits(
       throw new ImportError(
         "invalid_source",
         `The upload is ${total} bytes; this import reads at most ${builtin.limits.maxUploadBytes} bytes.`,
+
+        400,
+        "upload_too_large",
       )
     }
   }
@@ -1546,6 +1567,9 @@ async function uploadUnits(
       throw new ImportError(
         "invalid_source",
         `The upload's archives declare more than ${strict.maxDecompressedBytes} decompressed bytes; refused.`,
+
+        400,
+        "zip_decompressed_too_large",
       )
     }
   }
@@ -1582,6 +1606,9 @@ async function uploadUnits(
               throw new ImportError(
                 "invalid_source",
                 `${entry.name} holds ${e.name}: zips are read at most one level deep, never more than one level inside the upload.`,
+
+                400,
+                "zip_nested_too_deep",
               )
             }
             if (seen.has(e.name)) continue

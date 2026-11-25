@@ -20,6 +20,7 @@ import { Button } from "~/ui/Button"
 import { ScrollFade } from "~/ui/ScrollFade"
 import type { CollectionTreeNode } from "./knowledge-api"
 import { knowledgeStore, loadCollectionsTree } from "./knowledge-store"
+import { canImportNotion } from "./notion-import"
 
 /** The route the tab store opens for Knowledge home (`knowledge-tabs.ts`'s
  *  `knowledge:home` registration). */
@@ -60,6 +61,15 @@ const KnowledgeHome: Component = () => {
 
   function openCreateKnowledge(): void {
     void discussWithPersonalAgent({ title: CREATE_FROM_LABEL, link: KNOWLEDGE_HOME_LINK }, api)
+  }
+
+  function openNotionImport(): void {
+    openTab({
+      type: "knowledge:import",
+      entityId: "import",
+      label: i18n.t("knowledge.notionImport.tabLabel"),
+      preview: false,
+    })
   }
 
   const recent = createMemo<RecentDoc[]>(
@@ -105,14 +115,27 @@ const KnowledgeHome: Component = () => {
               {i18n.t("kernel.knowledgeTitle")}
             </h1>
           </Show>
-          <Button
-            data-testid="knowledge-home-create-from-cta"
-            size="sm"
-            class="shrink-0 whitespace-nowrap"
-            onClick={openCreateKnowledge}
-          >
-            {i18n.t("knowledge.createKnowledgeFrom")}
-          </Button>
+          <div class="flex flex-wrap gap-2">
+            <Show when={canImportNotion()}>
+              <Button
+                data-testid="knowledge-home-import"
+                size="sm"
+                variant="outline"
+                class="shrink-0 whitespace-nowrap"
+                onClick={openNotionImport}
+              >
+                {i18n.t("knowledge.notionImport.entry")}
+              </Button>
+            </Show>
+            <Button
+              data-testid="knowledge-home-create-from-cta"
+              size="sm"
+              class="shrink-0 whitespace-nowrap"
+              onClick={openCreateKnowledge}
+            >
+              {i18n.t("knowledge.createKnowledgeFrom")}
+            </Button>
+          </div>
         </div>
 
         {/* Needs-review filter — only when there are items to review */}

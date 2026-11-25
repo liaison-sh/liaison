@@ -328,9 +328,13 @@ export const previewParams = z.object({
  * pages): the counts, refused records, clipped samples and the preview's
  * hash, recorded on its dry-run row. Throws `ImportError` on a refusal.
  */
-export async function previewImport(params: unknown, ctx: ImportActorCtx) {
+export async function previewImport(
+  params: unknown,
+  ctx: ImportActorCtx,
+  opts: { namedLosses?: boolean } = {},
+) {
   if (params !== null && typeof params === "object" && "builtin" in params) {
-    return previewBuiltinImport(params, ctx)
+    return previewBuiltinImport(params, ctx, opts)
   }
   const p = previewParams.parse(params)
   {
@@ -503,6 +507,31 @@ export async function startFromPreview(
   return { runId: run.id, status: run.status }
 }
 
+/**
+ * Everything a built-in's preview would not carry, unclipped, for the person's
+ * own preview screen (the Knowledge import): every loss named up to the
+ * runner's cap and the rest counted, every file not read, and what the upload
+ * held by type, so a screen can tell an export of the wrong format. An agent's
+ * preview keeps the clipped report.
+ */
+export function namedLossesOf(report: Record<string, unknown>) {
+  const types = (report.entryTypes ?? {}) as Record<string, unknown>
+  const entries = {
+    markdown: Number(types.markdown) || 0,
+    csv: Number(types.csv) || 0,
+    html: Number(types.html) || 0,
+    other: Number(types.other) || 0,
+  }
+  return {
+    losses: Array.isArray(report.losses) ? report.losses : [],
+    lossesNotListed: Number(report.lossesNotListed) || 0,
+    missingFiles: Array.isArray(report.missingFiles) ? report.missingFiles : [],
+    attachmentsMissing: Number(report.attachmentsMissing) || 0,
+    filesToCopy: Number(report.filesToCopy) || 0,
+    entries,
+  }
+}
+
 /** A built-in's preview: its key and settings; the label is never the client's. */
 export const builtinPreviewParams = z
   .object({
@@ -520,7 +549,11 @@ export const builtinPreviewParams = z
  * records and the report (files not carried, losses). Its source label is
  * set here, per person for a private import (K-R7).
  */
-async function previewBuiltinImport(params: unknown, ctx: ImportActorCtx) {
+async function previewBuiltinImport(
+  params: unknown,
+  ctx: ImportActorCtx,
+  opts: { namedLosses?: boolean } = {},
+) {
   const parsed = builtinPreviewParams.safeParse(params)
   if (!parsed.success) {
     throw new ImportError(
@@ -581,6 +614,7 @@ async function previewBuiltinImport(params: unknown, ctx: ImportActorCtx) {
       ? { moreErrors: result.errors.length - ERRORS_SHOWN }
       : {}),
     report: clipValue(result.report),
+    ...(opts.namedLosses ? { named: namedLossesOf(result.report) } : {}),
     next:
       blocked ??
       (result.report.cutAtLimit

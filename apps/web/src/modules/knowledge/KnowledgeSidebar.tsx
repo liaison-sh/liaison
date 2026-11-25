@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { FolderOpen, Plus, Search, Trash2 } from "lucide-solid"
+import { FileUp, FolderOpen, Plus, Search, Trash2 } from "lucide-solid"
 import {
   type Component,
   createEffect,
@@ -51,6 +51,7 @@ import {
   setFolderOpen,
   setKnowledgeView,
 } from "./knowledge-store"
+import { canImportNotion } from "./notion-import"
 import { refusalMessage } from "./refusal"
 import {
   canMoveToTrash,
@@ -659,6 +660,28 @@ const KnowledgeSidebar: Component = () => {
           </Show>
         </div>
       </ScrollFade>
+
+      {/* Import a Notion export: its own tab (the import screen), for whoever may import. */}
+      <Show when={canImportNotion()}>
+        <div class="border-t border-border-subtle py-1">
+          <button
+            type="button"
+            data-testid="knowledge-sidebar-import"
+            class="flex w-full items-center gap-2 px-5 py-2.5 text-[13px] text-text-tertiary outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:bg-surface-hover focus-visible:text-text-secondary"
+            onClick={() =>
+              openTab({
+                type: "knowledge:import",
+                entityId: "import",
+                label: i18n.t("knowledge.notionImport.tabLabel"),
+                preview: false,
+              })
+            }
+          >
+            <FileUp size={14} />
+            <span class="flex-1 text-left">{i18n.t("knowledge.notionImport.entry")}</span>
+          </button>
+        </div>
+      </Show>
 
       {/* Auto-appearing Unfiled entry (only when there are orphan docs), then Trash
           for whoever may restore pages (S19). */}

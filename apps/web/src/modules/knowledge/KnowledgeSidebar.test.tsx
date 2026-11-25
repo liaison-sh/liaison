@@ -984,3 +984,40 @@ describe("KnowledgeSidebar — organise (K1)", () => {
     expect(api.post).not.toHaveBeenCalled()
   })
 })
+
+describe("KnowledgeSidebar — Import from Notion", () => {
+  afterEach(() => clearAuth())
+  const signIn = (scopes: string[]) =>
+    setTokens(
+      makeJwt({
+        userId: "user-1",
+        orgId: "org-1",
+        name: "Test User",
+        roles: [],
+        scopes,
+        dimensionGrants: {},
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    )
+  const mount = () => {
+    const api = { get: vi.fn(async () => []), post: vi.fn() }
+    render(() => (
+      <ApiContext.Provider value={api as never}>
+        <KnowledgeSidebar />
+      </ApiContext.Provider>
+    ))
+  }
+
+  it("is offered to whoever may run and read imports", async () => {
+    signIn(["kernel:imports:run", "kernel:imports:read"])
+    mount()
+    expect(await screen.findByTestId("knowledge-sidebar-import")).toBeInTheDocument()
+  })
+
+  it("is not shown to someone who may not import", async () => {
+    signIn(["knowledge:collections:manage"])
+    mount()
+    await screen.findByText(/^personal$/i)
+    expect(screen.queryByTestId("knowledge-sidebar-import")).toBeNull()
+  })
+})

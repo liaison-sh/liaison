@@ -178,6 +178,8 @@ export class ImportError extends Error {
         : code === "not_final" || code === "locked" || code === "already_undone"
           ? 409
           : 400,
+    /** A finer reason a screen translates (a zip parser's code: `zip_encrypted`, ...). */
+    readonly reason?: string,
   ) {
     super(message)
     this.name = "ImportError"

@@ -32,6 +32,10 @@ const TREATED: Record<string, [Treatment, string]> = {
     "member-filter",
     "a source owner's scopes, read only for an active member",
   ],
+  "apps/knowledge/approval-audience.ts": [
+    "member-filter",
+    "a gated page write's decider: the page's owner only while an active member, else the requester",
+  ],
   "apps/knowledge/import-kind.ts": ["by-address", "an imported document's author"],
   "apps/projects/import-kind.ts": [
     "by-address",

@@ -59,6 +59,8 @@ import { executeTool } from "~/modules/apps/execute-tool"
 import { visitorMarker } from "~/modules/demo/demo-org"
 import { computeBeatStatus } from "~/modules/tours/beat-status"
 import { handleTourProgressEvent } from "~/modules/tours/consumer"
+import { personalAgentDmId } from "~/modules/tours/conversation"
+import { startTour } from "~/modules/tours/service"
 import * as minimal from "~/seed/tiers/minimal"
 import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -210,15 +212,27 @@ beforeAll(async () => {
   )
   routineId = row?.id as string
   startedAt = new Date(Date.now() - 60_000).toISOString()
-  // The visitor switched the routine on and the prospect's email came in.
-  await sql`INSERT INTO kernel.tour_progress
-      (org_id, user_id, tour_id, status, beat_id, beat_index, beat_states, source, started_at)
-    VALUES (${orgId}, ${userId}, ${TOUR.id}, 'active', 'researching',
-      ${beats.findIndex((b) => b.id === "researching")},
-      ${JSON.stringify({
+  // The visitor started the tour, switched the routine on, and the prospect's email came in.
+  const conversationId = await personalAgentDmId(orgId, userId)
+  await withPrivilegedDb(orgId, "sales-wait-tour", (tx) =>
+    startTour(tx, {
+      orgId,
+      userId,
+      tour: TOUR,
+      beats,
+      source: "demo",
+      actor: { userId, actorType: "user" },
+      conversationId,
+    }),
+  )
+  await sql`UPDATE kernel.tour_progress
+    SET beat_id = 'researching', beat_index = ${beats.findIndex((b) => b.id === "researching")},
+      beat_states = beat_states || ${JSON.stringify({
         enable: { state: "done", entityId: routineId },
         "live-email": { state: "done", entityId: email },
-      })}::jsonb, 'demo', ${startedAt})`
+      })}::jsonb,
+      started_at = ${startedAt}
+    WHERE org_id = ${orgId} AND user_id = ${userId} AND tour_id = ${TOUR.id}`
 })
 
 afterAll(async () => {

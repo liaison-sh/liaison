@@ -145,6 +145,9 @@ export async function createDoorWorld(): Promise<DoorWorld> {
     [w.otherClient, w.otherOrgId, w.otherCompany],
   ]
   for (const [c, orgId, companyId] of clients) await insertClient(c, orgId, companyId)
+  // Companies (and the portal on a company page), deals, client reports and recurring
+  // billing are off until an admin turns them on; both orgs of the world have them on.
+  for (const orgId of [w.orgId, w.otherOrgId]) await turnOnOrgFeatures(orgId)
   return w
 }
 
@@ -204,8 +207,6 @@ export async function createSignInWorld(): Promise<SignInWorld> {
   await sql`UPDATE ${k("users")} SET totp_enabled = true,
     totp_secret = ${encryptSecret(clientTotp.secret, encryptionKey, CryptoContext.totpSecret)}
     WHERE id = ${clientTotp.userId}`
-  // Companies (and the portal on a company page) are off until an admin turns them on.
-  await turnOnOrgFeatures(w.orgId)
   return { ...w, clientGone, clientTotp, twoOrgClient }
 }
 

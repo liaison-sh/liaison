@@ -964,7 +964,10 @@ export async function listKnowledgeDocuments(
   const unfiledClause = opts.unfiled
     ? drizzleSql`AND d.document_scope = 'organization'
         AND ${inNoVisibleFolder()}
-        AND NOT ${onlyMine(actor)}`
+        AND NOT ${onlyMine(actor)}
+        AND NOT EXISTS (
+          SELECT 1 FROM ${knowledgeRel("collections")} c
+           WHERE c.org_id = d.org_id AND c.index_document_id = d.id AND c.archived_at IS NULL)`
     : drizzleSql``
   const rows = extractRows<DocumentDbRow>(
     await tx.execute(drizzleSql`
@@ -1233,6 +1236,11 @@ export interface KnowledgeUpdateOptions {
    * update event is coalesced to one a minute (event-coalesce.ts).
    */
   coalesceEvents?: boolean
+  /**
+   * The title is the page's folder's new name (folder-pages.ts, followFolderRename): a
+   * verified page stays verified, as its text did not change.
+   */
+  titleFromFolder?: boolean
 }
 
 export async function updateKnowledgeDocument(
@@ -1264,6 +1272,13 @@ export async function updateKnowledgeDocument(
   assertCanWriteDocumentRow(row, actor, updateShareRole)
   if (row.revision !== parsed.revision)
     throw new KnowledgeError("REVISION_CONFLICT", "Revision conflict")
+
+  // A new title may rename the folders this page is the page of: lock them before
+  // anything below locks the page (folder first, then page; folder-pages.ts).
+  if (parsed.title !== undefined && parsed.title !== row.title) {
+    const { lockFoldersOfPage } = await import("~/apps/knowledge/folder-pages")
+    await lockFoldersOfPage(tx, actor, row.id)
+  }
 
   // Page links are stored as the bare token, never with a title (links.ts). A page
   // stored before that is normalised first, history included, so this write compares
@@ -1359,6 +1374,7 @@ export async function updateKnowledgeDocument(
   // already has (an editor re-sending the whole page, a reviewDueAt-only patch) leaves a
   // verified page verified.
   const changed = changedReviewFields(row, parsed, changingTeam, changingSensitivity)
+  if (opts.titleFromFolder) delete changed.title
   let reviewStatus: string | undefined
   if (shouldResetVerification(row, changed)) {
     reviewStatus = "needs_review"
@@ -1453,6 +1469,11 @@ export async function updateKnowledgeDocument(
   if (parsed.body !== undefined && parsed.body !== row.body) {
     await links.refreshDocumentLinks(tx, actor.orgId, parsed.id, parsed.body)
   }
+  // A folder's page carries the folder's name (folder-pages.ts).
+  if (parsed.title !== undefined && parsed.title !== row.title) {
+    const { followPageRename } = await import("~/apps/knowledge/folder-pages")
+    await followPageRename(tx, parsed.id, parsed.title, actor)
+  }
 
   // Owner reassignment changes who is implicitly on the ACL (recomputed from
   // owner_user_id/created_by/document_shares) — recompute so search's
@@ -1524,6 +1545,10 @@ export async function archiveKnowledgeDocument(
   if (row.syncedSourceId) {
     validation("This page is synced from another source: manage it there, not in Trash")
   }
+  // A page in Trash leaves the folders it is the page of: lock them before the page
+  // (folder first, then page; folder-pages.ts).
+  const folderPages = await import("~/apps/knowledge/folder-pages")
+  await folderPages.lockFoldersOfPage(tx, actor, id)
   // Archiving is moving to Trash: the clock starts in the same write (trashed_at at
   // the same now() as archived_at), so the daily job deletes it 30 days later
   // (trash.ts). Only flip + emit the event when the doc is actually ACTIVE:
@@ -1540,6 +1565,8 @@ export async function archiveKnowledgeDocument(
   `)
   const archived = extractRows<{ id: string }>(updateResult).length > 0
   if (archived) {
+    // A folder's page in Trash is no longer the folder's page (folder-pages.ts).
+    await folderPages.detachFolderPage(tx, actor, id)
     await tx.queueEvent({
       app: "knowledge",
       entity: "document",

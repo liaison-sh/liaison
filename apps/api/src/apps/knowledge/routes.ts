@@ -168,6 +168,7 @@ mountPageRoutes(knowledgeRoutes, {
   getActor: (c) => getActor(c),
   pageWriteRefusal: (c, err) => writeRefusal(c, err, "page"),
   pageNotFound: (c, err) => zeroKnowledgeResponse(c, err),
+  folderWriteRefusal: (c, err) => writeRefusal(c, err, "folder"),
 })
 
 // ---------------------------------------------------------------------------

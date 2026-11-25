@@ -376,7 +376,9 @@ gated call that holds a near-miss reference (`{{step1.record_id}}`,
 expected, so a placeholder never reaches a record or a customer.
 A whole token passes a param declared `format: "uuid"`: the id it stands
 for exists only once the cited step has run, and is filled in before the later
-step runs.
+step runs. A citing call made through `kernel__call_tool` (a tool loaded outside
+the agent's tool list) is staged as the tool it names, so that tool runs when
+the request is approved.
 
 **Patterns in params and settings.** A `pattern` in a tool's params, a settings
 field's `validation.pattern` and a connection's template variable or authorize

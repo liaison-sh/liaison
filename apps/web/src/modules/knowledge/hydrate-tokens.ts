@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The reader's half of a page's tokens: after the rendered text is in place, each
-// `<span data-liaison-file="<id>">` (markdown.ts) gets the view the editor shows for
+// `<span data-page-file="<id>">` (markdown.ts) gets the view the editor shows for
 // the same file (editor/file-view.ts). A span whose value is not a file id is left
 // empty: nothing is looked up for it.
 import { type FileViewDeps, isFileId, renderFileView } from "~/modules/editor/file-view"
@@ -13,8 +13,8 @@ export function hydrateFileTokens(
   label: string,
 ): () => void {
   const stops: Array<() => void> = []
-  for (const span of root.querySelectorAll<HTMLElement>("span[data-liaison-file]")) {
-    const id = span.getAttribute("data-liaison-file")
+  for (const span of root.querySelectorAll<HTMLElement>("span[data-page-file]")) {
+    const id = span.getAttribute("data-page-file")
     if (!isFileId(id)) {
       span.replaceChildren()
       continue

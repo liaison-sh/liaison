@@ -295,7 +295,7 @@ describe("a file of another page (edge 8, K-R17)", () => {
 
   it("from page A's editor (its clipboard HTML)", async () => {
     const m = await pasteThenSave((field) =>
-      pasteHtml(field, `<p><span data-liaison-file="${A}"></span></p>`, token(A)),
+      pasteHtml(field, `<p><span data-page-file="${A}"></span></p>`, token(A)),
     )
     // Typing (a step of its own) then undoing it never brings A's id back.
     m.editor.view.dispatch(closeHistory(m.editor.state.tr))
@@ -308,7 +308,7 @@ describe("a file of another page (edge 8, K-R17)", () => {
     await pasteThenSave((field) =>
       pasteHtml(
         field,
-        `<p><span data-liaison-file="${A}" class="liaison-file"><img src="blob:http://localhost/x" alt="chart.png"></span></p>`,
+        `<p><span data-page-file="${A}" class="liaison-file"><img src="blob:http://localhost/x" alt="chart.png"></span></p>`,
       ),
     )
   })
@@ -326,7 +326,7 @@ describe("a file of another page (edge 8, K-R17)", () => {
   it("an unreadable file: nothing inserted, the writer is told", async () => {
     const { field, editor, handle, editorFiles } = mount("Start.")
     caretAtEnd(editor)
-    pasteHtml(field, `<p><span data-liaison-file="${SECRET}"></span></p>`, token(SECRET))
+    pasteHtml(field, `<p><span data-page-file="${SECRET}"></span></p>`, token(SECRET))
     await waitFor(() =>
       expect(editorFiles.onRefused).toHaveBeenCalledWith("You cannot open that file"),
     )

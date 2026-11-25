@@ -30,7 +30,7 @@ import { FILE_REF_AT_START } from "~/modules/editor/file-view"
 
 /**
  * A page's image or file (`![](liaison-file:<id>)`) is an empty
- * `<span data-liaison-file="<id>">`: no address at all. The page mounts the file's
+ * `<span data-page-file="<id>">`: no address at all. The page mounts the file's
  * view into it after the HTML is in place (hydrate-tokens.ts).
  */
 const fileTokens: MarkedExtension = {
@@ -46,7 +46,7 @@ const fileTokens: MarkedExtension = {
         const match = FILE_REF_AT_START.exec(src)
         return match ? { type: "liaisonFile", raw: match[0], id: match[1] } : undefined
       },
-      renderer: (token) => `<span data-liaison-file="${String(token.id)}"></span>`,
+      renderer: (token) => `<span data-page-file="${String(token.id)}"></span>`,
     },
   ],
 }

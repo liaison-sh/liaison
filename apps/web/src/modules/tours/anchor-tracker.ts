@@ -215,7 +215,10 @@ export function createElementTracker(
     // (walk 2026-11-25). It is brought back once; the chat follows on below.
     const pushedUp = offScreen && shown && sized && !group && rect.bottom <= clipOf(el).top
     const bringBackNow =
-      pushedUp && broughtBack !== el && untrack(bringBack) && typeof el.scrollIntoView === "function"
+      pushedUp &&
+      broughtBack !== el &&
+      untrack(bringBack) &&
+      typeof el.scrollIntoView === "function"
     if (bringBackNow) {
       broughtBack = el
       scrolledFor = el

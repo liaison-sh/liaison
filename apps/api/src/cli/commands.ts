@@ -901,28 +901,6 @@ export const COMMANDS = [
     ],
   },
   {
-    name: "demo reclassify",
-    usage: "liaison demo reclassify --since <instant> --until <instant> [--org <id>] [--apply]",
-    summary:
-      "For the operator of a public demo, once, right after upgrading it to the release that gives every org a class: the visitor workspaces the previous release made while both ran have none, and the demo reaper deletes no org of another class. Lists the workspaces created in the window, and with `--apply` makes exactly those demo orgs, so they are deleted at their own expiry. Only a workspace with a valid visitor marker, a visitor workspace's generated slug, no billing and no control plane create is ever listed, never the operator's org. Refused (exit 2) with demo mode off and in the managed edition.",
-    flags: [
-      {
-        name: "--since",
-        arg: "<instant>",
-        summary: "The start of the window, with its zone: a little before the migration ran.",
-        required: true,
-      },
-      {
-        name: "--until",
-        arg: "<instant>",
-        summary: "The end of the window: when the last process of the previous release stopped.",
-        required: true,
-      },
-      { name: "--org", arg: "<id>", summary: "Only this workspace." },
-      { name: "--apply", summary: "Make the change; without it the command only lists." },
-    ],
-  },
-  {
     name: "org caps",
     usage:
       "liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--custom-apps <n>] [--audit-days <n>] [--app-runs-per-day <n>] [--app-bridge-calls-per-day <n>] [--app-cpu-ms-per-day <n>] [--unset <cap>]",

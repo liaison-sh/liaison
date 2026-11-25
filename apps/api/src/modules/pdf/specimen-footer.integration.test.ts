@@ -10,7 +10,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import type { DrawCommand } from "@liaison/app-sdk"
 import { decodePDFRawStream, PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream } from "pdf-lib"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { buildCii } from "../../../../../bundled-apps/invoicing/src/facturx/cii"
@@ -229,7 +230,7 @@ describe("rendering through the host", () => {
     expect(realXml).toContain("<rsm:ExchangedDocument>")
     expect(realXml).not.toContain("Specimen")
 
-    await markOrgAsDemo(orgId, visitorMarker(1))
+    await markDemoOrgForTest(orgId, visitorMarker(1))
     await invalidateDemoMarker(orgId)
     const demo = await getFileBytes(null, (await render()).file_id)
     const text = await extractPdfText(demo)
@@ -250,7 +251,7 @@ describe("rendering through the host", () => {
     expect(await store(cii)).toEqual(cii)
     expect(await store(other)).toEqual(other)
 
-    await markOrgAsDemo(orgId, visitorMarker(1))
+    await markDemoOrgForTest(orgId, visitorMarker(1))
     await invalidateDemoMarker(orgId)
     const stamped = new TextDecoder().decode(await store(cii))
     expect(stamped).toBe(ciiWithSpecimenNote(buildCii(fxDocument()), specimenNoteText()))

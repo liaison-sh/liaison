@@ -14,7 +14,7 @@ import { createEgressMethods } from "~/modules/apps/sandbox/bridge/egress"
 import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { DEMO_BOXTAL_SENTINEL_KEY } from "~/modules/demo/boxtal/sentinel"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import {
   DEMO_BOXTAL_TOKEN_PREFIX,
   fixtureConnectionOf,
@@ -24,6 +24,7 @@ import { DEMO_SHOP_DOMAIN, DEMO_SHOPIFY_SENTINEL_TOKEN } from "~/modules/demo/sh
 import { DEMO_PAYMENTS_SENTINEL_KEY } from "~/modules/demo/worlds/saas/payments/sentinel"
 import { DEMO_GITHUB_SENTINEL_TOKEN } from "~/modules/demo/worlds/studio/github/sentinel"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const SHOPIFY = `https://${DEMO_SHOP_DOMAIN}/admin/api/2024-10/graphql.json`
@@ -76,9 +77,9 @@ describe("fixture connections off the demo instance", () => {
     worldOrgId = (await ensureOrg({ slug: "fixture-conn-world", name: "Fixture World" })).orgId
     plainOrgId = (await ensureOrg({ slug: "fixture-conn-plain", name: "Fixture Plain" })).orgId
     // What `liaison seed --tier lively` leaves on a self-hosted box: the demo world's org.
-    await markOrgAsDemo(worldOrgId, visitorMarker(24))
+    await markDemoOrgForTest(worldOrgId, visitorMarker(24))
     studioOrgId = (await ensureOrg({ slug: "fixture-conn-studio", name: "Fixture Studio" })).orgId
-    await markOrgAsDemo(
+    await markDemoOrgForTest(
       studioOrgId,
       visitorMarker(24, new Date(), undefined, { worldId: "studio" }),
     )

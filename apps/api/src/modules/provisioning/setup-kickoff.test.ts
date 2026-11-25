@@ -10,6 +10,7 @@
 // Real database and real sign-in route; the model is stubbed at the provider
 // boundary and the job queue is captured so each job runs here, in order.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 
 const enqueued: Array<{ jobName: string; payload: Record<string, unknown> }> = []
 const realJobs = await import("~/infra/jobs/jobs")
@@ -39,7 +40,7 @@ const { getOrCreatePersonalAgentId } = await import("~/modules/agent/directory/p
 const { AgentServiceTestAccess } = await import("~/modules/agent/runtime/agent-service")
 const { registerKernelAgentTools } = await import("~/modules/agent/tools/kernel-tools")
 const { createSession } = await import("~/modules/auth/auth")
-const { markOrgAsDemo, reservedMarker, visitorMarker } = await import("~/modules/demo/demo-org")
+const { reservedMarker, visitorMarker } = await import("~/modules/demo/demo-org")
 const { loadEffectivePermissions } = await import("~/modules/permissions/permissions")
 const { runSetupKickoff, SETUP_KICKOFF_JOB, SetupKickoffTestAccess } = await import(
   "~/modules/provisioning/setup-kickoff"
@@ -421,7 +422,7 @@ describe("nobody else gets it", () => {
   ] as const) {
     it(`a ${label} demo workspace gets none, whoever signs in`, async () => {
       const { orgId, adminId, email } = await freshOrg()
-      await markOrgAsDemo(orgId, marker())
+      await markDemoOrgForTest(orgId, marker())
       expect((await signIn(email)).status).toBe(200)
       await settle(orgId)
       expect(kickoffJobs(orgId)).toHaveLength(0)

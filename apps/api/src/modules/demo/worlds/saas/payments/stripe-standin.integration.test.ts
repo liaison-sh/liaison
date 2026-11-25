@@ -42,10 +42,11 @@ import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worke
 import { processTranslationEvent } from "~/modules/attention/translator"
 import { DemoRestrictionError } from "~/modules/demo/demo-egress"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { registerTemplate } from "~/modules/pdf/registry"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -483,7 +484,7 @@ describe("the card-payments stand-in on the real kernel", () => {
       )
     }
     await reloadOrgApps(ORG, { fresh: true })
-    await markOrgAsDemo(ORG, visitorMarker(24))
+    await markDemoOrgForTest(ORG, visitorMarker(24))
     await installDemoPaymentsConnection({ orgId: ORG, createdByUserId: ADMIN })
 
     // Liaison issues the card stream's invoices (mode A), from an issuer in Paris.

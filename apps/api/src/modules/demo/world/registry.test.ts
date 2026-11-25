@@ -11,15 +11,11 @@ import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { KERNEL_DECLARED_EMITS } from "~/infra/events/event-bus"
 import { declaredEmits } from "~/modules/apps/app-registries"
-import {
-  invalidateDemoMarker,
-  markOrgAsDemo,
-  reservedMarker,
-  visitorMarker,
-} from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker, visitorMarker } from "~/modules/demo/demo-org"
 import * as verification from "~/modules/demo/demo-verification"
 import { loadTourOrgContext, startTour, tourBeats } from "~/modules/tours/service"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 
 let verified = false
@@ -116,7 +112,7 @@ beforeAll(async () => {
   priorKernelEmits = declaredEmits.get("kernel")
   declaredEmits.set("kernel", new Set(KERNEL_DECLARED_EMITS))
   demoOrg = (await createTestOrg()).id
-  await markOrgAsDemo(demoOrg, visitorMarker(24))
+  await markDemoOrgForTest(demoOrg, visitorMarker(24))
   plainOrg = (await minimal.secondOrg()).orgId
 })
 
@@ -370,7 +366,7 @@ describe("demo-world consumer", () => {
 
   it("refuses the reserved review org: no injection, no mark", async () => {
     const reviewOrg = (await minimal.secondOrg()).orgId
-    await markOrgAsDemo(reviewOrg, reservedMarker())
+    await markDemoOrgForTest(reviewOrg, reservedMarker())
     invalidateDemoMarker()
     const reviewer = await addUser(reviewOrg)
     await onWorldBeat(reviewOrg, reviewer)

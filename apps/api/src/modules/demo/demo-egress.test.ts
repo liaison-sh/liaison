@@ -16,9 +16,10 @@ import { createEgressMethods } from "~/modules/apps/sandbox/bridge/egress"
 import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { DemoRestrictionError } from "~/modules/demo/demo-egress"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const CREDS = {
@@ -75,7 +76,7 @@ describe("demo egress lockdown", () => {
         role: "admin",
       })
     ).userId
-    await markOrgAsDemo(demoOrgId, visitorMarker(24))
+    await markDemoOrgForTest(demoOrgId, visitorMarker(24))
     SandboxBridgeTestAccess.setSmtpSend(async (_c, _i, message) => {
       onTheWire.push(message)
       return { messageId: "delivered", deliveryState: "sent" }

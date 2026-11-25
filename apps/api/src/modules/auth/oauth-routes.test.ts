@@ -26,6 +26,7 @@ import {
   parseExchangePayload,
   serializeExchangePayload,
 } from "~/modules/auth/oauth-routes"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { clearRedisPatterns } from "~/tests/route-test-setup"
 
 /**
@@ -774,9 +775,7 @@ describe("OAuth callback: existing account without a linked identity", () => {
   })
 
   it("first-party Google: an account in a demo org (unverified address) is never linked by email", async () => {
-    const { markOrgAsDemo, invalidateDemoMarker, visitorMarker } = await import(
-      "~/modules/demo/demo-org"
-    )
+    const { invalidateDemoMarker, visitorMarker } = await import("~/modules/demo/demo-org")
     await withPrivilegedDb(ORG_ID, "test-oauth-callback-clean-providers-demo", async (db) => {
       await db.delete(oauthAccounts).where(eq(oauthAccounts.orgId, ORG_ID))
       await db.delete(oauthProviders).where(eq(oauthProviders.orgId, ORG_ID))
@@ -788,7 +787,7 @@ describe("OAuth callback: existing account without a linked identity", () => {
       autoProvision: false,
     })
     await insertUser("precreated-demo@callback.test", "active")
-    await markOrgAsDemo(ORG_ID, visitorMarker(24))
+    await markDemoOrgForTest(ORG_ID, visitorMarker(24))
     try {
       const location = await runCallback(providerId, GOOGLE_ISSUER, GOOGLE_CLIENT_ID, {
         sub: "callback-test-google-demo",

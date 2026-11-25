@@ -25,7 +25,7 @@ import { hashPassword } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { REDACT_PATHS } from "~/lib/logger"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, reservedMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker } from "~/modules/demo/demo-org"
 import {
   DEMO_REVIEWER_EMAIL,
   DEMO_REVIEWER_NAME,
@@ -35,6 +35,7 @@ import {
 } from "~/modules/demo/demo-seeder"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 const CONFIGURED = "AppReview-Pinned-1!"
@@ -59,7 +60,7 @@ describe("the reserved App Review credential", () => {
     await acquireTestLock()
     saved = env.LIAISON_DEMO_REVIEWER_PASSWORD
     orgId = (await ensureOrg({ slug: "reserved-cred", name: "Reserved Cred" })).orgId
-    await markOrgAsDemo(orgId, reservedMarker())
+    await markDemoOrgForTest(orgId, reservedMarker())
   })
 
   afterAll(async () => {

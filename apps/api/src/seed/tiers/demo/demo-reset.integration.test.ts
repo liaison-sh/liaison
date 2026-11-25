@@ -51,12 +51,7 @@ import { env } from "~/lib/env"
 import { describeDbError } from "~/lib/transient-db-error"
 import { listExpiredDemoOrgs } from "~/modules/demo/demo-expiry"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import {
-  invalidateDemoMarker,
-  markOrgAsDemo,
-  reservedMarker,
-  visitorMarker,
-} from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker, visitorMarker } from "~/modules/demo/demo-org"
 import {
   completeDemoOrgReset,
   DemoOrgGuardError,
@@ -76,6 +71,7 @@ import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { seedContext } from "~/seed/context"
 import { upsertAppRow } from "~/seed/factories/app-tables"
 import { seedPortalPerson } from "~/seed/factories/people/portal-people"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
 import { seedDemoOrg } from "./seed-org"
 
@@ -289,16 +285,19 @@ beforeAll(async () => {
   const expiredVisitor = await makeOrg("expired-visitor")
   await populate(expiredVisitor.orgId)
   // Two days past its own TTL.
-  await markOrgAsDemo(
+  await markDemoOrgForTest(
     expiredVisitor.orgId,
     visitorMarker(24, new Date(NOW.getTime() - 72 * 3600_000)),
   )
 
   const liveVisitor = await makeOrg("live-visitor")
-  await markOrgAsDemo(liveVisitor.orgId, visitorMarker(48, NOW))
+  await markDemoOrgForTest(liveVisitor.orgId, visitorMarker(48, NOW))
 
   const reserved = await makeOrg("reserved")
-  await markOrgAsDemo(reserved.orgId, reservedMarker(new Date(NOW.getTime() - 90 * 86_400_000)))
+  await markDemoOrgForTest(
+    reserved.orgId,
+    reservedMarker(new Date(NOW.getTime() - 90 * 86_400_000)),
+  )
 
   await makeOrg("plain", "standard")
 
@@ -319,26 +318,22 @@ beforeAll(async () => {
   // holding the SAME rows, so "it cleared the right one" is an assertion and not a hope.
   const target = await makeOrg("reset-target")
   await populate(target.orgId)
-  await markOrgAsDemo(target.orgId, reservedMarker(NOW))
+  await markDemoOrgForTest(target.orgId, reservedMarker(NOW))
 
   const bystander = await makeOrg("reset-bystander")
   await populate(bystander.orgId)
-  await markOrgAsDemo(bystander.orgId, reservedMarker(NOW))
+  await markDemoOrgForTest(bystander.orgId, reservedMarker(NOW))
 }, 300_000)
 
 afterAll(async () => {
   DemoSeederTestAccess.reset()
   DemoModeTestAccess.set(true)
   // Leave nothing behind: every fixture still standing is force expired as a
-  // visitor org and collected through the same path under test.
+  // visitor org (a demo org first: `markDemoOrgForTest` gives it the class) and
+  // collected through the same path under test.
   for (const fixture of Object.values(fixtures)) {
     if (!(await orgExists(fixture.orgId))) continue
-    await withSystemDb("demo-reset-test-class", (tx) =>
-      tx.execute(
-        sql`UPDATE kernel.organizations SET class = 'demo' WHERE id = ${fixture.orgId}::uuid`,
-      ),
-    )
-    await markOrgAsDemo(fixture.orgId, visitorMarker(1, new Date(Date.now() - 48 * 3600_000)))
+    await markDemoOrgForTest(fixture.orgId, visitorMarker(1, new Date(Date.now() - 48 * 3600_000)))
     await purgeDemoOrg(fixture.orgId)
   }
   DemoModeTestAccess.set(null)
@@ -604,7 +599,7 @@ describe("legal records and honest refusals", () => {
   it("purges a demo org holding a legal original entirely", async () => {
     const org = await makeOrg("legal-visitor")
     await populate(org.orgId)
-    await markOrgAsDemo(org.orgId, visitorMarker(1, new Date(NOW.getTime() - 48 * 3600_000)))
+    await markDemoOrgForTest(org.orgId, visitorMarker(1, new Date(NOW.getTime() - 48 * 3600_000)))
     expect(await rowCount("app_invoicing.legal_originals", org.orgId)).toBe(1)
 
     const result = await purgeDemoOrg(org.orgId, NOW)
@@ -648,7 +643,7 @@ describe("legal records and honest refusals", () => {
     const schema = `app_purge_refusal_${process.pid}`
     const org = await makeOrg("refusing-visitor")
     await populate(org.orgId)
-    await markOrgAsDemo(org.orgId, visitorMarker(1, new Date(NOW.getTime() - 48 * 3600_000)))
+    await markDemoOrgForTest(org.orgId, visitorMarker(1, new Date(NOW.getTime() - 48 * 3600_000)))
     await withSystemDb("demo-reset-test-refusal-setup", async (tx) => {
       await tx.execute(sql.raw(`CREATE SCHEMA ${schema}`))
       await tx.execute(
@@ -775,7 +770,7 @@ describe("a services world visitor org", () => {
       name: "Client person",
       invitedByUserId: userId,
     })
-    await markOrgAsDemo(
+    await markDemoOrgForTest(
       org.orgId,
       visitorMarker(1, new Date(NOW.getTime() - 48 * 3600_000), undefined, { worldId: "studio" }),
     )

@@ -13,8 +13,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { DemoRestrictionError } from "~/modules/demo/demo-egress"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 /** What `startOAuthFlow` threw, or null when it returned. */
@@ -36,7 +37,7 @@ describe("demo OAuth lockdown", () => {
     await acquireTestLock()
     demoOrgId = (await ensureOrg({ slug: "oauth-demo", name: "OAuth Demo" })).orgId
     normalOrgId = (await ensureOrg({ slug: "oauth-normal", name: "OAuth Normal" })).orgId
-    await markOrgAsDemo(demoOrgId, visitorMarker(24))
+    await markDemoOrgForTest(demoOrgId, visitorMarker(24))
   })
 
   afterAll(async () => {

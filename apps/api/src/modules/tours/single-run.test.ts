@@ -10,7 +10,7 @@ import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { KERNEL_DECLARED_EMITS } from "~/infra/events/event-bus"
 import { declaredEmits } from "~/modules/apps/app-registries"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import {
   isPlayedSingleRun,
   loadTourOrgContext,
@@ -21,6 +21,7 @@ import {
   updateTour,
 } from "~/modules/tours/service"
 import { seedUserRow } from "~/seed/factories/org/rows"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 
 let orgId: string
@@ -58,7 +59,7 @@ beforeAll(async () => {
   orgId = (await createTestOrg()).id
   alice = crypto.randomUUID()
   await seedUserRow({ id: alice, orgId, email: `single-run-${alice}@test.com`, name: "Alice" })
-  await markOrgAsDemo(
+  await markDemoOrgForTest(
     orgId,
     visitorMarker(24, new Date(), undefined, { worldId: tour.world ?? "saas" }),
   )

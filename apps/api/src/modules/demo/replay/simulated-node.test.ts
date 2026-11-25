@@ -11,11 +11,12 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { app } from "~/app"
 import { sql } from "~/db"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { submitCommand } from "~/modules/node-sessions/commands"
 import { mintNodeCredential } from "~/modules/nodes/credentials"
 import { openNodeSessionForHello } from "~/modules/nodes/presence"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { REPLAY_DEVICE_ID, type StartedReplay, startReplay } from "./replay"
@@ -57,7 +58,7 @@ describe("the simulated node refuses every node-auth path", () => {
     const regularOrg = await createTestOrg()
     regular = await minimal.session(regularOrg.id)
     const demoOrgId = (await minimal.secondOrg({ name: "Sim Node Demo" })).orgId
-    await markOrgAsDemo(demoOrgId, visitorMarker(24))
+    await markDemoOrgForTest(demoOrgId, visitorMarker(24))
     invalidateDemoMarker(demoOrgId)
     // The visitor already owns the personal agent the replay drives.
     visitor = await minimal.adminSession(demoOrgId)

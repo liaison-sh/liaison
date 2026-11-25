@@ -2493,6 +2493,13 @@
       "when": 1900003446001,
       "tag": "0354_stamp_bare_markers_as_before",
       "breakpoints": true
+    },
+    {
+      "idx": 356,
+      "version": "7",
+      "when": 1900003447001,
+      "tag": "0355_org_class_constraints",
+      "breakpoints": true
     }
   ]
 }

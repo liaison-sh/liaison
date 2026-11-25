@@ -30,10 +30,11 @@ import { meterSideCall, preCheck } from "~/modules/agent/credits/credit-meter"
 import { autoTitleAgentChat } from "~/modules/agent/runtime/auto-title"
 import { runSandboxedExtraction } from "~/modules/agent/tools/web-tools"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, reservedMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker } from "~/modules/demo/demo-org"
 import { RESERVED_MODEL_DEFAULT } from "~/modules/demo/demo-spend-ceiling"
 import { processMediaAnalysisJob } from "~/modules/files/media-analysis-job"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 /** The cheapest auto eligible model while this file runs, so every auto pick lands on it. */
@@ -51,7 +52,7 @@ describe("the reserved demo org's guards outside a turn", () => {
     await acquireTestLock()
     reservedOrgId = (await minimal.secondOrg({ name: "Reserved Guards" })).orgId
     normalOrgId = (await minimal.secondOrg({ name: "Normal Guards" })).orgId
-    await markOrgAsDemo(reservedOrgId, reservedMarker())
+    await markDemoOrgForTest(reservedOrgId, reservedMarker())
     await sql`
       INSERT INTO kernel.model_pricing
         (model_id, provider, display_name, input_cost_per_m, output_cost_per_m,

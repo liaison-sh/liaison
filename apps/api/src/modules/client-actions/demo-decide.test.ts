@@ -10,7 +10,8 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as dsql } from "drizzle-orm"
 import { extractRows, sql } from "~/db"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { markOrgAsDemo, reservedMarker, visitorMarker } from "~/modules/demo/demo-org"
+import { reservedMarker, visitorMarker } from "~/modules/demo/demo-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { k, useClientActionWorld } from "../../../test-support/client-actions-kit"
 import { decideDemoClientAction } from "./demo-decide"
 import { mintClientAction } from "./mint"
@@ -47,7 +48,7 @@ async function decidedEvents(id: string) {
 }
 
 beforeAll(async () => {
-  await markOrgAsDemo(kit.w.orgId, visitorMarker(24))
+  await markDemoOrgForTest(kit.w.orgId, visitorMarker(24))
   DemoModeTestAccess.set(true)
 })
 
@@ -166,7 +167,7 @@ describe("the demo decide", () => {
   })
 
   it("refuses the reserved review workspace", async () => {
-    await markOrgAsDemo(kit.w.otherOrgId, reservedMarker())
+    await markDemoOrgForTest(kit.w.otherOrgId, reservedMarker())
     const id = await mint()
     const out = await decideDemoClientAction({
       orgId: kit.w.otherOrgId,

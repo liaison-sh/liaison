@@ -26,9 +26,10 @@ import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/poo
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { DemoRestrictionError } from "~/modules/demo/demo-egress"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import type { FetchAnswer, GithubCtx } from "../../../../../../../../bundled-apps/github/src/client"
@@ -110,12 +111,18 @@ beforeAll(async () => {
   worldAdmin = (await minimal.session(worldOrg, { role: "admin" })).userId
   plainOrg = (await ensureOrg({ slug: "github-standin-plain", name: "Plain Org" })).orgId
   otherWorldOrg = (await ensureOrg({ slug: "github-standin-other", name: "Other World" })).orgId
-  await markOrgAsDemo(worldOrg, visitorMarker(24, new Date(), undefined, { worldId: "studio" }))
-  await markOrgAsDemo(otherWorldOrg, visitorMarker(24, new Date(), undefined, { worldId: "saas" }))
+  await markDemoOrgForTest(
+    worldOrg,
+    visitorMarker(24, new Date(), undefined, { worldId: "studio" }),
+  )
+  await markDemoOrgForTest(
+    otherWorldOrg,
+    visitorMarker(24, new Date(), undefined, { worldId: "saas" }),
+  )
   // A marker naming no world: the kernel reads it as the default world, never as this one.
   defaultWorldOrg = (await ensureOrg({ slug: "github-standin-default", name: "Default World" }))
     .orgId
-  await markOrgAsDemo(defaultWorldOrg, visitorMarker(24))
+  await markDemoOrgForTest(defaultWorldOrg, visitorMarker(24))
   invalidateDemoMarker()
   await ensureAppsForOrg(worldOrg)
   await initSandboxPool()

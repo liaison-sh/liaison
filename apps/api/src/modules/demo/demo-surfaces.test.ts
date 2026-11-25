@@ -40,15 +40,11 @@ import { handleWebSearch } from "~/modules/agent/tools/web-tools"
 import { cleanDictation } from "~/modules/assist/proofread-service"
 import { demoWebSearchRefusal } from "~/modules/demo/demo-egress"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import {
-  invalidateDemoMarker,
-  markOrgAsDemo,
-  reservedMarker,
-  visitorMarker,
-} from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { MessageIndexerTestAccess, resolveOrgEmbedder } from "~/modules/search/message-indexer"
 import { aiKeysRoutes } from "~/modules/settings/ai-keys-routes"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 const MODEL = "demo-surface-model"
@@ -79,8 +75,8 @@ describe("what a demo workspace advertises", () => {
     visitorOrgId = (await ensureOrg({ slug: "surface-visitor", name: "Surface Visitor" })).orgId
     reservedOrgId = (await ensureOrg({ slug: "surface-reserved", name: "Surface Reserved" })).orgId
     normalOrgId = (await ensureOrg({ slug: "surface-normal", name: "Surface Normal" })).orgId
-    await markOrgAsDemo(visitorOrgId, visitorMarker(24))
-    await markOrgAsDemo(reservedOrgId, reservedMarker())
+    await markDemoOrgForTest(visitorOrgId, visitorMarker(24))
+    await markDemoOrgForTest(reservedOrgId, reservedMarker())
     await sql`
       INSERT INTO kernel.model_pricing
         (model_id, provider, display_name, input_cost_per_m, output_cost_per_m,

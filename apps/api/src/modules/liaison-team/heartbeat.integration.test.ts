@@ -31,8 +31,8 @@ async function makeOrg(opts: { demo?: boolean; deleting?: boolean } = {}): Promi
   const slug = `hb-${crypto.randomUUID().slice(0, 8)}`
   const settings = opts.demo ? { demo: { variant: "visitor" } } : {}
   const [o] = await sql<{ id: string }[]>`
-    INSERT INTO kernel.organizations (name, slug, settings, deleting_at)
-    VALUES (${slug}, ${slug}, ${JSON.stringify(settings)}::jsonb,
+    INSERT INTO kernel.organizations (name, slug, settings, class, deleting_at)
+    VALUES (${slug}, ${slug}, ${JSON.stringify(settings)}::jsonb, ${opts.demo ? "demo" : "standard"},
             ${opts.deleting ? new Date().toISOString() : null})
     RETURNING id`
   orgIds.push(o?.id as string)

@@ -21,9 +21,10 @@ import { createEgressMethods } from "~/modules/apps/sandbox/bridge/egress"
 import { envelopeError, SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { DemoRestrictionError } from "~/modules/demo/demo-egress"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { DEMO_SHOP_DOMAIN } from "~/modules/demo/shopify/sentinel"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const PENNYLANE = "https://app.pennylane.com/api/external/v1/customer_invoices"
@@ -83,8 +84,8 @@ describe("demo app egress lockdown", () => {
     demoOrgId = (await ensureOrg({ slug: "appegress-demo", name: "App Egress Demo" })).orgId
     frenchDemoOrgId = (await ensureOrg({ slug: "appegress-fr", name: "App Egress FR" })).orgId
     normalOrgId = (await ensureOrg({ slug: "appegress-normal", name: "App Egress Normal" })).orgId
-    await markOrgAsDemo(demoOrgId, visitorMarker(24))
-    await markOrgAsDemo(frenchDemoOrgId, visitorMarker(24))
+    await markDemoOrgForTest(demoOrgId, visitorMarker(24))
+    await markDemoOrgForTest(frenchDemoOrgId, visitorMarker(24))
     await setOrgLocale(frenchDemoOrgId, "fr-FR")
     invalidateDemoMarker()
     SandboxBridgeTestAccess.setFetch((async (url: string | URL) => {

@@ -26,12 +26,13 @@ import {
   setDemoLeadNotifyManaged,
 } from "~/modules/demo/demo-leads"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { purgeDemoOrg } from "~/modules/demo/demo-reset"
 import { DemoSeederTestAccess, setDemoSeeder } from "~/modules/demo/demo-seeder"
 import { DemoVerificationTestAccess, verifyDemoCode } from "~/modules/demo/demo-verification"
 import { mountDemoRoutes, useDemoRateLimit } from "~/modules/demo/routes"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 import { type LiaisonTeamIdentity, mintIdentity, writeIdentity } from "./identity"
 import { forwardDemoLeadUpdate, forwardNewDemoLead } from "./lead-forwarding"
@@ -385,7 +386,7 @@ describe("demo leads through the Liaison team outbox", () => {
 
   it("the reaper enqueues the played tour ids before the org is gone", async () => {
     const { orgId } = await signup()
-    await markOrgAsDemo(orgId, visitorMarker(72, new Date(Date.now() - 80 * 3600_000)))
+    await markDemoOrgForTest(orgId, visitorMarker(72, new Date(Date.now() - 80 * 3600_000)))
     invalidateDemoMarker()
     const [user] = await sql<
       { id: string }[]
@@ -404,7 +405,7 @@ describe("demo leads through the Liaison team outbox", () => {
 
   it("the reaper queues nothing for an org that played nothing", async () => {
     const { orgId } = await signup()
-    await markOrgAsDemo(orgId, visitorMarker(72, new Date(Date.now() - 80 * 3600_000)))
+    await markDemoOrgForTest(orgId, visitorMarker(72, new Date(Date.now() - 80 * 3600_000)))
     invalidateDemoMarker()
     expect((await purgeDemoOrg(orgId)).purged).toBe(true)
     expect((await queued()).filter((r) => r.type === "lead-update")).toEqual([])

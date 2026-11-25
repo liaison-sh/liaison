@@ -12,7 +12,6 @@ import {
   type Tour,
 } from "@liaison/shared"
 import { sql } from "~/db"
-import { markOrgAsDemo } from "~/modules/demo/demo-org"
 import {
   applyTourMove,
   assertWorldBeatAllowed,
@@ -24,6 +23,7 @@ import {
   type TourState,
   TourWorldBeatRefusedError,
 } from "~/modules/tours/service"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 
 const kernelSampleTour = findTour("kernel.sample", { includeTestTours: true }) as Tour
@@ -240,7 +240,7 @@ describe("assertWorldBeatAllowed", () => {
     const real = await createTestOrg()
     await expect(assertWorldBeatAllowed(real.id)).rejects.toBeInstanceOf(TourWorldBeatRefusedError)
     const demo = await createTestOrg()
-    await markOrgAsDemo(demo.id, {
+    await markDemoOrgForTest(demo.id, {
       variant: "visitor",
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86_400_000).toISOString(),

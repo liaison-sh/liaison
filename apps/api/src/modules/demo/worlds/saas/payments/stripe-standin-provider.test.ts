@@ -22,9 +22,10 @@ import { createEgressMethods } from "~/modules/apps/sandbox/bridge/egress"
 import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { DemoRestrictionError } from "~/modules/demo/demo-egress"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   customerRow,
@@ -409,7 +410,7 @@ describe("the stand-in's gates", () => {
         .userId
     demoUserId = await user(demoOrgId, "standin-demo@example.com")
     normalUserId = await user(normalOrgId, "standin-normal@example.com")
-    await markOrgAsDemo(demoOrgId, visitorMarker(24))
+    await markDemoOrgForTest(demoOrgId, visitorMarker(24))
     // The unit database holds no app schemas: the stand-in reads an empty mirror here
     // (its reads of a real mirror are in the integration file).
     DemoPaymentsStandInTestAccess.setMirror(() => ({

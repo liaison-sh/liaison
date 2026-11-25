@@ -38,12 +38,7 @@ import {
   siteverifyCalls,
 } from "~/modules/demo/demo-door.test-fixtures"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import {
-  invalidateDemoMarker,
-  loadDemoMarker,
-  markOrgAsDemo,
-  reservedMarker,
-} from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, loadDemoMarker, reservedMarker } from "~/modules/demo/demo-org"
 import { DemoSeederTestAccess, setDemoSeeder } from "~/modules/demo/demo-seeder"
 import { TURNSTILE_TEST_SECRETS } from "~/modules/demo/demo-turnstile"
 import {
@@ -55,6 +50,7 @@ import { DemoWorldsTestAccess } from "~/modules/demo/demo-worlds"
 import { mountDemoRoutes, useDemoRateLimit } from "~/modules/demo/routes"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -776,7 +772,7 @@ describe("the visitor's scenarios", () => {
     const marker = await loadDemoMarker(s.orgId)
     expect(marker).not.toBeNull()
     if (!marker) return
-    await markOrgAsDemo(s.orgId, { ...marker, worldId: "saas" })
+    await markDemoOrgForTest(s.orgId, { ...marker, worldId: "saas" })
     invalidateDemoMarker(s.orgId)
     const res = await demoApp.request("/api/demo/scenarios", { headers: authed(s.accessToken) })
     expect(res.status).toBe(200)
@@ -790,7 +786,7 @@ describe("the visitor's scenarios", () => {
     const h = authed(regular.bearer)
     expect((await demoApp.request("/api/demo/scenarios", { headers: h })).status).toBe(404)
     const reviewer = await minimal.session((await createTestOrg()).id)
-    await markOrgAsDemo(reviewer.orgId, reservedMarker())
+    await markDemoOrgForTest(reviewer.orgId, reservedMarker())
     invalidateDemoMarker()
     const r = authed(reviewer.bearer)
     expect((await demoApp.request("/api/demo/scenarios", { headers: r })).status).toBe(404)
@@ -1387,7 +1383,7 @@ describe("the demo world", () => {
     const regular = await minimal.session((await createTestOrg()).id)
     expect((await world(regular.bearer)).status).toBe(404)
     const reserved = await minimal.adminSession((await createTestOrg()).id)
-    await markOrgAsDemo(reserved.orgId, reservedMarker())
+    await markDemoOrgForTest(reserved.orgId, reservedMarker())
     expect((await world(reserved.bearer)).status).toBe(404)
     expect((await world()).status).toBe(401)
   })

@@ -18,13 +18,14 @@ import {
   restoreDemoDoorEnv,
 } from "~/modules/demo/demo-door.test-fixtures"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, reservedMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker } from "~/modules/demo/demo-org"
 import { DemoSeederTestAccess, setDemoSeeder } from "~/modules/demo/demo-seeder"
 import { DemoVerificationTestAccess, demoVerifiedIdentity } from "~/modules/demo/demo-verification"
 import { DemoWorldsTestAccess } from "~/modules/demo/demo-worlds"
 import { mountDemoRoutes, useDemoRateLimit } from "~/modules/demo/routes"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -211,7 +212,7 @@ describe("POST /api/demo/start-over", () => {
 
   it("refuses the reserved review org", async () => {
     const member = await minimal.adminSession((await createTestOrg()).id)
-    await markOrgAsDemo(member.orgId, reservedMarker())
+    await markDemoOrgForTest(member.orgId, reservedMarker())
     expect((await startOver(member.bearer)).status).toBe(404)
   })
 

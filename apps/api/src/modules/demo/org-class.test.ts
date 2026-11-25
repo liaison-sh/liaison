@@ -11,13 +11,15 @@
 //   - a purge whose mark is taken back stops before it deletes a row;
 //   - the operator's org and an org the control plane created are refused;
 //   - a trigger body of an older release is rewritten at boot.
+//
+// Postgres itself refuses the forged marker and any class change (0355, its
+// own test); the forge here takes that constraint away to prove the code
+// paths would refuse such an org anyway.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test"
 import postgres from "postgres"
-import { runDemoReclassifyCli } from "~/cli/demo-reclassify"
 import { sql } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { orgBillingState } from "~/db/schema/kernel"
-import { _setEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import * as beforeDisconnectModule from "~/modules/apps/connections/before-disconnect"
 import {
@@ -31,7 +33,6 @@ import { applyCreditGrant } from "~/modules/cloud/credits"
 import { cloudHandoff } from "~/modules/cloud/handoff"
 import { lookupOrgsByEmail } from "~/modules/cloud/lookup"
 import { CLOUD_CREATE_ORG_ENDPOINT, claimOutcome } from "~/modules/cloud/outcomes"
-import { listExpiredDemoOrgs } from "~/modules/demo/demo-expiry"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import {
   invalidateDemoMarker,
@@ -56,6 +57,7 @@ import {
   seedUserRoleRow,
   seedUserRow,
 } from "~/seed/factories/org/rows"
+import { forgeDemoMarker, revalidateMarkerCheck } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const tag = crypto.randomUUID().slice(0, 8)
@@ -114,13 +116,15 @@ async function makeOrg(row: Partial<OrgRowSeed> & { class?: "standard" | "demo" 
   return { id, slug }
 }
 
-/** A customer org whose `settings.demo` somebody forged. */
+/**
+ * A customer org whose `settings.demo` somebody forged (Postgres refuses that
+ * since 0355; `forgeDemoMarker` takes the constraint away for the write). The
+ * code paths below must refuse the org on their own.
+ */
 async function customerWithForgedMarker(marker: unknown) {
   const org = await makeOrg()
   await seedOrgBillingState(org.id)
-  await sql`UPDATE kernel.organizations
-    SET settings = settings || jsonb_build_object('demo', ${JSON.stringify(marker)}::jsonb)
-    WHERE id = ${org.id}`
+  await forgeDemoMarker(org.id, marker)
   await invalidateDemoMarker(org.id)
   return org
 }
@@ -164,6 +168,7 @@ afterAll(async () => {
   await sql`DELETE FROM kernel.users WHERE org_id IN (${orgs})`
   await sql`DELETE FROM kernel.organizations WHERE slug LIKE ${`orgclass-${tag}-%`}`
   await sql`DELETE FROM kernel.cloud_request_outcomes WHERE idem_key LIKE ${`orgclass-${tag}-%`}`
+  await revalidateMarkerCheck()
   await invalidateDemoMarker()
   await releaseTestLock()
 })
@@ -515,100 +520,4 @@ describe("the class is written when the org is created", () => {
     made.push(shell.orgId)
     expect(await orgClassOf(shell.orgId)).toBe("demo")
   }, 60_000)
-})
-
-describe("liaison demo reclassify", () => {
-  const at = (ms: number) => new Date(Date.now() + ms).toISOString()
-  const window = () => ["--since", at(-HOUR), "--until", at(HOUR)]
-  const visitorSlug = () => `demo-orgclass-${tag}-${crypto.randomUUID().slice(-12)}`
-  const listed = async (argv: string[]) => {
-    const res = await runDemoReclassifyCli(argv)
-    expect({ code: res.exitCode, message: res.message }).toEqual({ code: 0, message: undefined })
-    return ((res.report?.orgs ?? []) as Array<{ orgId: string }>).map((o) => o.orgId)
-  }
-  /** A workspace as the previous release leaves it: marked, of class `standard`. */
-  const windowOrg = async () => {
-    const org = await makeOrg({ slug: visitorSlug() })
-    await markOrgAsDemo(org.id, expired())
-    return org
-  }
-  afterAll(async () => {
-    const mine = sql`SELECT id FROM kernel.organizations WHERE slug LIKE ${`demo-orgclass-${tag}-%`}`
-    await sql`DELETE FROM kernel.org_billing_state WHERE org_id IN (${mine})`
-    await sql`DELETE FROM kernel.users WHERE org_id IN (${mine})`
-    await sql`DELETE FROM kernel.organizations WHERE slug LIKE ${`demo-orgclass-${tag}-%`}`
-  })
-
-  it("lists a window workspace, reclassifies it, and the reaper then takes it", async () => {
-    const org = await windowOrg()
-    // Until then: refused, and behind every org the reaper can take.
-    expect((await purgeDemoOrg(org.id, new Date(), noStorage)).refusal).toBe("not-demo-class")
-    const purgeable = await makeOrg({ class: "demo" })
-    await markOrgAsDemo(purgeable.id, expired())
-    expect((await listExpiredDemoOrgs(new Date(), 1))[0]?.orgId).not.toBe(org.id)
-
-    expect(await listed(window())).toContain(org.id)
-    expect(await orgClassOf(org.id)).toBe("standard")
-    const other = await windowOrg()
-    expect(await listed([...window(), "--org", org.id, "--apply"])).toEqual([org.id])
-    expect(await orgClassOf(org.id)).toBe("demo")
-    expect(await orgClassOf(other.id)).toBe("standard")
-    expect(await listed(window())).not.toContain(org.id)
-    expect((await purgeDemoOrg(org.id, new Date(), noStorage)).purged).toBe(true)
-  })
-
-  it("never takes an org outside the window, billed, control plane made, the operator's, or not a visitor's", async () => {
-    const outside = await windowOrg()
-    await sql`UPDATE kernel.organizations SET created_at = now() - interval '2 hours' WHERE id = ${outside.id}`
-    const after = await windowOrg()
-    await sql`UPDATE kernel.organizations SET created_at = now() + interval '2 hours' WHERE id = ${after.id}`
-    const billed = await windowOrg()
-    await seedOrgBillingState(billed.id)
-    const made = await windowOrg()
-    await claimOutcome(CLOUD_CREATE_ORG_ENDPOINT, made.slug, "owner")
-    const customer = await customerWithForgedMarker(expired())
-    await sql`DELETE FROM kernel.org_billing_state WHERE org_id = ${customer.id}`
-    const reserved = await makeOrg({ slug: visitorSlug() })
-    await markOrgAsDemo(reserved.id, reservedMarker())
-    const malformed = await makeOrg({ slug: visitorSlug() })
-    await sql`UPDATE kernel.organizations SET settings = '{"demo":{"variant":"visitor"}}' WHERE id = ${malformed.id}`
-    const operator = await windowOrg()
-    const mutable = env as { LIAISON_OPERATOR_ORG_ID?: string }
-    const saved = mutable.LIAISON_OPERATOR_ORG_ID
-    mutable.LIAISON_OPERATOR_ORG_ID = operator.id
-    try {
-      const before = [outside, after, billed, made, customer, reserved, malformed, operator]
-      const taken = await listed([...window(), "--apply"])
-      for (const org of before) {
-        expect(taken).not.toContain(org.id)
-        expect(await orgClassOf(org.id)).toBe("standard")
-      }
-    } finally {
-      mutable.LIAISON_OPERATOR_ORG_ID = saved
-    }
-    await sql`DELETE FROM kernel.cloud_request_outcomes WHERE idem_key = ${made.slug}`
-  })
-
-  it("refuses with demo mode off, in the managed edition, and without a whole window", async () => {
-    const org = await windowOrg()
-    DemoModeTestAccess.set(false)
-    expect((await runDemoReclassifyCli([...window(), "--apply"])).exitCode).toBe(2)
-    DemoModeTestAccess.set(true)
-    _setEdition("managed")
-    try {
-      expect((await runDemoReclassifyCli([...window(), "--apply"])).exitCode).toBe(2)
-    } finally {
-      _setEdition(null)
-    }
-    for (const argv of [
-      ["--since", at(-HOUR), "--apply"],
-      ["--since", "2026-11-24", "--until", at(HOUR), "--apply"],
-      ["--since", at(HOUR), "--until", at(-HOUR), "--apply"],
-      [...window(), "--org", "acme", "--apply"],
-      [...window(), "--all"],
-    ]) {
-      expect((await runDemoReclassifyCli(argv)).exitCode).toBe(2)
-    }
-    expect(await orgClassOf(org.id)).toBe("standard")
-  })
 })

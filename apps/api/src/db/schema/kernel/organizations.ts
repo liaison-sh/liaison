@@ -43,7 +43,9 @@ export const organizations = kernel.table(
     caps: jsonb("caps").$type<OrgCaps>().notNull().default({}),
     /**
      * `standard`, or `demo`: a disposable workspace of a demo instance (migration
-     * 0309). Written when the row is inserted and never after. The demo purge and
+     * 0309). Written when the row is inserted and never after: a trigger refuses
+     * any change, and only a `demo` org may carry the marker (migration 0355,
+     * `organizations_demo_marker_class_check`). The demo purge and
      * reset and the immutability trigger act on this, not on the jsonb marker
      * (`settings.demo`), and a `demo` org can hold no billing row (a foreign key
      * of `org_billing_state`).

@@ -28,10 +28,11 @@ import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { initSandboxPool } from "~/modules/apps/sandbox/pool"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { invalidateConnectionCaches } from "./cache"
 import {
@@ -459,7 +460,7 @@ describe("connector_adapter_save", () => {
     const demoOrg = (await ensureOrg({ slug: `authoring-demo-${Date.now()}`, name: "Demo" })).orgId
     await ensureAppsForOrg(demoOrg)
     await registerApiConnectorApp(demoOrg)
-    await markOrgAsDemo(demoOrg, visitorMarker(24))
+    await markDemoOrgForTest(demoOrg, visitorMarker(24))
     DemoModeTestAccess.set(true)
     invalidateDemoMarker()
     try {

@@ -30,7 +30,7 @@ import { uninstallApp } from "~/modules/apps/install-service"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { registerTranslatorConsumer } from "~/modules/attention/translator"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { demoWorldOf, loadDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { demoWorldOf, loadDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { runWorldBeatOnce } from "~/modules/demo/world/registry"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import * as sealModule from "~/modules/signing/seal"
@@ -39,6 +39,7 @@ import { rowsOf } from "~/seed/factories/people/actors"
 import { seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
 import { STAND_IN_CONSENT_WORDS, studioAgreements } from "~/seed/worlds/studio/agreements"
 import { studioPlan } from "~/seed/worlds/studio/plan"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import { installFromDist } from "../../../../../test-support/seed/install-dist-apps"
 import { acceptWorldChangeRequest, worldChangeRequestAction } from "./cr-accepted"
@@ -135,7 +136,7 @@ beforeAll(async () => {
     await withPrivilegedDb(orgId, "test-studio-cr-marker", (tx) => loadDemoMarker(orgId, tx)),
   )
   // As the door marks a visitor's workspace: of the services world.
-  await markOrgAsDemo(
+  await markDemoOrgForTest(
     orgId,
     visitorMarker(24, new Date(), [...DEMO_WORLD_NEEDS.studio], { worldId: "studio" }),
   )

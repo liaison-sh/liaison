@@ -864,10 +864,9 @@ async function markNewDemoOrg(
   createdOrg: boolean,
   log: (msg: string) => void,
 ): Promise<string> {
-  // A new org is a demo org from its first row. One that exists keeps its class:
-  // a workspace the previous release made during a rolling deploy carries the
-  // marker and no class (`liaison demo reclassify` gives it one), and its seed
-  // must not fail for it.
+  // A new org is a demo org from its first row. One that exists keeps its class,
+  // which never changes: the adoption guard above took it only because it carries
+  // the marker, and Postgres lets only a demo org carry one (migration 0355).
   const orgShell = await provisionOrgShell(
     configWithoutUsers,
     "seedDemoOrg",

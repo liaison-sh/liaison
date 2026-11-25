@@ -36,12 +36,13 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { uninstallApp } from "~/modules/apps/install-service"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, reservedMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker } from "~/modules/demo/demo-org"
 import { installDemoShopifyConnection } from "~/modules/demo/shopify"
 import { resetDemoShopifyOverlay } from "~/modules/demo/shopify/overlay"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
 import { DEMO_CATALOG } from "~/seed/world/fiction"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const REPO = join(import.meta.dir, "..", "..", "..", "..", "..")
@@ -151,7 +152,7 @@ describe("the demo store, driven through the real app runtime", () => {
 
     // The demo instance, with this org marked, and the store connected.
     DemoModeTestAccess.set(true)
-    await markOrgAsDemo(orgId, reservedMarker())
+    await markDemoOrgForTest(orgId, reservedMarker())
     await installDemoShopifyConnection({ orgId, createdByUserId: userId })
   })
 

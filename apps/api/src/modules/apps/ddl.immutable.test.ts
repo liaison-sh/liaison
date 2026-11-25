@@ -3,6 +3,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { sql } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
+import { forgeDemoMarker, revalidateMarkerCheck } from "~/tests/helpers/demo-org"
 import {
   generateDropImmutableTriggerDdl,
   generateImmutableTriggerDdl,
@@ -186,8 +187,10 @@ describe("the org purge exception", () => {
     await makeOrg("demoA", VISITOR, "demo")
     await makeOrg("demoB", VISITOR, "demo")
     await makeOrg("plain", "{}")
-    // A valid, expired visitor marker written onto a customer's org.
-    await makeOrg("forgedMarker", VISITOR)
+    // A valid, expired visitor marker written onto a customer's org (Postgres
+    // refuses it since 0355; the forge takes that constraint away for the write).
+    await makeOrg("forgedMarker", "{}")
+    await forgeDemoMarker(orgs.forgedMarker, JSON.parse(VISITOR).demo)
     // An ordinary org whose deletion has started (`liaison org delete`, modules/org/purge/).
     await makeOrg("deleting", "{}")
     await sql.begin(async (tx) => {
@@ -215,6 +218,7 @@ describe("the org purge exception", () => {
       await tx.unsafe("SET LOCAL ROLE liaison_admin")
       await tx.unsafe(`DELETE FROM ${schemaRef("kernel")}.organizations WHERE slug LIKE '${tag}-%'`)
     })
+    await revalidateMarkerCheck()
   })
 
   test("a non-demo org's legal record stays undeletable, even with the setting naming it", async () => {

@@ -15,8 +15,9 @@ import {
   webFetchPolicyRefusal,
 } from "~/modules/agent/tools/web-tools"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 async function setOrgLists(orgId: string, allow: string[], block: string[] = []): Promise<void> {
@@ -42,7 +43,7 @@ describe("demo web_fetch policy", () => {
   beforeAll(async () => {
     await acquireTestLock()
     demoOrgId = (await ensureOrg({ slug: "fetch-demo", name: "Fetch Demo" })).orgId
-    await markOrgAsDemo(demoOrgId, visitorMarker(24))
+    await markDemoOrgForTest(demoOrgId, visitorMarker(24))
   })
 
   afterAll(async () => {

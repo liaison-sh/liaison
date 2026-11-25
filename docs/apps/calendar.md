@@ -47,7 +47,7 @@ Attendees are not emailed: changes in Liaison do not send Google invitations. On
 
 ## Away days from your calendar
 
-This is off until you turn it on: open **Settings › Apps › Calendar** and switch on **Read my away days from my calendar** under **Away days**. Off, your calendar marks no away day and asks nothing. Once on, your own primary calendar, connected as your personal account, tells Liaison when you are away. Calendars shared with you, a colleague's included, and organization accounts never do.
+This is off until you turn it on: open **Settings › Apps › Calendar** and switch on **Read my away days from my calendar** under **Away days** (the per-person setting `awayFromCalendar`). Off, your calendar marks no away day and asks nothing. Once on, your own primary calendar, connected as your personal account, tells Liaison when you are away. Calendars shared with you, a colleague's included, and organization accounts never do.
 
 - An **out-of-office** event you made that covers at least one whole working day (from your work hours) marks you away for those days at once. Home says so with the dates and who is next in line. Part of a day counts for nothing.
 - An all-day event you organise or accepted whose title looks like leave (for example "Congés", "RTT", "Holiday", "PTO") is asked about once on Home and under **Away** on your profile: **Yes** counts it, **No** sets it aside for good. At most three questions are open at once; the others wait.

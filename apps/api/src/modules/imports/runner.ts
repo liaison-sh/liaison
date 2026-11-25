@@ -1359,8 +1359,17 @@ async function checkHostBatch(
           const out: ImportRecordResult[] = []
           for (const p of batch) {
             try {
-              const status = await tx.transaction((sp) => check(sp, ctx, p.record, p.dedupValue))
-              out.push({ dedupKey: p.dedupKey, status, rows: [] })
+              const checked = await tx.transaction((sp) => check(sp, ctx, p.record, p.dedupValue))
+              if (typeof checked === "string") {
+                out.push({ dedupKey: p.dedupKey, status: checked, rows: [] })
+              } else {
+                out.push({
+                  dedupKey: p.dedupKey,
+                  status: checked.status,
+                  rows: [],
+                  ...(checked.report ? { report: checked.report } : {}),
+                })
+              }
             } catch (err) {
               out.push({
                 dedupKey: p.dedupKey,

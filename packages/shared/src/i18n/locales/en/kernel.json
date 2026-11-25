@@ -5110,7 +5110,30 @@
     "pagesLoading": "Looking for pages",
     "noPage": "No page found",
     "pageUnavailable": "Page you cannot open",
-    "untitledPage": "Untitled"
+    "untitledPage": "Untitled",
+    "text": "Text",
+    "divider": "Divider",
+    "addBlock": "Add a block",
+    "blocks": "Blocks",
+    "noBlock": "No block found",
+    "checkboxLabel": "Done: {{text}}",
+    "checkboxEmpty": "Done: empty item",
+    "slashWords": {
+      "text": "paragraph plain",
+      "heading1": "title h1 big",
+      "heading2": "subtitle h2",
+      "heading3": "h3 small",
+      "taskList": "todo task tick box checkbox checklist",
+      "bulletList": "bullet unordered list",
+      "orderedList": "numbered ordered list",
+      "quote": "blockquote citation",
+      "codeBlock": "code snippet pre",
+      "table": "grid rows columns",
+      "divider": "rule line separator hr",
+      "image": "picture photo screenshot",
+      "file": "attach attachment pdf upload",
+      "linkToPage": "page link mention"
+    }
   },
   "nodes": {
     "chat": {

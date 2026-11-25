@@ -45,7 +45,10 @@ import { fileIdsInFragment, isEmptySlice, withFileIds, withoutFiles } from "./li
 import { PageSuggest, type PickedPage, pageOptionId } from "./PageSuggest"
 import { isPageId, type PageLinkDeps } from "./page-link-view"
 import { pageQueryAt } from "./page-trigger"
+import { SlashSuggest } from "./SlashSuggest"
+import { type SlashBlock, slashBlocks, slashQueryAt } from "./slash"
 import { mapSource, type SourceMap, spliceMarkdown } from "./source-map"
+import { caretAnchor, type SuggestAnchor, suggestKey } from "./suggest"
 
 export interface RichEditorHandle {
   /** The editable field itself (the magic wand proofreads what it shows). */
@@ -368,13 +371,7 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
       if (emoji()) setEmoji(null)
       return
     }
-    let anchor = { left: 0, top: 0, bottom: 0 }
-    try {
-      const at = ed.view.coordsAtPos(ed.state.selection.from)
-      anchor = { left: at.left, top: at.top, bottom: at.bottom }
-    } catch {
-      // No layout (a test environment): the list opens at the corner.
-    }
+    const anchor = caretAnchor(ed.view, ed.state.selection.from)
     const same = emoji()
     const active = same && same.from === query.from ? Math.min(same.active, items.length - 1) : 0
     setEmoji({ items, from: query.from, active, anchor })
@@ -391,32 +388,15 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
   const emojiKey = (event: KeyboardEvent): boolean => {
     const open = emoji()
     const ed = editor()
-    if (!open || !ed || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) {
-      return false
-    }
-    const n = open.items.length
-    switch (event.key) {
-      case "ArrowDown":
-      case "ArrowUp": {
-        const step = event.key === "ArrowDown" ? 1 : n - 1
-        setEmoji({ ...open, active: (open.active + step) % n })
-        break
-      }
-      case "Enter":
-      case "Tab": {
-        if (event.shiftKey) return false
-        pickEmoji(ed, open.items[open.active]!)
-        break
-      }
-      case "Escape":
-        emojiDismissed = open.from
+    if (!ed) return false
+    return suggestKey(event, open, {
+      move: (active) => open && setEmoji({ ...open, active }),
+      pick: (item) => pickEmoji(ed, item),
+      dismiss: () => {
+        emojiDismissed = open?.from ?? null
         setEmoji(null)
-        break
-      default:
-        return false
-    }
-    event.preventDefault()
-    return true
+      },
+    })
   }
   // The page picker (document preset with `pages`): `@` or `[[` being typed, and the
   // one Escape closed (it stays closed until the trigger it belongs to is gone).
@@ -450,13 +430,7 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
     if (pageDismissed === query.from) return closePages()
     const open = pagePick()
     if (open && open.from === query.from && open.query === query.text) return
-    let anchor = { left: 0, top: 0, bottom: 0 }
-    try {
-      const at = ed.view.coordsAtPos(query.from)
-      anchor = { left: at.left, top: at.top, bottom: at.bottom }
-    } catch {
-      // No layout (a test environment): the list opens at the corner.
-    }
+    const anchor = caretAnchor(ed.view, query.from)
     const same = open && open.from === query.from
     setPagePick({
       from: query.from,
@@ -500,33 +474,128 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
   const pageKey = (event: KeyboardEvent): boolean => {
     const open = pagePick()
     const ed = editor()
-    if (!open || !ed || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) {
+    if (!ed) return false
+    return suggestKey(event, open, {
+      move: (active) => open && setPagePick({ ...open, active }),
+      pick: (item) => pickPage(ed, item),
+      dismiss: () => {
+        pageDismissed = open?.from ?? null
+        closePages()
+      },
+    })
+  }
+  // The block menu (document preset): `/` being typed, and the one Escape closed (it
+  // stays closed until the slash it belongs to is gone).
+  const slashId = `slash-suggest-${createUniqueId()}`
+  const [slash, setSlash] = createSignal<{
+    from: number
+    items: SlashBlock[]
+    active: number
+    anchor: SuggestAnchor
+    /** An arrow key chose the block: Enter picks it even after a word. */
+    chosen?: boolean
+  } | null>(null)
+  let slashDismissed: number | null = null
+  const slashContext = () => ({
+    pickFile: props.files ? pick : undefined,
+    pages: !!props.pages,
+  })
+  const slashWords = (block: SlashBlock) => ({
+    title: i18n.t(`kernel.editor.${block.key}`),
+    words: i18n.t(`kernel.editor.slashWords.${block.key}`),
+  })
+  const syncSlash = (ed: Editor) => {
+    const query =
+      props.preset === "document" && ed.isEditable && ed.view.hasFocus()
+        ? slashQueryAt(ed.state)
+        : null
+    if (!query) {
+      slashDismissed = null
+      if (slash()) setSlash(null)
+      return
+    }
+    // Escape closed it, or nothing is called that: the slash is just text.
+    const items =
+      slashDismissed === query.from ? [] : slashBlocks(query.text, slashContext(), slashWords)
+    if (!items.length) {
+      if (slash()) setSlash(null)
+      return
+    }
+    const open = slash()
+    const same = open && open.from === query.from
+    const active = same ? Math.min(open.active, items.length - 1) : 0
+    setSlash({
+      from: query.from,
+      items,
+      active,
+      anchor: caretAnchor(ed.view, query.from),
+      chosen: same ? open.chosen : false,
+    })
+  }
+  const pickSlash = (ed: Editor, block: SlashBlock) => {
+    const open = slash()
+    if (!open) return
+    const { to } = ed.state.selection
+    setSlash(null)
+    ed.view.focus()
+    // The `/` and what follows it go; the block takes their place.
+    ed.view.dispatch(ed.state.tr.delete(open.from, to))
+    block.run(ed, slashContext())
+  }
+  const slashKey = (event: KeyboardEvent): boolean => {
+    const open = slash()
+    const ed = editor()
+    if (!ed) return false
+    // After a word (`50 km /h`), Enter and Tab stay prose unless an arrow chose a
+    // block: only a slash at the start of its block picks on Enter at once.
+    if (
+      open &&
+      !open.chosen &&
+      (event.key === "Enter" || event.key === "Tab") &&
+      ed.state.doc.resolve(open.from).parentOffset > 0
+    ) {
+      slashDismissed = open.from
+      setSlash(null)
       return false
     }
-    const n = open.items.length
-    switch (event.key) {
-      case "ArrowDown":
-      case "ArrowUp": {
-        if (!n) return false
-        const step = event.key === "ArrowDown" ? 1 : n - 1
-        setPagePick({ ...open, active: (open.active + step) % n })
-        break
-      }
-      case "Enter":
-      case "Tab": {
-        if (event.shiftKey || !n) return false
-        pickPage(ed, open.items[open.active]!)
-        break
-      }
-      case "Escape":
-        pageDismissed = open.from
-        closePages()
-        break
-      default:
-        return false
+    return suggestKey(event, open, {
+      move: (active) => open && setSlash({ ...open, active, chosen: true }),
+      pick: (item) => pickSlash(ed, item),
+      dismiss: () => {
+        slashDismissed = open?.from ?? null
+        setSlash(null)
+      },
+    })
+  }
+  /**
+   * Mod-Enter on a checklist item ticks it (or unticks it), where the caret is: in a
+   * page only. Elsewhere (a task discussion, a ticket note) Mod-Enter sends.
+   */
+  const taskKey = (event: KeyboardEvent): boolean => {
+    const ed = editor()
+    if (
+      props.preset !== "document" ||
+      !ed?.isEditable ||
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return false
+    if (!(event.metaKey || event.ctrlKey)) return false
+    const { $from } = ed.state.selection
+    for (let depth = $from.depth; depth > 0; depth--) {
+      const node = $from.node(depth)
+      if (node.type.name !== "taskItem") continue
+      event.preventDefault()
+      ed.view.dispatch(
+        ed.state.tr.setNodeMarkup($from.before(depth), undefined, {
+          ...node.attrs,
+          checked: !node.attrs.checked,
+        }),
+      )
+      return true
     }
-    event.preventDefault()
-    return true
+    return false
   }
   /** Enter on a selected page chip opens the page (a writer may open it). */
   const pageChipKey = (event: KeyboardEvent): boolean => {
@@ -540,23 +609,28 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
     props.pages.link.open(String(sel.node.attrs.id), dom.textContent ?? "")
     return true
   }
-  // The text field points screen readers at the picker and its active option.
+  // The text field points screen readers at the open list and its active option.
   createEffect(() => {
     const ed = editor()
     if (!ed || ed.isDestroyed) return
     const dom = ed.view.dom
-    const open = pagePick()
+    const page = pagePick()
+    const block = slash()
+    const open = page
+      ? { id: pickerId, n: page.items.length, active: page.active }
+      : block
+        ? { id: slashId, n: block.items.length, active: block.active }
+        : null
     if (!open) {
       for (const a of ["aria-controls", "aria-activedescendant", "aria-expanded"]) {
         dom.removeAttribute(a)
       }
       return
     }
-    dom.setAttribute("aria-controls", pickerId)
+    dom.setAttribute("aria-controls", open.id)
     dom.setAttribute("aria-expanded", "true")
-    if (open.items.length) {
-      dom.setAttribute("aria-activedescendant", pageOptionId(pickerId, open.active))
-    } else dom.removeAttribute("aria-activedescendant")
+    if (open.n) dom.setAttribute("aria-activedescendant", pageOptionId(open.id, open.active))
+    else dom.removeAttribute("aria-activedescendant")
   })
   onCleanup(() => clearTimeout(pickTimer))
 
@@ -763,6 +837,10 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
       extensions: [
         ...editorExtensions(props.preset, {
           placeholder: props.placeholder,
+          checkboxLabel: (text) =>
+            text.trim()
+              ? i18n.t("kernel.editor.checkboxLabel", { text: text.trim() })
+              : i18n.t("kernel.editor.checkboxEmpty"),
           rawLabels: {
             image: i18n.t("kernel.editor.remoteImage"),
             link: i18n.t("kernel.editor.pageLink"),
@@ -834,6 +912,8 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
         handleKeyDown: (_view, event) =>
           emojiKey(event) ||
           pageKey(event) ||
+          slashKey(event) ||
+          taskKey(event) ||
           pageChipKey(event) ||
           (props.onKeyDown?.(event) ?? false),
         handleTextInput: (view, from, to, text) => {
@@ -944,6 +1024,7 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
       setVersion((v) => v + 1)
       syncEmoji(ed)
       syncPages(ed)
+      syncSlash(ed)
       if (!props.onMention) return
       const query = mentionAt(ed.state)
       const key = query ? `${query.trigger}${query.text}` : ""
@@ -954,6 +1035,7 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
     ed.on("blur", () => {
       setEmoji(null)
       closePages()
+      setSlash(null)
     })
     ed.on("update", ({ transaction }) => {
       // An edit of the text, not a change of state (setEditable also says "update").
@@ -1173,6 +1255,20 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
             onPick={(item) => {
               const ed = editor()
               if (ed) pickEmoji(ed, item)
+            }}
+          />
+        )}
+      </Show>
+      <Show when={slash()}>
+        {(open) => (
+          <SlashSuggest
+            id={slashId}
+            items={open().items}
+            active={open().active}
+            anchor={open().anchor}
+            onPick={(item) => {
+              const ed = editor()
+              if (ed) pickSlash(ed, item)
             }}
           />
         )}

@@ -25,6 +25,7 @@ import {
   sweepIdleOrgRuntimes,
 } from "~/modules/apps/org-runtime-release"
 import { RegistriesTestAccess } from "~/modules/apps/registries"
+import { turnOnOrgFeatures } from "~/tests/helpers/org-features"
 
 async function newOrg(): Promise<string> {
   const [org] = extractRows<{ id: string }>(
@@ -150,6 +151,8 @@ describe("org runtime release", () => {
 
   it("a kernel tool called while the org is not set up in this process sets it up and is found", async () => {
     const orgId = await newOrg()
+    // portal_invite belongs to the companies feature, off in a new workspace.
+    await turnOnOrgFeatures(orgId, [["contacts", "companies"]])
     await awaitOrgApps(orgId)
     expect(await releaseOrgRuntimes([orgId], { gone: false })).toEqual([orgId])
     expect(toolRegistry.get([orgId, "kernel", "portal_invite"])).toBeUndefined()

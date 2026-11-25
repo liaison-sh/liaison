@@ -705,29 +705,50 @@ describe("a retainer turned off, on the real kernel", () => {
     const held = new Promise<void>((r) => {
       release = r
     })
+    let holder = 0
+    let locked: () => void = () => {}
+    const taken = new Promise<void>((r) => {
+      locked = r
+    })
     const lock = sql.begin(async (tx) => {
+      const [me] = await tx<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`
+      holder = Number(me?.pid)
       await tx`SELECT 1 FROM app_invoicing.recurring_schedules WHERE id = ${w.id} FOR UPDATE`
+      locked()
       await held
     })
-    const change = (patch: Row) =>
-      call("recurring_schedule_update", { id: w.id, expected_version: 1, ...patch })
-    const calls = Promise.all([
-      change({ retainer_overage_rate_minor: 15_000 }),
-      change({ lines: [line(480_000)] }),
-      renew(w, "2027-02-01", "495000", "AG-1"),
-    ])
+    await taken
+    // The calls queued behind this row lock, directly or behind one another: other files of the
+    // shard share the database, so a lock wait of theirs is never counted.
     const waiting = async () => {
       const [row] = await sql<Array<{ n: number }>>`
-        SELECT count(DISTINCT l.pid)::int AS n
-          FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
-         WHERE NOT l.granted AND a.datname = current_database()`
+        WITH RECURSIVE queued(pid) AS (
+          SELECT a.pid FROM pg_stat_activity a WHERE ${holder}::int = ANY (pg_blocking_pids(a.pid))
+          UNION
+          SELECT a.pid FROM pg_stat_activity a JOIN queued q ON q.pid = ANY (pg_blocking_pids(a.pid))
+        )
+        SELECT count(*)::int AS n FROM queued`
       return row?.n ?? 0
     }
-    for (let i = 0; i < 100 && (await waiting()) < 3; i++) await Bun.sleep(50)
-    expect(await waiting()).toBe(3)
-    release()
-    await lock
-    const results = await calls
+    const change = (patch: Row) =>
+      call("recurring_schedule_update", { id: w.id, expected_version: 1, ...patch })
+    let results: unknown[]
+    try {
+      const calls = Promise.all([
+        change({ retainer_overage_rate_minor: 15_000 }),
+        change({ lines: [line(480_000)] }),
+        renew(w, "2027-02-01", "495000", "AG-1"),
+      ])
+      for (let i = 0; i < 100 && (await waiting()) < 3; i++) await Bun.sleep(50)
+      expect(await waiting()).toBe(3)
+      release()
+      await lock
+      results = await calls
+    } finally {
+      // Never leave the row locked for the files after this one, whatever failed above.
+      release()
+      await lock
+    }
     const saved = results.filter((r) => !(r as { error?: string }).error)
     const row = await stored(w)
     // Every change that answered done is in the row, and the signed renewal is one of them.

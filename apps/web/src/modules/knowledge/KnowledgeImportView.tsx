@@ -52,6 +52,7 @@ import { knowledgeStore, loadCollectionsTree, loadKnowledgeHome } from "./knowle
 import {
   type Access,
   type Counts,
+  canImportNotion,
   dismissedRun,
   dismissRun,
   type LossItem,
@@ -137,7 +138,7 @@ const KnowledgeImportView: Component<{ entityId?: string }> = () => {
   const api = useApi()
   const t = i18n.t
   const phone = () => shellTier() === "phone"
-  const canImport = () => hasScope("kernel:imports:run") && hasScope("kernel:imports:read")
+  const canImport = canImportNotion
   const userId = () => userFromToken()?.userId ?? ""
   const [storageLeftGb, setStorageLeftGb] = createSignal<number | null>(null)
   let input: HTMLInputElement | undefined

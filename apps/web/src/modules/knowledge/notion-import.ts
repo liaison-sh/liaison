@@ -11,7 +11,12 @@
 
 import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
+import { hasScope } from "~/modules/auth/auth-store"
 import type { ImportRun } from "~/modules/imports/import-run-store"
+
+/** Whoever may import a Notion export: the entries to the import tab show for them only. */
+export const canImportNotion = (): boolean =>
+  hasScope("kernel:imports:run") && hasScope("kernel:imports:read")
 
 const QUIET = { suppressGlobalError: true } as const
 

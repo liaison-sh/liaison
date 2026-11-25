@@ -42,7 +42,8 @@ const log = rootLogger.child({ module: "demo-connected-ttl" })
  * connection: `expiresAt` becomes max(current, now + connected TTL). Returns
  * the new expiry when it moved, else null.
  *
- * No-op without demo mode (no query), for a normal org, for the reserved org
+ * No-op without demo mode (no query), for a normal org, for the reserved org,
+ * for an org whose deletion has started (the purge decided on the old expiry)
  * and when the expiry is already that late (one cached marker read, no write).
  * The write is a conditional jsonb_set that never shortens an expiry, so a
  * repeat or a race is harmless.
@@ -69,6 +70,7 @@ export async function extendDemoOrgOnConnection(
       SET settings = jsonb_set(settings, '{demo,expiresAt}', to_jsonb(${targetIso}::text), false),
         updated_at = now()
       WHERE id = ${orgId}::uuid
+        AND deleting_at IS NULL
         AND settings->'demo'->>'variant' = 'visitor'
         AND jsonb_typeof(settings->'demo'->'expiresAt') = 'string'
         AND settings->'demo'->>'expiresAt' < ${targetIso}

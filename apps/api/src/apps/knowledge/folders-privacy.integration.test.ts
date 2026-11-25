@@ -679,6 +679,39 @@ describe("no page ends in no place", () => {
     expect(sorted?.kind).toBe("folder")
     expect(sorted?.documents.map((d) => d.title)).toEqual(["Alpha", "beta", "gamma"])
   })
+
+  it("each page of the tree says whether its reader may edit it, as the write check does", async () => {
+    const top = await shared(ana, "Edit rights")
+    const viewerOnly = await page(ana, "Read me", { in: top.id, access: "viewer" })
+    const open = await page(ana, "Edit me", { in: top.id, access: "editor" })
+    const sharedEdit = await page(ana, "Ben edits", { in: top.id, access: "viewer" })
+    await as(ana, (tx, a) =>
+      setDocumentSharing(
+        tx,
+        sharedEdit,
+        { orgAccess: "viewer", editScope: null, shares: [{ userId: ben, role: "editor" }] },
+        a,
+      ),
+    )
+    const rights = async (userId: string, scopes?: string[]) => {
+      const n = nodes(await tree(userId, scopes)).find((x) => x.id === top.id)
+      return Object.fromEntries((n?.documents ?? []).map((d) => [d.title, d.canEdit]))
+    }
+    // The owner edits all three; Ben only the open one and the one shared to him to edit.
+    expect(await rights(ana)).toEqual({ "Ben edits": true, "Edit me": true, "Read me": true })
+    expect(await rights(ben)).toEqual({ "Ben edits": true, "Edit me": true, "Read me": false })
+    // A reader without the update scope edits none.
+    expect(await rights(ben, ["knowledge:documents:read"])).toEqual({
+      "Ben edits": false,
+      "Edit me": false,
+      "Read me": false,
+    })
+    // The buckets carry it too.
+    const mine = await page(ben, "Ben's own", { access: "none" })
+    const notes = (await tree(ben)).find((n) => n.id === "__personal_notes__")
+    expect(notes?.documents.find((d) => d.id === mine)?.canEdit).toBe(true)
+    expect(viewerOnly && open).toBeTruthy()
+  })
 })
 
 describe("who a new folder is for", () => {

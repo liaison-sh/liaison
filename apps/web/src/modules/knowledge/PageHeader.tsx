@@ -6,8 +6,6 @@
 // and no Save: a page saves itself.
 
 import {
-  Archive,
-  ArchiveRestore,
   ArrowLeftRight,
   CheckCircle,
   FileText,
@@ -15,6 +13,7 @@ import {
   MessageSquare,
   MoreHorizontal,
   Share2,
+  Trash2,
 } from "lucide-solid"
 import { type Component, createSignal, For, Show } from "solid-js"
 import { rovingFocus } from "~/lib/roving-focus"
@@ -27,6 +26,7 @@ import { openTab } from "~/modules/shell/tab-store"
 import { FloatingPanel } from "~/ui/FloatingPanel"
 import { OverlaySheet } from "~/ui/OverlaySheet"
 import type { SaverStatus } from "./autosave"
+import Breadcrumb from "./Breadcrumb"
 import type { KnowledgeBacklink } from "./knowledge-api"
 
 export interface PageHeaderDoc {
@@ -59,8 +59,9 @@ export interface PageHeaderProps {
   onShare: () => void
   onHistory: () => void
   onVerify: () => void
-  onArchive: () => void
-  onRestore: () => void
+  /** "Move to trash" is offered (archive scope, edit right, not a synced page). */
+  canTrash: boolean
+  onTrash: () => void
 }
 
 const REVIEW_KEYS: Record<string, string> = {
@@ -151,6 +152,7 @@ export const PageHeader: Component<PageHeaderProps> = (props) => {
       class="flex shrink-0 items-center justify-between gap-3 border-b border-border-subtle px-4 py-2.5"
     >
       <div class="flex min-w-0 flex-col gap-0.5">
+        <Breadcrumb docId={props.doc.id} />
         <h1
           ref={props.titleRef}
           data-testid="knowledge-doc-title"
@@ -294,7 +296,8 @@ const BacklinksButton: Component<{
         <MessageSquare size={13} class="shrink-0 text-text-tertiary" />
       )}
       <span class="truncate text-[13px] text-text">
-        {link.title || i18n.t("knowledge.untitled")}
+        {link.title ||
+          i18n.t(isPageBacklink(link) ? "knowledge.untitled" : "knowledge.links.untitledThread")}
       </span>
     </button>
   )
@@ -368,7 +371,13 @@ const PageMenu: Component<PageHeaderProps> = (props) => {
         <MoreHorizontal size={16} />
       </FloatingPanel.Trigger>
       <FloatingPanel.Content class="w-48" onKeyDown={rovingFocus}>
-        <button type="button" data-roving class={MENU_ITEM} onClick={run(() => props.onVerify())}>
+        <button
+          type="button"
+          data-roving
+          data-testid="knowledge-doc-verify"
+          class={MENU_ITEM}
+          onClick={run(() => props.onVerify())}
+        >
           <CheckCircle size={14} />
           {i18n.t("knowledge.verify")}
         </button>
@@ -384,29 +393,17 @@ const PageMenu: Component<PageHeaderProps> = (props) => {
             {i18n.t("knowledge.autosave.history")}
           </button>
         </Show>
-        <div class="my-1 h-px bg-border-subtle" />
-        <Show
-          when={props.doc.status === "archived"}
-          fallback={
-            <button
-              type="button"
-              data-roving
-              class={MENU_ITEM}
-              onClick={run(() => props.onArchive())}
-            >
-              <Archive size={14} />
-              {i18n.t("kernel.common.archive")}
-            </button>
-          }
-        >
+        <Show when={props.canTrash}>
+          <div class="my-1 h-px bg-border-subtle" />
           <button
             type="button"
             data-roving
+            data-testid="knowledge-doc-trash"
             class={MENU_ITEM}
-            onClick={run(() => props.onRestore())}
+            onClick={run(() => props.onTrash())}
           >
-            <ArchiveRestore size={14} />
-            {i18n.t("kernel.common.restore")}
+            <Trash2 size={14} />
+            {i18n.t("knowledge.trash.moveToTrash")}
           </button>
         </Show>
       </FloatingPanel.Content>

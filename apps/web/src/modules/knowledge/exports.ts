@@ -9,6 +9,7 @@ import {
   knowledgeStore,
   loadKnowledgeHome,
   markSyncedSourceArchived,
+  scheduleCollectionsTreeReload,
 } from "./knowledge-store"
 import { refreshPageTitle } from "./page-links"
 
@@ -28,9 +29,23 @@ export const SyncedSourceAdd = lazy(() =>
 
 // Dynamic tab label for knowledge:document tabs — mirrors the kernel
 // registration's former inline resolveLabel.
+// Reads every place the client knows a page from: the page itself once opened
+// or refreshed by an event, the recent list, then the folder tree (which holds
+// every page the reader sees, not only the newest).
 export function resolveKnowledgeDocLabel(entityId: string): string | undefined {
   if (!entityId) return undefined
-  return knowledgeStore.documents.find((d) => d.id === entityId)?.title
+  const cached = knowledgeStore.documentsById[entityId]?.title
+  if (cached) return cached
+  const listed = knowledgeStore.documents.find((d) => d.id === entityId)?.title
+  if (listed) return listed
+  const walk = (nodes: typeof knowledgeStore.collectionsTree): string | undefined => {
+    for (const n of nodes) {
+      const hit = n.documents.find((d) => d.id === entityId)?.title ?? walk(n.children)
+      if (hit) return hit
+    }
+    return undefined
+  }
+  return walk(knowledgeStore.collectionsTree)
 }
 
 // Dynamic tab label for knowledge:folder tabs: the folder's name, as the tree shows it.
@@ -68,8 +83,11 @@ export async function handleKnowledgeDocumentWsEvent(
     const changed = data as { entityId?: string; id?: string } | null
     refreshPageTitle(api, changed?.entityId ?? changed?.id)
   }
-  if (action !== "create" && action !== "update") return
   if (!api) return
+  // Any change to a page can change its row (title, place, gone): the tree
+  // reloads once per burst, this reader's own changes included.
+  scheduleCollectionsTreeReload(api)
+  if (action !== "create" && action !== "update") return
 
   if (action === "create") {
     await loadKnowledgeHome(api)
@@ -98,6 +116,18 @@ export async function handleKnowledgeDocumentWsEvent(
     }
   })
   await loadKnowledgeHome(api)
+}
+
+// A folder or a filing changed. Frames carry ids only, and reach only readers
+// of the folder (or those who just lost it): the tree reloads once per burst.
+export function handleKnowledgeCollectionWsEvent(
+  _action: string,
+  _data: unknown,
+  _ctx?: unknown,
+): void {
+  const api = getAttentionApi()
+  if (!api) return
+  scheduleCollectionsTreeReload(api)
 }
 
 export function handleSyncedSourceWsEvent(action: string, data: unknown, _ctx?: unknown): void {

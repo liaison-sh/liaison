@@ -7,8 +7,11 @@
 //
 // The folder has no page until someone writes in it: the first keystroke asks the
 // server to make it (once, however fast the next keys come), and the page then opens
-// on the text typed so far and saves the rest like any page. A synced folder has no
-// page of its own, and someone who may not start one sees the list alone.
+// on the text typed so far and saves the rest like any page. Until then that text is
+// unsaved text like any page's (folder-start.ts): kept in a local draft, asked for at
+// sign-out, never resent per key after a failure. A page someone else made meanwhile
+// is never written over: the text meets it as a conflict. A synced folder has no page
+// of its own, and someone who may not start one sees the list alone.
 import { FileText, Folder } from "lucide-solid"
 import {
   type Component,
@@ -19,10 +22,12 @@ import {
   For,
   lazy,
   on,
+  onCleanup,
   Show,
   Suspense,
 } from "solid-js"
 import { ApiError } from "~/lib/api-error"
+import { hasScope, userFromToken } from "~/modules/auth/auth-store"
 import type { RichEditorHandle } from "~/modules/editor"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useOptionalApi } from "~/modules/shell/ApiContext"
@@ -31,6 +36,8 @@ import { openTab } from "~/modules/shell/tab-store"
 import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
 import { ScrollFade } from "~/ui/ScrollFade"
+import { draftKey, pageDrafts, webLocks } from "./drafts"
+import { createFolderStartSaver, type FolderStartSaver, leftFolderDrafts } from "./folder-start"
 import KnowledgeDocumentView, { type KnowledgeDocumentFetched } from "./KnowledgeDocumentView"
 import {
   type CollectionTreeNode,
@@ -67,7 +74,7 @@ const KnowledgeFolderView: Component<{ entityId: string }> = (props) => {
   const api = useOptionalApi()
   const phone = () => shellTier() === "phone"
 
-  const [view, { refetch, mutate }] = createResource(
+  const [view, { mutate }] = createResource(
     () => props.entityId,
     async (id): Promise<KnowledgeFolderPage | "not-found" | null> => {
       if (!api) return null
@@ -83,41 +90,143 @@ const KnowledgeFolderView: Component<{ entityId: string }> = (props) => {
     const v = view.latest
     return v && v !== "not-found" ? v : null
   }
+  const me = () => userFromToken()?.userId ?? null
+  const canCreatePages = () =>
+    hasScope("knowledge:documents:create") || hasScope("knowledge:documents:admin")
+
+  /** The page made a moment ago from text typed here (opens on it, no reload). */
+  const [fresh, setFresh] = createSignal<{
+    row: KnowledgeDocumentFetched
+    text: string
+    existing?: boolean
+  } | null>(null)
+  const [startError, setStartError] = createSignal(false)
+  /** The start editor's text: empty, or what a closed tab left in this folder. */
+  const [startValue, setStartValue] = createSignal("")
+  let startInFlight: Promise<boolean> | null = null
+  let startEditor: RichEditorHandle | undefined
+  let starter: FolderStartSaver | null = null
+  const startText = () => startEditor?.markdown() ?? ""
+  onCleanup(() => void starter?.destroy())
+
+  /** The folder's first text, held as unsaved text until the page holds it. */
+  const ensureStarter = (v: KnowledgeFolderPage): FolderStartSaver | null => {
+    const userId = me()
+    if (starter || !userId) return starter
+    starter = createFolderStartSaver({
+      userId,
+      folderId: v.folder.id,
+      folderName: () => data()?.folder.name ?? v.folder.name,
+      read: startText,
+      start: () => startPage(),
+      drafts: pageDrafts(),
+    })
+    return starter
+  }
+  /** The page holds the text now (made here, or met as a conflict): the draft goes. */
+  const handOver = () => {
+    const s = starter
+    starter = null
+    void s?.handedOver()
+  }
+
+  /** The folder's page made from the text typed here, once; true once it is made. */
+  const startPage = (): Promise<boolean> => {
+    if (startInFlight) return startInFlight
+    const v = data()
+    if (!api || !v) return Promise.resolve(false)
+    setStartError(false)
+    startInFlight = (async () => {
+      try {
+        const { created, ...row } = await startKnowledgeFolderPage(api, v.folder.id, startText())
+        const text = startEditor ? startText() : row.body
+        // `created: false`: someone made it meanwhile; their text is never written over.
+        setFresh({ row: row as KnowledgeDocumentFetched, text, existing: created === false })
+        handOver()
+        mutate({ ...v, page: { ...row, canEdit: true }, canStartPage: false })
+        void loadCollectionsTree(api)
+        return true
+      } catch {
+        setStartError(true)
+        void starter?.persistDraft()
+        return false
+      } finally {
+        startInFlight = null
+      }
+    })()
+    return startInFlight
+  }
+  const onStartEdit = () => {
+    const v = data()
+    if (!v) return
+    ensureStarter(v)?.edit()
+    // After a failure, keys wait for Try again: never one failing request per key.
+    if (!startError()) void startPage()
+  }
+  const copyStartText = async () => {
+    try {
+      await navigator.clipboard.writeText(startText())
+      addToast({ type: "success", message: i18n.t("knowledge.autosave.copied") })
+    } catch {
+      addToast({ type: "error", message: i18n.t("knowledge.autosave.copyFailed") })
+    }
+  }
+  /** Text typed in this folder in a tab that is gone comes back here, unsent. */
+  const restoreLeft = async (v: KnowledgeFolderPage) => {
+    const userId = me()
+    if (!userId) return
+    const left = await leftFolderDrafts(pageDrafts(), webLocks(), userId, v.folder.id).catch(
+      () => [],
+    )
+    const newest = left[0]
+    if (!newest || startText().trim() || data()?.page) return
+    setStartValue(newest.body)
+    const s = ensureStarter(v)
+    s?.edit()
+    await s?.persistDraft()
+    for (const d of left)
+      await pageDrafts()
+        .remove(draftKey(d))
+        .catch(() => {})
+    addToast({ type: "info", message: i18n.t("knowledge.folderPage.draftBack") })
+  }
+
+  /**
+   * The folder's answer again, in place: the tab never suspends (the editor stays
+   * mounted and focused). A page that appeared under text not sent yet is met as a
+   * conflict, the text kept.
+   */
+  const refresh = async () => {
+    if (!api) return
+    const id = props.entityId
+    let next: KnowledgeFolderPage
+    try {
+      next = await getKnowledgeFolderPage(api, id)
+    } catch (err) {
+      if (id === props.entityId && err instanceof ApiError && err.status === 404)
+        mutate("not-found")
+      return
+    }
+    // A start in flight decides what opens; this answer may predate it.
+    if (id !== props.entityId || startInFlight) return
+    if (next.page && !data()?.page && starter?.hasUnsaved()) {
+      setFresh({
+        row: { ...next.page, canEdit: next.page.canEdit ?? true } as KnowledgeDocumentFetched,
+        text: startText(),
+        existing: true,
+      })
+      handOver()
+    }
+    mutate(next)
+  }
   // What is inside changes as the tree does (a page made, moved, a folder renamed).
   createEffect(
     on(
       () => knowledgeStore.collectionsTree,
-      () => void refetch(),
+      () => void refresh(),
       { defer: true },
     ),
   )
-
-  /** The page made a moment ago from text typed here (opens on it, no reload). */
-  const [fresh, setFresh] = createSignal<{ row: KnowledgeDocumentFetched; text: string } | null>(
-    null,
-  )
-  const [startError, setStartError] = createSignal(false)
-  let starting = false
-  let startEditor: RichEditorHandle | undefined
-
-  /** The first keystroke makes the folder's page; later keys wait for it. */
-  const startPage = async () => {
-    const v = data()
-    if (starting || !api || !v) return
-    starting = true
-    setStartError(false)
-    try {
-      const row = await startKnowledgeFolderPage(api, v.folder.id, startEditor?.markdown() ?? "")
-      const text = startEditor?.markdown() ?? row.body
-      setFresh({ row: row as KnowledgeDocumentFetched, text })
-      mutate({ ...v, page: { ...row, canEdit: true }, canStartPage: false })
-      void loadCollectionsTree(api)
-    } catch {
-      setStartError(true)
-    } finally {
-      starting = false
-    }
-  }
 
   const newPage = async () => {
     const v = data()
@@ -204,7 +313,7 @@ const KnowledgeFolderView: Component<{ entityId: string }> = (props) => {
           <h3 class="text-[11px] font-semibold uppercase tracking-[0.04em] text-text-tertiary">
             {i18n.t("knowledge.folderPage.inside")}
           </h3>
-          <Show when={!v.folder.synced}>
+          <Show when={!v.folder.synced && canCreatePages()}>
             <Button
               variant="outline"
               size="sm"
@@ -260,7 +369,7 @@ const KnowledgeFolderView: Component<{ entityId: string }> = (props) => {
 
   return (
     <Show
-      when={view() !== "not-found"}
+      when={view.latest !== "not-found"}
       fallback={
         <div
           data-testid="knowledge-folder-not-found"
@@ -301,21 +410,38 @@ const KnowledgeFolderView: Component<{ entityId: string }> = (props) => {
                     >
                       <Show when={!v().folder.synced && v().canStartPage}>
                         <Show when={startError()}>
-                          <p
+                          <div
                             data-testid="knowledge-folder-start-error"
                             role="alert"
-                            class="mb-3 text-[12.5px] text-danger"
+                            class="mb-3 flex flex-wrap items-center gap-2 text-[12.5px] text-danger"
                           >
-                            {i18n.t("knowledge.folderPage.startFailed")}
-                          </p>
+                            <span>{i18n.t("knowledge.folderPage.startFailed")}</span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              data-testid="knowledge-folder-start-retry"
+                              onClick={() => void startPage()}
+                            >
+                              {i18n.t("knowledge.folderPage.startRetry")}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              data-testid="knowledge-folder-start-copy"
+                              onClick={() => void copyStartText()}
+                            >
+                              {i18n.t("knowledge.autosave.copyText")}
+                            </Button>
+                          </div>
                         </Show>
                         <Suspense>
                           <PageTextEditor
-                            value=""
+                            value={startValue()}
                             ref={(h) => {
                               startEditor = h
+                              void restoreLeft(v())
                             }}
-                            onEdit={() => void startPage()}
+                            onEdit={onStartEdit}
                             placeholder={i18n.t("knowledge.folderPage.writeAbout")}
                             aria-label={v().folder.name}
                             data-testid="knowledge-folder-start-editor"
@@ -338,7 +464,7 @@ const KnowledgeFolderView: Component<{ entityId: string }> = (props) => {
                     },
                     onGone: () => {
                       setFresh(null)
-                      void refetch()
+                      void refresh()
                     },
                     get fresh() {
                       const f = fresh()

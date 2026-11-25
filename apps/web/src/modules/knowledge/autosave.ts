@@ -162,6 +162,17 @@ export function liveSavers(): PageSaver[] {
   return [...live]
 }
 
+/**
+ * A saver made outside `createPageSaver` (a folder's first text, before its page
+ * exists) joins the ones sign-out asks; the returned function lets it go.
+ */
+export function trackSaver(saver: PageSaver): () => void {
+  live.add(saver)
+  return () => {
+    live.delete(saver)
+  }
+}
+
 /** The session is over in this tab: every saver stops, its text left in the draft. */
 export async function destroyAllSavers(opts?: { discard?: boolean }): Promise<void> {
   await Promise.all(liveSavers().map((s) => s.destroy(opts)))
@@ -176,16 +187,16 @@ onSessionTeardown(endAllSavers)
 onAuthCleared(endAllSavers)
 onLogoutBroadcast(endAllSavers)
 
-function newSessionId(): string {
+export function newSessionId(): string {
   try {
     return crypto.randomUUID()
   } catch {
-    // A uuid shape the server accepts; only uniqueness within this user matters.
-    const hex = () =>
-      Math.floor(Math.random() * 0x10000)
-        .toString(16)
-        .padStart(4, "0")
-    return `${hex()}${hex()}-${hex()}-4${hex().slice(1)}-a${hex().slice(1)}-${hex()}${hex()}${hex()}`
+    // randomUUID needs a secure context; getRandomValues does not. A version 4 uuid.
+    const b = crypto.getRandomValues(new Uint8Array(16))
+    b[6] = ((b[6] ?? 0) & 0x0f) | 0x40
+    b[8] = ((b[8] ?? 0) & 0x3f) | 0x80
+    const hex = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("")
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
   }
 }
 

@@ -20,6 +20,7 @@ import { Button } from "~/ui/Button"
 import { ScrollFade } from "~/ui/ScrollFade"
 import type { CollectionTreeNode } from "./knowledge-api"
 import { knowledgeStore, loadCollectionsTree } from "./knowledge-store"
+import { canImportNotion } from "./notion-import"
 
 /** The route the tab store opens for Knowledge home (`knowledge-tabs.ts`'s
  *  `knowledge:home` registration). */
@@ -115,15 +116,17 @@ const KnowledgeHome: Component = () => {
             </h1>
           </Show>
           <div class="flex flex-wrap gap-2">
-            <Button
-              data-testid="knowledge-home-import"
-              size="sm"
-              variant="outline"
-              class="shrink-0 whitespace-nowrap"
-              onClick={openNotionImport}
-            >
-              {i18n.t("knowledge.notionImport.entry")}
-            </Button>
+            <Show when={canImportNotion()}>
+              <Button
+                data-testid="knowledge-home-import"
+                size="sm"
+                variant="outline"
+                class="shrink-0 whitespace-nowrap"
+                onClick={openNotionImport}
+              >
+                {i18n.t("knowledge.notionImport.entry")}
+              </Button>
+            </Show>
             <Button
               data-testid="knowledge-home-create-from-cta"
               size="sm"
@@ -242,9 +245,17 @@ const KnowledgeHome: Component = () => {
 }
 
 /** One collection at phone width: a row that opens in place and lists the
- *  documents it holds, because a collection has no tab of its own. */
-const CollectionRow: Component<{ node: CollectionTreeNode }> = (props) => {
+ *  folders and documents it holds, nested as deep as the tree goes. */
+const CollectionRow: Component<{ node: CollectionTreeNode; depth?: number }> = (props) => {
+  const i18n = useI18n()
   const [open, setOpen] = createSignal(false)
+  const depth = () => props.depth ?? 0
+  const name = () =>
+    props.node.kind === "personal_notes" || props.node.id === "__personal_notes__"
+      ? i18n.t("knowledge.personalNotes")
+      : props.node.kind === "unfiled" || props.node.id === "__unfiled__"
+        ? i18n.t("knowledge.unfiled")
+        : props.node.name
   return (
     <>
       <button
@@ -253,14 +264,18 @@ const CollectionRow: Component<{ node: CollectionTreeNode }> = (props) => {
         aria-expanded={open() ? "true" : "false"}
         onClick={() => setOpen((v) => !v)}
         class="flex h-[46px] w-full items-center gap-3 text-left text-[16px] text-text hover:bg-surface-hover"
+        style={{ "padding-left": `${depth() * 1.25}rem` }}
       >
         <Folder size={16} class="shrink-0 text-text-tertiary" />
-        <span class="min-w-0 flex-1 truncate">{props.node.name}</span>
+        <span class="min-w-0 flex-1 truncate">{name()}</span>
         <Show when={open()} fallback={<ChevronRight size={16} class="text-text-tertiary" />}>
           <ChevronDown size={16} class="text-text-tertiary" />
         </Show>
       </button>
       <Show when={open()}>
+        <For each={props.node.children}>
+          {(child) => <CollectionRow node={child} depth={depth() + 1} />}
+        </For>
         <For each={props.node.documents}>
           {(doc) => (
             <button
@@ -269,7 +284,8 @@ const CollectionRow: Component<{ node: CollectionTreeNode }> = (props) => {
               onClick={() =>
                 openTab({ type: "knowledge:document", entityId: doc.id, label: doc.title })
               }
-              class="flex h-[46px] w-full items-center gap-3 pl-8 text-left text-[15px] text-text hover:bg-surface-hover"
+              class="flex h-[46px] w-full items-center gap-3 text-left text-[15px] text-text hover:bg-surface-hover"
+              style={{ "padding-left": `${(depth() + 1) * 1.25 + 0.75}rem` }}
             >
               <FileText size={15} class="shrink-0 text-text-tertiary" />
               <span class="min-w-0 flex-1 truncate">{doc.title}</span>

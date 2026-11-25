@@ -27,7 +27,7 @@ import {
   builtinSourceLabel,
 } from "~/modules/imports/builtin/registry"
 import { BUILTIN_IMPORT_HANDLERS } from "~/modules/imports/builtin-import-handlers"
-import { processImportRunJob } from "~/modules/imports/job"
+import { processImportRunJob, registerImportJobWorker } from "~/modules/imports/job"
 import type { ImportKindDecl } from "~/modules/imports/kind-schema"
 import { buildZip } from "~/modules/imports/parsers/__test-helpers__/zip-writer"
 import { loadAnyPreview, previewImport, startFromPreview } from "~/modules/imports/preview"
@@ -230,6 +230,8 @@ async function transform(batch, ctx) {
 
 beforeAll(async () => {
   await acquireTestLock()
+  // A run started from its preview is queued: the job must have its handler.
+  registerImportJobWorker()
   await sql.unsafe(`DROP SCHEMA IF EXISTS "${SCHEMA}" CASCADE`)
   await sql.unsafe(`CREATE SCHEMA "${SCHEMA}"`)
   await sql.unsafe(`

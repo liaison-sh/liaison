@@ -709,6 +709,12 @@
         "canWrite": "can_edit_document"
       }
     },
+    "collection": {
+      "labelField": "name",
+      "tableName": "collections",
+      "archivedField": "archived_at",
+      "readScope": "knowledge:documents:read"
+    },
     "source_link": {
       "labelField": "title",
       "handlePrefix": "src",
@@ -1718,6 +1724,7 @@
         "label": "Folder",
         "icon": "KnowledgeIcon",
         "urlPattern": "/knowledge/folders/:entityId",
+        "entity": "collection",
         "resolveLabel": "resolveKnowledgeFolderLabel",
         "referenceable": false
       },

@@ -107,6 +107,23 @@ export function migrationFiles(root: string): string[] {
   return readdirSync(join(root, MIGRATIONS_DIR))
 }
 
+/**
+ * Whether HEAD is already part of `ref` (a tag or a commit of main): it then
+ * adds no migration of its own, so main moving on since is no problem. Needs
+ * the history between them (a full clone); a shallow one answers false.
+ */
+export function headIsOn(root: string, ref = "origin/main"): boolean {
+  try {
+    execFileSync("git", ["merge-base", "--is-ancestor", "HEAD", ref], {
+      cwd: root,
+      stdio: "ignore",
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** `main`'s journal from git (`ref` defaults to origin/main), or null when the ref is absent. */
 export function readMainJournal(root: string, ref = "origin/main"): JournalEntry[] | null {
   try {

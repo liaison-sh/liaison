@@ -14,6 +14,7 @@ import { CLOUD_CREATE_ORG_ENDPOINT } from "~/modules/cloud/outcomes"
 import { seedOrgBillingState } from "~/seed/factories/billing/billing"
 import { seedOrgRow } from "~/seed/factories/org/rows"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { withRoleCatalogLock } from "~/tests/helpers/role-catalog-lock"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const MIGRATION = join(import.meta.dir, "0309_org_class.sql")
@@ -168,14 +169,18 @@ describe("0309, run by a schema owner that is neither superuser nor BYPASSRLS", 
 
   it("stops when liaison_admin itself is held to row security", async () => {
     const visitor = await org()
-    await rolledBack(async (tx) => {
-      await before(tx)
-      await mark(tx, visitor, marker("visitor"))
-      await tx.unsafe("ALTER ROLE liaison_admin NOBYPASSRLS")
-      await asOwnerLogin(tx)
-      const err = await tx.savepoint(async (sp) => migrate(sp)).catch((e: Error) => e)
-      expect(String(err)).toMatch(/liaison_admin is held to row security/)
-    })
+    // liaison_admin is a cluster-wide row that migration replays in other test
+    // processes also write: held until the rollback, under their lock.
+    await withRoleCatalogLock(privilegedUrl(), () =>
+      rolledBack(async (tx) => {
+        await before(tx)
+        await mark(tx, visitor, marker("visitor"))
+        await tx.unsafe("ALTER ROLE liaison_admin NOBYPASSRLS")
+        await asOwnerLogin(tx)
+        const err = await tx.savepoint(async (sp) => migrate(sp)).catch((e: Error) => e)
+        expect(String(err)).toMatch(/liaison_admin is held to row security/)
+      }),
+    )
   })
 })
 

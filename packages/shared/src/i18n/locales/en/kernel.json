@@ -3948,6 +3948,7 @@
       "approval_policy_set": "tighten approval policy",
       "contacts_merge": "merge contacts",
       "contacts_write": "edit contact",
+      "threads_reply": "post in a conversation",
       "notify_user": "notify user",
       "enable_app": "enable app",
       "data_subject_export": "export a person's data",

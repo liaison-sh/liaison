@@ -433,6 +433,23 @@ describe("a step whose agent turn parked a tool call for approval", () => {
     )
   })
 
+  // Walk 2026-11-25: "Your agent asks before it uses threads reply", the tool's raw name.
+  it("names the parked tool in words, not by its id", async () => {
+    onScreen("approval-card[data-request-id=req-283]").dataset.testid = "approval-card"
+    server.status = { ...HELD, requestId: "req-283", toolName: "kernel:threads_reply" }
+    setTourApi(api())
+    render(() => (
+      <ApiContext.Provider value={{} as never}>
+        <TourOverlay {...timing} />
+      </ApiContext.Provider>
+    ))
+    await tourStore.load()
+    await screen.findByTestId("tour-beat-title")
+    const body = screen.getByTestId("tour-beat-body").textContent ?? ""
+    expect(body).toContain("post in a conversation")
+    expect(body).not.toContain("threads reply")
+  })
+
   // Demo 2026-10-29: an approved fetch failed and the request went back to
   // pending; every Do it for me approved it again, and the thread collected one
   // failure notice per press. The tour approves a parked request once.

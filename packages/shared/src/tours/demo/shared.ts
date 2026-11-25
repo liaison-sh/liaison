@@ -209,8 +209,8 @@ export function hop(label: string, anchor: string, anchorPhone?: string): TourPa
 }
 
 /** The last hop, once there: what to do with what the step points at. */
-export function lastHop(label: string): TourPathHop {
-  return { label }
+export function lastHop(label: string, at?: string): TourPathHop {
+  return at === undefined ? { label } : { label, at }
 }
 
 /**
@@ -239,7 +239,8 @@ export function dockToRunConversation(first: string, last: string): TourPathHop[
       RUN_CONVERSATION_ROW,
       RUN_CONVERSATION_ROW_PHONE,
     ),
-    lastHop(last),
+    // Its composer on screen: the conversation is open already, Chats and its row are behind.
+    lastHop(last, RUN_COMPOSER_ANCHOR),
   ]
 }
 

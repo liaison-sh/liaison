@@ -11,6 +11,7 @@ import {
   approvalScopeLabel,
   localizeApprovalText,
   localizeRefPhrases,
+  toolActionPhrase,
 } from "./approval-copy"
 
 const fr = { t: translatorFor("fr"), locale: "fr" }
@@ -172,5 +173,19 @@ describe("a sequenced step's earlier-step phrases in the reader's language", () 
         fr,
       ),
     ).toBe("x le PDF d'une étape précédente (renseigné quand cette étape s'exécute)")
+  })
+})
+
+// Walk 2026-11-25: a held step said "Your agent asks before it uses threads reply".
+describe("a tool's action in a sentence", () => {
+  it("reads the catalog's words, in the reader's language, whatever form the id takes", () => {
+    expect(toolActionPhrase("kernel:threads_reply", en.t)).toBe("post in a conversation")
+    expect(toolActionPhrase("kernel__threads_reply", en.t)).toBe("post in a conversation")
+    expect(toolActionPhrase("kernel:threads_reply", fr.t)).toBe("publier dans une conversation")
+  })
+
+  it("falls back to the tool's own words, never its raw id", () => {
+    expect(toolActionPhrase("kernel:web_search", en.t)).toBe("web search")
+    expect(toolActionPhrase("projects__create_widget", en.t)).toBe("projects create widget")
   })
 })

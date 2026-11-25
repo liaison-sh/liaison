@@ -9,6 +9,7 @@ import fr from "../../../../i18n/locales/fr/tours.json"
 import { findTour } from "../../../index"
 import { effectiveBeats, isTourAvailable, pickTourFigures, tourCopyKeys } from "../../../schema"
 import { CLIENT_CARD_ROW, CLIENT_FIGURES_TOOL } from "../../client"
+import { RUN_COMPOSER_ANCHOR } from "../../shared"
 import { STUDIO_CLIENT_CFG, STUDIO_CR_ACCEPTED_INJECTOR, scenarioStudioClientTour } from "./client"
 
 const tour = scenarioStudioClientTour
@@ -46,6 +47,26 @@ describe("the client scenario", () => {
       for (const word of ["open", "ouvr", "word for word", "mot pour mot"])
         expect(text).not.toContain(word)
     }
+  })
+
+  it("the passage step knows a person already in the conversation is there (walk 2026-11-25)", () => {
+    // The answer streams into the open conversation: its composer on screen puts Chats and the
+    // conversation's row behind the person, so the card never sends them back to Chats.
+    const path = beat("open-agreement").path ?? []
+    expect(path.map((h) => h.anchor ?? null)).toEqual([
+      "dock-chats",
+      "chats-personal-agent-row[data-in-dock=true]",
+      null,
+    ])
+    expect(path[2]?.at).toBe(RUN_COMPOSER_ANCHOR)
+    const effective = effectiveBeats(tour, {
+      installedApps: ["agreements", "mail", "projects"],
+      isDemo: true,
+      worldId: "studio",
+      features: [],
+      phone: false,
+    }).find((b) => b.id === "open-agreement")
+    expect(effective?.path?.[2]?.at).toBe(RUN_COMPOSER_ANCHOR)
   })
 
   it("the moved contract total is claimed on the step whose page shows the agreement's amount", () => {

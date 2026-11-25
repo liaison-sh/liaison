@@ -77,6 +77,28 @@ function actionPhrase(toolName: string, t: Translate): string | null {
 }
 
 /**
+ * What a tool does, as a person reads it in a sentence ("post in a
+ * conversation", "edit contact"): the catalog's action words in the reader's
+ * language, else the tool's own words ("web search", "projects create"),
+ * never its raw id. Takes the canonical id (`kernel:threads_reply`) or the
+ * model's (`kernel__threads_reply`); the workspace's own tools read without
+ * their prefix.
+ */
+export function toolActionPhrase(toolName: string, t: Translate): string {
+  const sep = toolName.indexOf("__")
+  const canonical =
+    !toolName.includes(":") && sep > 0
+      ? `${toolName.slice(0, sep)}:${toolName.slice(sep + 2)}`
+      : toolName
+  const phrase = actionPhrase(canonical, t)
+  if (phrase) return phrase
+  return canonical
+    .replace(/^kernel:/, "")
+    .replace(/[_:.]+/g, " ")
+    .trim()
+}
+
+/**
  * The action badge: "<App> : <action>" ("KPI : proposer une modification").
  * An English reader, and a tool the catalog does not know, keep the server's
  * label.

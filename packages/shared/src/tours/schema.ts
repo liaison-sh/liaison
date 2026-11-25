@@ -345,7 +345,11 @@ export type TourWait = (typeof TOUR_WAITS)[number]
  * rings the one to take on screen. `rail`: the beat's app on the desktop rail
  * (computed from the route, passed once the person is in that app). `anchor`:
  * the element to press (the project's row, the agent in the chats list).
- * Neither: the last thing to do once there (send the request below).
+ * Neither: the last thing to do once there (send the request below). Such a
+ * last hop may name `at`, an element that is on screen only once the person
+ * is there (the conversation's composer): seen, it puts every hop before it
+ * behind the person, so a step that starts with them already there never
+ * sends them back to the first hop. It is never ringed.
  */
 const TourPathHopSchema = z
   .object({
@@ -354,6 +358,7 @@ const TourPathHopSchema = z
     /** Phone-width override of `anchor`. */
     anchorPhone: AnchorSchema.optional(),
     rail: z.literal(true).optional(),
+    at: AnchorSchema.optional(),
   })
   .strict()
   .superRefine((hop, ctx) => {
@@ -361,6 +366,8 @@ const TourPathHopSchema = z
       ctx.addIssue({ code: "custom", message: "a rail hop rings the rail: no anchor" })
     if (hop.anchorPhone && !hop.anchor)
       ctx.addIssue({ code: "custom", message: "anchorPhone overrides an anchor; set anchor too" })
+    if (hop.at && (hop.anchor || hop.rail))
+      ctx.addIssue({ code: "custom", message: "`at` marks a last hop that has nothing to press" })
   })
 export type TourPathHop = z.infer<typeof TourPathHopSchema>
 
@@ -736,6 +743,9 @@ export const TourSchema = z
         ...(beat.path ?? []).flatMap((hop) => [
           ...routeEntityRefs(hop.anchor),
           ...routeEntityRefs(hop.anchorPhone),
+          // A last hop's `at` may name the person's conversation with their agent in any tour:
+          // where nothing recorded it, the anchor matches nothing and the way reads as before.
+          ...routeEntityRefs(hop.at).filter((ref) => ref !== RUN_CONVERSATION),
         ]),
       ]) {
         if (!earlierRecording.has(ref)) {
@@ -860,6 +870,8 @@ export interface EffectivePathHop {
   label: string
   anchor?: string
   rail?: true
+  /** On screen once the person is at this hop (`TourPathHop.at`); never ringed. */
+  at?: string
 }
 
 /**
@@ -951,6 +963,7 @@ export function effectiveBeats(tour: Tour, ctx: EffectiveBeatsContext): Effectiv
         const out: EffectivePathHop = { label: hop.label }
         if (anchor !== undefined) out.anchor = anchor
         if (hop.rail) out.rail = true
+        if (hop.at !== undefined) out.at = hop.at
         return out
       })
     }
@@ -1124,6 +1137,7 @@ export function tourTestIds(tour: Tour): string[] {
     for (const hop of beat.path ?? []) {
       if (hop.anchor) ids.add(anchorTestId(hop.anchor))
       if (hop.anchorPhone) ids.add(anchorTestId(hop.anchorPhone))
+      if (hop.at) ids.add(anchorTestId(hop.at))
     }
     fromSteps(beat.autoplay)
     fromSteps(beat.autoplayPhone)

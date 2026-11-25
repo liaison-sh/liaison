@@ -140,7 +140,11 @@ export async function seedRoutine(
 
 /**
  * Switch a seeded routine on and open its event subscription, the way the
- * routines route does.
+ * routines route does: here, and in every other process of the cell through
+ * the announce. The process that publishes the routine's event (the outbox
+ * leader, often another process) holds the `once` handler, so a subscription
+ * opened only here left the routine deaf until the next resync, up to a minute
+ * later, and an event in that gap never reached it.
  */
 export async function enableEventRoutine(orgId: string, routineId: string): Promise<void> {
   const [row] = await withPrivilegedDb(orgId, "seed-enable-routine", (tx) =>
@@ -151,10 +155,13 @@ export async function enableEventRoutine(orgId: string, routineId: string): Prom
       .returning({ id: routines.id, event: routines.event, eventFilter: routines.eventFilter }),
   )
   if (!row) throw new Error(`routines seed: routine ${routineId} not found`)
-  const { subscribeActiveEventRoutines } = await import("~/infra/jobs/event-routine-subscriber")
+  const { subscribeActiveEventRoutines, announceEventRoutineChange } = await import(
+    "~/infra/jobs/event-routine-subscriber"
+  )
   await subscribeActiveEventRoutines([
     { id: row.id, orgId, event: row.event, filter: row.eventFilter },
   ])
+  await announceEventRoutineChange(row.id, orgId)
 }
 
 export interface SubAgentRoleSeed {

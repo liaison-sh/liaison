@@ -3945,6 +3945,7 @@
       "approval_policy_set": "renforcer une règle d'approbation",
       "contacts_merge": "fusionner des contacts",
       "contacts_write": "modifier un contact",
+      "threads_reply": "publier dans une conversation",
       "notify_user": "notifier un utilisateur",
       "enable_app": "activer une application",
       "data_subject_export": "exporter les données d'une personne",

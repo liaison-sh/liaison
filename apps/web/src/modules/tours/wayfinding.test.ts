@@ -89,6 +89,27 @@ describe("advancePath", () => {
     expect(pathProgress(toAgent, loading)).toEqual({ done: 1, current: 1 })
   })
 
+  // Walk 2026-11-25: on a step about the agent's answer, the conversation was open in the dock
+  // and the answer not in yet, and the card said "1/3 Open Chats"; pressing it closed the
+  // conversation and the step never moved on.
+  it("puts the way behind a person already in the conversation while the answer is not in", () => {
+    const toAnswer: EffectivePathHop[] = [
+      { label: "Open Chats", anchor: "dock-chats" },
+      { label: "Open your agent", anchor: "chats-personal-agent-row[data-in-dock=true]" },
+      { label: "Read the answer", at: "compose-field[data-thread-id=c1]" },
+    ]
+    // Chats in the dock and the conversation's composer on screen; its row is not (it is open).
+    const onScreen = (i: number) => i === 0 || i === 2
+    const state = advancePath(toAnswer, PATH_START, onScreen, false, true, {
+      onRoute: true,
+      targetAnchor: "agent-answer[data-turn-id=t1]",
+    })
+    expect(pathProgress(toAnswer, state)).toEqual({ done: 2, current: 2 })
+    // Not there (the conversation closed): the way starts at Chats.
+    const away = advancePath(toAnswer, PATH_START, (i) => i === 0, false, true, { onRoute: true })
+    expect(pathProgress(toAnswer, away)).toEqual({ done: 0, current: 0 })
+  })
+
   it("keeps the hops while the element is not on screen", () => {
     const state = advancePath(openSession, PATH_START, all, false, true, { onRoute: true })
     expect(pathProgress(openSession, state)).toEqual({ done: 0, current: 0 })

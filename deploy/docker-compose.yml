@@ -400,6 +400,9 @@ services:
       LIAISON_SANDBOX_URL: ${LIAISON_SANDBOX_URL:-http://sandbox:8790}
       LIAISON_SANDBOX_BRIDGE_URL: ${LIAISON_SANDBOX_BRIDGE_URL:-http://app-bridge:${LIAISON_APP_BRIDGE_PORT:-3100}}
       LIAISON_APP_BRIDGE_PORT: ${LIAISON_APP_BRIDGE_PORT:-3100}
+      # The sandbox network's subnet (the `sandbox` network below): an app
+      # process is on it too, and its internal listener never binds there.
+      LIAISON_SANDBOX_SUBNET: ${LIAISON_SANDBOX_SUBNET:-10.73.250.0/24}
       LIAISON_APP_RUNTIME: ${LIAISON_APP_RUNTIME:-}
       LIAISON_APP_BRIDGE_BASE_URL: ${LIAISON_APP_BRIDGE_BASE_URL:-}
       LIAISON_APP_BRIDGE_TIMINGS_FILE: ${LIAISON_APP_BRIDGE_TIMINGS_FILE:-}

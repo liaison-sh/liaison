@@ -241,10 +241,10 @@ Your team's shared documents, policies and curated source links.
 | `knowledge:cache:manage` | role admin |  |
 | `knowledge:collections:manage` | role member; tools add_to_collection, collection_create, collection_delete, collection_update, remove_from_collection |  |
 | `knowledge:documents:admin` | role admin |  |
-| `knowledge:documents:archive` | role curator; tools archive, restore |  |
+| `knowledge:documents:archive` | roles curator, member; tools archive, restore |  |
 | `knowledge:documents:assign-owner` | role curator |  |
 | `knowledge:documents:create` | role member; tool create |  |
-| `knowledge:documents:read` | entities document, source_link; role member; tools find_by_title, get, review_queue, search, synced_sources.archive, synced_sources.list and 1 more |  |
+| `knowledge:documents:read` | entities collection, document, source_link; role member; tools find_by_title, get, review_queue, search, synced_sources.archive, synced_sources.list and 1 more |  |
 | `knowledge:documents:update` | role member; tools update, verify |  |
 | `knowledge:links:create` | role member; tool source_link_create |  |
 | `knowledge:sources:manage` | role curator; tool add_folder_source |  |

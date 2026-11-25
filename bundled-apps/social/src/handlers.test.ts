@@ -214,7 +214,7 @@ describe("job handlers smoke (B5)", () => {
       info: () => {},
     }
     ;(ctx as { connections: unknown }).connections = {
-      getAccounts: async () => connectedAccountList(),
+      getAccounts: async (name: string) => connectedAccountList(name),
     }
     await discoverySyncJob({}, ctx)
     // facebook failed and was LOGGED — not silently swallowed, not job-fatal.
@@ -335,7 +335,7 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
     const ctx = ctxWith(db) as TestCtx & {
       __logged: Array<{ level: string; msg: string; fields?: Record<string, unknown> }>
     }
-    ctx.connections = { getAccounts: async () => connectedAccountList() } as never
+    ctx.connections = { getAccounts: async (name: string) => connectedAccountList(name) } as never
     ctx.fetch = (async (url: string) => ({ headers: {}, ...fetchImpl(url) })) as never
     ctx.logger = {
       error: (msg: string, fields?: unknown) => {
@@ -799,7 +799,7 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
     })
     const logged: Array<{ msg: string; fields?: Record<string, unknown> }> = []
     const ctx = ctxWith(db) as TestCtx
-    ctx.connections = { getAccounts: async () => connectedAccountList() } as never
+    ctx.connections = { getAccounts: async (name: string) => connectedAccountList(name) } as never
     ctx.logger = {
       error: (msg: string, fields?: unknown) =>
         logged.push({ msg, fields: fields as Record<string, unknown> | undefined }),
@@ -838,7 +838,7 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
     const errors: string[] = []
     const warns: Array<{ msg: string; fields?: Record<string, unknown> }> = []
     const ctx = ctxWith(db) as TestCtx
-    ctx.connections = { getAccounts: async () => connectedAccountList() } as never
+    ctx.connections = { getAccounts: async (name: string) => connectedAccountList(name) } as never
     ctx.logger = {
       error: (msg: string) => errors.push(msg),
       warn: (msg: string, fields?: unknown) =>
@@ -876,7 +876,7 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
     })
     const errors: Array<{ msg: string; fields?: Record<string, unknown> }> = []
     const ctx = ctxWith(db) as TestCtx
-    ctx.connections = { getAccounts: async () => connectedAccountList() } as never
+    ctx.connections = { getAccounts: async (name: string) => connectedAccountList(name) } as never
     ctx.logger = {
       error: (msg: string, fields?: unknown) =>
         errors.push({ msg, fields: fields as Record<string, unknown> | undefined }),
@@ -922,7 +922,7 @@ describe("webhook DMs and polled threads share one conversation", () => {
   const PSID = "cust-9"
   function pollCtx(db: MockDb): TestCtx {
     const ctx = ctxWith(db)
-    ctx.connections = { getAccounts: async () => connectedAccountList() } as never
+    ctx.connections = { getAccounts: async (name: string) => connectedAccountList(name) } as never
     ctx.fetch = (async (url: string) => ({ headers: {}, ...pollRoutes(url) })) as never
     return ctx
   }

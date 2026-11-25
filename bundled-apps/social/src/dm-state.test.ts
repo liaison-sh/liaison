@@ -65,7 +65,7 @@ function ctxFor(
     orgId: "org-1",
     db,
     fetch,
-    connections: { getAccounts: async () => connectedAccountList() },
+    connections: { getAccounts: async (name: string) => connectedAccountList(name) },
     config: { get: async () => null },
     emit: async () => {},
     logger: {},

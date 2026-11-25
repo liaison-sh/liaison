@@ -33,8 +33,16 @@ export const TEST_ACCOUNT_IDS = [
   "user-9",
 ]
 
-/** What `ctx.connections.getAccounts(name)` answers when every test account is connected. */
-export function connectedAccountList(): Array<{ identifier: string; status: string }> {
+/**
+ * What `ctx.connections.getAccounts(name)` answers when every test account is
+ * connected. The test ids are Facebook, Google and Instagram-login accounts, so
+ * `instagram_unified` (a different id space, the IG professional id) lists none
+ * of them: a test of the Unified login connects its own account.
+ */
+export function connectedAccountList(
+  connectionName?: string,
+): Array<{ identifier: string; status: string }> {
+  if (connectionName === "instagram_unified") return []
   return TEST_ACCOUNT_IDS.map((identifier) => ({ identifier, status: "active" }))
 }
 

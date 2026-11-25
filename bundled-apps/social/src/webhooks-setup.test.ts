@@ -173,7 +173,7 @@ async function seededCtx(g: ReturnType<typeof fakeGraph>, base: string | undefin
     orgId: "org-1",
     db,
     fetch: g.fetch,
-    connections: { getAccounts: async () => connectedAccountList() },
+    connections: { getAccounts: async (name: string) => connectedAccountList(name) },
     config: g.cfg,
     enqueueJob: async () => {},
     logger: { warn() {}, info() {}, error() {}, debug() {} },

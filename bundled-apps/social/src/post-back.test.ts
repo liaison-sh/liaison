@@ -86,7 +86,8 @@ function makeCtx(
     fetch: fetchImpl,
     connections: {
       // The host lists the active accounts; their token is added to a fetch host-side.
-      getAccounts: async () => (opts.connectionToken === null ? [] : connectedAccountList()),
+      getAccounts: async (name: string) =>
+        opts.connectionToken === null ? [] : connectedAccountList(name),
     },
     config: { get: async () => null },
     approval: opts.approval,
@@ -318,6 +319,88 @@ describe("replyToFinding (B6 re-entry + idempotency)", () => {
     expect(postCall.headers).toEqual({
       "content-type": "application/json",
       Authorization: "Bearer page-1-token",
+    })
+  })
+})
+
+// Instagram has two logins: the reply and the DM go to the host of the account's
+// connection and carry that account's credential (the host adds the token; the
+// bridge replaces any Authorization header, so Facebook Page POSTs pass none).
+describe("instagram post-back by connection", () => {
+  const IG_ID = "17841400000000101"
+  async function seedInstagram(db: MockDb, accountId: string): Promise<void> {
+    // A seeded row with no connected account first: it must be skipped.
+    await db.insert("sync_state", {
+      platform: "instagram",
+      account_external_id: "seeded-ig",
+      source_type: "discovery",
+      active: true,
+    })
+    await db.insert("sync_state", {
+      platform: "instagram",
+      account_external_id: accountId,
+      source_type: "discovery",
+      active: true,
+    })
+  }
+  function holding(connection: string, id: string) {
+    return {
+      getAccounts: async (name: string) =>
+        name === connection ? [{ identifier: id, status: "active" }] : [],
+    }
+  }
+
+  test("a unified reply posts to graph.facebook.com /replies with the unified account's credential", async () => {
+    const db = createMockDb()
+    await seedInstagram(db, IG_ID)
+    await seedFinding(db, { platform: "instagram", external_id: "C_1" })
+    const ctx = makeCtx({ db, approval: { approvalRequestId: "appr-1" } })
+    ctx.connections = holding("instagram_unified", IG_ID)
+    const res = await replyToFinding(ctx, { finding_id: "f1", reply_text: "hi" })
+    expect(res).toMatchObject({ status: "completed" })
+    const post = ctx.fetch.calls.find((c) => c.method === "POST")!
+    expect(post.url).toBe("https://graph.facebook.com/v26.0/C_1/replies")
+    expect(post.headers).toEqual({
+      "content-type": "application/json",
+      Authorization: `Bearer ${IG_ID}`,
+    })
+  })
+
+  test("a legacy instagram reply keeps graph.instagram.com and now carries its credential", async () => {
+    const db = createMockDb()
+    await seedInstagram(db, "ig-1")
+    await seedFinding(db, { platform: "instagram", external_id: "C_1" })
+    const ctx = makeCtx({ db, approval: { approvalRequestId: "appr-1" } })
+    ctx.connections = holding("instagram", "ig-1")
+    const res = await replyToFinding(ctx, { finding_id: "f1", reply_text: "hi" })
+    expect(res).toMatchObject({ status: "completed" })
+    const post = ctx.fetch.calls.find((c) => c.method === "POST")!
+    expect(post.url).toBe("https://graph.instagram.com/v26.0/C_1/replies")
+    expect(post.headers?.Authorization).toBe("Bearer ig-1")
+  })
+
+  test("a unified DM posts to /{igId}/messages with the unified account's credential", async () => {
+    const db = createMockDb()
+    await seedInstagram(db, IG_ID)
+    await db.insert("dm_conversation", {
+      id: "c1",
+      platform: "instagram",
+      external_id: "CONV_1",
+      participant_external_id: "IGSID_9",
+      last_inbound_at: new Date(Date.now() - 3600_000).toISOString(),
+      status: "open",
+    })
+    const ctx = makeCtx({ db, approval: { approvalRequestId: "appr-1" } })
+    ctx.connections = holding("instagram_unified", IG_ID)
+    const res = await sendDm(ctx, { conversation_id: "c1", body: "hello" })
+    expect(res).toMatchObject({ status: "completed" })
+    const post = ctx.fetch.calls.find((c) => c.method === "POST")!
+    expect(post.url).toBe(`https://graph.facebook.com/v26.0/${IG_ID}/messages`)
+    expect(post.headers?.Authorization).toBe(`Bearer ${IG_ID}`)
+    expect(JSON.parse(post.body as string)).toEqual({
+      recipient: { id: "IGSID_9" },
+      message: { text: "hello" },
+      messaging_type: "RESPONSE",
     })
   })
 })

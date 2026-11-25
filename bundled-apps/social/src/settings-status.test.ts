@@ -79,7 +79,7 @@ describe("connections_status", () => {
   test("a kernel without describe answers available false, never a fake Not connected", async () => {
     const res = await connectionsStatus(
       {},
-      makeCtx(createMockDb(), { getAccounts: async () => connectedAccountList() }),
+      makeCtx(createMockDb(), { getAccounts: async (name: string) => connectedAccountList(name) }),
       NOW,
     )
     expect(res.available).toBe(false)

@@ -832,3 +832,168 @@ describe("instagramAdapter (B4)", () => {
     })
   })
 })
+
+// Instagram API with Unified login (connection `instagram_unified`): every call
+// goes to graph.facebook.com and names the IG professional account id, because
+// the token is a system-user token and `/me` is that system user, never the
+// Instagram account. The Instagram-login connection keeps its URLs unchanged.
+describe("instagramAdapter modes: Unified login vs Instagram login", () => {
+  const IG_ID = "17841400000000101"
+  const unifiedAuth = testAuth(IG_ID, "instagram_unified")
+  const legacyAuth = testAuth("ig1", "instagram")
+  const T = "2026-11-25T10:00:00+0000"
+
+  function routes(selfKey: string, ownerId: string, selfId: string, selfName: string) {
+    return {
+      [selfKey]: { id: selfId, username: selfName },
+      [`/${ownerId}/media`]: {
+        data: [{ id: "m1", caption: "post", timestamp: T, comments_count: 2 }],
+        paging: { cursors: {} },
+      },
+      "/m1/comments": {
+        data: [
+          { id: "c1", text: "nice", username: "visitor", timestamp: T },
+          { id: "c2", text: "thanks", username: selfName, timestamp: T },
+        ],
+      },
+      "/conversations": {
+        data: [
+          {
+            id: "conv1",
+            participants: {
+              data: [
+                { id: selfId, username: selfName },
+                { id: "999", username: "visitor" },
+              ],
+            },
+            updated_time: T,
+          },
+        ],
+      },
+      "/conv1/messages": {
+        data: [
+          {
+            id: "mid1",
+            from: { id: "999", username: "visitor" },
+            message: "hello",
+            created_time: T,
+          },
+        ],
+      },
+    }
+  }
+
+  async function runAll(
+    fetch: ReturnType<typeof makeMockFetch>,
+    accountExternalId: string,
+    auth: ReturnType<typeof testAuth>,
+  ) {
+    const ctx = { accountExternalId, fetch, auth }
+    const discovered = await instagramAdapter.discover(ctx, null)
+    const dms = await instagramAdapter.syncDms!(ctx, null)
+    // The watch poller passes the WATCHED object's id as accountExternalId.
+    const polled = await instagramAdapter.pollObject(
+      { ...ctx, accountExternalId: "m1" },
+      "m1",
+      null,
+    )
+    const own = await instagramAdapter.listOwnRecentObjects!(ctx, 5)
+    const reply = await instagramAdapter.replyRequest({ externalId: "c1" }, "hi", ctx)
+    const dm = await instagramAdapter.dmRequest!(
+      { recipientExternalId: "999" },
+      "yo",
+      "human_agent",
+      ctx,
+    )
+    const like = await instagramAdapter.likeRequest!({ externalId: "c1" }, ctx)
+    return { discovered, dms, polled, own, reply, dm, like }
+  }
+
+  test("unified mode: every URL is graph.facebook.com/v26.0 and names the IG id, never /me", async () => {
+    const fetch = makeMockFetch(routes(`/${IG_ID}?fields=id,username`, IG_ID, IG_ID, "liaison.sh"))
+    const r = await runAll(fetch, IG_ID, unifiedAuth)
+    const urls = [...fetch.calls.map((c) => c.url), r.reply.url, r.dm?.url ?? ""]
+    for (const url of urls) {
+      expect(url.startsWith("https://graph.facebook.com/v26.0/")).toBe(true)
+      expect(url).not.toContain("graph.instagram.com")
+      expect(url).not.toMatch(/\/me([/?]|$)/)
+    }
+    expect(fetch.calls.map((c) => c.url)).toEqual([
+      `https://graph.facebook.com/v26.0/${IG_ID}?fields=id,username`,
+      `https://graph.facebook.com/v26.0/${IG_ID}/media?fields=id,caption,permalink,timestamp,comments_count&limit=25`,
+      "https://graph.facebook.com/v26.0/m1/comments?fields=id,text,username,timestamp&limit=25",
+      `https://graph.facebook.com/v26.0/${IG_ID}?fields=id,username`,
+      `https://graph.facebook.com/v26.0/${IG_ID}/conversations?platform=instagram&fields=id,participants,updated_time&limit=20`,
+      "https://graph.facebook.com/v26.0/conv1/messages?fields=id,from,message,created_time&limit=25",
+      "https://graph.facebook.com/v26.0/m1/comments?fields=id,text,username,timestamp",
+      `https://graph.facebook.com/v26.0/${IG_ID}?fields=id,username`,
+      `https://graph.facebook.com/v26.0/${IG_ID}/media?fields=id,caption,permalink,timestamp&limit=5`,
+    ])
+    // Every read carries the unified account's credential.
+    for (const c of fetch.calls) expect(c.headers?.Authorization).toBe(`Bearer ${IG_ID}`)
+    expect(r.reply).toEqual({
+      url: "https://graph.facebook.com/v26.0/c1/replies",
+      body: { message: "hi" },
+    })
+    expect(r.dm?.url).toBe(`https://graph.facebook.com/v26.0/${IG_ID}/messages`)
+    // Own comments (by username) are skipped and DM direction is right.
+    expect(r.discovered.findings.map((f) => f.externalId)).toEqual(["c1"])
+    expect(r.polled.findings.map((f) => f.externalId)).toEqual(["c1"])
+    expect(r.dms.conversations[0]?.participantExternalId).toBe("999")
+    expect(r.dms.messages.map((m) => [m.externalId, m.direction])).toEqual([["mid1", "inbound"]])
+  })
+
+  test("unified mode: no HUMAN_AGENT tag (24 h window only) and no like", async () => {
+    const fetch = makeMockFetch({})
+    const r = await runAll(fetch, IG_ID, unifiedAuth)
+    expect(r.dm?.body).toEqual({
+      recipient: { id: "999" },
+      message: { text: "yo" },
+      messaging_type: "RESPONSE",
+    })
+    expect(r.like).toBeNull()
+  })
+
+  test("legacy mode URLs are unchanged", async () => {
+    const fetch = makeMockFetch(routes("/me?fields=id,username", "ig1", "pro-ig1", "our_brand"))
+    const r = await runAll(fetch, "ig1", legacyAuth)
+    expect(fetch.calls.map((c) => c.url)).toEqual([
+      "https://graph.instagram.com/v26.0/me?fields=id,username",
+      "https://graph.instagram.com/v26.0/ig1/media?fields=id,caption,permalink,timestamp,comments_count&limit=25",
+      "https://graph.instagram.com/v26.0/m1/comments?fields=id,text,username,timestamp&limit=25",
+      "https://graph.instagram.com/v26.0/me?fields=id,username",
+      "https://graph.instagram.com/v26.0/me/conversations?platform=instagram&fields=id,participants,updated_time&limit=20",
+      "https://graph.instagram.com/v26.0/conv1/messages?fields=id,from,message,created_time&limit=25",
+      "https://graph.instagram.com/v26.0/m1/comments?fields=id,text,username,timestamp",
+      "https://graph.instagram.com/v26.0/me?fields=id,username",
+      "https://graph.instagram.com/v26.0/ig1/media?fields=id,caption,permalink,timestamp&limit=5",
+    ])
+    expect(r.reply.url).toBe("https://graph.instagram.com/v26.0/c1/replies")
+    expect(r.dm).toEqual({
+      url: "https://graph.instagram.com/v26.0/me/messages",
+      body: {
+        recipient: { id: "999" },
+        message: { text: "yo" },
+        messaging_type: "MESSAGE_TAG",
+        tag: "HUMAN_AGENT",
+      },
+    })
+    expect(r.like).toEqual({ url: "https://graph.instagram.com/v26.0/c1/likes", body: {} })
+  })
+
+  test("Graph code 190 (revoked token, HTTP 400) reads as CONNECTION_LOST", async () => {
+    const revoked = { error: { code: 190, message: "Error validating access token" } }
+    const fetch = makeMockFetch({ "/media": revoked, "/comments": revoked }, { status: 400 })
+    const own = await instagramAdapter.listOwnRecentObjects!(
+      { accountExternalId: IG_ID, fetch, auth: unifiedAuth },
+      5,
+    )
+    expect(own.error).toBe("CONNECTION_LOST")
+    const polled = await instagramAdapter.pollObject(
+      { accountExternalId: "m1", fetch, auth: unifiedAuth },
+      "m1",
+      null,
+    )
+    expect(polled.error).toBe("CONNECTION_LOST")
+  })
+})

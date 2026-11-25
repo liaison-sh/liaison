@@ -28,7 +28,7 @@ function ctxWith(db: MockDb, fetch: MockFetch, logs: string[] = []): SocialToolC
     orgId: "org-1",
     db,
     fetch,
-    connections: { getAccounts: async () => connectedAccountList() },
+    connections: { getAccounts: async (name: string) => connectedAccountList(name) },
     config: { get: async () => null },
     logger: {
       warn: (m: string) => logs.push(m),

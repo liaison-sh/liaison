@@ -44,14 +44,61 @@ function parseBody(body: string): unknown {
   }
 }
 
-// Instagram API with Instagram Login is served from graph.instagram.com (the
-// business-login token is scoped to this host), not graph.facebook.com. The
-// 2025-01-27 deprecation was Instagram Login's OLD scope names (business_basic,
-// business_manage_messages, ...), renamed to instagram_business_*; the
-// instagram_basic / instagram_manage_* permissions were not retired: they are
-// the permissions of Instagram API with Unified login (graph.facebook.com,
-// connection `instagram_unified`, not read through this adapter yet).
+// Two Meta logins back this adapter, told apart by the account's connection
+// (`ctx.auth.connection`):
+//  - `instagram` (Instagram API with Instagram Login): served from
+//    graph.instagram.com (the business-login token is scoped to this host), and
+//    `/me` is the Instagram account.
+//  - `instagram_unified` (Instagram API with Unified login, Facebook Login for
+//    Business with a configuration): served from graph.facebook.com with a
+//    system-user token, so `/me` is that system user, never the Instagram
+//    account: every call names the IG professional account id (the
+//    connection's identifier) instead.
+// The 2025-01-27 deprecation was Instagram Login's OLD scope names
+// (business_basic, ...), renamed to instagram_business_*; instagram_basic /
+// instagram_manage_* are the permissions of the Unified login.
 const IG_BASE = "https://graph.instagram.com/v26.0"
+const UNIFIED_BASE = "https://graph.facebook.com/v26.0"
+export const UNIFIED_CONNECTION = "instagram_unified"
+
+/** The connection's Graph host and the path segment naming the connected account. */
+interface IgApi {
+  base: string
+  /** `me` under Instagram Login, the IG professional account id under Unified login. */
+  self: string
+  unified: boolean
+}
+
+/**
+ * Where this account's calls go. Unified: graph.facebook.com and the IG id from
+ * `ctx.auth.identifier` (never `ctx.accountExternalId`, which is the WATCHED
+ * object's id in `pollObject`). Instagram Login: graph.instagram.com and `me`.
+ */
+function igApi(ctx: Pick<AdapterContext, "auth"> | undefined): IgApi {
+  const auth = ctx?.auth
+  if (auth?.connection === UNIFIED_CONNECTION && "identifier" in auth) {
+    return { base: UNIFIED_BASE, self: auth.identifier, unified: true }
+  }
+  return { base: IG_BASE, self: "me", unified: false }
+}
+
+/**
+ * The Messaging endpoints, in one place: the Unified-login DM edges are the
+ * least documented, so a fallback (e.g. `/{conv}?fields=messages{...}`) is a
+ * change here only.
+ */
+const igDm = {
+  conversations: (api: IgApi, limit: number, after: string | null | undefined): string =>
+    `${api.base}/${api.self}/conversations?platform=instagram&fields=id,participants,updated_time&limit=${limit}${after ? `&after=${after}` : ""}`,
+  messages: (
+    api: IgApi,
+    conversationId: string,
+    limit: number,
+    after: string | undefined,
+  ): string =>
+    `${api.base}/${conversationId}/messages?fields=id,from,message,created_time&limit=${limit}${after ? `&after=${after}` : ""}`,
+  send: (api: IgApi): string => `${api.base}/${api.self}/messages`,
+}
 
 interface IgOwnMedia {
   id: string
@@ -127,7 +174,7 @@ async function fetchOwnMediaComments(
   commentsCount: number,
   self: SelfIdentity,
 ): Promise<{ findings: NormalizedFinding[]; redacted: boolean; rateLimited?: boolean }> {
-  const url = `${IG_BASE}/${mediaId}/comments?fields=id,text,username,timestamp&limit=25`
+  const url = `${igApi(ctx).base}/${mediaId}/comments?fields=id,text,username,timestamp&limit=25`
   const res = await ctx.fetch(url, {
     ...accountAuth(ctx),
   })
@@ -223,13 +270,12 @@ interface IgMeResponse {
 async function resolveSelfIdentity(
   ctx: AdapterContext,
 ): Promise<{ self: SelfIdentity; error?: "CONNECTION_LOST" | "RATE_LIMITED" }> {
-  const fallback: SelfIdentity = {
-    accountExternalId: ctx.accountExternalId,
-    meId: null,
-    username: null,
-  }
+  const api = igApi(ctx)
+  // Under the Unified login the account id is the IG id itself.
+  const accountExternalId = api.unified ? api.self : ctx.accountExternalId
+  const fallback: SelfIdentity = { accountExternalId, meId: null, username: null }
   try {
-    const res = await ctx.fetch(`${IG_BASE}/me?fields=id,username`, {
+    const res = await ctx.fetch(`${api.base}/${api.self}?fields=id,username`, {
       ...accountAuth(ctx),
     })
     const err = graphError(res)
@@ -238,7 +284,7 @@ async function resolveSelfIdentity(
     const body = parseBody(res.body) as IgMeResponse
     return {
       self: {
-        accountExternalId: ctx.accountExternalId,
+        accountExternalId,
         meId: body.id ?? null,
         username: body.username ?? null,
       },
@@ -346,7 +392,7 @@ async function fetchConversationMessages(
   const out: IgDmMessage[] = []
   let after: string | undefined
   for (let page = 0; page < MESSAGE_PAGE_BOUND; page++) {
-    const url = `${IG_BASE}/${conversationId}/messages?fields=id,from,message,created_time&limit=${MESSAGE_PAGE_LIMIT}${after ? `&after=${after}` : ""}`
+    const url = igDm.messages(igApi(ctx), conversationId, MESSAGE_PAGE_LIMIT, after)
     const res = await ctx.fetch(url, {
       ...accountAuth(ctx),
     })
@@ -402,9 +448,9 @@ export const instagramAdapter: PlatformAdapter = {
   platform: "instagram",
 
   /**
-   * Sync DM conversations + messages via Instagram Login's Messaging API
-   * (graph.instagram.com — the same host/token as `discover`; see the IG_BASE
-   * comment above). Reads `/me/conversations` NEWEST FIRST down to the stored
+   * Sync DM conversations + messages via the Messaging API on the connection's
+   * host (the same host/token as `discover`; see `igApi` above). Reads
+   * `/{self}/conversations` NEWEST FIRST down to the stored
    * high-water mark, with a bounded history pass for a new connection
    * (graph-paging.ts), then fetches each changed conversation's recent
    * messages down to its stored last-message time. Message pages are not
@@ -439,7 +485,7 @@ export const instagramAdapter: PlatformAdapter = {
       fetchPage: (after) =>
         fetchListPage<IgConversation>(
           ctx,
-          `${IG_BASE}/me/conversations?platform=instagram&fields=id,participants,updated_time&limit=${CONVERSATION_PAGE_LIMIT}${after ? `&after=${after}` : ""}`,
+          igDm.conversations(igApi(ctx), CONVERSATION_PAGE_LIMIT, after),
         ),
     })
     if ("error" in walk) {
@@ -521,6 +567,8 @@ export const instagramAdapter: PlatformAdapter = {
     // Newest media first, plus one rotating page of older media per tick
     // (graph-paging.ts "rotating"): new comments land on old posts too.
     const ownMediaState = readListState(cursors.ownMedia)
+    const api = igApi(ctx)
+    const ownerId = api.unified ? api.self : ctx.accountExternalId
     const mediaFields = "fields=id,caption,permalink,timestamp,comments_count"
     const walk = await walkNewestFirst<IgOwnMedia>({
       state: ownMediaState,
@@ -533,7 +581,7 @@ export const instagramAdapter: PlatformAdapter = {
       fetchPage: (after) =>
         fetchListPage<IgOwnMedia>(
           ctx,
-          `${IG_BASE}/${ctx.accountExternalId}/media?${mediaFields}&limit=${after ? MEDIA_BACKFILL_LIMIT : MEDIA_PAGE_LIMIT}${after ? `&after=${after}` : ""}`,
+          `${api.base}/${ownerId}/media?${mediaFields}&limit=${after ? MEDIA_BACKFILL_LIMIT : MEDIA_PAGE_LIMIT}${after ? `&after=${after}` : ""}`,
         ),
     })
     if ("error" in walk) {
@@ -589,11 +637,14 @@ export const instagramAdapter: PlatformAdapter = {
    * the `discover` cursor.
    */
   async listOwnRecentObjects(ctx: AdapterContext, limit: number): Promise<OwnRecentObjectsResult> {
-    const url = `${IG_BASE}/${ctx.accountExternalId}/media?fields=id,caption,permalink,timestamp&limit=${limit}`
+    const api = igApi(ctx)
+    const ownerId = api.unified ? api.self : ctx.accountExternalId
+    const url = `${api.base}/${ownerId}/media?fields=id,caption,permalink,timestamp&limit=${limit}`
     const res = await ctx.fetch(url, {
       ...accountAuth(ctx),
     })
-    if (res.status === 401) return { objects: [], error: "CONNECTION_LOST" }
+    // 401, or Graph code 190 (a revoked or expired token, usually HTTP 400).
+    if (graphError(res) === "CONNECTION_LOST") return { objects: [], error: "CONNECTION_LOST" }
     const body = parseBody(res.body) as IgOwnMediaResponse & { error?: { code?: number } }
     if (graphError(res) === "RATE_LIMITED") return { objects: [], error: "RATE_LIMITED" }
     if (res.status !== 200) {
@@ -620,11 +671,12 @@ export const instagramAdapter: PlatformAdapter = {
     cursor: string | null,
   ): Promise<DiscoverResult> {
     const after = parseCursor(cursor)
-    const url = `${IG_BASE}/${objectExternalId}/comments?fields=id,text,username,timestamp${after ? `&after=${after}` : ""}`
+    const url = `${igApi(ctx).base}/${objectExternalId}/comments?fields=id,text,username,timestamp${after ? `&after=${after}` : ""}`
     const res = await ctx.fetch(url, {
       ...accountAuth(ctx),
     })
-    if (res.status === 401) {
+    // 401, or Graph code 190 (a revoked or expired token, usually HTTP 400).
+    if (graphError(res) === "CONNECTION_LOST") {
       return { findings: [], nextCursor: cursor, unitsConsumed: 0, error: "CONNECTION_LOST" }
     }
     // Graph throttles with a 429 or with a 400/403 carrying a rate-limit code.
@@ -657,33 +709,44 @@ export const instagramAdapter: PlatformAdapter = {
     return { findings, nextCursor: body.paging?.cursors?.after ?? null, unitsConsumed: 0 }
   },
 
-  // IG comment reply → Graph API `{ig_comment_id}/replies`. (IG shares the
-  // graph.facebook.com host with FB but uses the `/replies` edge for comments.)
+  // IG comment reply → `{ig_comment_id}/replies` on the connection's host.
   // The reply text rides in the `message` body field — injection-safe.
-  replyRequest(target: { externalId: string }, text: string): OutboundRequest {
-    return { url: `${IG_BASE}/${target.externalId}/replies`, body: { message: text } }
+  replyRequest(
+    target: { externalId: string },
+    text: string,
+    ctx?: AdapterContext,
+  ): OutboundRequest {
+    return { url: `${igApi(ctx).base}/${target.externalId}/replies`, body: { message: text } }
   },
 
-  // IG DM → Messaging API `/me/messages` (same envelope as Messenger). The
-  // HUMAN_AGENT tag legitimizes the 7-day window send (§4.3).
+  // IG DM → Messaging API `/{self}/messages` (same envelope as Messenger). Under
+  // Instagram Login the HUMAN_AGENT tag legitimizes the 7-day window send
+  // (§4.3); the Unified login does not request Human Agent, so it sends within
+  // the 24-hour window only and Meta's own error answers a later send.
   dmRequest(
     target: { recipientExternalId: string },
     body: string,
     tag: "none" | "human_agent",
+    ctx?: AdapterContext,
   ): OutboundRequest {
+    const api = igApi(ctx)
+    const tagged = tag === "human_agent" && !api.unified
     return {
-      url: `${IG_BASE}/me/messages`,
+      url: igDm.send(api),
       body: {
         recipient: { id: target.recipientExternalId },
         message: { text: body },
-        messaging_type: tag === "human_agent" ? "MESSAGE_TAG" : "RESPONSE",
-        ...(tag === "human_agent" ? { tag: "HUMAN_AGENT" } : {}),
+        messaging_type: tagged ? "MESSAGE_TAG" : "RESPONSE",
+        ...(tagged ? { tag: "HUMAN_AGENT" } : {}),
       },
     }
   },
 
-  // IG own-media comment like → Graph API `{comment_id}/likes`.
-  likeRequest(target: { externalId: string }): OutboundRequest {
-    return { url: `${IG_BASE}/${target.externalId}/likes`, body: {} }
+  // IG own-media comment like → `{comment_id}/likes`. Unsupported under the
+  // Unified login (no like permission is requested there).
+  likeRequest(target: { externalId: string }, ctx?: AdapterContext): OutboundRequest | null {
+    const api = igApi(ctx)
+    if (api.unified) return null
+    return { url: `${api.base}/${target.externalId}/likes`, body: {} }
   },
 }

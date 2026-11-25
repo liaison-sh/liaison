@@ -91,10 +91,11 @@ export interface OutboundRequest {
   body: Record<string, unknown>
   /** Extra headers the adapter needs on the outbound POST (e.g.
    *  `Authorization: Bearer <page-token>` for Facebook Page-scoped calls).
-   *  `postJson` in post-back.ts merges these over its own default headers —
-   *  the host sandbox-fetch bridge does not inject per-connection OAuth
-   *  headers on POSTs, so a Page-scoped call needs the token resolved by the
-   *  adapter itself and carried here. */
+   *  `postJson` in post-back.ts merges these over its own default headers.
+   *  The host adds a connected account's token when a request names it
+   *  (`auth`), but that is the USER token; a Page-scoped call carries the
+   *  Page token the adapter resolved here, and names no `auth` (the host
+   *  would replace this header). */
   headers?: Record<string, string>
 }
 

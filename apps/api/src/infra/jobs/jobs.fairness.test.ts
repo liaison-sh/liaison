@@ -83,7 +83,10 @@ describe("the worker's fairness gate", () => {
       label: "job 2 to be parked",
     })
     const parked = await JobsTestAccess.findJob("jobtest-fair", "work", `fair-2-${orgId}`)
-    expect(await parked?.getState()).toBe("delayed")
+    // The park record is written just before the job moves to delayed.
+    await waitFor(async () => (await parked?.getState()) === "delayed", {
+      label: "job 2 to be delayed",
+    })
     expect(parked?.attemptsMade).toBe(0)
     expect(started).toEqual([1])
     releaseFirst()

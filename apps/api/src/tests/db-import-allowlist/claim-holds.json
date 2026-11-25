@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "apps/projects/service/claim-holds.ts": "Billing claims hold a task: a task on a live claim (on a draft or an issued invoice) refuses a move to another project or a merge, for any person moving it, including one with no reconcile scope who cannot read the claim under their own rows. Reads the claim's state, invoice number, the draft's project and period and the task's title, for one org; writes nothing."
+  }
+}

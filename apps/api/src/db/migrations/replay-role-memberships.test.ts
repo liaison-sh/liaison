@@ -63,16 +63,22 @@ beforeAll(async () => {
   folder = folderUpTo(SPLIT_TAG)
 }, 60_000)
 
+/** The extra role leaves the cluster: its memberships taken back, the role dropped. */
+async function dropExtraRole(): Promise<void> {
+  const held = await listRoleMemberships(admin)
+  for (const m of held.filter((h) => h.role === extraRole)) {
+    await admin.unsafe(`REVOKE "${m.role}" FROM "${m.member}" GRANTED BY "${m.grantor}" CASCADE`)
+  }
+  await admin.unsafe(`DROP ROLE IF EXISTS "${extraRole}"`)
+}
+
 afterAll(async () => {
   if (admin) {
-    // Whatever an assertion did, the shared roles get their memberships back.
+    // Whatever an assertion did, the shared roles get their memberships back
+    // (the test body already did, under the role-catalog lock; this is the net).
     await restore?.()
     await admin.unsafe(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`)
-    const held = await listRoleMemberships(admin)
-    for (const m of held.filter((h) => h.role === extraRole)) {
-      await admin.unsafe(`REVOKE "${m.role}" FROM "${m.member}" GRANTED BY "${m.grantor}" CASCADE`)
-    }
-    await admin.unsafe(`DROP ROLE IF EXISTS "${extraRole}"`)
+    await dropExtraRole()
     await admin.end()
   }
   if (folder) rmSync(folder, { recursive: true, force: true })
@@ -80,27 +86,38 @@ afterAll(async () => {
 
 describe("replaying migrations on a shared cluster", () => {
   test("the request login split takes back an extra membership cluster wide, and the restore gives it back", async () => {
-    // The request login exists before the replay on any migrated cluster; the
-    // extra role stands for one a later migration gives it.
-    await admin.unsafe(`DO $$ BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'liaison_request') THEN
-        CREATE ROLE liaison_request NOLOGIN;
-      END IF;
-    END $$`)
-    await admin.unsafe(`CREATE ROLE "${extraRole}" NOLOGIN`)
-    await admin.unsafe(`GRANT "${extraRole}" TO liaison_request`)
-    const keep = await keepClusterRoleMemberships(admin)
-    restore = keep
+    // The extra role lives only while this test holds the cluster's role-catalog
+    // lock: a test that reads the request login's memberships takes the same lock,
+    // so it never sees the extra role, nor the replay's strip before the restore.
+    await withRoleCatalogLock(adminUrl, async () => {
+      // The request login exists before the replay on any migrated cluster; the
+      // extra role stands for one a later migration gives it.
+      await admin.unsafe(`DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'liaison_request') THEN
+          CREATE ROLE liaison_request NOLOGIN;
+        END IF;
+      END $$`)
+      await admin.unsafe(`CREATE ROLE "${extraRole}" NOLOGIN`)
+      await admin.unsafe(`GRANT "${extraRole}" TO liaison_request`)
+      const keep = await keepClusterRoleMemberships(admin)
+      restore = keep
+      try {
+        await admin.unsafe(`CREATE DATABASE "${dbName}"`)
+        await runMigrations(scratchUrl.toString(), { log: () => {}, migrationsFolder: folder })
+        // The replay ran on a scratch database, and still reached the shared role.
+        expect(await holdsExtra()).toBe(false)
 
-    await admin.unsafe(`CREATE DATABASE "${dbName}"`)
-    await withRoleCatalogLock(scratchUrl, () =>
-      runMigrations(scratchUrl.toString(), { log: () => {}, migrationsFolder: folder }),
-    )
-    // The replay ran on a scratch database, and still reached the shared role.
-    expect(await holdsExtra()).toBe(false)
-
-    const restored = await keep()
-    expect(restored.map((m) => [m.role, m.member])).toContainEqual([extraRole, "liaison_request"])
-    expect(await holdsExtra()).toBe(true)
+        const restored = await keep()
+        expect(restored.map((m) => [m.role, m.member])).toContainEqual([
+          extraRole,
+          "liaison_request",
+        ])
+        expect(await holdsExtra()).toBe(true)
+      } finally {
+        await keep()
+        restore = null
+        await dropExtraRole()
+      }
+    })
   }, 300_000)
 })

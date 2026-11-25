@@ -236,6 +236,7 @@ describe("GET /diag", () => {
     expect(Object.keys(body.pools).sort()).toEqual([
       "jobs",
       "main",
+      "portal",
       "privileged",
       "privilegedJobs",
       "request",

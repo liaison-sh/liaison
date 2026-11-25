@@ -176,8 +176,20 @@ handlers teaches exactly one thing.
   Messages go only into a channel an import created (this run or an earlier
   one); a CLI import may also name existing channels (`existingChannels`), and
   each such write is recorded in the audit log.
+- **Who can see a record.** A table declared `sharedRows` holds records a person
+  can close to the organization. The self form, `{ "list": { "table":
+  "agreement_shares", "column": "agreement_id" } }`, is for a table with an
+  `org_access` column (`none`, `viewer`, `editor`): with `none`, only the users on
+  the list table (`user_id`, a row whose `removed_at` is set no longer counts) read
+  or write the row. The via form, `{ "via": { "table": "agreements",
+  "localColumn": "agreement_id" } }`, closes a child table with its parent, one
+  hop at a time. The database applies it to every reader, whatever scope or grant
+  they hold, `*` included; work with no user (a job, an event handler) keeps its
+  access. Write `org_access` and the list from one place in the app, and keep
+  the list from ever being empty.
 - **Legal records.** A table declared `immutable` (`retentionYears`, optional
-  `writeOnceColumns`) holds legal originals: the kernel refuses to change its
+  `writeOnceColumns`, or `insertOnly` for rows that are never updated, an empty
+  column included) holds legal originals: the kernel refuses to change its
   write-once columns or delete its rows within the retention period. When the
   operator deletes an organization, every row of each `immutable` table, and
   the rows a table's `legalRetention` marker selects, go into the encrypted
@@ -195,6 +207,8 @@ handlers teaches exactly one thing.
   agent (a role or system agent) out as well, even on its owner's turn: the
   owner and their personal agent reach those rows, nobody else does. Mail
   declares it on its accounts, conversations, messages and drafts.
+
+**Every table needs a scope that reaches it.** A table's rows are read with `<app>:<rlsScope or table name>:read`, so a scope your app declares (in `scopes`, a role or a tool) must cover that name. Give a table an `rlsScope` that one of your scopes covers, for example `"rlsScope": "items"` on a table read with `myapp:items:read`. An app with a table no declared scope reaches is refused at registration: on a development or test server registration stops with an error naming the table, and on a production server the app is not loaded and shows as needing attention, with the table named.
 
 ### Frontend (`apps/web/src/modules/<name>/`)
 
@@ -245,8 +259,11 @@ export async function items_create(
 | `ctx.accounts` | Your app's own connected accounts and their metadata ([Sandboxing](app-sandbox.md#read-your-own-accounts-ctxaccounts)) |
 | `ctx.kernel` | Directory reads of the caller's organization: a user or contact by id, who the run acts for and which scopes they hold (`caller`: a person, or the system for the platform's own runs and jobs; any other caller is refused), the roles, people by email, for access rules of your own ([Sandboxing](app-sandbox.md#read-your-own-accounts-ctxaccounts)) |
 | `ctx.fetch` | Call an external API (kernel-mediated, allowlist-checked). `timeoutMs` shortens the 10 s deadline; a write may ask for up to 30 s |
-| `ctx.time.civil` | The date and clock of an instant in a named IANA zone. The sandbox has no `Intl`, so `new Date()` only knows UTC. `UTC`, the column default, follows the organization's zone; `Etc/UTC` is UTC exactly; an unknown zone rejects with `invalid_timezone` |
+| `ctx.time.civil` | The date and clock of an instant in a named IANA zone. The sandbox has no `Intl`, so `new Date()` only knows UTC. `UTC`, the column default, follows the organization's zone; `Etc/UTC` is UTC exactly; an unknown zone rejects with `invalid_timezone`. `{ timezoneOf: { table, id } }` instead of `timezone` uses the zone a row of the app's own table holds in its `timezone` column, even when the caller cannot read that row (it learns the zone only); a missing row rejects with `not_found` |
 | `ctx.resolveContact` | Resolve or create a contact |
+| `ctx.turn.get()` | The turn the handler runs in: `agentId` (null for a job, a webhook or a person's own click) and `hasPerson` (false for a routine, a background turn and a job) |
+| `ctx.approvals.restagePayload` | Rewrite fields of one of your app's own approvals still waiting for a decision, after the records it describes changed. Recorded sign-offs reset and the approval's conversation gets one note. Another app's approval answers `forbidden`; a decided one `not_pending` |
+| `ctx.approvals.withdraw` | Withdraw one of your app's own approvals still waiting for a decision, once the records it would act on made it pointless (a draft already issued another way). It is cancelled with your reason. One being approved, already decided, or another app's answers `not_pending` |
 | `ctx.logger` | Structured logging |
 
 **Refusing a call.** When a tool declines a call on purpose (a check failed,
@@ -309,11 +326,33 @@ the caller passes for one is dropped before the preflight runs, and a call
 that carries an `@ref:` token to an earlier step (which skips the preflight)
 is refused at staging with "this tool can't take a reference to an earlier
 step; call it after that step completes". A pinned name is a top-level
-param, never a dotted path. No `editableFields` entry may reach a pinned param
+param, never a dotted path, and never a `required` one: the caller names
+the target under a param of its own (for example `charge`), and the preflight
+pins the id it checked (`chargeId`). No `editableFields` entry may reach a pinned param
 (the param itself, a field under it or above it): the manifest is refused,
 and an edit of such a field is refused too. A handler cannot park an approval
 for a tool with pinned params through `ctx.requestApproval`; call the tool
 itself so its preflight pins them.
+
+An `editableFields` entry may carry a `unit` when the param is stored in
+another unit than the one a person reads: `"hours"` on a `number` widget over
+an integer of minutes, `"money"` on a `text` or `number` widget over minor
+units (cents), shown in the payload's `currency`. The card shows and takes the
+person's unit and saves the stored one; any other pairing refuses the manifest.
+
+**An approval's deadline.** A handler that parks an approval with
+`ctx.requestApproval` can set `expiry_hours`, a whole number from 1 to 720,
+when it knows its own deadline. It wins over the tool's `approvalExpiryHours`
+and the 168-hour default; any other value is refused (`expiry_hours_invalid`)
+and nothing is staged. When what it approves has a last day (an invoice draft's
+latest issue day), `summary_detail.latest_on` (`YYYY-MM-DD`, the organization's
+calendar) carries it: Home sorts the request to the top from four days before
+that day, and keeps it there once the day is past. It changes the order only.
+
+**Changing an approval through other tools.** A tool whose approval takes no
+edit, because what it carries is changed through other tools of the app, lists
+them in `editWith` (for example `["drafts_update", "drafts_create"]`). An edit
+refused on its approval names those tools, so the editor goes there instead.
 
 **Outbound text.** A tool that sends text to a person outside the org (an
 email, a reply, a direct message) lists those params in `outboundTextParams`,
@@ -352,6 +391,10 @@ tool does, when its name and description do not carry them, in
 `searchKeywords`: single words, in any language, the words on your screens
 included. They are read only by the search, never sent to a model, so they cost
 no tokens. Accents do not matter: `clôturer` also answers to `cloturer`.
+Other forms of a word, a misspelling of five letters or more, and common French
+words for the English words of tool names are found without a keyword:
+`factures` finds `facturer`, `refnud` finds `refunds_create`, `rembourser`
+finds it too. Add a keyword for a word that is none of these.
 
 ```json
 "close": {
@@ -360,7 +403,80 @@ no tokens. Accents do not matter: `clôturer` also answers to `cloturer`.
 }
 ```
 
+A `bulk` action with an `agentTool` takes `searchKeywords` too. They go to that
+agent tool; one agent tool shared by several actions answers to the words of
+each.
+
 ---
+
+### More tool and app keys
+
+The manifest accepts these keys. Each is checked for its shape when the app registers. A few
+are read by nothing yet; declaring one is safe, and it takes effect where its reader lands.
+
+Keys on a tool:
+
+| Key | Value | What it says |
+|---|---|---|
+| `resultCard` | object | How the tool's result is drawn as a card in chat |
+| `runningLabel`, `runningLabelKey` | string | The line shown while the tool runs, and its catalog key |
+| `pinnedOptionalOnRefs` | boolean | A call that chains `@ref` tokens stages without the pinned value; needs `pinnedParams` |
+| `approvalCard.pill` | `{label, labelKey?}` | A short tag on the approval card |
+| `feature` | string | A feature the app declares under `features` |
+| `focusCore` | `true` or an entity type | The tool is loaded when the app has the focus, or when that entity is in focus |
+| `taintSourceWhen` | `{field, equals}` | Narrows `taintSource` to the rows whose field has that value: a result with one such row marks the turn, rows that all carry another value leave it clean, and a result with no row carrying the field marks it |
+| `restrictedRows` | `{entity, idPath?, paramPath?}` | On a tool whose rows can be closed to the organization, a read or a write: after a successful call the kernel looks up each id at `idPath` in the result (`items[].id`, `agreement.id`) and at `paramPath` in the call's params (`id`), and marks the turn for each closed row, so what the turn writes next stays with that row's list. Only record kinds with a list function are accepted |
+| `useInstead` | string | On a hidden tool (`agentVisible: false`): the visible tool of the same app to use |
+| `trustBoundary: "internal"` | string | Only code calls the tool: the app's own jobs, event handlers and tools through `ctx.executeTool`, or another app that declares it in `cross_app_calls`. A person (the REST tool route), an agent and an MCP client are refused with `forbidden`. Give a step that must run in one transaction (`atomic: true`) this mark, and call it from a tool or job that holds no transaction while it talks to another service |
+| `sinkReadersSelf` | boolean | First-party apps only: what the tool writes (its `writesToTable`) is read only by the person writing it, so a turn that read other data may still write there when that person holds it. Any other app declaring it is not loaded |
+| `contentParams` | string list | First-party apps only: the only parameters through which a call carries what the turn read; a call with all of them blank is not held back by what the turn read. Each must be in `params.properties`. Any other app declaring it is not loaded |
+| `humanTurnOnly` | boolean | First-party apps only: the tool runs only on a person's own turn (a chat turn they typed, the app, their own MCP client). From a routine, a sub-run or a job it is refused with `human_turn_only` (409) before any approval. Any other app declaring it is not loaded |
+| `dmOnly` | boolean | First-party apps only: an agent runs the tool only in its DM with the person. In a shared thread or an approval thread it is refused with `dm_only` (409), whose next step is "Continue in a DM". A person in the app and an MCP client pass. Any other app declaring it is not loaded |
+| `ownsTransactions` | boolean | First-party apps only: the tool's approved run commits each write on its own, as its direct call does, instead of one transaction for the whole run. Its handler reports what it committed through the approval protocol (started, the effect once committed, no effect when it failed before), so a failure after a commit reads as done, never as nothing. Any other app's declaration is ignored: its approved run keeps one transaction |
+
+Keys on the app:
+
+| Key | Value | What it says |
+|---|---|---|
+| `contextProviders` | list of `{on, tool, scope, loadTools?}` | A tool that adds a few lines about a record to the agent's context, while that record is open or is what the conversation is about. `on` lists `<app>:<entityType>` kinds. The tool must be `readOnly`, and `scope` one of its `requiredScopes`. It gets `{subject: {app, entityType, entityId}}` and returns `{lines, source: {label, syncedAt?}}` or null. It runs as the person, only when the turn holds `scope` and the person can read the record, and it may not write. Every provider of a turn shares 1.5 seconds and 2 KB, and keeps at most 10 lines: read your own rows, never a remote API. `loadTools` are loaded for the turn. `CONTEXT_PROVIDERS_DISABLED=1` turns them all off |
+| `sendGuardProviders` | `{<kind>: {tool, serviceMessage?, pill?}}` | A read-only tool that can stop an outbound message of that kind |
+| `activitySources` | list of `{tool, scope, label, labelKey?, filterKey}` | A tool that lists this app's activity about a set of contacts or a company. The tool must be `readOnly`, ungated and write no table, and `scope` one of its `requiredScopes`. `label` names the source, `filterKey` is its filter value, unique within the app |
+| `features` | `{<name>: {adminScope, labelKey, offMessageKey?, offNextKey?}}` | Features an org can switch off. A tool, tab type, slot panel or settings section names one with `feature`; while it is off they are absent, and a call that still names the tool reads `feature_off` with `message` and `next` |
+| `outsideTextFields` | string list | Fields a person outside the org can set. A read-only tool whose `returns` names one must declare `taintSource` or `taintSourceWhen` |
+| `approvalRoute` | `{<entityType>: <tool>}` | The read-only tool that says who an approval for that entity is for |
+| `entities.<type>.discussion` | boolean | One conversation per row, read and written by whoever can read the row; needs a `labelField` and a page (a `views.tabTypes` entry for the type). Open it with `POST /api/threads/entity-discussion`, draw it in a UI bundle with `host.mountEntityDiscussion(node, { entityType, entityId })` (`prefill` puts text in its box, never sent by itself), and delete it with the row through the bridge's `threads_deleteEntityDiscussion` |
+| `attention.groupLabel` | `{label, labelKey?}` | The heading over the app's attention items |
+| `attention.translations[].label`, `labelKey` | string | The words for an item |
+| `attentionItems.passesOn` | boolean | The provider's items may be passed on |
+| `routines.<name>.followUp` | boolean | The routine is a follow-up routine |
+| `slots.<key>.panels`, `.actions` | list | What an app adds to a slot: each takes `id`, `label`, `component`, `visibility_scope`, `order`, `group`, `feature` |
+
+A slot key takes `position` (the host declaring the slot) or `panels` / `actions` (an app
+contributing to it); a key with none of them is refused.
+
+The slots a page offers today, each giving its panel `entityId` (the record on the page):
+
+| Slot | Where it shows |
+|---|---|
+| `project:task:tabs` | A tab strip on a task, above its discussion |
+| `project:task:actions` | The task's meta row |
+| `project:detail:panel` | The project page, under its header |
+| `contact_detail` | The contact page |
+| `ticket:detail:panel` | The ticket's details panel; on a phone, the Customer row under More |
+| `ticket:detail:actions` | The ticket's header; on a phone, under More |
+
+`GET /api/v1/slots/<key>` is the one list a page reads: a panel the viewer lacks the
+`visibility_scope` for, from an app the org turned off, or naming a feature that is off, is
+not in it. `contributions.<key>` (`label`, `component`, `visibility_scope`, `order`) goes
+through the same list, with its component name as its id.
+
+`approval:detail:panel` draws a panel inside the approval card of one of the app's own tools:
+the contribution names the tool with `for_tool` (`<app>:<tool>`), and the card asks
+`GET /api/v1/slots/approval:detail:panel?for_tool=<app>:<tool>`, so the panel shows on that
+tool's cards and no other. It receives `approvalId`, `toolName`, `status`, `payload`,
+`payloadHash`, `threadId`, `canDecide` and `viewerScopes`. The list is sorted by `order`,
+then app name. A panel that throws shows "Panel unavailable" and the page stands; an app
+that runs in a sandboxed frame draws its panel inside its frame.
 
 ## 5. Writing a panel
 
@@ -377,11 +493,12 @@ frame. Write it so that it works there too:
 
 - In a frame, `fetch` reaches only your own `/api/apps/<app>/...` routes, and the
   frame has no popups, no token and no network of its own. Use the host calls
-  instead (host API 1.3): `getContext()` for the org and the person (never the
+  instead (host API 1.5): `getContext()` for the org and the person (never the
   token), `app.openFile(fileId, filename)` to show a file your own tool returned,
   `app.listDocumentTemplates` and `app.printDocuments` for templates and prints,
   `app.listMyApprovals` and `app.decideApproval` for your tools' approvals (the
-  host asks the person in its own dialog), `app.openExternal(url)` for an https
+  host asks the person in its own dialog), `app.editApproval(id, fields)` to change a
+  pending approval's editable fields, `app.openExternal(url)` for an https
   page on a host your manifest declares (list outside pages you only link to in
   `network.linkHosts`, image hosts in `network.imageHosts`), and
   `app.openRecord(app, entity, id)` or `app.openApprovals()` for another app's
@@ -409,6 +526,9 @@ frame. Write it so that it works there too:
   the agent is told its id. A tab whose own id is the record needs none of this:
   when the tab is not named for its entity, it declares it instead
   (`"entity": "document"`, or `"entity": "kernel:contact"`, in `views.tabTypes.<tab>`).
+- A tab that shows one record can be named after it: `app.tabLabel(() => customerName())`
+  in the component body. Until the label is known (null) the tab keeps the view's
+  `label`. A host without this call keeps the view's label too.
 - Keep every tab `urlPattern` under a first segment your app owns
   (`/<app>/...`): a pattern under another app, a Liaison page or a leading
   parameter is refused at install (see "Tab routes" in `app-package-format.md`).
@@ -777,7 +897,9 @@ refused with the catalog's app names.
 **Approved calls that fail**: an app tool approved by a person that answers
 with an error, either `{ error: { code, message } }` or `{ error: "..." }`, is
 recorded as failed with no effect. The approval goes back to pending with the
-reason on its card; it is never reported as executed. A tool declared
+reason on its card; it is never reported as executed. The same goes for a call
+whose stored parameters the tool refuses (its schema changed while the request
+waited): the handler never runs. A tool declared
 `readOnly` (no table written, no side effect) is the exception: its error is
 what the call returned, so the approval is done and the error goes to the agent
 as the call's result.
@@ -950,6 +1072,8 @@ growth, and it is how your app should too.
 
 An app raises items in the attention feed from its own events, in `attention.translations` of the manifest. Each person's notification settings then decide the channels.
 
+An item raised this way is stored for each person, so on **Home** it offers **Not now** (`POST /api/attention-items/set-aside` with its `eventId`: it leaves the feed until next Monday at 00:00 in the person's time zone) and **Ask agent to draft**. A `sendGuardProviders` entry's `pill` (`{label, labelKey?}`) names Home's row for a mail about a record of that kind, over the tool's own `approvalCard.pill`.
+
 ```json
 {
   "event": "ticket:create",
@@ -967,7 +1091,7 @@ An app raises items in the attention feed from its own events, in `attention.tra
 
 ### Ship a routine template
 
-An app ships routine templates in `routines` of the manifest, keyed by template id: `description`, `kind` (`event` or a schedule), `event`, `promptTemplate` and `scopes`. A template can also be a flow: `flow` holds its steps and `eventFilter` its trigger filter, with `{{projectId}}` and `{{status:<label>}}` placeholders filled for the project chosen when the template is enabled. The filled flow is checked against the flow schema then. The Projects app's templates are the worked example; [Routines](agents/routines.md) describes flows, waits and outcomes.
+An app ships routine templates in `routines` of the manifest, keyed by template id: `description`, `kind` (`event` or a schedule), `event`, `promptTemplate` and `scopes`. An optional `title` is the name people read ("Scope check"): enabling the template copies it to the routine, so lists and approval cards show it instead of the template id. A template can also be a flow: `flow` holds its steps and `eventFilter` its trigger filter, with `{{projectId}}` and `{{status:<label>}}` placeholders filled for the project chosen when the template is enabled. The filled flow is checked against the flow schema then. The Projects app's templates are the worked example; [Routines](agents/routines.md) describes flows, waits and outcomes.
 
 A flow acts on the record that triggered it only when the record's entity declares itself a flow record, in `entities.<entity>.routineFlow`:
 
@@ -1005,11 +1129,16 @@ replaced by an older run that finished later.
 
 A refresh runs the provider only for the people who are around: online now, or
 who read their feed in the last 30 minutes. When someone comes back, their
-first feed read recomputes their lists.
+first feed read recomputes their lists. A stored list older than 30 minutes is
+not shown meanwhile, since it may no longer be true (a dated item past its day,
+a task done since): the feed lists the app as out of date ("This list is out of
+date and is being refreshed.") instead of showing nothing, shows the app's items
+once the new list is stored, and the person's devices reload it then.
 
 Each run replaces the person's whole list, so an item the provider no longer
 returns is cleared. A person without the provider's scope gets an empty list. A
-failed run keeps the last list and shows the error in the feed.
+failed run keeps the last list and shows the error in the feed; it keeps that
+list's date, so a list too old to show stays hidden.
 
 ## 14. Approval card summaries
 
@@ -1021,6 +1150,15 @@ and never run the summarizer. A request with no stored summary (an older one)
 shows a generic summary of its parameters. While it still awaits a decision,
 the server stores the real one in the background, a few at a time; a decided
 request keeps the generic summary.
+
+A tool with no summarizer gets that generic summary too when a call of it is
+held for a decision. A parameter that holds an id is shown by the record's name:
+the parameter's words name the kind (`taskId`, `project_id`, `assigneeId`, or `id`
+for the record the tool acts on) and the entity's `labelField` the name. No name is stored on the card: it is read
+each time the card is served, with the reader's own access, and only for a kind whose
+entity declares a `readScope` the reader holds. Anyone else reads the kind ("a task"),
+and an id nothing names reads "a record". Your own summarizer's words are kept, with an
+id it prints read the same way.
 
 A summarizer is pure: it reads the call's parameters, never a record. To show
 the record a call acts on, declare `summarizerContext` on the tool:

@@ -1,0 +1,6 @@
+{
+  "privileged": {
+    "modules/client-actions/demo-decide.ts": "The demo decide: records a fictional client's stand-in decision on one open action, in a visitor demo workspace on a demo box only (it refuses anything else first), with the one decide's guarded UPDATE under the row's lock and its decided event. Its one caller is the services world's acceptance step, which resolves the action in its own workspace; it takes no id from a request.",
+    "modules/demo/worlds/studio/cr-accepted.ts": "The services world's acceptance step (a world beat injector, reached only through the registry's visitor-demo guard): reads the client action of the world's named change request in its own workspace, and writes that action's stand-in signature event (level demo) through the seed's stand-in writer before the demo decide."
+  }
+}

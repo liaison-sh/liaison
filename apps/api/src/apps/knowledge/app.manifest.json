@@ -54,10 +54,14 @@
           "source_link_create"
         ],
         "text": "REGISTERING A SINGLE LIVING DOC AS A LINK (not a copy), when asked to 'register / track / link / reference' ONE external doc 'that keeps changing' / 'always points to the live version' / 'don't want a frozen copy' / 'this is the canonical X', use source_link_create, it registers a LIVING source_link that points at the remote doc (it always reflects the current version), NOT a frozen body copy. Resolve the real remote id FIRST, never guess it from the file's name: a knowledge__search hit from that source gives source + sourceEntityId directly; otherwise for Google Drive the file id from google-drive__search (source:'google-drive'), for GitLab '<project id>:<branch>:<file path>' from gitlab_search or gitlab_list_tree (source:'gitlab'). Then source_link_create with source + externalId + a title. Do NOT knowledge__create a document for a 'live link' request: create freezes a snapshot copy of the body, so calling it a 'live link' is a misrepresentation. Conversely, use knowledge__create (a document) only when the user wants to SAVE / SUMMARISE / IMPORT the content as an editable local copy. NEVER claim a link was registered unless source_link_create returned a real id, and NEVER freeze a copy and label it a live link."
+      },
+      {
+        "tools": ["create"],
+        "text": "`create`: ORGANIZATION documents must additionally be access-classified: pass an explicit sensitivity, and for 'confidential'/'restricted' pass shareWithRoles naming who may access it (roles_list gives role ids; finance, pricing, margin, revenue and contract material belongs to the executive/C-Level role, NOT org-wide). Missing placement or access rules returns a structured error listing existing collections so you can retry. Create a local Knowledge document. The result includes the new document's id, a `resourceUrl`, and a ready-made `mentionTag` (an @[Title](knowledge:document:<id>) entity tag) — after creating, ALWAYS confirm to the user by pasting the returned mentionTag verbatim in your reply (it renders as a clickable entity pill that opens the doc), never just a bare success sentence. NEVER FABRICATE DATES OR AN EVENT SCHEDULE INTO A DOC: do not author a document containing SPECIFIC dates (an event/expo/launch start or end date, a 'schedule', a 'calendar', a date-bounded window like 'July 1–14') unless those exact dates came from a source you actually READ (a retrieved Knowledge article, a project task's real due date, an order/invoice). If the user frames a request with a RELATIVE window ('in the two weeks before the launch', 'in the run-up to the expo', 'until the event') but the SPECIFIC dates are not in any readable source, do NOT search-then-invent and do NOT create a 'Schedule'/'Launch Calendar' doc to fill the gap — manufacturing concrete dates and persisting them here is a fabrication. Just report the real records you read (e.g. the project's open + overdue tasks) and, for a recurring digest, bound the recurrence with the cron schedule, not with an invented date doc."
       }
     ]
   },
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "Knowledge workspace for local documents and curated source links",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -82,6 +86,7 @@
         "aclRoleIds",
         "orgWide",
         "requiredScopes",
+        "authorReads",
         "trashedAt",
         "trashedBy",
         "updateEventAt",
@@ -775,6 +780,8 @@
       }
     },
     "search": {
+      "focusCore": true,
+      "restrictedRows": { "entity": "document", "idPath": "hits[].id" },
       "description": "Federated search across Knowledge and enabled remote sources",
       "searchKeywords": ["politique", "procédure", "doc", "documentation", "chercher", "rechercher", "connaissances", "policy", "article", "find", "trouver", "retrouver"],
       "readOnly": true,
@@ -806,6 +813,7 @@
       }
     },
     "review_queue": {
+      "restrictedRows": { "entity": "document", "idPath": "items[].entityId" },
       "description": "List Knowledge items that need attention — documents or source links that are flagged needs_review/stale, are missing an owner, or are past their review-due date. Read-only; verified items are excluded. Use this to find what to verify or refresh.",
       "searchKeywords": ["revoir", "relire", "doc", "document"],
       "readOnly": true,
@@ -940,6 +948,8 @@
       }
     },
     "get": {
+      "focusCore": true,
+      "restrictedRows": { "entity": "document", "idPath": "document.id" },
       "description": "Fetch the full content of a Knowledge document OR a remote connected-source item. Pass `id` for a local Knowledge document. To read a file that lives in a connected source (e.g. a Google Doc found via google-drive__search), pass `source` (the connector id, e.g. 'google-drive') + `sourceEntityId` (the file id from the search hit) — this returns the file's REAL text content (Google Docs/Sheets are exported to text), so you can ground a new Knowledge document's body in it instead of inventing one. Remote content reads require the knowledge:sources:read scope.",
       "searchKeywords": ["lire", "ouvrir", "doc", "document", "read"],
       "readOnly": true,
@@ -969,6 +979,7 @@
       }
     },
     "find_by_title": {
+      "restrictedRows": { "entity": "document", "idPath": "document.id" },
       "description": "Look up a Knowledge document by its EXACT title — DB-backed, never rides the search index, so a document created moments ago resolves immediately (unlike `search`, which is Meilisearch-backed and can lag behind a fresh write under load). Use this when you already know (or another tool told you) the precise title to check for — e.g. a connector app's deterministic per-entity doc naming convention — not for keyword discovery (use `search` for that). Returns found:false + document:null when no exact match exists or you cannot read it; pass includeArchived:true to also match an archived document.",
       "searchKeywords": ["titre", "doc", "document"],
       "readOnly": true,
@@ -993,8 +1004,8 @@
       }
     },
     "create": {
-      "description": "Create a local Knowledge document. SEARCH BEFORE YOU CREATE: the knowledge base is curated and org-wide, so first look for a document that already covers this subject (search by topic, find_by_title when you know the exact title). If one exists, UPDATE it instead: a second doc on a subject someone already wrote splits the truth in two and both become untrustworthy. Create only when the subject is genuinely new. EVERY document MUST be filed into a collection via collectionId (never free-floating). ORGANIZATION documents must additionally be access-classified: pass an explicit sensitivity, and for 'confidential'/'restricted' pass shareWithRoles naming who may access it (roles_list gives role ids; finance, pricing, margin, revenue and contract material belongs to the executive/C-Level role, NOT org-wide). Missing placement or access rules returns a structured error listing existing collections so you can retry. Create a local Knowledge document. The result includes the new document's id, a `resourceUrl`, and a ready-made `mentionTag` (an @[Title](knowledge:document:<id>) entity tag) — after creating, ALWAYS confirm to the user by pasting the returned mentionTag verbatim in your reply (it renders as a clickable entity pill that opens the doc), never just a bare success sentence. NEVER FABRICATE DATES OR AN EVENT SCHEDULE INTO A DOC: do not author a document containing SPECIFIC dates (an event/expo/launch start or end date, a 'schedule', a 'calendar', a date-bounded window like 'July 1–14') unless those exact dates came from a source you actually READ (a retrieved Knowledge article, a project task's real due date, an order/invoice). If the user frames a request with a RELATIVE window ('in the two weeks before the launch', 'in the run-up to the expo', 'until the event') but the SPECIFIC dates are not in any readable source, do NOT search-then-invent and do NOT create a 'Schedule'/'Launch Calendar' doc to fill the gap — manufacturing concrete dates and persisting them here is a fabrication. Just report the real records you read (e.g. the project's open + overdue tasks) and, for a recurring digest, bound the recurrence with the cron schedule, not with an invented date doc.",
-      "searchKeywords": ["rédiger", "écrire", "write", "doc", "document", "politique", "policy", "procédure", "nouveau", "connaissances"],
+      "description": "Create a local Knowledge document. SEARCH BEFORE YOU CREATE: the knowledge base is curated and org-wide, so first look for a document that already covers this subject (search by topic, find_by_title when you know the exact title). If one exists, UPDATE it instead: a second doc on a subject someone already wrote splits the truth in two and both become untrustworthy. Create only when the subject is genuinely new. EVERY document MUST be filed into a collection via collectionId (never free-floating).",
+      "searchKeywords": ["rédiger", "écrire", "write", "doc", "document", "politique", "policy", "procédure", "nouveau", "connaissances", "créer"],
       "requiredScopes": ["knowledge:documents:create"],
       "writesToTable": "app_knowledge.documents",
       "trustBoundary": "user",
@@ -1092,6 +1103,8 @@
             },
             "description": "Explicit role-based access grants applied at creation. REQUIRED (non-empty) when sensitivity is 'confidential' or 'restricted': such documents are invisible to everyone but the owner until shared, so name who may access them. Find role ids with the kernel roles_list tool; for finance/pricing/margin material grant the executive (e.g. C-Level) role."
           },
+          "orgAccess": { "type": "string", "enum": ["none", "viewer", "editor"] },
+          "shareWithUsers": { "type": "array", "items": { "type": "object", "properties": { "userId": { "type": "string" }, "role": { "type": "string", "enum": ["viewer", "editor"] } }, "required": ["userId", "role"] } },
           "tagNames": {
             "type": "array",
             "items": {
@@ -1233,7 +1246,7 @@
     },
     "collection_create": {
       "description": "Create a Knowledge collection (folder). Shared with the organization unless `personal` is true; a subfolder is seen by whoever sees its parent.",
-      "searchKeywords": ["dossier", "folder"],
+      "searchKeywords": ["dossier", "folder", "créer"],
       "requiredScopes": ["knowledge:collections:manage"],
       "trustBoundary": "user",
       "handler": "collection_create",
@@ -1805,5 +1818,9 @@
       "kind": "guide",
       "enabledByDefault": true
     }
+  },
+  "attention": {
+    "groupLabel": { "label": "Knowledge", "labelKey": "kernel.homeGroupKnowledge" },
+    "translations": []
   }
 }

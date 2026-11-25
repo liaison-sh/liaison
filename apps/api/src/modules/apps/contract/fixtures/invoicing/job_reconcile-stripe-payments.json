@@ -1,0 +1,49 @@
+{
+  "entry": "job:reconcile-stripe-payments",
+  "params": {},
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["stripe_streams", "{\"limit\":100}"],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"status\":{\"in\":[\"awaiting_config\",\"awaiting_data\",\"awaiting_dependency\",\"render_failed\",\"email_failed\"]}},\"search\":{\"fields\":[\"event_id\"],\"query\":\"stripe:re_\"},\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"status\":{\"in\":[\"permanent_failure\"]}},\"search\":{\"fields\":[\"event_id\"],\"query\":\"stripe:in_\"},\"select\":[\"id\",\"event_id\",\"status\",\"reason\",\"blocked_on\",\"retry_count\",\"retried_at\",\"createdAt\"],\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"status\":{\"in\":[\"awaiting_config\",\"awaiting_data\",\"awaiting_dependency\",\"render_failed\",\"email_failed\"]}},\"search\":{\"fields\":[\"event_id\"],\"query\":\"stripe:\"},\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"event_id\":\"stripe:invoices_waiting\",\"status\":\"awaiting_dependency\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "executeTool",
+      "args": ["stripe:reconcile_candidates", "{\"waiting\":[]}"],
+      "reply": "{\"status\": \"completed\", \"result\": {\"invoices\": [], \"refunds\": [], \"summary\": \"0 Stripe invoice(s) with no Liaison document, 0 paid invoice(s) to check, 0 succeeded refund(s) with no credit note recorded.\"}}"
+    }
+  ],
+  "recordedFrom": "an install with no rows yet: every read answers empty (contract replay, no provider call)"
+}

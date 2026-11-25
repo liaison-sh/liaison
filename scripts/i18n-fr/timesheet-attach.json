@@ -1,0 +1,12 @@
+{
+  "key": {
+    "projects.timesheet.attach": "Joindre à la facture",
+    "projects.timesheet.attachPick": "Joindre la feuille de ce mois à un brouillon de facture de ce projet :",
+    "projects.timesheet.attachNone": "Ce projet n'a pas encore de brouillon de facture. Créez-en un depuis sa carte prévu et réalisé, puis joignez la feuille.",
+    "projects.timesheet.attachDraft": "{{customer}}, {{amount}}, brouillon",
+    "projects.timesheet.attached": "La feuille est jointe au brouillon. Elle part avec la facture quand la facture est envoyée.",
+    "projects.timesheet.attachFailed": "La feuille n'a pas été jointe : {{reason}}",
+    "projects.time.invoiced": "Facturé",
+    "projects.time.leftToInvoice": "Reste à facturer"
+  }
+}

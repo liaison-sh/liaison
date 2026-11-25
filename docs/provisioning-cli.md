@@ -509,7 +509,7 @@ The annotated full example is
 | `org` | The org (`slug`, `name`, optional `timezone`, `defaultLocale`, `credits`, `requireAdminSecondFactor`). `requireAdminSecondFactor: true` makes two-step verification mandatory for administrators: one without it signs in to a screen that only sets it up. Absent leaves the org's setting unchanged. |
 | `admin` | The owner account, with a personal agent. `password` is optional (passwordless sign-in). An existing admin's password is never reset. Without this section, the run acts as the org's earliest active admin (for example, as the person who connected an API connector's credentials). With no active admin, any step that would store a connection (an `apps` connection or account, an IMAP tickets inbox or shared mailbox) is refused before writing, with a message naming the step and saying to add an `admin` section. A catalog app install fails the same way (exit `2`). An org-owned connection that already exists unchanged needs no admin. |
 | `roles` | Custom roles: a name plus the exact scope set, reconciled on every apply. |
-| `users` | Members by email with a role name; `mode: invite` (default) or `mode: create` with `password`. A re-run that gives an existing `mode: create` user a role they do not hold yet grants it and reports the user under `changed` (the plan says `exists: grant role <name>`); an identical re-run reports them `unchanged`, and so does an invite to a user who already holds the role or already has an invite waiting. The password of an existing user is never changed. |
+| `users` | Members by email with a role name; `mode: invite` (default) or `mode: create` with `password`. A re-run that gives an existing `mode: create` user a role they do not hold yet grants it and reports the user under `changed` (the plan says `exists: grant role <name>`); an identical re-run reports them `unchanged`, and so does an invite to a user who already holds the role or already has an invite waiting. An invite to an address that belongs to a client's portal account stops the run with `EMAIL_IS_PORTAL_USER`. The password of an existing user is never changed. |
 | `byok` | Per-org AI provider keys (`openrouter`, `anthropic`, `openai`, `google`, `mistral`), validated live unless `validate: false` or `--no-validate-byok`. One `openrouter` key is the recommended single key: when the org has no other usable model key, the apply adds OpenRouter's default model (DeepSeek V4.1 Flash 1017) and makes it Auto, so the org can chat without a dashboard step (reported as `byok.openRouterAuto`). |
 | `apiKeys` | Org API keys by `label`: supply `key` for an idempotent upsert, or omit it to generate one (printed once). |
 | `email` | The org's transactional `from` and `replyTo`. |
@@ -626,6 +626,11 @@ never a value. `--dry-run` prints the same comparison as a plan line for an
 org that already exists, and writes nothing. So a renamed host is corrected by
 editing the config and applying it again.
 
+Before a new or changed key is stored, `config apply` runs the connection's own
+check of it, as the settings page does (Stripe, for example, reads its account
+with the new key). A refused key stops the run (exit `2`) with the reason, and
+nothing is stored: the connection keeps the key it had.
+
 After the connection is applied, changed or not, `config apply` runs the app's
 `config verify` check (its `provisioning.verify` handler) against the stored
 connection when the app has one. The result is the entry's `health`
@@ -718,6 +723,27 @@ declare, a value of the wrong type, and a field kept in the app's config (set
 it under `config`) or saved by the app's own tools are a usage error (exit `2`)
 before anything is written. Through the agent's `config_apps` tool, the person
 who approves needs the field's section admin scope as well.
+
+An app entry also takes `features`: switches inside the app that are off in
+every workspace until an admin turns them on, by name. The ones an admin
+switches today: `companies` on `contacts`, `deals` and `client_reports` on
+`projects`, `recurring` on `invoicing`, and `corporateTemplates` on
+`agreements`:
+
+```yaml
+apps:
+  - name: projects
+    enable: true
+    features:
+      deals: true
+      client_reports: false
+```
+
+A feature left out is left as it is. Each one is reported `changed` or
+`unchanged` (`apps.projects.features.deals`). An unknown name, or a feature the
+app derives from its own data (`time_budgets` on `projects`, turned on per
+project), is a usage error before anything is written. The actor needs
+`kernel:apps:admin`; the agent's `config_apps` tool takes the same `features`.
 
 The `database` app sets up who may run each catalog domain's curated reads
 (see [Restrict reports by domain](database-connector.md#restrict-reports-by-domain))

@@ -1,0 +1,6 @@
+{
+  "privileged": {
+    "modules/client-actions/code-attempt.ts": "One try of an emailed code on the one action the link's token or the portal's own view named: counts the guess on that row, gives it back, locks the row past the total, writes its trail event. Nothing else is read or written.",
+    "modules/client-actions/portal-code.ts": "Writes the code-sent trail event of the one action the portal person's own view showed them and whose invited address is theirs (portalDecideGate, read as the portal role first)."
+  }
+}

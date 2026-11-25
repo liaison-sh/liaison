@@ -95,6 +95,50 @@ describe("effectiveScopeDelegation", () => {
   })
 })
 
+describe("exact-only scopes cross no wildcard", () => {
+  const MARGIN = "projects:margin:read"
+  const financeDesk = ["invoicing:documents:read", MARGIN]
+
+  test("a person holding * asks a desk whose ceiling names the margin scope: the delegated turn has no margin", () => {
+    const delegated = effectiveScopeDelegation(["*"], financeDesk)
+    expect(delegated).toContain("invoicing:documents:read")
+    expect(delegated).not.toContain(MARGIN)
+  })
+
+  test("a person holding * addressing that desk directly gets no margin either", () => {
+    expect(effectiveScopeDm(financeDesk, ["*"])).not.toContain(MARGIN)
+    expect(effectiveScopeDm(financeDesk, ["projects:*"])).not.toContain(MARGIN)
+  })
+
+  test("the person who holds the margin scope exactly keeps it through a desk that names it", () => {
+    const finance = ["invoicing:documents:read", MARGIN]
+    expect(effectiveScopeDelegation(finance, financeDesk)).toContain(MARGIN)
+    expect(effectiveScopeDm(financeDesk, finance)).toContain(MARGIN)
+  })
+
+  test("a ceiling holds an exact-only scope only by naming it: * or a glob carries none", () => {
+    const finance = ["invoicing:documents:read", MARGIN]
+    expect(effectiveScopeDm(["*"], finance)).toEqual(["invoicing:documents:read"])
+    expect(effectiveScopeDm(["projects:*"], finance)).toEqual([])
+  })
+
+  test("a room with a member holding * floors the margin scope out, even when another member holds it exactly", () => {
+    const finance = ["invoicing:documents:read", MARGIN]
+    expect(effectiveScopeChannel(financeDesk, [finance, ["*"]])).toEqual([
+      "invoicing:documents:read",
+    ])
+    expect(effectiveScopeChannel(financeDesk, [["*"], finance])).toEqual([
+      "invoicing:documents:read",
+    ])
+    expect(effectiveScopeChannel(financeDesk, [finance, finance])).toEqual(financeDesk)
+  })
+
+  test("a bare marker scope such as a document's edit scope is held exactly too", () => {
+    expect(effectiveScopeDm(["clevel", "a:b:read"], ["*"])).toEqual(["a:b:read"])
+    expect(effectiveScopeDm(["clevel"], ["clevel"])).toEqual(["clevel"])
+  })
+})
+
 describe("delegateToAgent", () => {
   const ORG = "00000000-0000-0000-0000-e5c0de000001"
   const OTHER_ORG = "00000000-0000-0000-0000-e5c0de000002"

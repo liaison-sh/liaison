@@ -1,0 +1,3 @@
+In place of a withdrawn signer: replaces, one signer, same version and turn, refusals -> bundled-apps/agreements/src/send.ts (withdrawnSigner, sendInPlace) ; apps/api/src/modules/client-actions/mint.ts (signInPlaceOf)
+The card's kind and phrase are the withdrawn signer's -> bundled-apps/agreements/src/send.ts (askedOf, cardLines) ; bundled-apps/agreements/src/summarizers.ts (summarizeAgreementSend)
+A signer whose link ran out still has their place -> apps/api/src/modules/client-actions/mint.ts (signInPlaceOf) ; bundled-apps/agreements/src/send.ts (withdrawnSigner)

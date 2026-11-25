@@ -20,6 +20,10 @@ export const RESERVED_WEB_ROUTE_SEGMENTS = [
   "demo",
   // A one-time link that connects the signed-in member's own account on load.
   "connect",
+  // The page a person outside opens from a signing or acceptance link (`/a#t=...`).
+  "a",
+  // The client portal (`/portal`, its sign-in and its own shell), for people outside.
+  "portal",
   // The kernel's own tabs.
   "threads",
   "sessions",
@@ -43,6 +47,8 @@ export const RESERVED_WEB_ROUTE_SEGMENTS = [
   "dashboard-table",
   // The kernel's app builder tab (`/apps/builder/:draftId`).
   "apps",
+  // A staff signer's own Read and sign tab (`/sign/:id`), which mints a signing link on load.
+  "sign",
   // The server's API prefix: a tab URL under it would reload into the API.
   "api",
 ] as const

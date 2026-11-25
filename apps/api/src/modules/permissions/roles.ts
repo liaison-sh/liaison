@@ -680,7 +680,10 @@ export async function assignRole(
   const [user] = await db
     .select({ id: users.id })
     .from(users)
-    .where(and(eq(users.id, params.userId), eq(users.orgId, params.orgId)))
+    // A client's portal account holds no role or grant: it is no member to give one to.
+    .where(
+      and(eq(users.id, params.userId), eq(users.orgId, params.orgId), eq(users.userType, "member")),
+    )
     .limit(1)
   if (!user) return null
 
@@ -856,7 +859,10 @@ export async function grantUserScope(
   const [user] = await db
     .select({ id: users.id })
     .from(users)
-    .where(and(eq(users.id, params.userId), eq(users.orgId, params.orgId)))
+    // A client's portal account holds no role or grant: it is no member to give one to.
+    .where(
+      and(eq(users.id, params.userId), eq(users.orgId, params.orgId), eq(users.userType, "member")),
+    )
     .limit(1)
   if (!user) return null
 
@@ -952,7 +958,10 @@ export async function grantUserDimension(
   const [user] = await db
     .select({ id: users.id })
     .from(users)
-    .where(and(eq(users.id, params.userId), eq(users.orgId, params.orgId)))
+    // A client's portal account holds no role or grant: it is no member to give one to.
+    .where(
+      and(eq(users.id, params.userId), eq(users.orgId, params.orgId), eq(users.userType, "member")),
+    )
     .limit(1)
   if (!user) return null
 

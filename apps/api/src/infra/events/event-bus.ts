@@ -743,6 +743,32 @@ export async function subscribeToEvent(
  * kind:'event' routines).
  */
 export const KERNEL_DECLARED_EMITS: ReadonlySet<string> = new Set([
+  // A feature inside an app switched on or off (modules/apps/org-features.ts): the
+  // catalog changed, so live MCP sessions are told (modules/mcp/catalog-notifier.ts).
+  "app:feature_update",
+  // A client action decided, its mail not sent, or a staff signer's turn
+  // (modules/client-actions/decide.ts, mint.ts), and its public page opened, a
+  // change requested or the code locked (public-routes.ts queueClientActionEvent):
+  // Home rows and the sender's app.
+  "client_action:opened",
+  "client_action:requested",
+  "client_action:code_locked",
+  "client_action:decided",
+  // A send's links exist (modules/client-actions/mint.ts mintClientActionSend), in the
+  // transaction that made them: the target's app marks its record sent.
+  "client_action:links_made",
+  "client_action:send_failed",
+  "client_action:staff_turn",
+  // Pending requests about a record withdrawn when its list closed on the asker
+  // (modules/client-actions/restricted-follow.ts): one Home line to the list.
+  "restricted_record:requests_withdrawn",
+  // A client invited to a company's portal, and a company's portal access ended
+  // (modules/portal/access.ts): apps follow the end (agreements marks its waiting versions).
+  "portal_user:invited",
+  "portal_user:access_ended",
+  // A person opened a share for a client company (modules/portal/access.ts): apps follow
+  // their own kinds (projects turns its client reports routine on for a reports share).
+  "portal_share:opened",
   "user:registered",
   "user:deactivate",
   "user:reactivate",
@@ -823,6 +849,15 @@ export const KERNEL_DECLARED_EMITS: ReadonlySet<string> = new Set([
   "contact:delete",
   "contact:merge",
   "contact:share",
+  // A company was created, edited, merged into another or closed (the relationship ended).
+  "company:create",
+  "company:update",
+  "company:merge",
+  "company:closed",
+  // A company's general access or grants changed (modules/contacts/companies.ts).
+  "company:share",
+  // A company was deleted: its search document and open rows go.
+  "company:delete",
   "presence:update",
   "org:update",
   // One field of an app's declarative settings page written (modules/apps/settings-routes.ts).

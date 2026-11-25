@@ -1,0 +1,20 @@
+Your answer picks the company: products, software, expertise -> packages/shared/src/validation/demo-entry.ts:41
+Answer labels: We sell products, We sell software, We sell our expertise to clients, Other or just show me -> packages/shared/src/i18n/locales/en/kernel.json:961
+No answer, Other, or a world the server does not run opens the products company -> packages/shared/src/validation/demo-entry.ts:62
+Products is the default company -> packages/shared/src/demo/worlds.ts:20
+LIAISON_DEMO_WORLDS lists the companies a server runs, products by default -> apps/api/src/lib/env.ts:107
+Scenarios per company, Orders & shipping, Subscriptions & payments and Client work each in one company -> packages/shared/src/demo/worlds.ts:23
+Scenario names -> packages/shared/src/i18n/locales/en/kernel.json:1033
+Subscriptions & payments scenario text -> packages/shared/src/i18n/locales/en/kernel.json:1048
+Client work scenario text -> packages/shared/src/i18n/locales/en/kernel.json:1049
+Resonant Audio Labs, portable field recorders, Paris, 7 people -> packages/shared/src/i18n/locales/en/kernel.json:1119
+Resonant Audio Labs about line -> packages/shared/src/i18n/locales/en/kernel.json:1120
+Software company, Paris, 14 people -> packages/shared/src/i18n/locales/en/kernel.json:1212
+Rota software for hotels, restaurants and canteens, card payments through Stripe -> packages/shared/src/i18n/locales/en/kernel.json:1214
+Software company simulated Stripe account -> packages/shared/src/i18n/locales/en/kernel.json:1242
+Software company, connecting a real account is refused -> packages/shared/src/i18n/locales/en/kernel.json:1258
+Studio, Lyon, 24 people -> packages/shared/src/i18n/locales/en/kernel.json:1261
+Studio builds software and data systems, bills by the hour or day, fixed price or retainer, client portal, signed agreement -> packages/shared/src/i18n/locales/en/kernel.json:1263
+You sign in as a co-founder in the studio -> packages/shared/src/i18n/locales/en/kernel.json:1292
+Client portal row of the studio's operations -> packages/shared/src/i18n/locales/en/kernel.json:1282
+Studio stand-ins, client sign-in and signing links, agreements shown as signed, Client portal under What they see -> packages/shared/src/i18n/locales/en/kernel.json:1304

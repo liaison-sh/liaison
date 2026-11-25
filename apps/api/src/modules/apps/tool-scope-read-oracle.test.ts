@@ -597,6 +597,12 @@ const SCOPE_READ_ALLOWLIST_LITERAL: ReadonlyArray<
   ],
   ["apps/api/src/modules/agent/tools/scope-request-tools.ts", "scope: t.scope,", REASONS.LOCKED],
   [
+    "apps/api/src/modules/agent/tools/scope-request-tools.ts",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the exact text of a source line
+    'description: `${t.description} ${t.scope.replace(/[,:_]+/g, " ")}`,',
+    REASONS.LOCKED,
+  ],
+  [
     "apps/api/src/modules/agent/skills/skills-routes.ts",
     'const { scope } = c.req.valid("json")',
     REASONS.SKILL,
@@ -1570,15 +1576,14 @@ const SCOPE_READ_ALLOWLIST_LITERAL: ReadonlyArray<
     REASONS.GRANT_ROW,
   ],
   [
-    "apps/api/src/modules/approvals/attention.ts",
+    "apps/api/src/modules/approvals/route-world.ts",
     // biome-ignore lint/suspicious/noTemplateCurlyInString: the exact text of a source line
     "(p) => drizzleSql`(${p.userId}::uuid, ${p.scope}::text, ${p.app}::text)`,",
     REASONS.GRANT_ROW,
   ],
   [
-    "apps/api/src/modules/approvals/attention.ts",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: the exact text of a source line
-    "for (const d of decideRows) requesterDecides.add(`${d.user_id}\\u0000${d.scope}\\u0000${d.app}`)",
+    "apps/api/src/modules/approvals/route-world.ts",
+    "for (const r of rows) out.add(pairKey(r.user_id, r.scope, r.app))",
     REASONS.GRANT_ROW,
   ],
   [

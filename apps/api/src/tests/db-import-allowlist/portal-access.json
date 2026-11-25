@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "modules/portal/access.ts": "Staff's client access panel and portal tools: after the caller read the company, the contact, the file or the person under their own RLS, writes that one company's portal rows (its clients, sessions, open client actions, shares, companies.portal_ended_at) or one person's. Clients hold no scope, so these writes are the privileged path the table grants allow."
+  }
+}

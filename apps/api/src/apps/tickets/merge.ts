@@ -3,11 +3,12 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { displayHandleFor, loadSegmentConfig } from "~/apps/tickets/display-handle"
 import type { PrivilegedReadOptions } from "~/apps/tickets/privileged-read"
 import { resolveTicketRef } from "~/apps/tickets/resolve-ticket-ref"
-import { ticketsRel } from "~/apps/tickets/schema-refs"
+import { kernelRel, ticketsRel } from "~/apps/tickets/schema-refs"
 import type { ClosedReason, CurrentTicketState, TicketStatus } from "~/apps/tickets/state-machine"
 import { applyEffects, validateTransition } from "~/apps/tickets/state-machine"
 import { extractRows, type PrivilegedDb, type RlsClient, type RlsTx } from "~/db"
-import { cancelApprovalsForSourceTicket } from "~/modules/approvals/cancel"
+import { schemaRef } from "~/db/schema-ref"
+import { cancelApprovalsForSourceTicket, TICKET_MERGED_REASON } from "~/modules/approvals/cancel"
 import { repointThreadAnchors } from "~/modules/threads/thread-anchor"
 
 type SqlClient = RlsClient | RlsTx | PrivilegedDb
@@ -16,6 +17,12 @@ interface MergeParams {
   targetTicketId: string
   sourceTicketIds: string[]
   note?: string
+  /**
+   * Check only: run every refusal and answer whether the target is shown on a
+   * client portal, writing nothing. The tool's handler asks it first, so an
+   * agent's merge into a portal-visible ticket parks for a person.
+   */
+  checkOnly?: boolean
 }
 
 interface ActorRef {
@@ -41,7 +48,9 @@ interface TicketRow {
   converted_to_mail_conversation_id: string | null
   first_response_at: string | Date | null
   message_count: number | null
+  company_id: string | null
   sensitivity: string | null
+  channel: string | null
 }
 
 /** How far a ticket's text may travel: a merge never moves text to a ticket read more widely. */
@@ -55,12 +64,32 @@ async function fetchTicket(
 ): Promise<TicketRow | null> {
   const result = await tx.execute(drizzleSql`
     SELECT id, handle, status, closed_reason, merged_into_ticket_id, converted_to_mail_conversation_id, first_response_at, message_count,
-      sensitivity
+      company_id, sensitivity, channel
     FROM ${ticketsRel("tickets")}
     WHERE id = ${ticketId} AND org_id = ${orgId}
     LIMIT 1
   `)
   return extractRows<TicketRow>(result)[0] ?? null
+}
+
+/**
+ * Is the ticket shown on a client portal: a portal request, or a ticket an open share
+ * names. The portal tables exist only where the portal is installed.
+ */
+async function portalVisible(tx: SqlClient, orgId: string, row: TicketRow): Promise<boolean> {
+  if (row.channel === "portal") return true
+  const [r] = extractRows<{ ok: boolean }>(
+    await tx.execute(drizzleSql`
+      SELECT to_regclass(${`${schemaRef("kernel")}.portal_shares`}) IS NOT NULL AS ok`),
+  )
+  if (!r?.ok) return false
+  const [s] = extractRows<{ ok: boolean }>(
+    await tx.execute(drizzleSql`
+      SELECT EXISTS (SELECT 1 FROM ${kernelRel("portal_shares")}
+        WHERE org_id = ${orgId} AND kind = 'ticket' AND object_id = ${row.id}
+          AND closed_at IS NULL) AS ok`),
+  )
+  return s?.ok === true
 }
 
 function toCurrentState(row: TicketRow): CurrentTicketState {
@@ -76,6 +105,24 @@ function toCurrentState(row: TicketRow): CurrentTicketState {
   }
 }
 
+type MergeError = { error: { code: string; message: string; retryable: boolean } }
+type MergeDone = { targetTicketId: string; mergedSourceCount: number; copiedMessageCount: number }
+type MergeCheck = { check: { targetHandle: string; portalVisible: boolean } }
+
+export function mergeTickets(
+  tx: SqlClient,
+  orgId: string,
+  params: MergeParams & { checkOnly: true },
+  actor: ActorRef,
+  opts?: PrivilegedReadOptions,
+): Promise<MergeCheck | MergeError>
+export function mergeTickets(
+  tx: SqlClient,
+  orgId: string,
+  params: MergeParams & { checkOnly?: false },
+  actor: ActorRef,
+  opts?: PrivilegedReadOptions,
+): Promise<MergeDone | MergeError>
 export async function mergeTickets(
   tx: SqlClient,
   orgId: string,
@@ -83,10 +130,7 @@ export async function mergeTickets(
   actor: ActorRef,
   // A caller inside a privileged transaction passes it (privileged-read.ts).
   opts: PrivilegedReadOptions = {},
-): Promise<
-  | { targetTicketId: string; mergedSourceCount: number; copiedMessageCount: number }
-  | { error: { code: string; message: string; retryable: boolean } }
-> {
+): Promise<MergeDone | MergeCheck | MergeError> {
   if (!params.targetTicketId || !Array.isArray(params.sourceTicketIds)) {
     return {
       error: {
@@ -151,13 +195,30 @@ export async function mergeTickets(
   }
 
   // A merge copies every message of a source onto the target, so the target's readers read
-  // them: refuse a source more sensitive than the target. Every source is asked before anything
-  // is written.
+  // them: refuse a source of another company, or one more sensitive than the target. Every
+  // source is asked before anything is written.
+  const targetShown = await portalVisible(tx, orgId, target)
+  // Each source is read once, here; the writes below use these rows (the guarded update still
+  // refuses a source merged meanwhile).
+  const sourceRows = new Map<string, TicketRow>()
   for (const sourceId of params.sourceTicketIds) {
     const source = await fetchTicket(tx, orgId, sourceId)
+    if (source) sourceRows.set(sourceId, source)
     if (!source) {
       return {
         error: { code: "not_found", message: `source ${sourceId} not found`, retryable: false },
+      }
+    }
+    const otherCompany =
+      source.company_id !== target.company_id &&
+      ((source.company_id !== null && target.company_id !== null) || targetShown)
+    if (otherCompany) {
+      return {
+        error: {
+          code: "merge_other_company",
+          message: `${source.handle} is not of the same company as ${target.handle}${targetShown ? ", which the client's portal shows" : ""}: nothing was merged. Keep them as separate tickets.`,
+          retryable: false,
+        },
       }
     }
     if (rankOf(source.sensitivity) > rankOf(target.sensitivity)) {
@@ -169,6 +230,9 @@ export async function mergeTickets(
         },
       }
     }
+  }
+  if (params.checkOnly) {
+    return { check: { targetHandle: target.handle, portalVisible: targetShown } }
   }
 
   // The timeline and the merge event name the target by its display handle.
@@ -182,7 +246,7 @@ export async function mergeTickets(
 
   let totalMessageCount = 0
   for (const sourceId of params.sourceTicketIds) {
-    const source = await fetchTicket(tx, orgId, sourceId)
+    const source = sourceRows.get(sourceId)
     if (!source) {
       return {
         error: { code: "not_found", message: `source ${sourceId} not found`, retryable: false },
@@ -257,7 +321,7 @@ export async function mergeTickets(
       tx,
       orgId,
       sourceId,
-      "ticket_merged",
+      TICKET_MERGED_REASON,
       undefined,
       opts.privilegedTx,
     )

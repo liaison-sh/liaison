@@ -369,7 +369,7 @@ export async function runInvoicingImport(opts: {
     await withPrivilegedDb(orgId, "cli-invoicing-import-actor", (tx) =>
       tx.execute(drizzleSql`
         SELECT id::text AS id FROM ${kernelRel("users")}
-        WHERE org_id = ${orgId}::uuid AND status = 'active'
+        WHERE org_id = ${orgId}::uuid AND status = 'active' AND user_type = 'member'
         ORDER BY created_at ASC, id ASC LIMIT 1
       `),
     ),

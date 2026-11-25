@@ -11,7 +11,9 @@ import { describe, expect, it, vi } from "vitest"
 import {
   getPulseUpdated,
   handleKnowledgeDocumentUpdate,
+  knowledgeSocketConnected,
   knowledgeStore,
+  noteKnowledgePageOpen,
   pulseDocumentUpdated,
   resetKnowledgeStore,
   setKnowledgeStoreDocument,
@@ -91,5 +93,41 @@ describe("knowledge-store synced-doc live update (T-7)", () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe("knowledge-store: the socket's first connect", () => {
+  it("reads each open page again, and no page that was closed", async () => {
+    resetKnowledgeStore()
+    const get = vi.fn(async (path: string) => ({
+      id: path.split("/").pop(),
+      title: "Onboarding",
+      body: "Typing on. Still typing.",
+      revision: 3,
+    }))
+    const api = { get } as unknown as Parameters<typeof noteKnowledgePageOpen>[1]
+    const closeA = noteKnowledgePageOpen("a", api)
+    const closeB = noteKnowledgePageOpen("b", api)
+    closeB()
+    await knowledgeSocketConnected()
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(get.mock.calls[0]?.[0]).toBe("/knowledge/documents/a")
+    expect(knowledgeStore.documentsById["a"]?.body).toBe("Typing on. Still typing.")
+    expect(knowledgeStore.documentsById["b"]).toBeUndefined()
+    closeA()
+  })
+
+  it("keeps a page open in two views until both close", async () => {
+    resetKnowledgeStore()
+    const get = vi.fn(async () => ({ id: "c", title: "t", body: "b", revision: 1 }))
+    const api = { get } as unknown as Parameters<typeof noteKnowledgePageOpen>[1]
+    const one = noteKnowledgePageOpen("c", api)
+    const two = noteKnowledgePageOpen("c", api)
+    one()
+    await knowledgeSocketConnected()
+    expect(get).toHaveBeenCalledTimes(1)
+    two()
+    await knowledgeSocketConnected()
+    expect(get).toHaveBeenCalledTimes(1)
   })
 })

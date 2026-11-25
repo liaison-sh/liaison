@@ -13,6 +13,7 @@ import { extractRows, type RlsClient } from "~/db"
 import { withRlsContext } from "~/db/rls"
 import { PRIVILEGED_ROLE_REACH_SQL } from "~/db/role-reach"
 import { schemaRef } from "~/db/schema-ref"
+import { withRoleCatalogLock } from "~/tests/helpers/role-catalog-lock"
 
 const ctx = { actorType: "system" as const, orgId: randomUUID(), purpose: "job" as const }
 
@@ -34,6 +35,11 @@ async function attempt(tx: RlsClient, statement: string, resetRole = false): Pro
   }
 }
 
+/** Any database of the server: the role-catalog lock lives in its `postgres` database. */
+function serverUrl(): string {
+  return process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL ?? ""
+}
+
 function inRequestTx<T>(fn: (tx: RlsClient) => Promise<T>): Promise<T> {
   return withRlsContext(ctx, fn)
 }
@@ -47,22 +53,41 @@ const ELEVATED_ROLES = [
 ]
 
 describe("the request login", () => {
-  test("is liaison_request, a member of liaison_rls and of nothing else", async () => {
-    const [who] = await inRequestTx(async (tx) =>
-      extractRows<{ login: string; role: string; memberships: string[] }>(
-        await tx.execute(drizzleSql`
-          SELECT session_user::text AS login, current_user::text AS role,
-                 ARRAY(SELECT r.rolname::text FROM pg_roles r
-                        WHERE r.rolname <> session_user
-                          AND pg_has_role(session_user, r.oid, 'MEMBER')
-                        ORDER BY 1) AS memberships`),
+  test("liaison_request's memberships are exactly liaison_rls and liaison_portal", async () => {
+    // Roles are cluster wide: a test replaying migrations on a scratch database
+    // changes these memberships for every database while it holds the
+    // role-catalog lock, and gives them back before it lets go.
+    const [who] = await withRoleCatalogLock(serverUrl(), () =>
+      inRequestTx(async (tx) =>
+        extractRows<{ login: string; role: string; memberships: string[] }>(
+          await tx.execute(drizzleSql`
+            SELECT session_user::text AS login, current_user::text AS role,
+                   ARRAY(SELECT r.rolname::text FROM pg_roles r
+                          WHERE r.rolname <> session_user
+                            AND pg_has_role(session_user, r.oid, 'MEMBER')
+                          ORDER BY 1) AS memberships`),
+        ),
       ),
     )
     expect(who).toEqual({
       login: "liaison_request",
       role: "liaison_rls",
-      memberships: ["liaison_rls"],
+      // liaison_portal holds less than liaison_rls, and withPortalContext steps
+      // into it on this login. Nothing else may ever join this list.
+      memberships: ["liaison_portal", "liaison_rls"],
     })
+  })
+
+  test("liaison_portal is a member of nothing", async () => {
+    const rows = await inRequestTx(async (tx) =>
+      extractRows<{ rolname: string }>(
+        await tx.execute(drizzleSql`
+          SELECT r.rolname::text AS rolname FROM pg_roles r
+           WHERE r.rolname <> 'liaison_portal'
+             AND pg_has_role('liaison_portal', r.oid, 'MEMBER')`),
+      ),
+    )
+    expect(rows).toEqual([])
   })
 
   test("reaches no superuser, BYPASSRLS or server-file role", async () => {

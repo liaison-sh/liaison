@@ -1,0 +1,2 @@
+Client portal accounts are their own section of the org archive manifest, with their tables -> apps/api/src/modules/export/org-archive/writer.ts (EXTERNAL_TABLES, countExternalPeople, buildOrgArchive)
+Their link tokens, session tokens, second-factor secrets and hashes are written as null -> apps/api/src/modules/export/org-archive/redaction.ts (REDACTED_COLUMNS, decideColumn)

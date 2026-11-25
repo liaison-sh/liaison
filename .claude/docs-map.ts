@@ -33,6 +33,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   // Agents
   { glob: "apps/api/src/modules/approvals/**", pages: ["agents/approvals"] },
   { glob: "apps/web/src/modules/approvals/**", pages: ["agents/approvals"] },
+  { glob: "apps/api/src/modules/home/**", pages: ["agents/routines"] },
   { glob: "packages/shared/src/approvals/**", pages: ["agents/approvals"] },
   { glob: "apps/api/src/modules/scope-requests/**", pages: ["agents/permissions"] },
   { glob: "apps/web/src/modules/admin-scope-requests/**", pages: ["agents/permissions"] },
@@ -41,6 +42,8 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "packages/shared/src/setup-guides*", pages: ["connecting-apps", "apps/store"] },
   { glob: "apps/web/src/modules/secret-request/**", pages: ["agents/tools"] },
   { glob: "apps/api/src/modules/permissions/**", pages: ["agents/permissions", "admin/roles"] },
+  { glob: "apps/api/src/modules/agent/routines/deal-followups*", pages: ["sales/follow-ups", "agents/routines"] },
+  { glob: "apps/api/src/modules/agent/tools/company-tools.ts", pages: ["sales/companies", "agents/tools"] },
   { glob: "apps/api/src/modules/agent/**", pages: ["agents/how-agents-work", "agents/create-an-agent", "agents/routines", "agents/models", "agents/tools"] },
   { glob: "apps/web/src/modules/agent/**", pages: ["agents/how-agents-work", "agents/create-an-agent", "agents/routines", "agents/models"] },
   { glob: "packages/shared/src/agents/**", pages: ["agents/how-agents-work", "agents/models"] },
@@ -62,12 +65,33 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/desktop/**", pages: ["computers/connect", "computers/sessions", "getting-started/desktop-and-phone"] },
   { glob: "apps/mobile/**", pages: ["getting-started/desktop-and-phone"] },
 
+  // Sales and CRM: specific before the app globs below.
+  { glob: "apps/api/src/modules/mail/suppressions*", pages: ["sales/opt-outs", "apps/mail"] },
+  { glob: "apps/api/src/modules/mail/commercial-footer*", pages: ["sales/opt-outs", "apps/mail"] },
+  { glob: "apps/api/src/modules/mail/opt-out*", pages: ["sales/opt-outs", "apps/mail"] },
+  { glob: "apps/api/src/modules/mail/optout*", pages: ["sales/opt-outs", "apps/mail"] },
+  { glob: "apps/api/src/modules/mail/send-guard*", pages: ["sales/opt-outs", "sales/follow-ups", "apps/mail", "getting-started/what-liaison-covers"] },
+  { glob: "apps/api/src/modules/contacts/prospect-retention*", pages: ["sales/opt-outs", "apps/mail"] },
+  { glob: "apps/api/src/modules/contacts/compan*", pages: ["sales/companies", "apps/contacts"] },
+  { glob: "apps/api/src/modules/contacts/activity*", pages: ["sales/companies", "apps/contacts"] },
+  { glob: "apps/api/src/apps/contacts/import-kind*", pages: ["sales/importing-companies-and-deals", "apps/contacts"] },
+  { glob: "apps/api/src/apps/projects/import-deal-kind*", pages: ["sales/importing-companies-and-deals", "sales/deals"] },
+  { glob: "apps/api/src/apps/projects/service/deals*", pages: ["sales/deals", "sales/quiet-deals", "sales/follow-ups", "sales/forecast"] },
+  { glob: "apps/web/src/modules/contacts/Compan*", pages: ["sales/companies", "apps/contacts"] },
+  { glob: "apps/web/src/modules/portal/**", pages: ["apps/contacts", "apps/client-portal"] },
+  { glob: "apps/web/src/modules/contacts/Activity*", pages: ["sales/companies", "apps/contacts"] },
+  { glob: "apps/web/src/modules/projects/Deal*", pages: ["sales/deals", "apps/projects"] },
+  { glob: "apps/web/src/modules/projects/CompanyWorkPanel*", pages: ["sales/companies", "apps/projects"] },
+  { glob: "apps/web/src/modules/tickets/CompanySupportPanel*", pages: ["sales/companies", "apps/tickets"] },
+  { glob: "bundled-apps/invoicing/src/ui/CompanyMoneyPanel*", pages: ["sales/companies", "apps/invoicing"] },
+
   // Built-in apps
   { glob: "apps/api/src/apps/mail/**", pages: ["apps/mail"] },
   { glob: "apps/api/src/modules/mail*/**", pages: ["apps/mail"] },
   { glob: "apps/web/src/modules/mail/**", pages: ["apps/mail"] },
   { glob: "apps/web/src/modules/mailbox/**", pages: ["apps/mail"] },
   { glob: "apps/api/src/apps/tickets/**", pages: ["apps/tickets"] },
+  { glob: "apps/api/src/modules/tickets/**", pages: ["apps/tickets"] },
   { glob: "apps/web/src/modules/tickets/**", pages: ["apps/tickets"] },
   { glob: "apps/api/src/modules/threads/**", pages: ["apps/chat"] },
   { glob: "apps/api/src/modules/messages/**", pages: ["apps/chat"] },
@@ -79,6 +103,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/web/src/modules/sharing/**", pages: ["apps/knowledge"] },
   { glob: "bundled-apps/google-drive/**", pages: ["apps/google-drive"] },
   { glob: "bundled-apps/gitlab/**", pages: ["apps/gitlab"] },
+  { glob: "bundled-apps/github/**", pages: ["apps/github"] },
   { glob: "apps/api/src/apps/contacts/**", pages: ["apps/contacts", "sales/contacts"] },
   { glob: "apps/api/src/modules/contacts/**", pages: ["apps/contacts", "sales/contacts", "sales/duplicates"] },
   { glob: "apps/api/src/modules/product-attributes/**", pages: ["agents/tools"] },
@@ -86,6 +111,8 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/src/apps/calendar/**", pages: ["apps/calendar"] },
   { glob: "apps/web/src/modules/calendar/**", pages: ["apps/calendar"] },
   { glob: "packages/shared/src/calendar-recurrence.ts", pages: ["apps/calendar"] },
+  // The answers on getting-started/what-liaison-covers read the time, budget and capacity code.
+  { glob: "apps/api/src/apps/projects/service/**", pages: ["apps/projects", "getting-started/what-liaison-covers"] },
   { glob: "apps/api/src/apps/projects/**", pages: ["apps/projects"] },
   { glob: "apps/web/src/modules/projects/**", pages: ["apps/projects"] },
   { glob: "apps/api/src/modules/files/**", pages: ["apps/files"] },
@@ -100,15 +127,27 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/src/apps/example/**", pages: ["app-development"] },
 
   // Bundled apps
+  { glob: "bundled-apps/invoicing/src/recurring/**", pages: ["apps/recurring", "getting-started/what-liaison-covers"] },
+  { glob: "bundled-apps/invoicing/src/{streams,ui/IssuerStreams}*", pages: ["money/who-issues-what", "money/turn-off-stripe-emails", "apps/invoicing"] },
   { glob: "bundled-apps/invoicing/**", pages: ["apps/invoicing", "sales/quotes"] },
   { glob: "bundled-apps/boxtal/**", pages: ["apps/boxtal"] },
   { glob: "bundled-apps/boxtal/src/{customs-documents,print-pack,needed-documents}.ts", pages: ["admin/shipping-documents"] },
   { glob: "bundled-apps/shopify/**", pages: ["apps/store"] },
   { glob: "bundled-apps/pennylane/**", pages: ["apps/pennylane"] },
+  { glob: "bundled-apps/agreements/src/{agreements,handlers,send,sow-knowledge}*", pages: ["apps/agreements", "sales/proposals", "getting-started/what-liaison-covers"] },
+  { glob: "bundled-apps/agreements/**", pages: ["apps/agreements"] },
+  { glob: "apps/api/src/modules/agreement-evidence/**", pages: ["apps/agreements"] },
+  { glob: "apps/web/src/modules/staff-sign/**", pages: ["apps/agreements"] },
+  { glob: "packages/evidence-check/**", pages: ["apps/agreements"] },
+  // The render service that reads uploaded PDFs, and what an upload does in the app.
+  { glob: "apps/api/src/modules/pdf-render/**", pages: ["self-hosting/docker", "apps/agreements"] },
   { glob: "bundled-apps/social/**", pages: ["apps/social"] },
   { glob: "bundled-apps/ads/**", pages: ["apps/ads"] },
   { glob: "bundled-apps/calls/**", pages: ["apps/calls", "sales/sales-data"] },
   { glob: "bundled-apps/monitoring/**", pages: ["apps/monitoring"] },
+  { glob: "bundled-apps/stripe/src/{mrr,mrr-events,mrr-rebuild,tools/mrr-query}*", pages: ["apps/stripe", "money/mrr-rules"] },
+  { glob: "bundled-apps/stripe/src/tools/refunds*", pages: ["apps/stripe", "money/refunds-and-credit-notes"] },
+  { glob: "bundled-apps/stripe/**", pages: ["apps/stripe", "getting-started/what-liaison-covers"] },
 
   // Admin
   { glob: "apps/api/src/modules/users/**", pages: ["admin/users"] },
@@ -150,6 +189,9 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
 
   // Getting started
   { glob: "apps/api/src/modules/demo/**", pages: ["getting-started/demo"] },
+  // The services demo company: its pack, beats, scenarios and tours name what the demo page lists.
+  { glob: "apps/api/src/seed/worlds/studio/**", pages: ["getting-started/demo"] },
+  { glob: "packages/shared/src/tours/demo/worlds/studio/**", pages: ["getting-started/demo"] },
   // The Playwright suite's config: snapshot update mode, baselines per platform.
   { glob: "apps/web/playwright.config.ts", pages: ["testing"] },
   // Seed tiers before the catch-all below (the first matching entry wins).
@@ -192,6 +234,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/Dockerfile", pages: ["self-hosting/docker"] },
   { glob: "apps/api/scripts/entrypoint.sh", pages: ["self-hosting/docker", "admin/upgrades"] },
   { glob: "apps/api/scripts/cron-fanout-rollback.ts", pages: ["self-hosting/docker", "backend-overview"] },
+  { glob: "apps/api/scripts/kernel-queues-rollback.ts", pages: ["self-hosting/docker", "backend-overview"] },
   { glob: "apps/api/app-index-none.json", pages: ["self-hosting/docker"] },
   { glob: "scripts/build-app-catalog.ts", pages: ["self-hosting/docker"] },
 
@@ -221,6 +264,25 @@ export const DOCS_EXEMPT: { glob: string; reason: string }[] = [
   { glob: "**/*.test.ts", reason: "tests" },
   { glob: "**/*.test.tsx", reason: "tests" },
   { glob: "**/__fixtures__/**", reason: "test fixtures" },
+  {
+    glob: "apps/api/src/modules/client-actions/**",
+    reason:
+      "client actions have no route, tool or screen yet; their page comes with the public action routes",
+  },
+  {
+    glob: "apps/web/src/modules/client-action/**",
+    reason:
+      "the page a client outside the organization opens from a signing mail; members never see it, and how a sender sends one is documented with the agreements page",
+  },
+  {
+    glob: "apps/api/src/tests/security/portal-doors/**",
+    reason: "the portal door tests, their shared world and the list of doors still owed",
+  },
+  {
+    glob: "apps/api/src/modules/portal/**",
+    reason:
+      "the client portal's API, not yet reachable by anyone: no screen and no way to create a portal account exist until the portal pages land, which bring its page; sign-in effects on members are on admin/users",
+  },
   {
     glob: "apps/api/src/modules/setup-guides/**",
     reason: "former path of modules/connection-guides (renamed); the new path is mapped",
@@ -310,8 +372,17 @@ export const DOCS_EXEMPT: { glob: string; reason: string }[] = [
   { glob: "apps/api/src/lib/[!e]*.ts", reason: "internal helpers" },
   { glob: "apps/api/src/lib/{edition,env-boolean,error-tracker,external-content}.ts", reason: "internal helpers" },
   { glob: "apps/api/src/*.ts", reason: "server entry points" },
+  {
+    glob: "apps/api/src/modules/signing/**",
+    reason:
+      "agreement seal and timestamp crypto, reached only by the bundled agreements app; its timestamp authority settings are in the env reference and the agreements page",
+  },
   { glob: "apps/api/src/modules/cloud/**", reason: "signed operator API of the managed edition, no user-facing setting (its handoff page is documented under admin/users via apps/web auth)" },
   { glob: "apps/api/src/modules/{admin,attention,audit,billing-admin,billing-state,bug-reports,i18n,loadtest,maintenance,monitor,pdf,provisioning,push,saved-views,search,security,sequences,slots}/**", reason: "internal modules with no user-facing setting" },
+  {
+    glob: "apps/api/assets/fonts/**",
+    reason: "font files the PDF renderer embeds (SIL OFL, licence beside them); what they print is documented with the templates that use them",
+  },
   {
     glob: "apps/api/src/modules/documents/pdf-form*.ts",
     reason: "host PDF form fill library (like modules/pdf); the document templates settings that use it map their own page",

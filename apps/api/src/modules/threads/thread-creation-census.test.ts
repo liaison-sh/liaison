@@ -110,6 +110,14 @@ const ALLOWLIST: AllowlistEntry[] = [
       "taint, as an MCP connection's thread does (type: 'approval', hiddenFromList, the signed " +
       "in person only, no agent seat). Never shown in a sidebar.",
   },
+  {
+    file: "seed/factories/threads/rows.ts",
+    function: "seedThreadRow",
+    note:
+      "A bare thread row for a test that needs known columns and nothing the product's write " +
+      "adds (a row security test of a message stamp, say). Only tests import it; no route, job " +
+      "or seed tier reaches it, so it opens no discussion a person or agent sees.",
+  },
 ]
 
 function allowlistKey(entry: { file: string; function: string }): string {
@@ -412,7 +420,8 @@ export async function planEphemeralHiddenAgentChat(orgId: string): Promise<void>
     // restricted session anchor (rest-tool-call.ts) or a hidden
     // bulk-dispatch origin bucket (bulk-dispatch.ts). The seed engine
     // (src/seed) creates threads only through these product paths
-    // (createThread, createOrGetAgentDm, insertSubrunThread). There is no
+    // (createThread, createOrGetAgentDm, insertSubrunThread), save the bare
+    // row factory tests import (seed/factories/threads/rows.ts). There is no
     // OTHER "open a discussion thread for entity X" generic creator left in
     // the tree: if one is added, its insert or insertThreadWithParticipants
     // call surfaces above as an unlisted site. This list is intentionally
@@ -431,6 +440,7 @@ export async function planEphemeralHiddenAgentChat(orgId: string): Promise<void>
         "modules/threads/thread.ts",
         "modules/agent/routines/routine-worker.ts",
         "modules/agent/subruns/subrun-thread.ts",
+        "seed/factories/threads/rows.ts",
       ].sort(),
     )
   })

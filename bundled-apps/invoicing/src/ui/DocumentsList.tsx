@@ -25,12 +25,17 @@ import {
   B2B_COLUMNS,
   BY_MARKET_COLUMNS,
   type DashboardColumn,
-  EMPTY_STATE,
+  emptyListText,
   toCsv,
 } from "./dashboards/columns"
 import { DataTable } from "./dashboards/DataTable"
 import { groupByCountry, groupByCustomer, perCurrencyRollup } from "./dashboards/groupings"
-import { orderGid, searchDocuments, searchParamsFromFilter } from "./dashboards/loader"
+import {
+  LIST_PAGE_LIMIT,
+  orderGid,
+  searchDocuments,
+  searchParamsFromFilter,
+} from "./dashboards/loader"
 import { downloadPair } from "./dashboards/pair-download"
 import {
   creditedIndicatorOf,
@@ -46,7 +51,7 @@ import {
   type DocumentRow,
   filterRowsForTab,
 } from "./dashboards/types"
-import { tr } from "./i18n"
+import { tr, uiLocale } from "./i18n"
 import { Segmented } from "./kit"
 import { documentSearch, searchInPath, setDocumentSearch } from "./search-store"
 import { rememberDocumentLabel } from "./tab-labels"
@@ -59,10 +64,11 @@ const TYPE_FOR_FILTER: Record<string, DocType | undefined> = {
   proformas: "proforma",
   "purchase-orders": "purchase_order",
   "credit-notes": "credit_note",
-  // "all" (and anything unrecognised) → no type filter. There is no drafts
-  // segment any more: draft is not a user-facing document category, so draft
-  // rows are stripped from every tab client-side.
+  // "all", "drafts" (and anything unrecognised) → no type filter.
 }
+
+/** The sidebar's Drafts entry: unissued drafts of every type, and nothing else. */
+const DRAFTS_KEY = "drafts"
 
 const TYPE_NOUN: Record<string, { one: string; other: string }> = {
   invoices: { one: "invoice", other: "invoices" },
@@ -70,6 +76,7 @@ const TYPE_NOUN: Record<string, { one: string; other: string }> = {
   proformas: { one: "proforma", other: "proformas" },
   "purchase-orders": { one: "purchase order", other: "purchase orders" },
   "credit-notes": { one: "credit note", other: "credit notes" },
+  drafts: { one: "draft", other: "drafts" },
 }
 const DEFAULT_NOUN = { one: "document", other: "documents" }
 
@@ -111,6 +118,14 @@ const PO_NUMBER_COLUMN: DashboardColumn = {
 }
 // Exported so pair-split.test.ts can render the real DataTable with exactly
 // the columns this list passes it, no re-derivation.
+
+/** The list's footer: what was loaded, and, when a full page came back, that it is not all. */
+export function listFooter(sum: string, capped: boolean): string {
+  return sum && capped
+    ? `${sum} ${tr("(the newest {{n}} loaded: narrow the dates to count the rest)", { n: String(LIST_PAGE_LIMIT) })}`
+    : sum
+}
+
 export const LIST_COLUMNS: DashboardColumn[] = [
   ...ALL_SALES_COLUMNS,
   PAYMENT_COLUMN,
@@ -141,6 +156,28 @@ export const FULL_LIST_MIN_VIEWPORT = 1536
 export function listColumnsForWidth(viewportWidth: number): DashboardColumn[] {
   if (viewportWidth >= FULL_LIST_MIN_VIEWPORT) return LIST_COLUMNS
   return LIST_COLUMNS.filter((c) => c.key !== NARROWED_LIST_COLUMN_KEY)
+}
+
+/** The columns only a shop's orders fill: the order it bills and its channel. */
+const SHOP_COLUMN_KEYS = new Set(["order", "channel"])
+
+/** Whether any document came from a shop order: only then do the shop's columns and filter mean anything. */
+export function shopColumnsShown(
+  rows: ReadonlyArray<{
+    channel?: string | null
+    shopify_order_id?: string | null
+    shopify_order_number?: string | null
+  }>,
+): boolean {
+  return rows.some(
+    (r) => r.channel === "shopify" || !!r.shopify_order_id || !!r.shopify_order_number,
+  )
+}
+
+/** The list's columns at a width, without the shop's when no document came from a shop. */
+export function listColumnsFor(viewportWidth: number, shop: boolean): DashboardColumn[] {
+  const cols = listColumnsForWidth(viewportWidth)
+  return shop ? cols : cols.filter((c) => !SHOP_COLUMN_KEYS.has(c.key))
 }
 
 /** Reactive `true` while `query` matches; `false` with no `matchMedia`, so a
@@ -189,15 +226,25 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
     if (next.query !== documentSearch()) setDocumentSearch(next.query)
   }
 
+  const [capped, setCapped] = createSignal(false)
   const [data, { refetch }] = createResource(
-    () => ({ f: filter(), type: TYPE_FOR_FILTER[typeKey()] }),
-    async ({ f, type }): Promise<DocumentRow[]> => {
-      // Every tab shows issued-and-later documents. Draft is not a user-facing
-      // category, so draft rows are stripped client-side (the status filter is
-      // single-value equality server-side, so "not draft" cannot be expressed
-      // there). Legacy draft rows stay reachable by direct link only.
-      const rows = await searchDocuments({ ...searchParamsFromFilter(f), type })
-      return filterRowsForTab(applyFilter(rows, f), false)
+    () => ({ f: filter(), type: TYPE_FOR_FILTER[typeKey()], drafts: typeKey() === DRAFTS_KEY }),
+    async ({ f, type, drafts }): Promise<DocumentRow[]> => {
+      // The Drafts entry asks the server for drafts only (newest first), so issued documents
+      // never crowd them out of the page; it ignores the status filter, which is about issued
+      // documents. Every other entry shows issued-and-later documents: drafts are stripped
+      // client-side, as "not draft" cannot be expressed in the single-value status filter.
+      const shown: DashboardFilter = drafts
+        ? { ...f, status: "all", date_from: null, date_to: null }
+        : f
+      const rows = await searchDocuments({
+        ...searchParamsFromFilter(shown),
+        type,
+        ...(drafts ? { status: "draft" } : {}),
+      })
+      // A full page means more documents may exist than were loaded: the footer says so.
+      setCapped(rows.length >= LIST_PAGE_LIMIT)
+      return filterRowsForTab(applyFilter(rows, shown), drafts)
     },
   )
 
@@ -227,14 +274,17 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
   const pairLabel = (r: DocumentRow) =>
     group() === "flat" ? (pairLabelOf(paired(), r.id) ?? creditedIndicatorOf(r)) : null
   const belowFullList = createMediaMatch(`(max-width: ${FULL_LIST_MIN_VIEWPORT - 1}px)`)
+  /** A shop's order behind any document: a services firm's list has no order or channel. */
+  const shop = createMemo(() => shopColumnsShown(data() ?? []))
   /** What the TABLE draws. */
   const columns = createMemo<DashboardColumn[]>(() =>
     group() === "customer"
       ? B2B_COLUMNS
       : group() === "market"
         ? BY_MARKET_COLUMNS
-        : listColumnsForWidth(
+        : listColumnsFor(
             belowFullList() ? FULL_LIST_MIN_VIEWPORT - 1 : FULL_LIST_MIN_VIEWPORT,
+            shop(),
           ),
   )
   /** What the CSV carries: every column, whatever the window is doing. A
@@ -303,6 +353,7 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
     <div data-testid="invoicing-documents-list" class="flex h-full min-h-0 flex-col">
       <Toolbar
         filter={filter()}
+        channels={shop()}
         onChange={onFilterChange}
         onExportCsv={exportCsv}
         trailing={
@@ -319,7 +370,15 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
         columns={columns()}
         rows={rows()}
         emptyState={
-          group() === "flat" ? EMPTY_STATE.all_sales : tr("No {{noun}} to group.", { noun: noun() })
+          group() === "flat"
+            ? // A date-only ISO string is read as UTC midnight.
+              emptyListText(filter(), tr, (iso) =>
+                new Intl.DateTimeFormat(uiLocale(), {
+                  dateStyle: "medium",
+                  timeZone: "UTC",
+                }).format(new Date(iso)),
+              )
+            : tr("No {{noun}} to group.", { noun: noun() })
         }
         testid="invoicing-documents-table"
         rowTestid={() => "invoicing-documents-row"}
@@ -328,7 +387,7 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
         rowData={(r): Record<string, string> =>
           r.shopify_order_id ? { "data-shopify-order-id": orderGid(r.shopify_order_id) } : {}
         }
-        footer={() => perCurrencyRollup(data() ?? [], nounForms())}
+        footer={() => listFooter(perCurrencyRollup(data() ?? [], nounForms()), capped())}
         pairing={group() === "flat" ? pairingOf : undefined}
         pairLabel={group() === "flat" ? pairLabel : undefined}
         pairAction={(key) => {

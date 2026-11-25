@@ -1,0 +1,3 @@
+# The services world's client scenario from the approved card on: the link
+# recorded sent, the client's stand-in acceptance and what it moves.
+src/modules/demo/worlds/studio/cr-accepted.integration.test.ts

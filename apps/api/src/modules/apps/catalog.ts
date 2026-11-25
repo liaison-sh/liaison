@@ -30,6 +30,7 @@ import { type ActivationActor, compareVersions, isNewerVersion } from "~/modules
 import { bumpCatalogGeneration } from "~/modules/apps/catalog-generation"
 import { getInstallRoot } from "~/modules/apps/discover-apps"
 import { reloadInstalledApps } from "~/modules/apps/init"
+import { describeInstallError, type InstallFailure } from "~/modules/apps/install-failure"
 import { type InstallResult, installAppFromTarball } from "~/modules/apps/install-service"
 import { hashTree } from "~/modules/apps/version-dir"
 
@@ -398,8 +399,9 @@ export interface ReconcileCatalogAppsResult {
   repaired: string[]
   /** Catalog apps already consistent (active version present, sha256 matches). */
   ok: string[]
-  /** Catalog apps whose repair threw. Each is logged; the others still ran. */
-  failed: Array<{ name: string; version: string; error: string }>
+  /** Catalog apps whose repair threw, with the cause classified (install-failure.ts).
+   *  Each is logged; the others still ran. */
+  failed: InstallFailure[]
   /** Catalog apps whose active version is NEWER than this image's catalog (an old
    *  process during a rolling deploy): left alone, never moved back down. */
   ahead: Array<{ name: string; active: string; catalog: string }>
@@ -510,6 +512,7 @@ async function reconcileCatalogAppsUnbatched(opts: {
       return {
         name,
         version: "",
+        kind: "other" as const,
         error: `the app "${name}" no longer ships in the source tree and this image's catalog does not carry it`,
       }
     })
@@ -647,11 +650,7 @@ async function reconcileCatalogAppsUnbatched(opts: {
         { err, app: entry.name, version: entry.version, activeVersion },
         "Catalog reconcile: repairing app failed, continuing with the next app",
       )
-      failed.push({
-        name: entry.name,
-        version: entry.version,
-        error: err instanceof Error ? err.message : String(err),
-      })
+      failed.push({ name: entry.name, version: entry.version, ...describeInstallError(err) })
     }
     orgsToRegister.set(orgId, [...(orgsToRegister.get(orgId) ?? []), entry.name])
   }
@@ -677,6 +676,7 @@ async function reconcileCatalogAppsUnbatched(opts: {
       failed.push({
         name: adoption.app,
         version: "",
+        kind: "other",
         error: `data step ${step.id} failed: ${step.error}`,
       })
     }

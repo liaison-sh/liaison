@@ -27,6 +27,9 @@ import { startSubrunWorker } from "~/modules/agent/subruns/subrun-worker"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { ownSubrunHandler } from "../../../../test-support/harness/subrun-handler"
+
+ownSubrunHandler({ live: true })
 
 const MODEL_ID = `claude-subrun-limit-${crypto.randomUUID().slice(0, 6)}`
 const PAYLOAD = { draft: "d", confidence: 1 }

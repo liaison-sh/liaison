@@ -1,0 +1,3 @@
+A person's timebox edit outlives the retainer roll -> apps/api/src/apps/projects/service/time-plan.ts (setPeriodTimebox)
+The project page shows a Client line to the company -> apps/web/src/modules/projects/ProjectClientLink.tsx (ProjectClientLink)
+The project page lists its agreements and a deal counts them -> bundled-apps/agreements/src/ui/RecordAgreementsPanel.tsx (ProjectAgreementsPanel) ; bundled-apps/agreements/src/ui/RecordAgreementsPanel.tsx (DealAgreementsCount)

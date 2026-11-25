@@ -14,6 +14,7 @@ import {
   captureReadOnlyRun,
   captureSpawnParentFrame,
   currentRunContext,
+  type RunContext,
   type SpawnParentFrame,
 } from "~/modules/agent/runtime/run-context"
 import { projectTaintScopes } from "~/modules/agent/scopes/taint-read-scopes"
@@ -40,6 +41,7 @@ import {
 } from "~/modules/apps/sandbox/bridge/shared"
 import type { UpstreamTrace } from "~/modules/apps/sandbox/upstream-trace"
 import type { ExecPriority } from "~/modules/apps/sandbox/worker-pool"
+import type { CommercialSend } from "~/modules/mail/commercial-send-record"
 import {
   isMailboxGuardedEntity,
   MailboxPlaintextForbiddenError,
@@ -118,8 +120,16 @@ export type RpcBridgeApprovalContext = {
   originRoutineId?: string
 }
 
+/** Credentials a connection's check uses before they are stored (connections/precheck.ts). */
+export type CandidateCredentials = { connection: string; values: Record<string, string> }
+
 export type RpcBridgeOptions = {
   callChain?: string[]
+  /**
+   * For `connection`, the run reads these credentials instead of the stored
+   * ones: the connection's check of a key before it is kept. Host side only.
+   */
+  candidateCredentials?: CandidateCredentials
   /**
    * The run is a draft preview of the app builder: its `ctx.logger` lines go to
    * kernel.app_logs under the draft (readable by this run's person only), with
@@ -141,6 +151,12 @@ export type RpcBridgeOptions = {
    * event (see event-handler-bridge.ts).
    */
   jobsAttributedToSystem?: boolean
+  /**
+   * The client action whose `kernel/client_action:decided` event this run handles (set by the
+   * event handler bridge for that event only). A call chained from that decision runs on the
+   * act of the person who approved that action's send (bridge/client-actions.ts).
+   */
+  decidedActionId?: string
   /**
    * The job this bridge serves (runtime.ts buildJobBridge): `ctx.steps.run`
    * re-enqueues it (same name, same app payload) to continue, and reads its
@@ -209,6 +225,12 @@ export type RpcBridgeOptions = {
    */
   humanAuthorized?: boolean
   /**
+   * The person's own scopes, set by `executeToolCore` only when the handler runs as that
+   * person's direct call from the interface, reached through no cross-app hop (never an RLS
+   * actor). A person's click is decided by the tool's own scope (bridge/client-actions.ts).
+   */
+  personScopes?: readonly string[]
+  /**
    * A provider-contract op runs without the caller's data scopes; these are the caller's kernel
    * file ids (checked readable by the caller before the dispatch) it may still read, for the
    * multipart upload of a legal original. Set only by `executeToolCore` for a contract dispatch.
@@ -235,11 +257,14 @@ export type RpcBridgeOptions = {
         subtitle?: string
         lines?: string[]
         links?: Array<{ label: string; app: string; entityType: string; entityId: string }>
+        latest_on?: string
       }
       current_payload: unknown
       editable_fields?: string[]
       /** The handler proceeds at once when an auto-approve policy approves the call. */
       auto_approvable?: boolean
+      /** The calling app's own scope that decides this request (see HandlerApprovalInput). */
+      approve_scope?: string
     },
     /**
      * FX13: what the calling turn had READ, captured at bridge construction
@@ -301,6 +326,16 @@ export type RpcBridgeOptions = {
    * it would hide every agent-authored doc from readers who may not create.
    */
   writeParentFrameOverride?: SpawnParentFrame | null
+  /**
+   * createSessionRpcBridge internals: the calling run's frame itself, captured at
+   * session-bridge construction (in the run's frame) for the values a bridge
+   * method reads from the run rather than from a snapshot: the turn's live taint
+   * store (origin rows and restricted-row stamps filed by a nested read), the
+   * follow-up mark, the background/agent marks. A worker's IPC message runs
+   * outside every run, so a per-call rebuild that read the async-local store
+   * would see no run at all. `null` records that there was no frame.
+   */
+  runFrameOverride?: RunContext | null
   bulkCursorStore?: Map<string, { iterator: AsyncIterator<unknown[]> | null; done: boolean }>
   /**
    * Shared cumulative attachment-bytes ledger for files_importAttachment /
@@ -334,6 +369,11 @@ export type RpcBridgeOptions = {
    * `assertMailboxNotResetMidRun`.
    */
   mailboxSnapshot?: { value: string | null }
+  /**
+   * The commercial send the mail check at send cleared in this HANDLER RUN, recorded once the
+   * provider accepted it (`mail_commercialSent`), shared across per-call bridge rebuilds.
+   */
+  commercialSend?: { value: CommercialSend | null }
   /**
    * The handler run's upstream trace (the connection it read, its last fetch
    * answer), shared across per-call bridge rebuilds like the ledger above. The
@@ -380,6 +420,14 @@ export function createBridgeContext(
   // and threading it into the redirect makes the lookup independent of the lost ALS frame. Undefined for
   // non-routine bridges (foreground chat / sub-runs) — exactly as before.
   const bridgeRoutineId = bridgeOptions?.routineIdOverride ?? currentRunContext()?.routineId
+  // The calling run's frame, by the same rule: the session bridge's capture when it
+  // gave one (a per-call rebuild runs outside the frame), else the live frame of a
+  // bridge built in it. Every bridge method reads the run from HERE, never from the
+  // async-local store at call time.
+  const bridgeRunFrame: RunContext | undefined =
+    bridgeOptions?.runFrameOverride !== undefined
+      ? (bridgeOptions.runFrameOverride ?? undefined)
+      : currentRunContext()
   // Captured here for exactly the same reason (spec-security.md D4, FX10a): the
   // Share anyway rerun answers a withheld turn from READS alone, and a write
   // reaching this bridge through a sandboxed app arrives in a callback that has
@@ -502,7 +550,7 @@ export function createBridgeContext(
    * through this same object, and the write that follows it in the same hop sees it.
    * It is the kernel's own accumulator; the sandbox never supplies a row list.
    */
-  const bridgeTaintOriginStore = currentRunContext()?.turnScopeAccumulator
+  const bridgeTaintOriginStore = bridgeRunFrame?.turnScopeAccumulator
   /**
    * The requiredScopes a knowledge document written through this bridge
    * carries. No frame at all means no turn called it (a human request, a job):
@@ -1188,6 +1236,17 @@ export function createBridgeContext(
     if (!declaration) {
       throw new Error(`Connection "${connectionName}" not declared in app manifest`)
     }
+    const candidate = bridgeOptions?.candidateCredentials
+    const credentials =
+      candidate && candidate.connection === connectionName
+        ? candidate.values
+        : await storedCredentials(connectionName, identifier)
+    const allowed = new Set(declaration.credentialFields?.map((field) => field.name) ?? [])
+    if (allowed.size === 0) return {}
+    return Object.fromEntries(Object.entries(credentials).filter(([key]) => allowed.has(key)))
+  }
+
+  async function storedCredentials(connectionName: string, identifier: string) {
     const { getCredentialsForConnection } = await import("~/modules/apps/connections/service")
     const lookup = (db: RlsClient) =>
       getCredentialsForConnection(db, orgId, userId, appName, connectionName, identifier, {
@@ -1197,12 +1256,7 @@ export function createBridgeContext(
     // session bridge (rpc-bridge.ts SESSION_TXLESS_METHOD_PREFIXES): the
     // caller's RLS lookup then takes its own short transaction instead of the
     // poisoned txDb, which made every person's IMAP/SMTP send fail with a 500.
-    const credentials = bridgeOptions?.withShortTx
-      ? await bridgeOptions.withShortTx(lookup)
-      : await lookup(txDb)
-    const allowed = new Set(declaration.credentialFields?.map((field) => field.name) ?? [])
-    if (allowed.size === 0) return {}
-    return Object.fromEntries(Object.entries(credentials).filter(([key]) => allowed.has(key)))
+    return bridgeOptions?.withShortTx ? bridgeOptions.withShortTx(lookup) : lookup(txDb)
   }
 
   const inheritedActor: ActorContext =
@@ -1418,6 +1472,7 @@ export function createBridgeContext(
     logger,
     appLogSink,
     bridgeRoutineId,
+    bridgeRunFrame,
     bridgeReadOnlyRun,
     refuseWriteOnReadOnlyRun,
     writeTarget,

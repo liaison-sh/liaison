@@ -40,6 +40,7 @@ import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
 import {
   holdsEveryScope,
   loadOrgMemberGrants,
+  restrictedListsFor,
   type TaintAudienceGap,
   threadPeopleIds,
 } from "~/modules/agent/scopes/taint-approval-audience"
@@ -181,11 +182,13 @@ export async function decidePostDisclosure(opts: {
     const lackers = new Set<string>()
     const missing = new Set<string>()
     const requesterMissing = new Set<string>()
+    const lists = await restrictedListsFor(opts.orgId, stamp)
     for (const m of members) {
-      if (holdsEveryScope(m.scopes, stamp)) continue
+      const reader = { userId: m.id, lists }
+      if (holdsEveryScope(m.scopes, stamp, reader)) continue
       lackers.add(m.id)
       for (const s of stamp) {
-        if (holdsEveryScope(m.scopes, [s])) continue
+        if (holdsEveryScope(m.scopes, [s], reader)) continue
         missing.add(s)
         if (m.id === opts.requesterUserId) requesterMissing.add(s)
       }

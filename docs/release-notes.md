@@ -4,6 +4,103 @@
 
 Most recent first.
 
+## Services: companies, deals, the client portal, agreements and recurring billing
+
+This release adds what a services business needs around its projects: companies beside
+people, sales pipelines, a portal for clients, agreements signed in Liaison, time and
+budgets, recurring billing, and Stripe and GitHub apps. **All of it is off in a workspace
+until an admin turns it on.** An existing workspace that takes this release keeps working as
+before: no new app is installed, no new switch is on, and nothing new appears in the sidebar
+or in an agent's tools.
+
+### What is new
+
+- **Companies.** Company records beside people, with their own page, duplicates and merge,
+  and a company's work, money and tickets in one place ([Companies](sales/companies.md)).
+- **Deals and pipelines.** Sales pipelines in Projects, deals with values, follow-ups and a
+  forecast ([Deals](sales/deals.md)).
+- **Client reports.** A weekly report a project shares with its client, drafted from the
+  project's work and sent by a person ([Projects](apps/projects.md)).
+- **The client portal.** People outside the organization sign in to see what a company shares
+  with them: projects, tickets, documents to sign or approve ([Client portal](apps/client-portal.md)).
+- **Agreements.** Proposals, statements of work and contracts drafted from templates and
+  signed in Liaison, with the proof kept ([Agreements](apps/agreements.md)).
+- **Time and budgets.** Time per task, a timesheet, budgets, capacity and margin, turned on
+  per project ([Projects](apps/projects.md)).
+- **Recurring billing.** Recurring schedules, the month-end run, billing plans, retainers,
+  milestones and advances in Invoicing ([Recurring invoices](apps/recurring.md)).
+- **Stripe** and **GitHub** apps ([Stripe](apps/stripe.md), [GitHub](apps/github.md)).
+- **Approval routing and away days.** Approvals go to the next person in line while
+  someone is away; a person can let their own calendar say when they are away
+  ([Calendar](apps/calendar.md#away-days-from-your-calendar)).
+
+### Turn each one on
+
+| What | Where an admin turns it on | Config file (`liaison config apply`) |
+|---|---|---|
+| Companies (and the client portal, which lives on a company page) | **Settings › Apps › Contacts › Features › Companies** | `apps: [{ name: contacts, enable: true, features: { companies: true } }]` |
+| Deals and pipelines | **Settings › Apps › Projects › Features › Deals and pipelines** | `apps: [{ name: projects, enable: true, features: { deals: true } }]` |
+| Client reports | **Settings › Apps › Projects › Features › Client reports** | `features: { client_reports: true }` on `projects` |
+| Recurring billing | **Settings › Apps › Invoicing › Features › Recurring billing** | `features: { recurring: true }` on `invoicing` |
+| Time and budgets | On a project: **Edit project › Time and budgets** (per project, no workspace switch) | none |
+| Agreements, Stripe, GitHub | **Settings › App store**, then **Install** | `apps: [{ name: agreements, enable: true }]` (or `stripe`, `github`) |
+| Away days from a calendar | Each person: **Settings › Apps › Calendar › Away days › Read my away days from my calendar** | none |
+
+Turning a feature on or off needs `kernel:apps:admin`; installing an app from the App store
+needs the same scope. An agent with that scope can do it with its config tool (the `apps`
+section takes the same `features`). Turning a feature off hides its tabs, sidebar entries and
+agent tools again and deletes nothing: the records stay, and the REST API still reads them.
+See [Switch an app's features](admin/settings.md#switch-an-apps-features).
+
+A new workspace starts the same way: every switch above is off. The demo's software and studio
+companies turn them on in their own seed.
+
+### What changes for an existing workspace
+
+- **Invoice approvals asked again.** An `invoice_issue` approval made before this release
+  issues nothing when approved: it is asked again with a new request that says what will be
+  issued. Decide the new one ([Invoicing](apps/invoicing.md)).
+- **Mail send check.** A message an agent staged (a reply or a new mail) is checked again when
+  it is approved and sent: it stops when a newer reply arrived in the conversation or the
+  address bounced, and waits on an out-of-office. An agent's new message to an address that
+  opted out is refused. The operator can turn the check off with `MAIL_SEND_GUARD_ENFORCE=0`
+  ([Environment variables](reference/env.md)).
+- **Roles.** Full Member gains `kernel:companies:read`, `kernel:companies:write` and
+  `projects:dated_sheet:read`; every role and grant that reads conversations gains
+  `mail:suppressions:read`. Projects has two new roles, `projects.sales` and
+  `projects.finance`, assigned to nobody, and `projects.lead` gains the deals, money,
+  reconcile, capacity and reports scopes. These scopes act only once their feature is on.
+  `knowledge.member` keeps `knowledge:collections:manage`.
+- **Stamped messages.** A message or approval stamped with a role's own scope (such as
+  `clevel`) stays readable by a person holding `*`, as before. The three new money scopes
+  of Projects (`projects:cost_rates:write`, `projects:margin:read`,
+  `projects:timesheet:read`) are held only by their own grant, never by `*`.
+- **Away days** are written from a calendar only for a person who turned that on: an
+  upgrade changes no one's routing.
+- Every new routine template (client reports, month-end check, scope check, failed payments)
+  is off until someone turns it on.
+
+### Notes for operators
+
+- **Migrations 0311 to 0354** run when the container starts.
+- **The client portal needs its own database login.** Migration 0317 creates the role
+  `liaison_portal` (`CREATE ROLE` and `GRANT CONNECT`): the login that runs migrations needs
+  `CREATEROLE`, or create the role yourself before the upgrade. The portal pool logs in as
+  `liaison_portal` only with split logins (`DATABASE_REQUEST_PASSWORD` set); behind PgBouncer,
+  add `liaison_portal` to the pooler's user list and give it a pool size. Without it every
+  client portal route answers 503 ([Database pools](self-hosting/pools.md)).
+- **A new `pdf-render` service** reads uploaded PDFs for agreements, with no network and one
+  socket on its own volume (`LIAISON_PDF_RENDER_SOCKET`). A server that builds its own compose
+  file adds the service and the socket volume from `deploy/docker-compose.yml`; without it an
+  uploaded PDF is refused with `PDF_RENDER_UNAVAILABLE` and everything else works
+  ([Docker](self-hosting/docker.md)).
+- **Signing timestamps.** Agreements stamp a signature through an RFC 3161 timestamp
+  authority: set `LIAISON_TSA_URL` and its certificate chain (`LIAISON_TSA_CHAIN_FILE` or
+  `LIAISON_TSA_CHAIN_PEM`) before anyone sends for signature; until then a send that needs a
+  stamp is refused with `TIMESTAMP_NOT_CONFIGURED` ([Environment variables](reference/env.md)).
+- `liaison config apply` takes `features` on an app entry (see the table above); a feature an
+  app derives from its own data, such as time and budgets, is refused there.
+
 ## Two kinds of app, a sandbox on every server, and dashboards people write
 
 This release changes how apps run. Liaison now has exactly two kinds of app. The core
@@ -96,6 +193,12 @@ over at its first start on this release.
   refreshed by the server, or the connection's client credentials) instead; see
   [The app sandbox](app-sandbox.md). Sandboxed tools, events and jobs no longer hold a
   database transaction: write with `ctx.db.batch`.
+- **Retainers: roll forward only.** A retainer's terms are stored with the month they start.
+  An earlier version does not read them and its first change of the schedule drops them, so
+  after a change or a renewal it would bill the oldest terms. It also reads a retainer that
+  was turned off as one that is on: its month-end run would draft nothing for it, and its
+  months would go back to the project's card. Fix a problem with a newer version, never by
+  going back to one before this.
 - Migrations 0287 to 0301 run when the container starts.
 
 ## Apps your agent builds, dashboards for everyone, and approvals that answer to you

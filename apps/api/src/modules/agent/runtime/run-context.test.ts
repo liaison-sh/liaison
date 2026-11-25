@@ -4,6 +4,7 @@ import {
   currentRunContext,
   inheritedRunFields,
   type RunContext,
+  runAnswersPerson,
   runContextStore,
 } from "~/modules/agent/runtime/run-context"
 
@@ -86,5 +87,20 @@ describe("inheritedRunFields", () => {
   it("carries nothing from a frame without them, or from no frame", () => {
     expect(inheritedRunFields(base)).toEqual({})
     expect(inheritedRunFields(undefined)).toEqual({})
+  })
+})
+
+describe("runAnswersPerson", () => {
+  const base: RunContext = { runId: "r", parentRunId: null, rootRunId: "r", nestingDepth: 0 }
+  it("counts the turn an approved call hands back as the person's ask", () => {
+    expect(runAnswersPerson({ ...base, humanTurn: true })).toBe(true)
+    expect(runAnswersPerson({ ...base, background: true, answersApprovedCall: true })).toBe(true)
+  })
+  it("never counts a routine tick, an agent's ask, a sub-run or a plain background turn", () => {
+    expect(runAnswersPerson({ ...base, background: true })).toBe(false)
+    const handed = { ...base, background: true, answersApprovedCall: true } as const
+    expect(runAnswersPerson({ ...handed, routineId: "x" })).toBe(false)
+    expect(runAnswersPerson({ ...handed, coordinated: true })).toBe(false)
+    expect(runAnswersPerson({ ...handed, nestingDepth: 1 })).toBe(false)
   })
 })

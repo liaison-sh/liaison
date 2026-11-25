@@ -1,0 +1,1 @@
+A card an app raised under its own title keeps it after an edit -> apps/api/src/modules/approvals/edit.ts (refreshSummaryAfterEdit)

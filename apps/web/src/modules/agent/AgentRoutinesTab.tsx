@@ -48,6 +48,8 @@ interface Props {
   run?: string
   /** The run pane opened or closed, so the page's URL can say so. */
   onRunChanged?: (routineId: string, runId: string | null) => void
+  /** Offer the apps' routine templates (the viewer's own personal agent). */
+  showTemplates?: boolean
 }
 
 const AgentRoutinesTab: Component<Props> = (props) => {
@@ -111,6 +113,7 @@ const AgentRoutinesTab: Component<Props> = (props) => {
         <RoutinesList
           ownerAgentId={props.agentId}
           canCreate={props.canCreate}
+          showTemplates={props.showTemplates}
           selectedId={selected()}
           onSelect={(routine) => {
             props.onSelectedCleared?.()

@@ -35,6 +35,9 @@ import { stubStreamText } from "~/tests/helpers/agent-stub"
 import { createTestOrg } from "~/tests/helpers/org"
 import { seededApps } from "~/tests/helpers/seeded-app-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { ownSubrunHandler } from "../../../../test-support/harness/subrun-handler"
+
+ownSubrunHandler({ live: true })
 
 const SEEDED = seededApps()
 

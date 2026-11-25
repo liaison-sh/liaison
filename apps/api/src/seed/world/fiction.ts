@@ -227,6 +227,7 @@ export type DemoRole =
   | "ops_lead"
   | "support"
   | "fulfillment"
+  | "engineering"
   | "finance"
   | "sales"
 
@@ -318,6 +319,7 @@ export const DEMO_DESK_TEAMS: Record<Exclude<DemoRole, "founder_admin">, readonl
   ops_lead: ["support", "operations", "sales"],
   support: ["support"],
   fulfillment: ["operations"],
+  engineering: ["support"],
   finance: ["finance"],
   sales: ["sales"],
 }
@@ -334,6 +336,22 @@ export interface DemoDealer {
   vat?: string
   isVip: boolean
 }
+
+/**
+ * The three suppliers the purchase orders are raised against. Nothing else buys anything: the
+ * world describes who the company sells to. Every address is on a reserved `.example` domain and
+ * every VAT body is all zeroes. They are this world's names, so no other world may show them.
+ */
+export const DEMO_SUPPLIERS: ReadonlyArray<{
+  key: string
+  name: string
+  country: string
+  vat: string | null
+}> = [
+  { key: "sup-chassis", name: "Atelier Mecanique Duval SARL", country: "FR", vat: "FR00000000000" },
+  { key: "sup-boards", name: "Nordkrets Assembly AB", country: "SE", vat: "SE000000000000" },
+  { key: "sup-cartons", name: "Cartonnerie du Rhone SAS", country: "FR", vat: "FR00000000000" },
+]
 
 /** The dealer network: six territories across the EU, the UK, the US and Japan. */
 export const DEMO_DEALERS: DemoDealer[] = [
@@ -563,9 +581,35 @@ export const DEMO_FIXED_ORDER = {
   daysAgo: 12,
 } as const
 
+/**
+ * A world's company: what an invoice, a signature block, the mail footer or an
+ * About page states about it. Every world pack fills the same fields.
+ */
+export interface DemoCompany {
+  readonly name: string
+  readonly legalName: string
+  /** All-zero body, like every declared VAT number in a pack. */
+  readonly vat: string
+  readonly about: string
+  readonly addressLine1: string
+  readonly postalCode: string
+  readonly city: string
+  /** ISO 3166-1 alpha-2. */
+  readonly country: string
+  /** All-zero body: never a payable account. */
+  readonly iban: string
+  readonly swiftBic: string
+  readonly bankName: string
+  readonly supportEmail: string
+  readonly billingEmail: string
+  readonly salesEmail: string
+  readonly websiteUrl: string
+  readonly defaultCurrency: string
+}
+
 /** The whole world in one value, so a seeder takes a single argument. */
 export interface DemoWorld {
-  company: typeof DEMO_COMPANY
+  company: DemoCompany
   catalog: DemoSku[]
   team: DemoPerson[]
   dealers: DemoDealer[]

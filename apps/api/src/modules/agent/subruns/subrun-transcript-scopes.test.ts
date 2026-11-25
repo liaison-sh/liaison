@@ -21,6 +21,9 @@ import { toolRegistry } from "~/modules/apps/app-registries"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { ownSubrunHandler } from "../../../../test-support/harness/subrun-handler"
+
+ownSubrunHandler({ live: true })
 
 const ORIG_ANTHROPIC_KEY = process.env.LIAISON_ANTHROPIC_API_KEY
 const READ = "srt:deals:read"

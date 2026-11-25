@@ -8,8 +8,15 @@ import {
   knowledgeCreateDocumentSchema,
   knowledgeEditScopeSchema,
   knowledgeUpdateDocumentSchema,
+  normalizePageRefs,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
+import {
+  adoptForeignFiles,
+  adoptionFields,
+  type FileAdoption,
+  resolveImportedPageRefs,
+} from "~/apps/knowledge/body-tokens"
 import {
   markEventPending,
   stampEventNow,
@@ -236,6 +243,12 @@ export interface KnowledgeDocumentRow {
   authorReads?: boolean
 }
 
+/**
+ * A page as a create or update leaves it, with what the save did to the files its
+ * text names when it named another page's file (body-tokens.ts).
+ */
+export type KnowledgeSavedDocument = KnowledgeDocumentRow & Partial<FileAdoption>
+
 function toIso(value: Date | string | null): string | null {
   if (value === null) return null
   if (value instanceof Date) return value.toISOString()
@@ -251,8 +264,10 @@ function rowFromDb(r: DocumentDbRow): KnowledgeDocumentRow {
     id: r.id,
     orgId: r.org_id,
     title: r.title,
-    summary: r.summary,
-    body: r.body,
+    // A page link leaves the server as the bare token: a title an agent or an earlier
+    // release stored in it is never shown to a reader who may not open that page.
+    summary: r.summary === null ? null : normalizePageRefs(r.summary),
+    body: normalizePageRefs(r.body),
     documentScope: r.document_scope,
     ownerUserId: r.owner_user_id,
     participantIds: r.participant_ids,
@@ -966,7 +981,10 @@ export async function listKnowledgeDocuments(
   const unfiledClause = opts.unfiled
     ? drizzleSql`AND d.document_scope = 'organization'
         AND ${inNoVisibleFolder()}
-        AND NOT ${onlyMine(actor)}`
+        AND NOT ${onlyMine(actor)}
+        AND NOT EXISTS (
+          SELECT 1 FROM ${knowledgeRel("collections")} c
+           WHERE c.org_id = d.org_id AND c.index_document_id = d.id AND c.archived_at IS NULL)`
     : drizzleSql``
   const rows = extractRows<DocumentDbRow>(
     await tx.execute(drizzleSql`
@@ -1040,7 +1058,7 @@ export async function createKnowledgeDocument(
   input: KnowledgeCreateDocument,
   actor: KnowledgeActor,
   requiredScopes: string[],
-): Promise<KnowledgeDocumentRow> {
+): Promise<KnowledgeSavedDocument> {
   assertExplicitRequiredScopes(requiredScopes, KNOWLEDGE_SINK)
   if (!scope(actor, "knowledge:documents:create") && !scope(actor, "knowledge:documents:admin")) {
     forbidden("Forbidden to create Knowledge document")
@@ -1066,6 +1084,9 @@ export async function createKnowledgeDocument(
     )
   }
   const parsed = validateCreateInput(input)
+  // Page links are stored as the bare token, never with a title (links.ts).
+  if (parsed.body !== undefined) parsed.body = normalizePageRefs(parsed.body)
+  if (parsed.summary != null) parsed.summary = normalizePageRefs(parsed.summary)
 
   let ownerUserId: string
   let participantIds: string[] | null
@@ -1127,7 +1148,7 @@ export async function createKnowledgeDocument(
     INSERT INTO ${knowledgeRel("documents")}
       (id, org_id, title, summary, body, document_scope, owner_user_id, participant_ids,
        team, sensitivity, review_status, verified_by, verified_at, review_due_at,
-       revision, created_by, org_access, edit_scope, required_scopes)
+       revision, created_by, org_access, edit_scope, required_scopes, links_indexed_at)
     VALUES (
       ${id}::uuid,
       ${actor.orgId}::uuid,
@@ -1147,13 +1168,26 @@ export async function createKnowledgeDocument(
       ${actor.userId}::uuid,
       ${orgAccess},
       ${editScope},
-      ${textArraySql(requiredScopes)}
+      ${textArraySql(requiredScopes)},
+      now()
     )
   `)
   // acl_user_ids starts as [owner, createdBy] deduped (no shares yet on a
   // freshly-created doc) — recomputeDocumentAcl derives exactly that from the
   // row just inserted, keeping one implementation for every write point.
   await recomputeDocumentAcl(tx, id)
+  // Files of other pages the text names become this page's own (body-tokens.ts).
+  const adopted = await adoptForeignFiles(tx, id, parsed.body ?? "", actor)
+  if (adopted.body !== (parsed.body ?? "")) {
+    await tx.execute(drizzleSql`
+      UPDATE ${knowledgeRel("documents")}
+         SET body = ${adopted.body},
+             required_scopes = ARRAY(SELECT DISTINCT s
+               FROM unnest(required_scopes || ${textArraySql(requiredScopes)}) AS s ORDER BY s)
+       WHERE id = ${id}::uuid AND org_id = ${actor.orgId}::uuid`)
+  }
+  const { refreshDocumentLinks } = await import("~/apps/knowledge/links")
+  await refreshDocumentLinks(tx, actor.orgId, id, adopted.body)
   await tx.queueEvent({
     app: "knowledge",
     entity: "document",
@@ -1205,7 +1239,7 @@ export async function createKnowledgeDocument(
 
   const row = await loadKnowledgeDocument(tx, id, actor)
   if (!row) throw new KnowledgeError("NOT_FOUND", "Knowledge document not found after insert")
-  return row
+  return { ...row, ...adoptionFields(adopted) }
 }
 
 /** How an update reaches history and events; set by routes, never by a request body. */
@@ -1219,6 +1253,11 @@ export interface KnowledgeUpdateOptions {
    * update event is coalesced to one a minute (event-coalesce.ts).
    */
   coalesceEvents?: boolean
+  /**
+   * The title is the page's folder's new name (folder-pages.ts, followFolderRename): a
+   * verified page stays verified, as its text did not change.
+   */
+  titleFromFolder?: boolean
 }
 
 export async function updateKnowledgeDocument(
@@ -1227,9 +1266,10 @@ export async function updateKnowledgeDocument(
   actor: KnowledgeActor,
   requiredScopes: string[],
   opts: KnowledgeUpdateOptions = {},
-): Promise<KnowledgeDocumentRow> {
+): Promise<KnowledgeSavedDocument> {
   assertExplicitRequiredScopes(requiredScopes, KNOWLEDGE_SINK)
-  const parsed = validateUpdateInput(input)
+  // A copy: the body is rewritten below when it names another page's file.
+  const parsed = { ...validateUpdateInput(input) }
   // Run inside the caller-provided RLS transaction directly (see
   // createKnowledgeDocument for rationale).
   const row = await loadKnowledgeDocument(tx, parsed.id, actor)
@@ -1250,6 +1290,32 @@ export async function updateKnowledgeDocument(
   if (row.revision !== parsed.revision)
     throw new KnowledgeError("REVISION_CONFLICT", "Revision conflict")
 
+  // A new title may rename the folders this page is the page of: lock them before
+  // anything below locks the page (folder first, then page; folder-pages.ts).
+  if (parsed.title !== undefined && parsed.title !== row.title) {
+    const { lockFoldersOfPage } = await import("~/apps/knowledge/folder-pages")
+    await lockFoldersOfPage(tx, actor, row.id)
+  }
+
+  // Page links are stored as the bare token, never with a title (links.ts). A page
+  // stored before that is normalised first, history included, so this write compares
+  // and records texts without titles (`row` is read that way already).
+  const links = await import("~/apps/knowledge/links")
+  await links.normaliseStoredLinksBeforeWrite(tx, actor.orgId, row.id)
+  if (parsed.body !== undefined) parsed.body = normalizePageRefs(parsed.body)
+  if (parsed.summary != null) parsed.summary = normalizePageRefs(parsed.summary)
+
+  // Files of other pages the new text names become this page's own, before the text
+  // is compared and written (body-tokens.ts).
+  let adoption: FileAdoption = { fileIdMap: {}, notCopied: [] }
+  if (parsed.body !== undefined) {
+    // An imported page's text may still name its import's links (body-tokens.ts).
+    parsed.body = await resolveImportedPageRefs(tx, actor.orgId, row.id, parsed.body)
+    const adopted = await adoptForeignFiles(tx, row.id, parsed.body, actor)
+    parsed.body = adopted.body
+    adoption = adopted
+  }
+
   // An autosave of the text already stored (an editor opened and closed, a retry
   // whose first answer was lost) writes nothing: no revision, no version, no event.
   if (
@@ -1257,7 +1323,7 @@ export async function updateKnowledgeDocument(
     (parsed.title === undefined || parsed.title === row.title) &&
     (parsed.body === undefined || parsed.body === row.body)
   ) {
-    return row
+    return { ...row, ...adoptionFields(adoption) }
   }
   const eventOwed = opts.coalesceEvents === true && (await updateEventIsRecent(tx, row.id))
 
@@ -1327,6 +1393,7 @@ export async function updateKnowledgeDocument(
   // already has (an editor re-sending the whole page, a reviewDueAt-only patch) leaves a
   // verified page verified.
   const changed = changedReviewFields(row, parsed, changingTeam, changingSensitivity)
+  if (opts.titleFromFolder) delete changed.title
   let reviewStatus: string | undefined
   if (shouldResetVerification(row, changed)) {
     reviewStatus = "needs_review"
@@ -1418,6 +1485,15 @@ export async function updateKnowledgeDocument(
     }
   }
 
+  if (parsed.body !== undefined && parsed.body !== row.body) {
+    await links.refreshDocumentLinks(tx, actor.orgId, parsed.id, parsed.body)
+  }
+  // A folder's page carries the folder's name (folder-pages.ts).
+  if (parsed.title !== undefined && parsed.title !== row.title) {
+    const { followPageRename } = await import("~/apps/knowledge/folder-pages")
+    await followPageRename(tx, parsed.id, parsed.title, actor)
+  }
+
   // Owner reassignment changes who is implicitly on the ACL (recomputed from
   // owner_user_id/created_by/document_shares) — recompute so search's
   // acl_user_ids never lags a changed owner.
@@ -1442,7 +1518,7 @@ export async function updateKnowledgeDocument(
 
   const updated = await loadKnowledgeDocument(tx, parsed.id, actor)
   if (!updated) throw new KnowledgeError("NOT_FOUND", "Knowledge document missing after update")
-  return updated
+  return { ...updated, ...adoptionFields(adoption) }
 }
 
 /** The reviewed fields this patch gives a value different from the row's. */
@@ -1483,11 +1559,24 @@ export async function archiveKnowledgeDocument(
   if (!row) throw new KnowledgeError("NOT_FOUND", "Knowledge item not found")
   const archiveShareRole = await loadDocumentShareRole(tx, row.id, actor)
   assertCanWriteDocumentRow(row, archivedActor, archiveShareRole)
-  // Only flip + emit the event when the doc is actually ACTIVE — re-archiving an
-  // already-archived doc is a no-op (no second `archive` event), mirroring restore.
+  // A synced page belongs to its source (edge 6, A21): it never goes to Trash.
+  // Archiving it used to hide it only until the next sync.
+  if (row.syncedSourceId) {
+    validation("This page is synced from another source: manage it there, not in Trash")
+  }
+  // A page in Trash leaves the folders it is the page of: lock them before the page
+  // (folder first, then page; folder-pages.ts).
+  const folderPages = await import("~/apps/knowledge/folder-pages")
+  await folderPages.lockFoldersOfPage(tx, actor, id)
+  // Archiving is moving to Trash: the clock starts in the same write (trashed_at at
+  // the same now() as archived_at), so the daily job deletes it 30 days later
+  // (trash.ts). Only flip + emit the event when the doc is actually ACTIVE:
+  // re-archiving an already-archived doc is a no-op (no second `archive` event,
+  // no new clock), mirroring restore.
   const updateResult = await tx.execute(drizzleSql`
     UPDATE ${knowledgeRel("documents")}
-    SET archived_at = now(), updated_by = ${actor.userId}::uuid, updated_at = now()
+    SET archived_at = now(), trashed_at = now(), trashed_by = ${actor.userId}::uuid,
+        updated_by = ${actor.userId}::uuid, updated_at = now()
     WHERE id = ${id}::uuid
       AND org_id = ${actor.orgId}::uuid
       AND archived_at IS NULL
@@ -1495,6 +1584,8 @@ export async function archiveKnowledgeDocument(
   `)
   const archived = extractRows<{ id: string }>(updateResult).length > 0
   if (archived) {
+    // A folder's page in Trash is no longer the folder's page (folder-pages.ts).
+    await folderPages.detachFolderPage(tx, actor, id)
     await tx.queueEvent({
       app: "knowledge",
       entity: "document",
@@ -1527,9 +1618,12 @@ export async function restoreKnowledgeDocument(
   // IC-7: only emit a restore event when we actually un-archive a row. Calling
   // restore on an already-active document is a no-op — otherwise every retry
   // (or double-click) would emit a spurious `restore` event downstream.
+  // Out of Trash: the clock goes with the archive. Its folders are kept; when none
+  // of them is live and visible the page reads as Unfiled.
   const updateResult = await tx.execute(drizzleSql`
     UPDATE ${knowledgeRel("documents")}
-    SET archived_at = NULL, updated_by = ${actor.userId}::uuid, updated_at = now()
+    SET archived_at = NULL, trashed_at = NULL, trashed_by = NULL,
+        updated_by = ${actor.userId}::uuid, updated_at = now()
     WHERE id = ${id}::uuid
       AND org_id = ${actor.orgId}::uuid
       AND archived_at IS NOT NULL

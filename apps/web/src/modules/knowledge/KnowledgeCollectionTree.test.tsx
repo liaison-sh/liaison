@@ -161,7 +161,7 @@ describe("KnowledgeCollectionTree", () => {
     expect(onCreateChild).toHaveBeenCalledWith("c1", null)
   })
 
-  it("a page's menu offers Rename, Move to, Copy link, and Archive only with the scope", async () => {
+  it("a page's menu offers Rename, Move to, Copy link, and Move to trash only with the scope", async () => {
     const onMoveRequest = vi.fn()
     const page = [
       {
@@ -183,7 +183,7 @@ describe("KnowledgeCollectionTree", () => {
     fireEvent.contextMenu(screen.getByTestId("knowledge-tree-doc-d1"))
     expect(await screen.findByTestId("knowledge-tree-menu-rename")).toBeInTheDocument()
     expect(screen.getByTestId("knowledge-tree-menu-copy-link")).toBeInTheDocument()
-    expect(screen.queryByTestId("knowledge-tree-menu-archive")).toBeNull()
+    expect(screen.queryByTestId("knowledge-tree-menu-trash")).toBeNull()
     await choose("knowledge-tree-menu-move")
     expect(onMoveRequest).toHaveBeenCalledWith({
       kind: "doc",
@@ -192,11 +192,119 @@ describe("KnowledgeCollectionTree", () => {
       fromCollectionId: "c1",
     })
     unmount()
-    render(() => (
-      <KnowledgeCollectionTree tree={page as never} onOpenDoc={() => {}} canArchiveDocs />
-    ))
+    render(() => <KnowledgeCollectionTree tree={page as never} onOpenDoc={() => {}} canTrashDocs />)
     fireEvent.contextMenu(screen.getByTestId("knowledge-tree-doc-d1"))
-    expect(await screen.findByTestId("knowledge-tree-menu-archive")).toBeInTheDocument()
+    expect(await screen.findByTestId("knowledge-tree-menu-trash")).toBeInTheDocument()
+  })
+
+  it("a page's row menu says Move to trash, never on a synced page, and passes the title", async () => {
+    const onTrashDoc = vi.fn()
+    render(() => (
+      <KnowledgeCollectionTree
+        tree={
+          [
+            {
+              id: "c1",
+              name: "Eng",
+              parentId: null,
+              children: [],
+              documents: [
+                { id: "d1", title: "Mine" },
+                { id: "d2", title: "From Drive", syncedSourceId: "ss-1" },
+              ],
+            },
+          ] as never
+        }
+        onOpenDoc={() => {}}
+        onTrashDoc={onTrashDoc}
+        canTrashDocs
+      />
+    ))
+    fireEvent.click(screen.getByTestId("knowledge-tree-toggle-c1"))
+    fireEvent.contextMenu(screen.getByTestId("knowledge-tree-doc-d1"))
+    const item = await screen.findByTestId("knowledge-tree-menu-trash")
+    expect(item).toHaveTextContent("Move to trash")
+    expect(screen.queryByTestId("knowledge-tree-menu-archive")).toBeNull()
+    await choose("knowledge-tree-menu-trash")
+    expect(onTrashDoc).toHaveBeenCalledWith("d1", "Mine")
+    await waitFor(() => expect(screen.queryByTestId("knowledge-tree-menu-trash")).toBeNull())
+    fireEvent.contextMenu(screen.getByTestId("knowledge-tree-doc-d2"))
+    expect(await screen.findByTestId("knowledge-tree-menu-copy-link")).toBeInTheDocument()
+    expect(screen.queryByTestId("knowledge-tree-menu-trash")).toBeNull()
+  })
+
+  it("Move to trash from the sidebar moves the page to Trash and offers Undo", async () => {
+    setTokens(
+      jwt({ sub: "me", userId: "me", orgId: "o1", scopes: ["knowledge:documents:archive"] }),
+      "r",
+    )
+    const api = {
+      get: vi.fn(async (path: string) =>
+        path === "/knowledge/collections/tree"
+          ? [
+              {
+                id: "c1",
+                name: "Policies",
+                parentId: null,
+                ownerUserId: null,
+                children: [],
+                documents: [{ id: "d1", title: "Leave policy" }],
+              },
+            ]
+          : [],
+      ),
+      post: vi.fn(async () => ({})),
+    }
+    render(() => (
+      <ApiContext.Provider value={api as never}>
+        <KnowledgeSidebar />
+      </ApiContext.Provider>
+    ))
+    fireEvent.click(await screen.findByTestId("knowledge-tree-toggle-c1"))
+    fireEvent.contextMenu(await screen.findByTestId("knowledge-tree-doc-d1"))
+    await choose("knowledge-tree-menu-trash")
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/knowledge/documents/d1/trash", {}))
+    await waitFor(() =>
+      expect(toasts().some((t) => t.action?.label === "Undo" && t.countdownMs === 10_000)).toBe(
+        true,
+      ),
+    )
+  })
+
+  it("a refused Move to trash from the sidebar is said, and nothing else happens", async () => {
+    setTokens(
+      jwt({ sub: "me", userId: "me", orgId: "o1", scopes: ["knowledge:documents:archive"] }),
+      "r",
+    )
+    const api = {
+      get: vi.fn(async (path: string) =>
+        path === "/knowledge/collections/tree"
+          ? [
+              {
+                id: "c1",
+                name: "Policies",
+                parentId: null,
+                ownerUserId: null,
+                children: [],
+                documents: [{ id: "d1", title: "Leave policy" }],
+              },
+            ]
+          : [],
+      ),
+      post: vi.fn(async () => {
+        throw new ApiError("Forbidden", 403, "FORBIDDEN")
+      }),
+    }
+    render(() => (
+      <ApiContext.Provider value={api as never}>
+        <KnowledgeSidebar />
+      </ApiContext.Provider>
+    ))
+    fireEvent.click(await screen.findByTestId("knowledge-tree-toggle-c1"))
+    fireEvent.contextMenu(await screen.findByTestId("knowledge-tree-doc-d1"))
+    await choose("knowledge-tree-menu-trash")
+    await waitFor(() => expect(toasts().some((t) => t.type === "error")).toBe(true))
+    expect(toasts().some((t) => t.action)).toBe(false)
   })
 
   it("+ on a folder creates with collectionIds=[id]", async () => {
@@ -513,7 +621,7 @@ describe("KnowledgeCollectionTree", () => {
     const onCopyLink = vi.fn()
     const onRenameDoc = vi.fn()
     const onMoveRequest = vi.fn()
-    const onArchiveDoc = vi.fn()
+    const onTrashDoc = vi.fn()
     render(() => (
       <KnowledgeCollectionTree
         tree={
@@ -531,8 +639,8 @@ describe("KnowledgeCollectionTree", () => {
         onCopyLink={onCopyLink}
         onRenameDoc={onRenameDoc}
         onMoveRequest={onMoveRequest}
-        onArchiveDoc={onArchiveDoc}
-        canArchiveDocs
+        onTrashDoc={onTrashDoc}
+        canTrashDocs
       />
     ))
     fireEvent.click(screen.getByTestId("knowledge-tree-toggle-c1"))
@@ -540,7 +648,7 @@ describe("KnowledgeCollectionTree", () => {
       ["copy-link", onCopyLink],
       ["rename", onRenameDoc],
       ["move", onMoveRequest],
-      ["archive", onArchiveDoc],
+      ["trash", onTrashDoc],
     ] as const) {
       fireEvent.pointerDown(screen.getByTestId("knowledge-tree-doc-menu-d1"), {
         pointerType: "mouse",
@@ -580,7 +688,7 @@ describe("KnowledgeCollectionTree", () => {
         }
         onOpenDoc={() => {}}
         onRenameDoc={onRenameDoc}
-        canArchiveDocs
+        canTrashDocs
       />
     ))
     fireEvent.click(screen.getByTestId("knowledge-tree-toggle-c1"))
@@ -590,7 +698,7 @@ describe("KnowledgeCollectionTree", () => {
     expect(await screen.findByTestId("knowledge-tree-menu-copy-link")).toBeInTheDocument()
     expect(screen.queryByTestId("knowledge-tree-menu-rename")).toBeNull()
     expect(screen.queryByTestId("knowledge-tree-menu-move")).toBeNull()
-    expect(screen.queryByTestId("knowledge-tree-menu-archive")).toBeNull()
+    expect(screen.queryByTestId("knowledge-tree-menu-trash")).toBeNull()
     fireEvent.keyDown(screen.getByTestId("knowledge-tree-menu-copy-link"), { key: "Escape" })
     await waitFor(() => expect(screen.queryByTestId("knowledge-tree-menu-copy-link")).toBeNull())
     ro.focus()
@@ -601,7 +709,7 @@ describe("KnowledgeCollectionTree", () => {
     fireEvent.contextMenu(screen.getByTestId("knowledge-tree-doc-d2"))
     expect(await screen.findByTestId("knowledge-tree-menu-rename")).toBeInTheDocument()
     expect(screen.getByTestId("knowledge-tree-menu-move")).toBeInTheDocument()
-    expect(screen.getByTestId("knowledge-tree-menu-archive")).toBeInTheDocument()
+    expect(screen.getByTestId("knowledge-tree-menu-trash")).toBeInTheDocument()
   })
 
   it("M3: folder actions and + follow the reader's rights", async () => {

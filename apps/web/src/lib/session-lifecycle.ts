@@ -94,9 +94,49 @@ export async function runBeforeSignOut(): Promise<void> {
   clearTimeout(timer)
 }
 
+export interface SignOutContext {
+  /** Nothing can be saved or asked (the account is deleted, the demo workspace ended). */
+  forced: boolean
+}
+type SignOutGuardFn = (ctx: SignOutContext) => Promise<boolean>
+
+const signOutGuards = new Set<SignOutGuardFn>()
+
+/**
+ * Register a check that runs BEFORE an explicit sign-out, while the session still
+ * authenticates its requests: it saves what it can, and answers false when the
+ * person chose to stay signed in (text that could not be saved). Returns a
+ * disposer. Same function reference is deduplicated.
+ */
+export function onSignOutGuard(fn: SignOutGuardFn): () => void {
+  signOutGuards.add(fn)
+  return () => {
+    signOutGuards.delete(fn)
+  }
+}
+
+/**
+ * May this explicit sign-out go on? Every guard must answer yes. There is no time
+ * bound: the person decides. A guard that throws counts as a no (it could not
+ * say that nothing would be lost). Session expiry, revocation and another tab's
+ * sign-out never come here: they lose nothing, so there is nothing to ask.
+ */
+export async function confirmSignOut(ctx: SignOutContext = { forced: false }): Promise<boolean> {
+  for (const fn of [...signOutGuards]) {
+    try {
+      if (!(await fn(ctx))) return false
+    } catch (e) {
+      console.warn("[session-lifecycle] sign-out guard error:", e)
+      if (!ctx.forced) return false
+    }
+  }
+  return true
+}
+
 /** @internal — test isolation only */
 export function _resetRegistry(): void {
   registry.clear()
   startRegistry.clear()
   beforeSignOutRegistry.clear()
+  signOutGuards.clear()
 }

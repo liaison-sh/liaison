@@ -66,6 +66,7 @@ describe("Knowledge app registration", () => {
       // A file door asks the parent's read scope even where the parent's own policy does not.
       requiredScope: "knowledge:attachments:download",
       writeScope: "knowledge:documents:update",
+      canWrite: "can_edit_document",
     })
   })
 })

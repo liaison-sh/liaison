@@ -16,7 +16,6 @@
     "knowledge.findAFolder": "Trouver un dossier",
     "knowledge.hereNow": "ici actuellement",
     "knowledge.linkCopied": "Lien copié.",
-    "knowledge.loadTheirs": "Charger le titre enregistré",
     "knowledge.move": "Déplacer",
     "knowledge.moveAcrossTitle": "Le déplacer ?",
     "knowledge.moveFolderToPersonal": "Vous seul verrez ce dossier et son nom. Les pages qu'il contient gardent leur propre partage.",
@@ -29,7 +28,6 @@
     "knowledge.newPageIn": "Nouvelle page dans {{name}}",
     "knowledge.noFolderWithThatName": "Aucun dossier de ce nom.",
     "knowledge.openFolder": "Ouvrir {{name}}",
-    "knowledge.pageArchived": "Page archivée.",
     "knowledge.personalNotes": "Notes personnelles",
     "knowledge.personalTopLevel": "Personnel, premier niveau",
     "knowledge.referenceCount": "{{count}} référence",
@@ -46,7 +44,6 @@
     "knowledge.refusalSyncedMarker": "Cette description est réservée aux dossiers synchronisés.",
     "knowledge.renameConflict": "Quelqu'un a enregistré cette page entre-temps. Ouvrez-la pour voir sa version, puis renommez-la.",
     "knowledge.renamePage": "Renommer la page",
-    "knowledge.sharedTopLevel": "Partagé avec l'organisation, premier niveau",
-    "knowledge.titleConflict": "Quelqu'un a enregistré cette page pendant que vous la renommiez. Votre titre est toujours là."
+    "knowledge.sharedTopLevel": "Partagé avec l'organisation, premier niveau"
   }
 }

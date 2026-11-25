@@ -43,6 +43,7 @@ import {
   resolveParent,
   wouldExceedOrgQuota,
 } from "~/modules/files/service"
+import { builtinSourceLabel } from "~/modules/imports/builtin/registry"
 import { kindRecordError, ownAppSchema } from "~/modules/imports/kind-schema"
 import { getImportKind, type ImportKindInfo } from "~/modules/imports/kinds"
 import { insertLedgerRows, isLedgerTableName, tableRel } from "~/modules/imports/ledger"
@@ -63,6 +64,7 @@ import {
   resolveImportFile,
 } from "~/modules/imports/source"
 import {
+  NAMED_MAX,
   type PreparedTransform,
   prepareTransform,
   type StagedRun,
@@ -225,10 +227,27 @@ function containsFilePath(value: unknown, depth = 0): boolean {
   return false
 }
 
-function addCounters(into: Record<string, unknown>, from: Record<string, unknown> | undefined) {
+/**
+ * Merge one record's report into the run's: numbers add up, and `losses`
+ * (what a record could not carry, named) are listed up to `NAMED_MAX`, then
+ * counted in `lossesNotListed`. Errors keep their own cap.
+ */
+export function addCounters(
+  into: Record<string, unknown>,
+  from: Record<string, unknown> | undefined,
+) {
   if (!from) return
   for (const [k, v] of Object.entries(from)) {
     if (typeof v === "number") into[k] = (typeof into[k] === "number" ? Number(into[k]) : 0) + v
+    else if (k === "losses" && Array.isArray(v)) {
+      const list: unknown[] = Array.isArray(into.losses) ? (into.losses as unknown[]) : []
+      into.losses = list
+      const room = Math.max(0, NAMED_MAX - list.length)
+      for (const item of v.slice(0, room)) list.push(item)
+      if (v.length > room) {
+        into.lossesNotListed = (Number(into.lossesNotListed) || 0) + (v.length - room)
+      }
+    }
   }
 }
 
@@ -299,6 +318,19 @@ export async function runImport(opts: RunImportOptions): Promise<RunImportResult
         kinds.map((k) => k.kind),
       )
     : null
+
+  if (prepared?.builtin) {
+    // K-R7: a built-in's label is the server's (per person for a private
+    // import), so a client can neither share another person's dedup space nor
+    // read what they imported through its skips.
+    const expected = builtinSourceLabel(prepared.builtin.key, prepared.builtin.params, actor.userId)
+    if (opts.sourceLabel !== expected) {
+      throw new ImportError(
+        "forbidden",
+        "A built-in import's source label is set by the server for the person running it; it cannot be chosen.",
+      )
+    }
+  }
 
   const levels = levelsOf(kinds)
   if (levels.length > 1 && opts.source.type === "records") {
@@ -603,16 +635,24 @@ export function transformRunSource(
 ): Record<string, unknown> {
   return {
     transform:
-      "inline" in source.transform
-        ? { name: prepared.name, inline: true, sha256: prepared.sha256 }
-        : {
-            id: source.transform.id,
-            version: source.transform.version,
+      "builtin" in source.transform
+        ? {
+            builtin: source.transform.builtin,
+            params: prepared.builtin?.params ?? {},
             name: prepared.name,
             sha256: prepared.sha256,
-          },
+          }
+        : "inline" in source.transform
+          ? { name: prepared.name, inline: true, sha256: prepared.sha256 }
+          : {
+              id: source.transform.id,
+              version: source.transform.version,
+              name: prepared.name,
+              sha256: prepared.sha256,
+            },
     input: source.input,
-    ...(source.files ? { files: source.files } : {}),
+    // A built-in's file rules are read from its registry, never from the row.
+    ...(source.files && !("builtin" in source.transform) ? { files: source.files } : {}),
     ...(source.limit ? { limit: source.limit } : {}),
   }
 }
@@ -1319,8 +1359,17 @@ async function checkHostBatch(
           const out: ImportRecordResult[] = []
           for (const p of batch) {
             try {
-              const status = await tx.transaction((sp) => check(sp, ctx, p.record, p.dedupValue))
-              out.push({ dedupKey: p.dedupKey, status, rows: [] })
+              const checked = await tx.transaction((sp) => check(sp, ctx, p.record, p.dedupValue))
+              if (typeof checked === "string") {
+                out.push({ dedupKey: p.dedupKey, status: checked, rows: [] })
+              } else {
+                out.push({
+                  dedupKey: p.dedupKey,
+                  status: checked.status,
+                  rows: [],
+                  ...(checked.report ? { report: checked.report } : {}),
+                })
+              }
             } catch (err) {
               out.push({
                 dedupKey: p.dedupKey,

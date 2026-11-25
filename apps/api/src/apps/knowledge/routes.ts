@@ -78,7 +78,6 @@ import {
 } from "~/apps/knowledge/synced-sources"
 import { listKnowledgeTags, upsertKnowledgeTag } from "~/apps/knowledge/tags"
 import { extractRows } from "~/db"
-import { schemaRef } from "~/db/schema-ref"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
 import { qaSeedRoutesEnabled } from "~/lib/env"
 import { withRequestRls } from "~/lib/request-rls"
@@ -88,8 +87,6 @@ import { knowledgeItemsRegistry } from "~/modules/apps/app-registries"
 import { hasScope } from "~/modules/permissions/permissions"
 
 import { listShareMembers, listShareRoles } from "~/modules/sharing/targets"
-
-const K = () => sql.raw(schemaRef("kernel"))
 
 const idParamSchema = z.object({ id: z.string().min(1) })
 
@@ -171,6 +168,7 @@ mountPageRoutes(knowledgeRoutes, {
   getActor: (c) => getActor(c),
   pageWriteRefusal: (c, err) => writeRefusal(c, err, "page"),
   pageNotFound: (c, err) => zeroKnowledgeResponse(c, err),
+  folderWriteRefusal: (c, err) => writeRefusal(c, err, "folder"),
 })
 
 // ---------------------------------------------------------------------------
@@ -196,70 +194,6 @@ knowledgeRoutes.post("/documents", zValidator("json", knowledgeCreateDocumentSch
     return success(c, doc, undefined, 201)
   } catch (err) {
     return knowledgeErrorResponse(c, err)
-  }
-})
-
-/**
- * Backlinks for a Knowledge document. The backend filters to references the
- * caller is authorized to see — never expose redacted counts or unauthorized
- * titles (spec §72-76). Currently returns an empty array; the indexer that
- * populates real backlinks lands in a follow-up task that registers Knowledge
- * documents as reference targets across the mention/reference system.
- */
-knowledgeRoutes.get("/documents/:id/backlinks", zValidator("param", idParamSchema), async (c) => {
-  try {
-    const actor = getActor(c)
-    const { id } = c.req.valid("param")
-    const backlinks = await withRequestRls(c, async (tx) => {
-      const row = await loadKnowledgeDocument(tx, id, actor)
-      if (!row) throw new KnowledgeError("NOT_FOUND", "Knowledge item not found")
-      const shareRole = await loadDocumentShareRole(tx, row.id, actor)
-      assertCanReadDocumentRow(row, actor, shareRole)
-      // Backlinks come from kernel.thread_references — every entity (thread,
-      // doc, mail, etc.) that referenced this Knowledge document. RLS on
-      // thread_references already filters to threads the caller can see, so
-      // we only need to scope to (app='knowledge', entityType='document', id).
-      const result = await tx.execute(sql`
-          SELECT
-            tr.thread_id AS "threadId",
-            tr.app AS "app",
-            tr.entity_type AS "entityType",
-            tr.entity_id AS "entityId",
-            t.title AS "title",
-            tr.last_visited_at AS "lastVisitedAt"
-          FROM ${K()}.thread_references tr
-          JOIN ${K()}.threads t ON t.id = tr.thread_id
-          WHERE tr.app = 'knowledge'
-            AND tr.entity_type = 'document'
-            AND tr.entity_id = ${id}
-            AND tr.org_id = ${actor.orgId}::uuid
-            -- Exclude private 1:1 Liaison assistant chats (type 'agent_chat').
-            -- They accumulate incidental entity references for the assistant's
-            -- own context strip and must never surface as public document
-            -- backlinks. Mirrors listBacklinks() in modules/threads/reference.ts.
-            AND t.type <> 'agent_chat'
-          ORDER BY tr.last_visited_at DESC
-          LIMIT 100
-        `)
-      const rows = extractRows<{
-        threadId: string
-        app: string
-        entityType: string
-        entityId: string
-        title: string | null
-        lastVisitedAt: string | Date
-      }>(result)
-      return rows.map((r) => ({
-        app: "kernel",
-        entityType: "thread",
-        entityId: r.threadId,
-        title: r.title ?? "Thread",
-        url: `/threads/${r.threadId}`,
-      }))
-    })
-    return success(c, { backlinks })
-  } catch (err) {
-    return zeroKnowledgeResponse(c, err)
   }
 })
 

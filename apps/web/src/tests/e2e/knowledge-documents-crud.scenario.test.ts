@@ -86,10 +86,8 @@ test("local-doc-crud-search-attach", async ({ page, env, qa, world }) => {
   await expect(page.getByTestId("knowledge-doc-title")).toHaveText(title, {
     timeout: 10_000,
   })
-  // Read-mode body is the parsed/sanitized markdown view; the contenteditable
-  // editor is opt-in (per-article tabs landed with click-to-edit), so the body
-  // in read state lives in `knowledge-doc-body-rendered`.
-  await expect(page.getByTestId("knowledge-doc-body-rendered")).toContainText(body)
+  // Its owner edits in place: the page editor is there at once, on the text.
+  await expect(page.getByTestId("knowledge-doc-body-editor")).toContainText(body)
   // Scope badge falls back to documentScope when sensitivity is null (the
   // path personal docs take). The badge text proves the doc is personal-scope.
   await expect(page.getByTestId("knowledge-doc-scope-badge")).toHaveText(/personal/i)

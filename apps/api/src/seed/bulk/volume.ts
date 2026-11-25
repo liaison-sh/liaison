@@ -205,9 +205,11 @@ export async function seedVolume(
   if (input.reindex !== false) {
     const { registerTicketsSearchEnrichment } = await import("~/apps/tickets/search-enrichment")
     const { registerMailSearchEnrichment } = await import("~/apps/mail/search-enrichment")
+    const { registerKnowledgeSearchEnrichment } = await import("~/apps/knowledge/search-enrichment")
     const { reindexOrg } = await import("~/modules/search/reindex")
     registerTicketsSearchEnrichment()
     registerMailSearchEnrichment()
+    registerKnowledgeSearchEnrichment()
     searchDocs = (await reindexOrg(ctx.orgId)).docs
   }
   const { counts, readBack } = await countVolume(ctx, input.ownerId)

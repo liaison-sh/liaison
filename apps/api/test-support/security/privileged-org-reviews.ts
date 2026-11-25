@@ -93,6 +93,16 @@ export const REVIEWED_DISPATCH: Record<string, string> = {
  * follow to a trusted source, could not be traced, or is a literal: `file#enclosing` → why.
  */
 export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
+  "apps/api/src/apps/knowledge/links.ts#countOrg":
+    "daily page-links backfill (dry-run count): orgId comes from the scheduled job's own org scan (withSystemDb listing the orgs that hold unindexed pages) and is re-checked by writeUnlessMoving; every read is pinned to that org_id",
+  "apps/api/src/apps/knowledge/links.ts#backfillOrg":
+    "daily page-links backfill: orgId comes from the scheduled job's own org scan (withSystemDb listing the orgs that hold unindexed pages), run under writeUnlessMoving; every write is pinned to that org_id",
+  "apps/api/src/apps/knowledge/page-file-sweep.ts#sweepUnparentedPageCopies":
+    "scheduled sweep of unparented page-file copies: orgId is read from the files rows the job's own system query listed (not moving), and the delete is pinned to that org_id",
+  "apps/api/src/modules/files/origin.ts#fileIsFromOutside":
+    "file origin check: callers pass the org of the file's own request or job context (attach, media analysis, import); the read is pinned to that org_id and the file id",
+  "apps/api/src/seed/factories/knowledge/document-version.ts#seedDocumentVersion":
+    "test-only seed factory (no product caller): the org a test seeded itself, writing a version row for its own page",
   "apps/api/src/modules/agent/scopes/taint-approval-audience.ts#loadOrgMemberGrants":
     "readers' grants for a message post (rule 14): sendMessage passes the org of the message it writes, which every caller binds to its own context (a request's org, or the routine_runs row's own org_id on the waiting-run sweep); the read is pinned to that org_id and to the listed user ids",
   "apps/api/src/apps/knowledge/app-sources.ts#beginAppSourcePass":
@@ -269,6 +279,8 @@ export const REVIEWED_CALLERS: Record<string, readonly string[]> = {
  * The caller trace stops at a call made from one of them.
  */
 export const REVIEWED_ORIGINS: Record<string, string> = {
+  "apps/api/src/apps/knowledge/trash.ts#runTrashPurge":
+    "the nightly Trash purge (knowledge jobs): each org id is read by the system pool from app_knowledge.documents rows in Trash past 30 days, and purgeOrg selects and deletes only that org's pages (every statement pinned to that org_id), in writeUnlessMoving",
   "apps/api/src/modules/approvals/summary-backfill.ts#backfillApprovalSummaryBatch":
     "the approval summary backfill job (queued by the leader, boot-phase10.ts registerApprovalSummaryBackfill): each org id is read from pending kernel.approval_requests rows that lack a summary, and only that org's rows are read and written, in writeUnlessMoving",
   "apps/api/src/modules/apps/attention-store.ts#processAttentionRefreshJob":

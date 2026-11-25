@@ -979,6 +979,12 @@ A `fileParent` may also name a `deleteScope`. Removing a file from such a
 parent then takes its uploader, or a holder of that scope, on top of the
 `writeScope`; without it, the `writeScope` is enough.
 
+A `fileParent` may name `canWrite`: a SQL function in the parent's schema,
+`fn(uuid) RETURNS boolean`, run under the caller's row security. Adding,
+moving or removing a file on a row then also takes that function's yes for the
+row (Knowledge's `can_edit_document`: the edit right on a page). Without it,
+the `writeScope` and a visible row are enough.
+
 **Print a record through the organisation's templates.** An entity that
 declares a `fileParent` can also declare `print`, so people and agents print
 its records onto the organisation's document templates:

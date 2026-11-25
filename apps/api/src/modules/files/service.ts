@@ -9,6 +9,7 @@ import { files } from "~/db/schema/kernel/files"
 import { schemaRef } from "~/db/schema-ref"
 import { env } from "~/lib/env"
 import { orgPublicBaseUrl } from "~/lib/org-public-url"
+import { quoteIdent } from "~/lib/sql-utils"
 import { UUID_RE } from "~/lib/uuid"
 
 const K = sql.raw(schemaRef("kernel"))
@@ -190,6 +191,12 @@ export interface ParentResolution {
    * enough, as for every kernel parent.
    */
   deleteScope?: string
+  /**
+   * A function of the parent's schema, `fn(uuid) RETURNS boolean`, answering under the
+   * caller's row security whether they may add or remove this row's files (a page
+   * read by many, edited by few). Absent: writeScope with the row visible is enough.
+   */
+  canWrite?: string
   /** A soft-delete column: a parent row with it set is not visible for files. */
   softDeleteColumn?: string
   /** Parent rows in an immutable table: their files cannot be deleted within the period. */
@@ -563,6 +570,33 @@ export async function assertParentVisible(
   }
 }
 
+/**
+ * Refuse a caller who may see the parent row but not change its files, when the parent
+ * declares `canWrite` (see ParentResolution). Judged in the caller's own RLS transaction,
+ * so the function sees exactly the rows and scopes the caller has.
+ */
+export async function assertParentWritable(
+  rlsTx: Pick<RlsClient, "execute">,
+  parent: ParentResolution,
+  entityId: string,
+): Promise<void> {
+  if (!parent.canWrite) return
+  assertSafeIdent(parent.canWrite, "parent canWrite")
+  if (!UUID_RE.test(entityId)) {
+    throw new FileServiceError("PARENT_NOT_FOUND", "Parent not visible to user")
+  }
+  const fn = sql.raw(`${quoteIdent(schemaRef(parent.schemaRef))}.${quoteIdent(parent.canWrite)}`)
+  const [row] = (await rlsTx.execute(
+    sql`SELECT ${fn}(${entityId}::uuid) AS ok`,
+  )) as unknown as Array<{ ok: boolean }>
+  if (row?.ok !== true) {
+    throw new FileServiceError(
+      "FORBIDDEN",
+      "Only people who can edit this item can add or remove its files",
+    )
+  }
+}
+
 const UUID_SHAPE_SQL =
   "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 
@@ -632,6 +666,7 @@ export async function authorizeUpload(
     }
     if (session.target_entity_id) {
       await assertParentVisible(deps.rlsTx, target, session.target_entity_id)
+      await assertParentWritable(deps.rlsTx, target, session.target_entity_id)
     }
     // Fall through to quota / size / presign checks below, but with parent
     // pre-validated. Use the session id as the "parent" anchor for storage key
@@ -647,6 +682,7 @@ export async function authorizeUpload(
   }
 
   await assertParentVisible(deps.rlsTx, parent, input.entityId)
+  await assertParentWritable(deps.rlsTx, parent, input.entityId)
   return authorizeUploadCore(input, deps, { skipParentVisibility: true })
 }
 
@@ -811,6 +847,7 @@ export async function createUploadSession(
   }
   if (input.targetEntityId) {
     await assertParentVisible(deps.rlsTx, target, input.targetEntityId)
+    await assertParentWritable(deps.rlsTx, target, input.targetEntityId)
   }
   const rows = await deps.rlsTx.execute<{ id: string }>(
     sql`INSERT INTO ${K}.file_upload_sessions (org_id, created_by, target_app, target_entity_type, target_entity_id)
@@ -870,6 +907,7 @@ export async function moveFilesToParent(
     throw new FileServiceError("FORBIDDEN", "Missing write scope on target")
   }
   await assertParentVisible(deps.rlsTx, target, input.target.entityId)
+  await assertParentWritable(deps.rlsTx, target, input.target.entityId)
   await lockLiveParent(deps.rlsTx, input.orgId, input.target)
 
   // 4) All requested file ids must currently be parented to this session and belong to this org.
@@ -1675,6 +1713,7 @@ export async function deleteFile(fileId: string, deps: DeleteFileDeps): Promise<
       throw new FileServiceError("FORBIDDEN", "Forbidden: missing write scope on parent")
     } else {
       await assertParentVisible(deps.rlsTx, parent, row.entityId)
+      await assertParentWritable(deps.rlsTx, parent, row.entityId)
       if (
         parent.deleteScope &&
         row.uploadedBy !== deps.userId &&

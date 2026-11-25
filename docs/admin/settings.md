@@ -146,6 +146,8 @@ An import whose preview refused more than 5% of the records cannot be started: a
 
 Every file an import attaches to a record is a new copy that counts toward the organization's storage limit. When the limit is reached, that record fails with **STORAGE_QUOTA_EXCEEDED** in its error and the file is not attached; the rest of the run goes on.
 
+Imports built into Liaison (an export of another tool's pages, uploaded as a zip) need the same permissions and run the same way. Before reading anything, they refuse an upload over 1 GB, a password-protected archive, an entry that points outside its folder or is a link, and an archive that expands far more than its size. Zips inside the upload are read one level deep, as one export. A page file over 1 MB is skipped and named in the report. The report names up to 20,000 items it could not carry, then counts the rest. Pages only you can see are skipped on a later import of the same export by you only; shared pages, by anyone.
+
 ### Undo an import
 
 1. Open **Settings › Organization**.

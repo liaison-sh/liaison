@@ -218,10 +218,6 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "derived",
     reason: "page links, derived from page bodies",
   },
-  "app_knowledge.document_versions": {
-    exempt: "derived",
-    reason: "page history, derived from edits (undo keeps an edited page by its updated_at)",
-  },
   "app_knowledge.source_identities": { exempt: "sync", reason: "knowledge source sync" },
   "app_knowledge.source_links": { exempt: "sync", reason: "knowledge source sync" },
   "app_knowledge.source_policies": { exempt: "sync", reason: "knowledge source sync" },

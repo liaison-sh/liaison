@@ -13,18 +13,24 @@ Search matches the words a document contains. When someone asks in another langu
 
 1. Click **Knowledge** in the activity bar.
 2. Click **New document** in the sidebar.
-3. Give it a title and write the body. Click **Save**.
+3. Give it a title and write the body. There is no Save button: a page saves itself.
+
+A page you may edit is edited in place: click in its text and write. It is saved about a second after you stop typing, and at least every few seconds while you type. The header says **Saving…**, **Saved**, or **Not saved** with the reason. People who may only read a page see its text without an editor.
+
+Text that is not saved yet is kept in this browser, per person, page and tab, until the page has it. If you close the tab, reload, lose the connection or your session ends, the text is back when you open the page again. A page over 1,000,000 characters, or with a title over 240 characters, is not saved until it is shortened; a page moved to the trash or no longer yours to edit while you type keeps your text on screen with **Copy text**.
+
+When you sign out with text that could not be saved, Liaison first tries to save it, or to put it in the page's history. What is left is listed with **Copy** for each page: **Stay signed in** keeps it, **Sign out and discard** drops it.
 
 You can also click **Create knowledge from…** on the Knowledge home to ask your agent to write documents from material you give it.
 
-If someone else saves the document while you edit it, Liaison tells you and offers **Load the latest version**.
+If someone else saves the page while you write, or you do in another tab, Liaison tells you and keeps your text. Click **Choose what to keep**: **Keep mine** makes your text the page, **Take theirs** shows the other text, and **See both** compares them first. Whatever you choose, the other text stays in **Page history**. If you leave without choosing, the other text is shown and yours goes to **Page history**. If only the title changed elsewhere (someone renamed the page) and you did not edit the title, Liaison takes the new title and saves your text, without asking.
 
 ## Organise documents and folders
 
 The sidebar has two trees: **Personal** for your own notes and **Shared with org** for team documents. Any member can make, rename, move and delete the folders they see, and rename and move the documents they can edit.
 
 - **New page in a folder**: point at the folder and click its **+**. A page made in one of your personal folders is yours alone until you share it.
-- **Row menu**: every folder and document has a **…** button (or right click it). A folder offers **New page**, **New folder**, **Rename**, **Move to…** and **Delete folder**; a document offers **Rename**, **Move to…** and **Copy link**, and **Archive** if you hold `knowledge:documents:archive`. A document you can only read offers **Copy link** alone, and the folder actions and **+** buttons show only if your role lets you organise folders and make pages. The menu works with the mouse, the keyboard (Enter opens it, Escape closes it) and on touch.
+- **Row menu**: every folder and document has a **…** button (or right click it). A folder offers **New page**, **New folder**, **Rename**, **Move to…** and **Delete folder**; a document offers **Rename**, **Move to…** and **Copy link**, and **Move to trash** (with **Undo** for 10 seconds) if you hold `knowledge:documents:archive`; a synced document has no **Move to trash**. A document you can only read offers **Copy link** alone, and the folder actions and **+** buttons show only if your role lets you organise folders and make pages. The menu works with the mouse, the keyboard (Enter opens it, Escape closes it) and on touch.
 - **Move to…** opens a list of folders you can search. Moving between **Personal** and **Shared with org** asks first and says who will see it. You can also drag a row onto a folder.
 - **New personal folder** and **New shared folder** (the **+** next to each tree's name) make a top folder.
 
@@ -37,6 +43,40 @@ A personal folder is yours alone: nobody else sees it, admins included. It does 
 Deleting a folder moves its documents and subfolders to the folder above it. At the top, its documents become unfiled. No document is deleted. When a person's account is erased, their personal folders are archived without their names.
 
 Moving a document, or taking it out of a folder, needs the right to edit it, and happens in one step: if it is refused, the document stays where it was. A folder synced from another app is changed in that app only, and its rows have no rename, move or delete. You can still take one of your own documents out of it. When the sync is stopped, its folders become ordinary ones; syncing again takes them back.
+
+## See and restore a page's history
+
+1. Open the page and click the **...** menu, then **Page history**.
+2. Pick a version on the right: who wrote it, when, and what changed since is marked.
+3. Click **Restore this version** to give the page that text back. The text it replaces stays in the history.
+
+Every change by a person or an agent is kept with its author and time. One person's edits in one tab within 10 minutes form one version; an agent's write is always its own. A page keeps its versions for a year and at most 200 of them, oldest first out, but each author's newest version and every text kept aside from a conflict are never removed to make room, and texts kept aside from a conflict are kept past a year too. Pages synced from another app have no history. Anyone who may edit a page sees its history.
+
+## A folder's own page
+
+A folder can have a page of its own: text about what the folder holds, shown above the list of what is inside. The folder has no page until someone writes in it. The first text makes an ordinary document, titled as the folder and filed in it. In a shared folder everyone in the organization can edit it; in a personal folder only you can see it. After that you share it like any other document.
+
+Writing the first text needs the right to manage folders and to create documents. A folder synced from another app has no page.
+
+The list under the page shows the folders and documents directly inside that you can open. Someone who cannot read the folder's page still sees the list, and nothing of the page.
+
+Renaming the folder renames its page, when you can edit the page; a verified page stays verified, as its text did not change. Renaming the page renames the folder, when you can manage folders; otherwise only the page is renamed. The page stops being the folder's page when it moves to the archive or leaves the folder; the folder then has none until someone writes in it again. Deleting the folder keeps a page that has text: it goes where the folder's documents go, to the folder above it or to **Unfiled**. An empty page goes to the archive, when the person deleting the folder can archive it.
+
+Agents read and update a folder's page like any other document.
+
+## Images and files in a document
+
+A document's images and files are read by the people who can read the document, and by nobody else. When someone loses access to the document, they lose access to its files too. Adding or removing a file needs the right to edit the document.
+
+A document shows only images stored in Liaison. When you save a document that shows an image or a file of another document, Liaison stores its own copy on this document, so it stays when the other document is deleted. A file you cannot read is not copied: its place in the text is kept, and readers see that it is not available. Only images and files of other documents, and files you have just uploaded, are copied: an email or ticket attachment, a template's file or an encrypted file is never copied onto a document, and readers see it as not available. A copy made by a save that then failed, which no version of the document names, is removed by an hourly cleanup. When your organization's storage is full, the document is still saved and the copy is made at a later save, once there is room.
+
+## Links between documents
+
+A link to another document stores that document's id, never its title. Each reader sees the title only if they can read the linked document; anyone else sees that they cannot open it, and receives no title, in the app or through the API. A link to a document in the archive shows nothing until it is restored. When the linked document is renamed, every link to it shows the new name.
+
+Each document lists the documents that link to it, limited to the ones you can read, beside the conversations that mention it.
+
+Older texts held the linked document's title, as agents wrote their links. Liaison removes those titles from documents, summaries and their history once, in a daily job: only the links change, a document keeps its version and its review status. Self-hosters can run it at once with `liaison knowledge links-backfill` (`--dry-run` only counts). The titles are removed for good: if you go back to a release from before links held only the id, those links show as plain links without a title.
 
 ## Share a document
 
@@ -101,7 +141,26 @@ Each search, link or read goes through your own connection to the app, so you on
 1. On the Knowledge home, click **Needs review** to see documents that are flagged, stale, missing an owner or past their review date.
 2. Open a document, check it, and click **Verify**.
 
-Use **Archive** to retire a document and **Restore** to bring it back.
+To retire a document, open its **…** menu and click **Move to trash**.
+
+## Trash
+
+**Move to trash** (in a page's **…** menu) moves a document to Trash. It leaves the knowledge base and search at once, and it is deleted for good 30 days later, with its history, its files, its links, its sharing and its place in folders. For 10 seconds a message offers **Undo**. An agent's `archive` does the same and starts the same 30 days.
+
+1. In the Knowledge sidebar, click **Trash**, under **Unfiled**. The number beside it counts the documents you can restore.
+2. Each document shows who moved it and when, and how many days are left. **Kept** means it was archived before Trash existed.
+3. Click **Restore** to bring a document back. A link to a document in Trash opens the same card, with **Restore**.
+4. An administrator also sees **Delete for good**, and confirms before the document is removed.
+
+- Anyone who can edit a document can see it in Trash and restore it until then. A restored document goes back to its folders, or to Unfiled when none of them is left.
+- Documents archived before Trash existed are listed as kept, with no date: they are never deleted automatically.
+- Synced documents (Google Drive, GitLab, a database) cannot be moved to Trash. Manage them in their source.
+- An administrator (`knowledge:documents:admin`) who can edit a document in Trash can delete it for good at once. A document archived before Trash is restored and moved to Trash first.
+- Links to a deleted document and images from its files stay in other documents' text and show as unavailable.
+
+Through the API: `GET /api/knowledge/trash` lists what you can restore, with `daysLeft` (null when kept); `POST /api/knowledge/documents/:id/trash` moves a document to Trash; `POST /api/knowledge/documents/:id/restore` restores it; `DELETE /api/knowledge/documents/:id` deletes it for good.
+
+Stored versions of a document are kept for a year.
 
 ## Import collections and documents
 
@@ -117,7 +176,7 @@ Knowledge ships three roles. See [roles](../admin/roles.md).
 
 | Role | Scopes |
 |---|---|
-| `member` | `knowledge:documents:read`, `knowledge:documents:create`, `knowledge:documents:update`, `knowledge:collections:manage`, `knowledge:links:create`, `knowledge:sources:read`, `knowledge:attachments:download`, `knowledge:attachments:upload` |
+| `member` | `knowledge:documents:read`, `knowledge:documents:create`, `knowledge:documents:update`, `knowledge:collections:manage`, `knowledge:documents:archive`, `knowledge:links:create`, `knowledge:sources:read`, `knowledge:attachments:download`, `knowledge:attachments:upload` |
 | `curator` | `knowledge:tags:manage`, `knowledge:documents:archive`, `knowledge:documents:assign-owner`, `knowledge:sources:manage` |
 | `admin` | `knowledge:documents:admin`, `knowledge:cache:manage` |
 
@@ -128,13 +187,13 @@ Knowledge ships three roles. See [roles](../admin/roles.md).
 | Tool | What it does | Scope |
 |---|---|---|
 | `search` | Search Knowledge and enabled remote sources | `knowledge:documents:read` |
-| `get` | Read a document or a remote source item | `knowledge:documents:read` |
+| `get` | Read a document or a remote source item, with the files its text shows and the documents it links to that you can read | `knowledge:documents:read` |
 | `find_by_title` | Find a document by its exact title | `knowledge:documents:read` |
 | `review_queue` | List items that need review | `knowledge:documents:read` |
 | `create` | Create a document | `knowledge:documents:create` |
-| `update` | Update a document | `knowledge:documents:update` |
+| `update` | Update a document. Images, files and page links in the text are kept exactly | `knowledge:documents:update` |
 | `verify` | Mark a document verified | `knowledge:documents:update` |
-| `archive`, `restore` | Archive or restore a document | `knowledge:documents:archive` |
+| `archive`, `restore` | Move a document to Trash (deleted after 30 days) or restore it | `knowledge:documents:archive` |
 | `collection_create`, `collection_update`, `collection_delete` | Create, change or delete a folder. A created folder is shared unless the user asks for a personal one | `knowledge:collections:manage` |
 | `add_to_collection`, `remove_from_collection` | File a document in a folder or take it out | `knowledge:collections:manage` |
 | `add_folder_source` | Import a Drive folder, a GitLab repository path or the database knowledge base, once or on a schedule | `knowledge:sources:manage` |

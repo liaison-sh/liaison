@@ -42,6 +42,9 @@ export interface ConversationRow {
   participant_handle?: string | null
   last_inbound_at?: string | null
   status: string
+  /** dm_list / dm_get enrichment: the window as the send path computes it (24 h for a
+   *  Unified-login Instagram account, which sends without the human agent tag). */
+  reply_window?: { tag: DmWindowTag } | null
 }
 
 export interface MessageRow {
@@ -71,11 +74,17 @@ export interface WindowPillState {
 
 /** Derive the reply-window pill + whether the compose box or the native-app
  *  fallback is shown, recomputed from the last inbound time at render. */
+const WINDOW_RANK: Record<DmWindowTag, number> = { none: 0, human_agent: 1, closed: 2 }
+
 export function windowPillState(
   lastInboundAt: string | null,
   now: Date = new Date(),
+  serverTag?: DmWindowTag | null,
 ): WindowPillState {
-  const tag = dmWindowTag(lastInboundAt, now)
+  // The clock recomputes freshness; the server's tag knows the account's window rule. The
+  // stricter of the two wins, so neither a stale tag nor the 7-day default reopens a window.
+  const clockTag = dmWindowTag(lastInboundAt, now)
+  const tag = serverTag && WINDOW_RANK[serverTag] > WINDOW_RANK[clockTag] ? serverTag : clockTag
   if (tag === "none")
     return { tag, label: "Open (24h)", tone: "success", composeEnabled: true, showFallback: false }
   if (tag === "human_agent")
@@ -132,7 +141,9 @@ export const ConversationDetailPanel: Component<{ conversation: ConversationRow 
     () => detail()?.conversation ?? props.conversation ?? null,
   )
   const messages = createMemo<MessageRow[]>(() => detail()?.messages ?? [])
-  const win = createMemo(() => windowPillState(fresh()?.last_inbound_at ?? null))
+  const win = createMemo(() =>
+    windowPillState(fresh()?.last_inbound_at ?? null, new Date(), fresh()?.reply_window?.tag),
+  )
 
   return (
     <Show
@@ -268,7 +279,11 @@ export const Messages: Component = () => {
           >
             <For each={visible()}>
               {(r) => {
-                const win = windowPillState(r.last_inbound_at ?? null)
+                const win = windowPillState(
+                  r.last_inbound_at ?? null,
+                  new Date(),
+                  r.reply_window?.tag,
+                )
                 return (
                   <button
                     type="button"

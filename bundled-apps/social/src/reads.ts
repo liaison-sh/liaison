@@ -4,23 +4,40 @@
 // filtering). findings_list/get, dm_list/get, watched_list, monitor_terms_list,
 // counts (sidebar badges).
 
+import type { Platform } from "./adapters/types"
 import type { SocialToolCtx } from "./ctx"
-import { dmReplyWindow } from "./dm-window"
+import { type DmWindowOptions, dmReplyWindow } from "./dm-window"
 import {
   derivedFindingStatus,
   type PendingFindingIndex,
   pendingFindingApprovals,
   withLiveApprovalState,
 } from "./pending"
+import { dmWindowOptionsFor } from "./post-back"
 
 /** Attach the agent-readable reply-window descriptor to a conversation row so the
  *  send-time window state (standard ≤24h · human-agent ≤7d · closed) surfaces at
  *  READ time — before a gated send_dm is proposed — rather than forcing the agent
  *  to do date arithmetic on a raw last_inbound_at. Read-only enrichment; the row's
  *  own fields are untouched. */
-function withReplyWindow<T extends { last_inbound_at?: string | null }>(row: T): T {
+function withReplyWindow<T extends { last_inbound_at?: string | null }>(
+  row: T,
+  opts: DmWindowOptions = {},
+): T {
   if (!row || typeof row !== "object") return row
-  return { ...row, reply_window: dmReplyWindow(row.last_inbound_at ?? null) }
+  return { ...row, reply_window: dmReplyWindow(row.last_inbound_at ?? null, new Date(), opts) }
+}
+
+/** Window options per platform, resolved once per read with the send path's own rule. */
+async function windowOptionsByPlatform(
+  ctx: SocialToolCtx,
+  rows: ReadonlyArray<{ platform?: string }>,
+): Promise<Map<string, DmWindowOptions>> {
+  const out = new Map<string, DmWindowOptions>()
+  for (const p of new Set(rows.map((r) => r.platform).filter((p): p is string => !!p))) {
+    out.set(p, await dmWindowOptionsFor(ctx, p as Platform))
+  }
+  return out
 }
 
 // Wrap externally-authored social text (a third party's post/comment or an
@@ -183,8 +200,12 @@ export async function dmList(
   // latest DM text — fence it as untrusted. participant_handle/display_name are
   // routing metadata, not the participant's free-text message, so left as-is.
   // reply_window is attached so the send-time window state surfaces at read time.
+  const windowOpts = await windowOptionsByPlatform(ctx, filtered as Array<{ platform?: string }>)
   const conversations = filtered.map((r) =>
-    withReplyWindow(fenceField(r, "last_message_snippet") as { last_inbound_at?: string | null }),
+    withReplyWindow(
+      fenceField(r, "last_message_snippet") as { last_inbound_at?: string | null },
+      windowOpts.get((r as { platform?: string }).platform ?? "") ?? {},
+    ),
   )
   return { conversations }
 }
@@ -195,11 +216,13 @@ export async function dmGet(
   ctx: SocialToolCtx,
 ): Promise<{ conversation: unknown | null; messages: unknown[] }> {
   const conversationRow = await ctx.db.findOne("dm_conversation", params.conversation_id)
+  const platform = (conversationRow as { platform?: string } | null)?.platform
   const conversation = conversationRow
     ? withReplyWindow(
         fenceField(conversationRow, "last_message_snippet") as {
           last_inbound_at?: string | null
         },
+        platform ? await dmWindowOptionsFor(ctx, platform as Platform) : {},
       )
     : conversationRow
   const rows = await ctx.db.findMany("dm_message", {

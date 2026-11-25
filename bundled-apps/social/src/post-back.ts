@@ -171,6 +171,14 @@ function dmWindowOptions(adapterCtx: AdapterContext): DmWindowOptions {
   return adapterCtx.auth?.connection === UNIFIED_CONNECTION ? { humanAgent: false } : {}
 }
 
+/** The DM window options the send path uses for a platform, for read-time window reporting. */
+export async function dmWindowOptionsFor(
+  ctx: SocialToolCtx,
+  platform: Platform,
+): Promise<DmWindowOptions> {
+  return dmWindowOptions(await resolveOutboundAdapterContext(ctx, platform))
+}
+
 async function loadFinding(ctx: SocialToolCtx, id: string): Promise<FindingRow | null> {
   const [row] = (await ctx.db.findMany("finding", { where: { id }, limit: 1 })) as FindingRow[]
   return row ?? null

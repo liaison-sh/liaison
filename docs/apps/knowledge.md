@@ -137,6 +137,20 @@ Through the API: `GET /api/knowledge/trash` lists what you can restore, with `da
 
 Stored versions of a document are kept for a year.
 
+## Trash
+
+Archiving a document moves it to Trash. It leaves the knowledge base and search at once, and it is deleted for good 30 days later, with its history, its files, its links, its sharing and its place in folders. An agent's `archive` does the same and starts the same 30 days.
+
+- Anyone who can edit a document can see it in Trash and restore it until then. A restored document goes back to its folders, or to Unfiled when none of them is left.
+- Documents archived before Trash existed are listed as kept, with no date: they are never deleted automatically.
+- Synced documents (Google Drive, GitLab, a database) cannot be moved to Trash. Manage them in their source.
+- An administrator (`knowledge:documents:admin`) who can edit a document in Trash can delete it for good at once. A document archived before Trash is restored and moved to Trash first.
+- Links to a deleted document and images from its files stay in other documents' text and show as unavailable.
+
+Through the API: `GET /api/knowledge/trash` lists what you can restore, with `daysLeft` (null when kept); `POST /api/knowledge/documents/:id/trash` moves a document to Trash; `POST /api/knowledge/documents/:id/restore` restores it; `DELETE /api/knowledge/documents/:id` deletes it for good.
+
+Stored versions of a document are kept for a year.
+
 ## Import collections and documents
 
 Collections import as the `knowledge.collection` kind and documents as the `knowledge.document` kind, each matched on its `externalRef`: one imported before is skipped, never updated. In a run with both, collections go first, so a document can be filed in a collection the same run creates (`collectionRefs`). A collection is shared with the organization unless its record says `shared: false`.

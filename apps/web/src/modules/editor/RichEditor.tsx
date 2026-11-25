@@ -573,7 +573,14 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
    */
   const taskKey = (event: KeyboardEvent): boolean => {
     const ed = editor()
-    if (props.preset !== "document" || !ed?.isEditable || event.key !== "Enter" || event.shiftKey || event.altKey) return false
+    if (
+      props.preset !== "document" ||
+      !ed?.isEditable ||
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return false
     if (!(event.metaKey || event.ctrlKey)) return false
     const { $from } = ed.state.selection
     for (let depth = $from.depth; depth > 0; depth--) {

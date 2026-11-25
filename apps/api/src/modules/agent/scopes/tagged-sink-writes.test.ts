@@ -34,8 +34,8 @@ const EXEMPT_UPDATES: Record<string, string> = {
 // cannot be read from the source text. Each needs a reason naming what unions
 // the tag, since the scan cannot see it.
 const EXEMPT_OPAQUE_UPDATES: Record<string, string> = {
-  "apps/knowledge/service.ts":
-    "updateKnowledgeDocument builds its SET from a fragment array whose last entry is always unionRequiredScopesSql(requiredScopes), so an update unions the writing turn's scopes and never narrows",
+  "apps/knowledge/versions.ts":
+    "writeWithVersion applies the SET that updateKnowledgeDocument (its one caller) builds from a fragment array whose last entry is always unionRequiredScopesSql(requiredScopes), so an update unions the writing turn's scopes and never narrows",
 }
 
 /** `kernel.agent_memory`, `"kernel"."agent_memory"`, `${kernelRel("agent_memory")}`. */

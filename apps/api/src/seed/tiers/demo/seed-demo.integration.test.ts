@@ -310,13 +310,6 @@ describe("seedDemoWorld: one org holding the whole demo", () => {
       await tx.execute(
         sql`UPDATE app_knowledge.documents SET title = 'drifted by a visitor' WHERE id = ${articleId}`,
       )
-      // The org layer's own drift: the marker a visitor's org would carry.
-      await tx.execute(
-        sql`UPDATE kernel.organizations
-            SET settings = settings || jsonb_build_object('demo',
-              (settings -> 'demo') || '{"variant":"visitor"}'::jsonb)
-            WHERE id = ${orgId}`,
-      )
     })
     // And a write against the Shopify fixture store, which lives in memory and
     // no SQL reset would ever reach.
@@ -325,6 +318,16 @@ describe("seedDemoWorld: one org holding the whole demo", () => {
 
     // THE RESET, exactly as the nightly job runs it.
     await resetDemoOrgContent(orgId)
+    // The org layer's own drift: the marker a visitor's org would carry. After
+    // the reset, which refuses any org but the reserved one.
+    await withPrivilegedDb(orgId, "demo-world-test-marker-drift", (tx) =>
+      tx.execute(
+        sql`UPDATE kernel.organizations
+            SET settings = settings || jsonb_build_object('demo',
+              (settings -> 'demo') || '{"variant":"visitor"}'::jsonb)
+            WHERE id = ${orgId}`,
+      ),
+    )
     const again = await seedDemoWorld({
       orgSlug: ORG_SLUG,
       variant: "reserved",

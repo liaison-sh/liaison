@@ -146,6 +146,10 @@ export interface ExpiredDemoOrg {
  * whole read surface a nightly reset job needs; it performs no deletion of its
  * own, on purpose, so the destructive half lands with its own review.
  *
+ * Orgs of class `demo` come first. A marked org of another class is listed
+ * too, so the purge's refusal of it is logged; it never holds back the ones
+ * that can be purged.
+ *
  * Returns an empty list when demo mode is off, without running a query.
  */
 export async function listExpiredDemoOrgs(
@@ -159,7 +163,7 @@ export async function listExpiredDemoOrgs(
       SELECT id, slug, name, settings->'demo' AS demo
       FROM ${k}.organizations
       WHERE settings->'demo' IS NOT NULL
-      ORDER BY created_at ASC
+      ORDER BY (class = 'demo') DESC, created_at ASC
     `)
     return Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? [])
   })

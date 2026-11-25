@@ -15,6 +15,7 @@ import {
   type JSX,
   on,
   onCleanup,
+  onMount,
   Show,
   untrack,
 } from "solid-js"
@@ -44,23 +45,36 @@ import { ConflictDialog } from "./ConflictDialog"
 import { draftKey, pageDrafts, webLocks } from "./drafts"
 import KnowledgeShareDialog from "./KnowledgeShareDialog"
 import {
-  archiveKnowledgeDocument,
   getKnowledgeDocument,
   getKnowledgeDocumentBacklinks,
+  getKnowledgeTrashEntry,
   type KnowledgeBacklink,
+  type KnowledgeTrashEntry,
   type KnowledgeVersionItem,
   listKnowledgeVersions,
-  restoreKnowledgeDocument,
   restoreKnowledgeVersion,
   runSyncedSourceNow,
   verifyKnowledgeDocument,
 } from "./knowledge-api"
-import { knowledgeStore, loadDocuments } from "./knowledge-store"
+import {
+  isCollectionsTreeLoaded,
+  knowledgeStore,
+  loadCollectionsTree,
+  loadDocuments,
+} from "./knowledge-store"
 import { PageBody } from "./PageBody"
 import { PageHeader } from "./PageHeader"
 import { PageHistory, versionAuthor } from "./PageHistory"
 import { pageFileView, uploadPageFile, uploadRefusal } from "./page-files"
 import { editorPages, pageLinkDeps } from "./page-links"
+import {
+  canMoveToTrash,
+  daysLeftLabel,
+  moveToTrash,
+  restoreFromTrash,
+  trashedLine,
+  trashRefusalKey,
+} from "./trash"
 
 export interface KnowledgeDocumentFetched {
   id: string
@@ -84,7 +98,10 @@ export interface KnowledgeDocumentFetched {
   canEdit?: boolean
 }
 
-type Fetched = KnowledgeDocumentFetched | null | "not-found"
+/** A page in Trash the person may restore: its link shows the Trash card (B3). */
+interface TrashedPage {
+  trashEntry: KnowledgeTrashEntry
+}
 
 /** A page shown as its folder's own page (KnowledgeFolderView). */
 export interface DocumentInFolder {
@@ -97,7 +114,10 @@ export interface DocumentInFolder {
   fresh?: { row: KnowledgeDocumentFetched; text: string }
 }
 
-const isRow = (d: Fetched | undefined): d is KnowledgeDocumentFetched => !!d && d !== "not-found"
+type Fetched = KnowledgeDocumentFetched | TrashedPage | null | "not-found"
+
+const isRow = (d: Fetched | undefined): d is KnowledgeDocumentFetched =>
+  !!d && d !== "not-found" && !("trashEntry" in d)
 
 const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFolder }> = (
   props,
@@ -131,8 +151,14 @@ const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFo
         })) as KnowledgeDocumentFetched
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") throw err
-        if (err instanceof ApiError && err.status === 404) return "not-found"
-        throw err
+        if (!(err instanceof ApiError && err.status === 404)) throw err
+        // Not readable: a page in Trash the person may restore shows its Trash
+        // card; anything else is the not-found of an unknown id.
+        try {
+          return { trashEntry: await getKnowledgeTrashEntry(api, id) }
+        } catch {
+          return "not-found"
+        }
       }
     },
   )
@@ -154,6 +180,11 @@ const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFo
   let saver: PageSaver | null = null
   let editor: RichEditorHandle | undefined
   let titleEl: HTMLHeadingElement | undefined
+
+  // The breadcrumb reads the folder tree; at phone width no sidebar loaded it.
+  onMount(() => {
+    if (!isCollectionsTreeLoaded() && apiForSidebar) void loadCollectionsTree(apiForSidebar)
+  })
   /** The text as it was when the view went away (the editor may be gone). */
   let lastText: { title: string; body: string } | null = null
   const bodyDictation = useDictation({ target: () => editor })
@@ -368,7 +399,11 @@ const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFo
       isRow(d) ? ({ ...d, ...stored, body: stored.body, title: stored.title } as Fetched) : d,
     )
     setEdited(editedLine(null, true, new Date().toISOString()))
-    if (before && before.title !== stored.title) void loadDocuments(apiForSidebar)
+    if (before && before.title !== stored.title) {
+      void loadDocuments(apiForSidebar)
+      void loadCollectionsTree(apiForSidebar)
+      void loadCollectionsTree(apiForSidebar)
+    }
   }
 
   // Someone else's save arrives (the socket refreshed the page in the store): taken
@@ -516,6 +551,7 @@ const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFo
       await run()
       void refetchMeta()
       void loadDocuments(apiForSidebar)
+      void loadCollectionsTree(apiForSidebar)
     } catch (err) {
       setActionError(err instanceof Error && err.message ? err.message : i18n.t(failed))
     }
@@ -548,19 +584,58 @@ const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFo
       if (d && api)
         await verifyKnowledgeDocument(api, d.id, { revision: saver?.revision() ?? d.revision })
     }, "knowledge.verifyFailed")
-  const archive = () =>
-    act(async () => {
-      await saver?.flush()
-      const d = row()
-      if (d && api) await archiveKnowledgeDocument(api, d.id)
-      // In the trash it is no longer the folder's page.
-      props.folder?.onGone()
-    }, "knowledge.archiveFailed")
-  const restoreArchived = () =>
-    act(async () => {
-      const d = row()
-      if (d && api) await restoreKnowledgeDocument(api, d.id)
-    }, "knowledge.restoreFailed")
+  // ── Trash (S19, D3) ──────────────────────────────────────────────────────
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+  })
+  const trashOffered = () => editable() && canMoveToTrash()
+  const trashPage = async () => {
+    const d = row()
+    if (!d || !api) return
+    setActionError(null)
+    // The text typed so far is saved first; text that cannot be saved stays here.
+    const s = saver
+    await s?.flush()
+    if (s?.hasUnsaved()) {
+      setActionError(i18n.t("knowledge.trash.unsavedRefused"))
+      return
+    }
+    const page = { id: d.id, title: titleEl?.textContent || d.title }
+    try {
+      await moveToTrash(api, page, i18n.t, {
+        onRestored: () => {
+          if (!disposed && props.entityId === page.id) void refetch()
+        },
+      })
+    } catch (err) {
+      setActionError(i18n.t(trashRefusalKey(err, "trash")))
+      return
+    }
+    // The page is in Trash: this view stops editing it and shows its Trash card.
+    saver = null
+    setupFor = null
+    setEditorText(null)
+    setStatus({ state: "idle" })
+    if (s) void s.destroy()
+    // In Trash it is no longer the folder's page: the folder view asks again.
+    if (props.folder) props.folder.onGone()
+    else void refetch()
+  }
+  const [restoring, setRestoring] = createSignal(false)
+  const restoreTrashed = async (entry: KnowledgeTrashEntry) => {
+    if (!api) return
+    setRestoring(true)
+    try {
+      if (await restoreFromTrash(api, entry, i18n.t)) await refetch()
+    } finally {
+      setRestoring(false)
+    }
+  }
+  const trashed = () => {
+    const d = doc()
+    return d && d !== "not-found" && "trashEntry" in d ? d.trashEntry : null
+  }
 
   const openHistory = async () => {
     await saver?.flush()
@@ -584,6 +659,7 @@ const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFo
       mutate((x) => (isRow(x) ? ({ ...x, ...restored } as Fetched) : x))
       setHistoryOpen(false)
       void loadDocuments(apiForSidebar)
+      void loadCollectionsTree(apiForSidebar)
       addToast({ type: "success", message: i18n.t("knowledge.autosave.restoredToast") })
       return true
     } catch {
@@ -634,6 +710,38 @@ const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFo
         </div>
       }
     >
+      <Show when={trashed()}>
+        {(entry) => (
+          <div class="flex h-full items-start justify-center p-4 pt-16">
+            <div
+              data-testid="knowledge-doc-trash-card"
+              class="flex w-full max-w-md flex-col gap-3 rounded-md border border-border-subtle bg-surface px-4 py-3"
+            >
+              <div class="flex min-w-0 flex-col gap-0.5">
+                <span class="truncate text-[13px] font-medium text-text">{entry().title}</span>
+                <span class="text-[12px] text-text-tertiary">
+                  {i18n.t("knowledge.trash.pageInTrash")}{" "}
+                  {trashedLine(entry(), me(), i18n.locale(), i18n.t)}
+                </span>
+                <span data-testid="knowledge-trash-days" class="text-[12px] text-text-tertiary">
+                  {daysLeftLabel(entry(), i18n.t)}
+                </span>
+              </div>
+              <div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="knowledge-doc-trash-restore"
+                  disabled={restoring()}
+                  onClick={() => void restoreTrashed(entry())}
+                >
+                  {i18n.t("knowledge.trash.restore")}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Show>
       <Show when={row()}>
         {(d) => (
           <div
@@ -674,8 +782,8 @@ const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFo
                 onShare={() => setShareOpen(true)}
                 onHistory={() => void openHistory()}
                 onVerify={() => void verify()}
-                onArchive={() => void archive()}
-                onRestore={() => void restoreArchived()}
+                canTrash={trashOffered()}
+                onTrash={() => void trashPage()}
               />
 
               <Show

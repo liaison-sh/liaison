@@ -25,6 +25,9 @@
 //     than OpenRouter's, or any GEMINI_* variable, is refused, so no call can
 //     leave outside OpenRouter's zero-retention routing. OAuth client
 //     variables (GOOGLE_OAUTH_CLIENT_ID, ...) are not provider keys.
+//   - and NONE of the flags that are unsafe beside customers: LIAISON_DEMO_MODE,
+//     LOAD_HARNESS_KEY, LIAISON_QA_ROUTES, LIAISON_PRIVATE_DEMO_BOX. Only a
+//     declared test cell (LIAISON_TEST_CELL) may carry them.
 //   - a liaison team identity installed with `liaison team identity install`
 //     (state registered, key readable under ENCRYPTION_KEY). The managed
 //     edition never registers itself.
@@ -38,6 +41,7 @@ import {
   isBareHttpsOrigin,
   parseManagedDefaultModels,
 } from "~/lib/env"
+import { parseEnvBoolean } from "~/lib/env-boolean"
 import { ENV_KEY_MAP } from "~/modules/agent/credits/platform-key-env"
 import { decryptInstanceKey, readIdentity } from "~/modules/liaison-team/identity"
 
@@ -85,6 +89,26 @@ function gmailPushProblems(raw: RawEnv): string[] {
     problems.push("GMAIL_PUSH_SERVICE_ACCOUNT must be a service account address")
   }
   return problems
+}
+
+/**
+ * What each of these switches on is for a server without customers: the public
+ * demo door (its rules then apply to every org's AI calls and mail), the load
+ * harness, the QA inject route, the private demo box's seed powers.
+ */
+const UNSAFE_MANAGED_FLAGS = [
+  "LIAISON_DEMO_MODE",
+  "LOAD_HARNESS_KEY",
+  "LIAISON_QA_ROUTES",
+  "LIAISON_PRIVATE_DEMO_BOX",
+] as const
+
+/** One problem per unsafe flag that is on, naming it and never its value. */
+function unsafeFlagProblems(raw: RawEnv): string[] {
+  if (parseEnvBoolean(raw.LIAISON_TEST_CELL) === true) return []
+  return UNSAFE_MANAGED_FLAGS.filter(
+    (name) => !blank(raw[name]) && parseEnvBoolean(raw[name]) !== false,
+  ).map((name) => `${name} must not be set on a managed server: it hosts customers; unset it`)
 }
 
 /** Every reason this managed server must not boot; empty when it may. */
@@ -147,6 +171,7 @@ export function managedBootProblems(raw: RawEnv, identity: IdentityBootState): s
       `only OpenRouter's key may be set on a managed cell (every AI call runs on OpenRouter with zero data retention); unset: ${forbidden.join(", ")}`,
     )
   }
+  problems.push(...unsafeFlagProblems(raw))
   const identityProblem: Record<Exclude<IdentityBootState, "registered">, string> = {
     missing:
       "no liaison team identity: run `liaison team identity mint`, then `liaison team identity install --key-file <path>`",

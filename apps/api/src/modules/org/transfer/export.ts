@@ -193,7 +193,7 @@ async function readReplayMarks(
 async function assertExportable(tx: TransferSql, orgId: string): Promise<void> {
   const rows = await query<{ demo: boolean; deleting: boolean }>(
     tx,
-    `SELECT jsonb_typeof(settings->'demo') = 'object' AS demo, deleting_at IS NOT NULL AS deleting
+    `SELECT (jsonb_typeof(settings->'demo') = 'object') IS TRUE OR class <> 'standard' AS demo, deleting_at IS NOT NULL AS deleting
        FROM kernel.organizations WHERE id = $1::uuid`,
     [orgId],
   )

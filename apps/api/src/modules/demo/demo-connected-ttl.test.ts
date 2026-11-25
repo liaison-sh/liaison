@@ -27,6 +27,7 @@ import {
   visitorMarker,
 } from "~/modules/demo/demo-org"
 import { HealthTracker } from "~/modules/mcp-client/health"
+import { markOrgDeleting } from "~/modules/org/purge/deleting"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -203,5 +204,14 @@ describe("a demo visitor workspace that connects a real service lives longer", (
     // A repeat within the same instant cannot move it back.
     expect(await extendDemoOrgOnConnection(other, new Date(Date.now() - HOUR))).toBeNull()
     expect(await storedExpiry(other)).toBe(Date.parse(first as string))
+  })
+
+  it("never extends an org whose deletion has started", async () => {
+    DemoModeTestAccess.set(true)
+    const orgId = await visitorOrg()
+    const before = await storedExpiry(orgId)
+    await markOrgDeleting(orgId)
+    expect(await extendDemoOrgOnConnection(orgId)).toBeNull()
+    expect(await storedExpiry(orgId)).toBe(before)
   })
 })

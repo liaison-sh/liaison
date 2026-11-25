@@ -3,7 +3,7 @@
 // The workspace lookup of the managed edition (`POST /api/cloud/lookup`, spec
 // S43): the orgs on this cell where an email is an active member, so the
 // control plane can tell a person where to sign in. Read-only. An org being
-// deleted is left out.
+// deleted is left out, and so is a demo org.
 
 import type { CloudLookupReply } from "@liaison/control-plane-contract"
 import { and, asc, eq, isNull } from "drizzle-orm"
@@ -24,6 +24,7 @@ export async function lookupOrgsByEmail(email: string): Promise<CloudLookupReply
           eq(users.email, email.trim().toLowerCase()),
           eq(users.status, "active"),
           isNull(organizations.deletingAt),
+          eq(organizations.class, "standard"),
         ),
       )
       .orderBy(asc(organizations.slug))

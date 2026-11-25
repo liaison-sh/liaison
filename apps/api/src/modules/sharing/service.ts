@@ -145,6 +145,18 @@ export async function actorGrantRole(
       SELECT grantee_kind, grantee, role FROM ${drizzleSql.raw(quoteIdent(schemaRef("kernel")))}.resource_grants
        WHERE resource_type = ${type} AND resource_id = ${resourceId}::uuid`),
   )
+  return grantRoleFrom(rows, actor)
+}
+
+/**
+ * The strongest role an actor holds through these grant rows of ONE resource
+ * (the rule of `actorGrantRole`), for a caller that read many resources'
+ * grants in one query.
+ */
+export function grantRoleFrom(
+  rows: ReadonlyArray<{ grantee_kind: string; grantee: string; role: ShareRole }>,
+  actor: { userId: string; roles?: string[]; dimensionGrants?: Record<string, string[]> },
+): ShareRole | null {
   const roles = new Set(actor.roles ?? [])
   const dims = actor.dimensionGrants ?? {}
   const holdsDimension = (key: string, value: string) => {

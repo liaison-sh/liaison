@@ -64,6 +64,23 @@ describe("advancePath", () => {
     expect(pathProgress(toBoard, again)).toEqual({ done: 1, current: 1 })
   })
 
+  it("takes the way again when the element left was on another page than the step's", () => {
+    const toBoard: EffectivePathHop[] = [
+      { label: "Open the project", anchor: "task-detail.breadcrumb-project" },
+      { label: "The new subtasks are in its list" },
+    ]
+    // On the task the step's route opens: its breadcrumb. Then on the project,
+    // where the subtasks show: not the step's page.
+    const onTask = advancePath(toBoard, PATH_START, (i) => i === 0, false, true, { onRoute: true })
+    const onList = advancePath(toBoard, onTask, () => false, true, true, { onRoute: false })
+    expect(pathProgress(toBoard, onList)).toEqual({ done: 1, current: 1 })
+    // On to one of the subtasks: its breadcrumb shows, the list does not.
+    const onSubtask = advancePath(toBoard, onList, (i) => i === 0, false, true, {
+      onRoute: false,
+    })
+    expect(pathProgress(toBoard, onSubtask)).toEqual({ done: 0, current: 0 })
+  })
+
   it("keeps a hop passed while the element loads, before the person got to it", () => {
     // The agent picked: its row is gone, Chats still shows, the conversation is not up yet.
     const picked = advancePath(toAgent, PATH_START, (i) => i <= 1, false, true, { onRoute: true })

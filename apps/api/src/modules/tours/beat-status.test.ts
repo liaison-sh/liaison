@@ -258,7 +258,12 @@ describe("a step waiting on a routine", () => {
     await sql`DELETE FROM kernel.routine_runs WHERE org_id = ${orgId}`
     await runRow("waiting_approval", null, 5_000)
     expect(await status(at("approve-draft"))).toEqual({ kind: "pending" })
-    expect(await status(at("routine-note"))).toEqual({ kind: "pending" })
+    // A step waiting for the routine to do something says the run waits on an
+    // approval, never that it has not started.
+    expect(await status(at("routine-note"))).toEqual({
+      kind: "routine-waiting",
+      routineName: "Draft a reply to new tickets",
+    })
     // A run that failed still says so: there may be nothing to approve.
     await sql`DELETE FROM kernel.routine_runs WHERE org_id = ${orgId}`
     await runRow("failed", "The model provider refused the request.", 5_000)

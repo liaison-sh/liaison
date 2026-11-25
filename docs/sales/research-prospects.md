@@ -57,7 +57,7 @@ The run's final message needs no write scope: the platform posts it for you. Eve
 
 ## Example prompt
 
-This is the prompt of the demo routine, which reads a connected CRM. A routine runs exactly what is written, so keep the steps explicit. Without a CRM, replace steps 1 and 3 with the same steps on Liaison's records: look the sender up with `contacts_search`, then their company with `companies_search`, and propose a contact or a company with `contacts_write` or `companies_write`.
+This is the prompt of the demo routine, which reads a connected CRM. A routine runs exactly what is written, so keep the steps explicit. Without a CRM, replace steps 1 and 3 with the same steps on Liaison's records: look the sender up with `contacts_search`, then their company with `companies_search`, and propose a contact or a company with `contacts_write` or `companies_write`. A new company's `companies_write` returns `id` and `name` as @ref tokens before it runs, so the contact (`companyId`), the quote and the reply can cite it, and the whole chain waits as one request you approve once.
 
 ```
 An email has just arrived from a prospect. The event data names the message and its sender.

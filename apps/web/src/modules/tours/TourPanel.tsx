@@ -111,7 +111,7 @@ const MODEL_SETUP_ROUTE = "/settings/ai-models"
 
 /** The routine run a step waits on, as the server's step status says it. */
 interface RoutineRunView {
-  phase: "running" | "succeeded" | "failed" | "skipped"
+  phase: "running" | "succeeded" | "waiting" | "failed" | "skipped"
   routineName: string | null
   /** When the run began (ms, the server's clock); null when unknown or not running. */
   startedAt: number | null
@@ -136,6 +136,14 @@ export function routineRunOf(status: TourBeatStatus | undefined): RoutineRunView
     case "routine-succeeded":
       return {
         phase: "succeeded",
+        routineName: status.routineName,
+        startedAt: null,
+        error: null,
+        status: null,
+      }
+    case "routine-waiting":
+      return {
+        phase: "waiting",
         routineName: status.routineName,
         startedAt: null,
         error: null,
@@ -1043,6 +1051,10 @@ const RoutineRunLine: Component<{ run: RoutineRunView }> = (props) => {
         return name
           ? i18n.t("tours.engine.routineDone", { name })
           : i18n.t("tours.engine.routineDoneUnnamed")
+      case "waiting":
+        return name
+          ? i18n.t("tours.engine.routineWaiting", { name })
+          : i18n.t("tours.engine.routineWaitingUnnamed")
       case "failed":
         if (error) {
           return name
@@ -1072,7 +1084,10 @@ const RoutineRunLine: Component<{ run: RoutineRunView }> = (props) => {
         "flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-[12.5px] leading-snug",
         props.run.phase === "running" && "text-text-tertiary",
         props.run.phase === "succeeded" && "text-success",
-        (props.run.phase === "failed" || props.run.phase === "skipped") && "text-text-secondary",
+        (props.run.phase === "failed" ||
+          props.run.phase === "skipped" ||
+          props.run.phase === "waiting") &&
+          "text-text-secondary",
       )}
     >
       <Show when={props.run.phase === "running"}>

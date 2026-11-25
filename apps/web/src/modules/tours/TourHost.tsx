@@ -280,6 +280,9 @@ export const TourOverlay: Component<TourOverlayProps> = (props) => {
       const b = beat()
       return ringsOwnAnchor() && b !== undefined && waitsOnAgentTurn(b)
     },
+    // The card the agent's turn parked: the step asks the person to read it
+    // and press Approve, so the words written after it never leave it out of sight.
+    () => heldAnchor() !== undefined && !undoing(),
   )
   /** The anchor while it is in sight: under a later layer it is neither ringed nor avoided. */
   const spot = () => {

@@ -425,6 +425,8 @@
     "routineRunningUnnamed": "La routine s'en occupe ({{elapsed}}). Cette étape avance quand elle a fini.",
     "routineDone": "La routine « {{name}} » a fini.",
     "routineDoneUnnamed": "La routine a fini.",
+    "routineWaiting": "La routine « {{name}} » attend une approbation qu’elle a demandée. Décidez-la dans Accueil et la routine reprend.",
+    "routineWaitingUnnamed": "La routine attend une approbation qu’elle a demandée. Décidez-la dans Accueil et la routine reprend.",
     "routineFailed": "La routine « {{name}} » s'est arrêtée sur une erreur : {{error}} Réessayez plus tard ou passez cette étape.",
     "routineFailedUnnamed": "La routine s'est arrêtée sur une erreur : {{error}} Réessayez plus tard ou passez cette étape.",
     "routineFailedNoReason": "La routine « {{name}} » s'est arrêtée sur une erreur. Réessayez plus tard ou passez cette étape.",
@@ -1413,40 +1415,40 @@
       "liveTicket": {
         "title": "Un client vous écrit",
         "body": "Rien à faire pour l'instant : son ticket arrive en haut de la liste dans un instant. Appuyez sur Suivant une fois qu'il est là.",
-        "role": "Rémi Castel suit le projet du portail partenaires pour le Groupe Marlin. Il lui faut à nouveau la facture du mois dernier et une remise à zéro du site de test, et il écrit au support en ce moment."
+        "role": "Inès Royer suit le projet des données de stock pour la Coopérative Alpine. Il lui faut à nouveau la facture du mois dernier et une liste de fournisseurs vide sur l'export de test, et elle écrit au support en ce moment."
       },
       "open": {
         "title": "Son ticket est là",
         "body": "Ouvrez son ticket, puis appuyez sur Suivant.",
-        "role": "Avant que quiconque réponde à Rémi, vous voulez voir ce qu'il a écrit.",
-        "way2": "Cliquez sur le ticket de Rémi Castel, en haut de la liste"
+        "role": "Avant que quiconque réponde à Inès, vous voulez voir ce qu'elle a écrit.",
+        "way2": "Cliquez sur le ticket d'Inès Royer, en haut de la liste"
       },
       "routineNote": {
         "title": "La note interne de la routine",
-        "body": "Elle lit le ticket, l'historique du client et le manuel du studio, puis laisse une note à l'équipe : son verdict, ses sources et ce qu'une personne doit vérifier. Rémi ne la voit jamais. Appuyez sur Suivant une fois la note arrivée ; vous approuverez sa réponse deux étapes plus loin.",
+        "body": "Elle lit le ticket, l'historique du client et le manuel du studio, puis laisse une note à l'équipe : son verdict, ses sources et ce qu'une personne doit vérifier. Inès ne la voit jamais. Appuyez sur Suivant une fois la note arrivée ; vous approuverez sa réponse deux étapes plus loin.",
         "role": "Votre routine de support traite d'abord le ticket : vous partez de ses constats, pas de zéro."
       },
       "routineDraft": {
         "title": "Un brouillon de réponse vous attend",
-        "body": "La routine rédige la réponse à Rémi. Appuyez sur Suivant quand le brouillon s'affiche ; vous le lirez et l'approuverez à l'étape suivante.",
-        "role": "Rien n'arrive à Rémi tant qu'une personne n'a pas dit oui, et cette personne, c'est vous."
+        "body": "La routine rédige la réponse à Inès. Appuyez sur Suivant quand le brouillon s'affiche ; vous le lirez et l'approuverez à l'étape suivante.",
+        "role": "Rien n'arrive à Inès tant qu'une personne n'a pas dit oui, et cette personne, c'est vous."
       },
       "approve": {
         "title": "Approuvez la réponse",
-        "body": "Modifiez une phrase si vous le souhaitez, puis appuyez sur Approuver. Elle part chez Rémi (un client fictif ici).",
-        "role": "Vous décidez de ce qui part : lisez le brouillon comme Rémi le lira.",
+        "body": "Modifiez une phrase si vous le souhaitez, puis appuyez sur Approuver. Elle part chez Inès (un client fictif ici).",
+        "role": "Vous décidez de ce qui part : lisez le brouillon comme Inès le lira.",
         "undo": "Laissez partir ou appuyez sur Annuler pour que la réponse redevienne un brouillon."
       },
       "sent": {
         "title": "Envoyée",
         "body": "La réponse apparaît dans la conversation, à côté de la note de la routine. Appuyez sur Suivant.",
-        "role": "Rémi a sa réponse, et l'équipe voit exactement ce qui a été dit."
+        "role": "Inès a sa réponse, et l'équipe voit exactement ce qui a été dit."
       },
       "askAgent": {
         "title": "Vérifiez ce que le client a déjà demandé",
         "body": "Demandez à {{agent}} depuis Discussions, à côté du ticket, puis appuyez sur Envoyer. Il répond à partir des tickets du client, de son entreprise et de ses factures.",
-        "text": "Qu'a déjà demandé le Groupe Marlin au support, et quelles factures leur avons-nous envoyées le mois dernier ?",
-        "role": "Avant de promettre à Rémi une date pour la remise à zéro, vous voulez voir ce que son équipe a déjà demandé.",
+        "text": "Qu'a déjà demandé la Coopérative Alpine au support, et quelles factures leur avons-nous envoyées le mois dernier ?",
+        "role": "Avant de promettre à Inès une date pour l'export de test, vous voulez voir ce que son équipe a déjà demandé.",
         "way1": "Ouvrez Discussions, à côté du ticket",
         "way2": "Choisissez {{agent}}, premier de la liste",
         "say": "Demandez à {{agent}} :"
@@ -1460,7 +1462,7 @@
       "done": {
         "title": "Voilà pour le support",
         "body": "Une routine lit chaque ticket, rédige la note et le brouillon ; vous relisez et décidez. Rien ne part sans votre approbation.",
-        "role": "Vous êtes resté maître de chaque mot reçu par Rémi."
+        "role": "Vous êtes resté maître de chaque mot reçu par Inès."
       }
     },
     "studioProjects": {

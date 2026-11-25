@@ -14,13 +14,18 @@ import { withPrivilegedDb } from "~/db/privileged"
 import type { WorldInjector } from "~/modules/demo/world/registry"
 import { worldRunKey } from "~/seed/world/people"
 
-/** The client: on a reserved domain, so the reply is a fixture delivery. */
+/**
+ * The client: on a reserved domain, so the reply is a fixture delivery. Not at
+ * the company the client scenario's change request mails: a colleague's mail
+ * after that draft stops it (the send check counts the whole company), so a
+ * visitor who played this scenario first found the change request stale.
+ */
 export const STUDIO_SUPPORT_CLIENT = {
-  email: "remi.castel@groupe-marlin.example",
-  name: "Rémi Castel",
+  email: "ines.royer@cooperative-alpine.example",
+  name: "Inès Royer",
 } as const
 
-export const STUDIO_SUPPORT_SUBJECT = "Last month's invoice again, and a reset of the test site"
+export const STUDIO_SUPPORT_SUBJECT = "Last month's invoice again, and an empty test supplier list"
 export const STUDIO_SUPPORT_EXTERNAL_REF = "demo:world:studio-support-ticket"
 
 /** The ticket's external ref in run `run` of the scenario. */
@@ -29,10 +34,10 @@ export function studioSupportExternalRef(run: number): string {
 }
 
 const BODY =
-  "Hello,\n\nTwo small things for the partner portal project. Our accounts department lost " +
-  "last month's invoice: could you send us a copy? And could you reset the test site to an " +
-  "empty partner list? Our partners start their tests on Monday and the old test accounts " +
-  "confuse them.\n\nThanks,\nRémi Castel\nGroupe Marlin"
+  "Hello,\n\nTwo small things for the stock data project. Our accounts department lost " +
+  "last month's invoice: could you send us a copy? And could you empty the supplier list of " +
+  "the test export? Our suppliers start their tests on Monday and the old test accounts " +
+  "confuse them.\n\nThanks,\nInès Royer\nCoopérative Alpine"
 
 export const studioSupportTicketInjector: WorldInjector = {
   id: STUDIO_SUPPORT_TICKET_INJECTOR,

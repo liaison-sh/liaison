@@ -869,6 +869,9 @@ export async function seedStudioAgreements(input: StudioAgreementsInput): Promis
   ctx.log(`agreements: ${plan.agreements.length} rows, change request card staged`)
 }
 
+/** The client contact the change request's card answers: its reply mails them. */
+export const STUDIO_CHANGE_REQUEST_CONTACT = "pauline-gros"
+
 /** The client's mail in the shared mailbox, then the card it gives, staged as the app stages it. */
 async function seedStudioChangeRequest(
   ctx: SeedContext,
@@ -880,7 +883,7 @@ async function seedStudioChangeRequest(
   contactOf: (key: string) => { id: string; name: string; email: string } | null,
 ): Promise<void> {
   const cr = plan.changeRequest
-  const client = contactOf("pauline-gros")
+  const client = contactOf(STUDIO_CHANGE_REQUEST_CONTACT)
   if (!client) throw new Error("studio agreements: no client contact for the change request")
   const [mailbox] = await withPrivilegedDb(ctx.orgId, "seed-studio:cr-mailbox", async (tx) =>
     rowsOf<{ email: string; name: string | null }>(

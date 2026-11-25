@@ -155,6 +155,11 @@ export type TourBeatStatus =
     }
   | { kind: "routine-running"; routineName: string | null; startedAt: string }
   | { kind: "routine-succeeded"; routineName: string | null }
+  /**
+   * The run paused on an approval it asked for before it did what the step
+   * waits on: it carries on once that request is decided on Home.
+   */
+  | { kind: "routine-waiting"; routineName: string | null }
   | { kind: "routine-failed"; routineName: string | null; error: string | null }
   | {
       kind: "routine-skipped"

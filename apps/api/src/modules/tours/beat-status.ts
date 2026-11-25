@@ -220,9 +220,9 @@ function routineRowStatus(
     if (pauseState?.resumingAt) {
       return { kind: "routine-running", routineName, startedAt: pauseState.resumingAt }
     }
-    // Paused on an approval it asked for: the run did its part and waits on
-    // the person, nothing failed. It carries on once the approval is decided.
-    return { kind: "pending" }
+    // Paused on an approval it asked for: it waits on the person, nothing
+    // failed. It carries on once the approval is decided.
+    return { kind: "routine-waiting", routineName }
   }
   if (status.startsWith("skipped")) return { kind: "routine-skipped", routineName, status, error }
   return { kind: "routine-failed", routineName, error }
@@ -671,7 +671,16 @@ export async function computeBeatStatus(input: {
     // check, read as this step being done while its card still waited
     // (sales walk 2026-10-27: "the runner did not understand where we're
     // at"). Running, failed or skipped still say so: the card is not there yet.
-    return approvesSomething(beat) && run.kind === "routine-succeeded" ? { kind: "pending" } : run
+    if (approvesSomething(beat) && run.kind === "routine-succeeded") return { kind: "pending" }
+    // A run paused on an approval: a step approving what it staged, or one
+    // showing what it made, waits on the person as before. A step that waits
+    // for the routine to DO something says the run waits on an approval: it
+    // said "The routine has not started" while the run sat on a request in
+    // Home (a sales run that asked for the company first, walk 2026-11-25).
+    if (run.kind === "routine-waiting" && (approvesSomething(beat) || beat.kind !== "do")) {
+      return { kind: "pending" }
+    }
+    return run
   }
   if (waitsOn === "agent" && !approvesSomething(beat)) {
     const threads = await watchedThreads(orgId, beat, createdEntityIds(progress.beatStates))

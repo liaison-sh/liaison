@@ -374,6 +374,9 @@ the result gains the same `outputs`, so the agent can chain on it. An agent's
 gated call that holds a near-miss reference (`{{step1.record_id}}`,
 `@ref:<approval1>:id`, a token without its uuid) is refused with the exact form
 expected, so a placeholder never reaches a record or a customer.
+A whole token passes a param declared `format: "uuid"`: the id it stands
+for exists only once the cited step has run, and is filled in before the later
+step runs.
 
 **Patterns in params and settings.** A `pattern` in a tool's params, a settings
 field's `validation.pattern` and a connection's template variable or authorize

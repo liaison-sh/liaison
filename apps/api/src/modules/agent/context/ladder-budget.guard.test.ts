@@ -42,7 +42,7 @@ const WORLDS: LadderWorld[] = [
   { name: "phone", scopes: ["*"], surface: "mobile" },
   // The software demo world: the apps its pack installs, read from the pack's own list.
   { name: "software-demo", apps: DEMO_WORLD_APPS.saas, scopes: ["*"], surface: "web" },
-  // An org that turned time and budgets on: the one app feature shipped today.
+  // An org that turned time and budgets on, and nothing else.
   {
     name: "time-and-budgets",
     scopes: ["*"],
@@ -184,10 +184,21 @@ describe("the neutral worlds", () => {
     const all = measures.find((m) => m.world === "all-apps")
     const time = measures.find((m) => m.world === "time-and-budgets")
     if (!all || !time) throw new Error("both worlds are measured")
-    // The shipped catalog has feature tools, and they come from the manifests.
-    expect(featured.length).toBeGreaterThan(0)
-    expect(featured.every((t) => t.app === "projects" && t.feature === "time_budgets")).toBe(true)
-    expect(time.visibleTools - all.visibleTools).toBe(featured.length)
+    // The shipped catalog has feature tools, and they come from the manifests:
+    // time and budgets, client reports and deals in projects, recurring billing
+    // in invoicing, companies and the portal in contacts.
+    const shipped = new Set(featured.map((t) => `${t.featureApp ?? t.app}:${t.feature}`))
+    expect([...shipped].sort()).toEqual([
+      "contacts:companies",
+      "invoicing:recurring",
+      "projects:client_reports",
+      "projects:deals",
+      "projects:time_budgets",
+    ])
+    // The neutral world sees none of them; turning one feature on adds its tools only.
+    const timeTools = featured.filter((t) => t.app === "projects" && t.feature === "time_budgets")
+    expect(timeTools.length).toBeGreaterThan(0)
+    expect(time.visibleTools - all.visibleTools).toBe(timeTools.length)
     expect(time.appSchemaTokens.projects).toBeGreaterThan(all.appSchemaTokens.projects)
   })
 

@@ -10,6 +10,7 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { openTab } from "~/modules/shell/tab-store"
 import { ScrollFade } from "~/ui/ScrollFade"
+import KnowledgeHomeLink from "./KnowledgeHomeLink"
 import { listUnfiledKnowledgeDocuments } from "./knowledge-api"
 
 interface DocRow {
@@ -43,6 +44,7 @@ const KnowledgeUnfiledView: Component = () => {
     <ScrollFade class="min-h-0 flex-1" fadeColor="var(--color-bg)">
       <div data-testid="knowledge-unfiled" class="mx-auto w-full max-w-2xl px-8 py-10">
         <header class="mb-4">
+          <KnowledgeHomeLink />
           <h1 class="text-[15px] font-medium text-text">{i18n.t("knowledge.unfiled")}</h1>
           <p class="text-[12px] text-text-tertiary">
             {i18n.t("knowledge.documentsNotInAnyCollectionAdd")}

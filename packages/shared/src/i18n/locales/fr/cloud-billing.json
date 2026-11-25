@@ -64,7 +64,7 @@
     "description": "Les crédits achetés sont utilisés après ceux de votre offre et n'expirent pas à la fin du mois.",
     "amount": "Crédits",
     "minimum": "Au moins {{min}} crédits.",
-    "price": "{{price}} hors taxes",
+    "price": "{{price}}",
     "buy": "Acheter {{credits}} crédits",
     "paid": "{{credits}} crédits ajoutés.",
     "belowMinimum": "Achetez au moins {{min}} crédits.",

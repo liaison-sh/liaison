@@ -5,6 +5,7 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { useOptionalApi } from "~/modules/shell/ApiContext"
 import KnowledgeHome from "./KnowledgeHome"
 import KnowledgeSearchView from "./KnowledgeSearchView"
+import KnowledgeTrashView from "./KnowledgeTrashView"
 import KnowledgeUnfiledView from "./KnowledgeUnfiledView"
 import { knowledgeStore, loadKnowledgeHome } from "./knowledge-store"
 
@@ -33,6 +34,9 @@ const KnowledgeWorkspace: Component = () => {
       </Show>
       <Show when={knowledgeStore.view === "unfiled"}>
         <KnowledgeUnfiledView />
+      </Show>
+      <Show when={knowledgeStore.view === "trash"}>
+        <KnowledgeTrashView />
       </Show>
     </div>
   )

@@ -282,6 +282,24 @@ describe("notion-export: S16 mapping on the fixtures", () => {
     expect(b.startsWith("# Onboarding")).toBe(false)
   }, 120_000)
 
+  it("a callout's tags go even when nested, and a table cell keeps its backslashes and pipes", async () => {
+    const page = "c2000000000000000000000000000009"
+    const db = "d2000000000000000000000000000010"
+    const { docs } = await stage(
+      buildZip([
+        {
+          name: `Odd ${page}.md`,
+          data: Buffer.from("# Odd\n\n<aside><scr<script>ipt>Hi</aside>\n"),
+        },
+        { name: `Paths ${db}.csv`, data: Buffer.from('Name,Path\nOne,"C:\\a|b"\n') },
+      ]),
+    )
+    const odd = docs.get(page)?.body ?? ""
+    expect(odd).not.toContain("<script")
+    expect(odd).toContain("> ipt>Hi")
+    expect(docs.get(db)?.body).toContain("| One | C:\\\\a\\|b |")
+  }, 120_000)
+
   it("a database becomes a folder page with a table, its row pages inside, the _all file wins", async () => {
     const { folders, docs } = await stage(both())
     expect(folders.some((f) => f.externalRef === D)).toBe(true)

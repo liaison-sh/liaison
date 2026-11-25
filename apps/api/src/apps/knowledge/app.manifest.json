@@ -34,7 +34,7 @@
           "archive",
           "restore"
         ],
-        "text": "If you DID end up with a stray duplicate or a clearly-wrong document, RETIRE it with knowledge__archive (pass its id), a reversible soft-archive (knowledge__restore reverses it) that removes it from the active KB; never leave an '[ARCHIVED]'/'OLD'-titled stub doc as a fake cleanup, and never hard-edit a real article into a tombstone. NEVER claim you 'archived', 'deleted', 'replaced', or 'cleaned up' a document unless a knowledge__archive (or knowledge__update) tool result confirms it, asserting a cleanup you did not actually perform is a fabrication; leave the KB with exactly the one clean article you were asked for."
+        "text": "If you DID end up with a stray duplicate or a clearly-wrong document, RETIRE it with knowledge__archive (pass its id): it moves to Trash, leaves the active KB at once and is deleted for good after 30 days (knowledge__restore brings it back until then); never leave an '[ARCHIVED]'/'OLD'-titled stub doc as a fake cleanup, and never hard-edit a real article into a tombstone. NEVER claim you 'archived', 'deleted', 'replaced', or 'cleaned up' a document unless a knowledge__archive (or knowledge__update) tool result confirms it, asserting a cleanup you did not actually perform is a fabrication; leave the KB with exactly the one clean article you were asked for."
       },
       {
         "tools": [
@@ -1184,13 +1184,13 @@
       }
     },
     "archive": {
-      "description": "Archive (retire) a Knowledge document — a reversible soft-archive that removes it from the active KB and from search. Use this to retire a wrong, superseded, or stray DUPLICATE document you created; restore reverses it. Do NOT rename a doc to '[ARCHIVED]'/'OLD' as a fake cleanup — archive it. Pass the document id.",
+      "description": "Move a Knowledge document to Trash (retire it): it leaves the active KB and search at once, and is DELETED FOR GOOD after 30 days unless someone restores it. Use this to retire a wrong, superseded, or stray DUPLICATE document you created; restore brings it back within the 30 days. Do NOT rename a doc to '[ARCHIVED]'/'OLD' as a fake cleanup: move it to Trash. Synced documents (from Drive, GitLab or another source) cannot be trashed: they are managed in their source. Pass the document id.",
       "searchKeywords": ["archiver", "doc", "document"],
       "requiredScopes": ["knowledge:documents:archive"],
       "writesToTable": "app_knowledge.documents",
       "trustBoundary": "user",
       "conditionalGate": true,
-      "approvalCard": { "summary": "Archive a knowledge document" },
+      "approvalCard": { "summary": "Move a knowledge document to Trash" },
       "approvalImpact": "internal",
       "resourceOwner": { "host": "knowledge.page" },
       "handler": "archive",
@@ -1207,7 +1207,7 @@
       }
     },
     "restore": {
-      "description": "Restore a previously-archived Knowledge document back into the active KB. Reverses archive; a no-op (no event) if the document is already active. Pass the document id.",
+      "description": "Restore a Knowledge document from Trash back into the active KB, back in its folders (Unfiled when none is left). Reverses archive and stops the 30-day deletion; a no-op (no event) if the document is already active. Pass the document id.",
       "searchKeywords": ["restaurer", "doc", "document"],
       "requiredScopes": ["knowledge:documents:archive"],
       "writesToTable": "app_knowledge.documents",
@@ -1732,6 +1732,8 @@
     },
     "wsHandlers": {
       "document": "handleKnowledgeDocumentWsEvent",
+      "collection": "handleKnowledgeCollectionWsEvent",
+      "collection_membership": "handleKnowledgeCollectionWsEvent",
       "synced_source": "handleSyncedSourceWsEvent"
     },
     "activityBar": {
@@ -1748,12 +1750,13 @@
   },
   "roles": {
     "member": {
-      "description": "Knowledge member: read, create, update, link, and attach allowed Knowledge items, and manage folders",
+      "description": "Knowledge member: read, create, update, link, and attach allowed Knowledge items, manage folders, and move pages they can edit to Trash and back",
       "scopes": [
         "knowledge:documents:read",
         "knowledge:documents:create",
         "knowledge:documents:update",
         "knowledge:collections:manage",
+        "knowledge:documents:archive",
         "knowledge:links:create",
         "knowledge:sources:read",
         "knowledge:attachments:download",

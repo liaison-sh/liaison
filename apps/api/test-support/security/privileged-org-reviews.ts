@@ -271,6 +271,8 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
  * The caller trace stops at a call made from one of them.
  */
 export const REVIEWED_ORIGINS: Record<string, string> = {
+  "apps/api/src/apps/knowledge/trash.ts#runTrashPurge":
+    "the nightly Trash purge (knowledge jobs): each org id is read by the system pool from app_knowledge.documents rows in Trash past 30 days, and purgeOrg selects and deletes only that org's pages (every statement pinned to that org_id), in writeUnlessMoving",
   "apps/api/src/modules/approvals/summary-backfill.ts#backfillApprovalSummaryBatch":
     "the approval summary backfill job (queued by the leader, boot-phase10.ts registerApprovalSummaryBackfill): each org id is read from pending kernel.approval_requests rows that lack a summary, and only that org's rows are read and written, in writeUnlessMoving",
   "apps/api/src/modules/apps/attention-store.ts#processAttentionRefreshJob":
@@ -325,8 +327,8 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "the demo tier's commerce layer: every write goes to opts.org.orgId, the org seedDemoOrg (a reviewed origin) returned after provisioning it and stamping its demo marker; the commerce factories receive it through the layer's SeedContext",
   "apps/api/src/seed/tiers/demo/seed-org.ts#seedDemoOrg":
     "the demo tier's org entry: an org already under the caller's slug is only read (its demo marker, fresh) to refuse it unless it is a demo org (demoMarkRefusal); every write uses the org the org factory's provisioning pass returns (provisionOrgShell), stamped with the demo marker before any account exists",
-  "apps/api/src/seed/tiers/lively/seed-lively.ts#replaceLivelyOrg":
-    "an operator's `liaison seed --tier lively --replace` (a private box, refused in demo mode): the org under the slug the operator named is purged only when its row carries the demo marker, re-read fresh before the purge and again by purgeOrg's assertAllowed before every destructive step",
+  "apps/api/src/seed/tiers/demo/replace-demo-org.ts#replaceSeededDemoOrg":
+    "an operator's `liaison seed --tier lively --replace` or `seed --tier demo --variant visitor --reset` (refused on a public demo box): the org under the slug the operator named is purged only when its row is of class demo, carries the demo marker and is no customer's or the operator's, re-read fresh before the purge and again by purgeOrg's assertAllowed before every destructive step",
   "apps/api/src/seed/tiers/lively/seed-lively.ts#seedLivelyLayers":
     "the lively tier's entry: every activity write goes to world.orgId, the org seedDemoWorld (whose seedDemoOrg is a reviewed origin) just provisioned or adopted under the caller's slug and stamped with the demo marker",
   "apps/api/src/seed/tiers/standard/seed-standard.ts#seedStandardWorld":
@@ -336,7 +338,7 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
   "apps/api/src/seed/tiers/load/seed-load.ts#seedOneLoadOrg":
     "the load tier's per-org entry: every write (the synthetic marker, the bulk volume and its read-back) goes to world.orgId, the org seedDemoWorld (whose seedDemoOrg is a reviewed origin) just provisioned or adopted under the slug `<prefix><i>` and stamped with the demo marker",
   "apps/api/src/seed/tiers/demo/seed-org.ts#clearInterruptedOrg":
-    "the org under the slug the seeder itself claimed (claimOrgSlug) before creating it, still unmarked: purged only while the claim is there and no demo marker is, re-checked by purgeOrg's assertAllowed before every destructive step",
+    "the org under the slug the seeder itself claimed (claimOrgSlug) before creating it, still unmarked: purged only while the claim is there, no demo marker is and the row is of class demo, re-checked by purgeOrg's assertAllowed before every destructive step",
   "apps/api/src/cli/provisioners/liaison-team.ts#verifyRequest":
     "asks whether the org of the config run may decide the server-wide Liaison team switches (canManageInstanceApps): the CLI's org (resolved by the operator's own command) or the org of the agent tool call (ctx.orgId from the kernel); the answer is one boolean about that same org",
   "apps/api/src/app.ts#GET /api/connections/callback":

@@ -30,6 +30,7 @@ import { assertExplicitRequiredScopes } from "~/modules/agent/scopes/write-requi
 import { hasScope } from "~/modules/permissions/permissions"
 import {
   actorGrantRole,
+  grantRoleFrom,
   listGrants,
   recomputeSearchAcl,
   replaceGrants,
@@ -55,6 +56,9 @@ export class KnowledgeError extends Error {
   constructor(
     public readonly code: KnowledgeErrorCode,
     message: string,
+    /** A stable name of the refusal (`details.reason` in the response), so a
+     *  client says it in its reader's language; the message stays for others. */
+    public readonly reason?: string,
   ) {
     super(message)
     this.name = "KnowledgeError"
@@ -526,6 +530,42 @@ export async function loadDocumentShareRole(
     userId: actor.userId,
     roles: actor.roles ?? [],
   })
+}
+
+/**
+ * `loadDocumentShareRole` for every page of the org at once (the tree's pages):
+ * one read of the grants, the same rule per page. Pages with no role are absent.
+ */
+export async function loadDocumentShareRoles(
+  tx: RlsClient,
+  actor: KnowledgeActor,
+): Promise<Map<string, "viewer" | "editor">> {
+  const byDoc = new Map<
+    string,
+    Array<{ grantee_kind: string; grantee: string; role: "viewer" | "editor" }>
+  >()
+  for (const row of extractRows<{
+    resource_id: string
+    grantee_kind: string
+    grantee: string
+    role: "viewer" | "editor"
+  }>(
+    await tx.execute(drizzleSql`
+      SELECT g.resource_id, g.grantee_kind, g.grantee, g.role
+      FROM ${kernelRel("resource_grants")} g
+      WHERE g.org_id = ${actor.orgId}::uuid AND g.resource_type = ${KNOWLEDGE_RESOURCE}
+    `),
+  )) {
+    const list = byDoc.get(row.resource_id)
+    if (list) list.push(row)
+    else byDoc.set(row.resource_id, [row])
+  }
+  const roles = new Map<string, "viewer" | "editor">()
+  for (const [docId, rows] of byDoc) {
+    const role = grantRoleFrom(rows, { userId: actor.userId, roles: actor.roles ?? [] })
+    if (role) roles.set(docId, role)
+  }
+  return roles
 }
 
 /**
@@ -1128,7 +1168,10 @@ export async function createKnowledgeDocument(
   const adopted = await adoptForeignFiles(tx, id, parsed.body ?? "", actor)
   if (adopted.body !== (parsed.body ?? "")) {
     await tx.execute(drizzleSql`
-      UPDATE ${knowledgeRel("documents")} SET body = ${adopted.body}
+      UPDATE ${knowledgeRel("documents")}
+         SET body = ${adopted.body},
+             required_scopes = ARRAY(SELECT DISTINCT s
+               FROM unnest(required_scopes || ${textArraySql(requiredScopes)}) AS s ORDER BY s)
        WHERE id = ${id}::uuid AND org_id = ${actor.orgId}::uuid`)
   }
   const { refreshDocumentLinks } = await import("~/apps/knowledge/links")
@@ -1504,15 +1547,24 @@ export async function archiveKnowledgeDocument(
   if (!row) throw new KnowledgeError("NOT_FOUND", "Knowledge item not found")
   const archiveShareRole = await loadDocumentShareRole(tx, row.id, actor)
   assertCanWriteDocumentRow(row, archivedActor, archiveShareRole)
+  // A synced page belongs to its source (edge 6, A21): it never goes to Trash.
+  // Archiving it used to hide it only until the next sync.
+  if (row.syncedSourceId) {
+    validation("This page is synced from another source: manage it there, not in Trash")
+  }
   // A page in Trash leaves the folders it is the page of: lock them before the page
   // (folder first, then page; folder-pages.ts).
   const folderPages = await import("~/apps/knowledge/folder-pages")
   await folderPages.lockFoldersOfPage(tx, actor, id)
-  // Only flip + emit the event when the doc is actually ACTIVE — re-archiving an
-  // already-archived doc is a no-op (no second `archive` event), mirroring restore.
+  // Archiving is moving to Trash: the clock starts in the same write (trashed_at at
+  // the same now() as archived_at), so the daily job deletes it 30 days later
+  // (trash.ts). Only flip + emit the event when the doc is actually ACTIVE:
+  // re-archiving an already-archived doc is a no-op (no second `archive` event,
+  // no new clock), mirroring restore.
   const updateResult = await tx.execute(drizzleSql`
     UPDATE ${knowledgeRel("documents")}
-    SET archived_at = now(), updated_by = ${actor.userId}::uuid, updated_at = now()
+    SET archived_at = now(), trashed_at = now(), trashed_by = ${actor.userId}::uuid,
+        updated_by = ${actor.userId}::uuid, updated_at = now()
     WHERE id = ${id}::uuid
       AND org_id = ${actor.orgId}::uuid
       AND archived_at IS NULL
@@ -1554,9 +1606,12 @@ export async function restoreKnowledgeDocument(
   // IC-7: only emit a restore event when we actually un-archive a row. Calling
   // restore on an already-active document is a no-op — otherwise every retry
   // (or double-click) would emit a spurious `restore` event downstream.
+  // Out of Trash: the clock goes with the archive. Its folders are kept; when none
+  // of them is live and visible the page reads as Unfiled.
   const updateResult = await tx.execute(drizzleSql`
     UPDATE ${knowledgeRel("documents")}
-    SET archived_at = NULL, updated_by = ${actor.userId}::uuid, updated_at = now()
+    SET archived_at = NULL, trashed_at = NULL, trashed_by = NULL,
+        updated_by = ${actor.userId}::uuid, updated_at = now()
     WHERE id = ${id}::uuid
       AND org_id = ${actor.orgId}::uuid
       AND archived_at IS NOT NULL

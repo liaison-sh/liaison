@@ -5,7 +5,7 @@
 // An alt text someone wrote into the token is not kept once its block is edited.
 //
 // HTML that names a file of this app (the editor's own clipboard, the reader's
-// `<span data-liaison-file>`, an `<img>` of the app's own inline route) reads back as
+// `<span data-page-file>`, an `<img>` of the app's own inline route) reads back as
 // this node; any other `<img>` is kept as the source chip of raw-image.ts, never drawn.
 //
 // While a file uploads, an `uploadingFile` chip stands where it goes; it writes no
@@ -66,7 +66,7 @@ export const LiaisonFile = Node.create<LiaisonFileOptions>({
         default: "",
         // The span's own attribute; an image's id comes from its rule.
         parseHTML: (el) => {
-          const id = el.getAttribute("data-liaison-file")
+          const id = el.getAttribute("data-page-file")
           return isFileId(id) ? id : null
         },
       },
@@ -75,9 +75,9 @@ export const LiaisonFile = Node.create<LiaisonFileOptions>({
   parseHTML() {
     return [
       {
-        tag: "span[data-liaison-file]",
+        tag: "span[data-page-file]",
         getAttrs: (el) => {
-          const id = (el as HTMLElement).getAttribute("data-liaison-file")
+          const id = (el as HTMLElement).getAttribute("data-page-file")
           return isFileId(id) ? { id } : false
         },
       },
@@ -91,7 +91,7 @@ export const LiaisonFile = Node.create<LiaisonFileOptions>({
     ]
   },
   renderHTML({ node }) {
-    return ["span", { "data-liaison-file": String(node.attrs.id ?? "") }]
+    return ["span", { "data-page-file": String(node.attrs.id ?? "") }]
   },
   renderText: ({ node }) => fileToken(String(node.attrs.id ?? "")),
   parseMarkdown: (token) => ({ type: "liaisonFile", attrs: { id: String(token.id ?? "") } }),

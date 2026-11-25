@@ -118,6 +118,17 @@ jobs:
         run: bun run i18n:gen:check && bun run i18n:fr:check
       - name: SPDX headers
         run: bun run check:spdx
+      # Commits on main are authored by people: no AI co-author trailer or
+      # "Generated with" footer in the PR's commits, title or body (a squash
+      # merge copies every commit's trailers, and GitHub lists each co-author as
+      # a contributor). The text reaches the script only through env.
+      - name: No AI attribution
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        run: bun run check:no-ai-coauthor
       - name: Migration baseline
         run: bun run check:migration-baseline
       # A new migration must not break the previous release, which keeps

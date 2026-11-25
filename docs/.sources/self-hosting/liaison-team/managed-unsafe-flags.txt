@@ -1,0 +1,1 @@
+Managed server refuses the demo, load harness, QA routes and private demo box flags; a declared test cell is exempt -> apps/api/src/lib/managed-boot.ts (unsafeFlagProblems)

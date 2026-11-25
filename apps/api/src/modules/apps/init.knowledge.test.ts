@@ -64,6 +64,7 @@ describe("Knowledge app registration", () => {
       joinOn: "id",
       readScope: "knowledge:attachments:download",
       writeScope: "knowledge:documents:update",
+      canWrite: "can_edit_document",
     })
   })
 })

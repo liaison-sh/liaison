@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Before the purge deletes an org's legal records, every immutability trigger
-// must carry the exception for an org being deleted (ddl.ts,
-// `generateImmutableTriggerDdl`). App registration re-applies the trigger when
-// the generator changes (its DDL stamp hashes ddl.ts), but only for an app
-// registered since the deploy; a table whose trigger an older release wrote
-// would refuse the purge. So the purge checks each trigger body Postgres holds
-// and regenerates a stale one from the spec read back out of it.
+// Every immutability trigger must be the one this release generates (ddl.ts,
+// `generateImmutableTriggerDdl`): it carries the exception for an org being
+// deleted, and its demo exception reads the org's class, not the jsonb marker.
+// App registration re-applies the trigger when the generator changes (its DDL
+// stamp hashes ddl.ts), but only for an app registered since the deploy. So
+// each trigger body Postgres holds is checked, and a stale one regenerated from
+// the spec read back out of it: once at boot (index.ts), and by a purge before
+// it deletes legal records.
 import { sql as drizzleSql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { rootLogger } from "~/lib/logger"
 import {
   generateImmutableTriggerDdl,
-  IMMUTABLE_TRIGGER_DELETING_BRANCH,
+  IMMUTABLE_TRIGGER_CLASS_BRANCH,
   IMMUTABLE_TRIGGER_NAME,
   immutableSpecFromTriggerBody,
 } from "~/modules/apps/ddl"
@@ -24,7 +25,7 @@ const log = rootLogger.child({ module: "org-purge" })
 export class StaleImmutableTriggerError extends Error {
   constructor(readonly tables: string[]) {
     super(
-      `org purge: the immutability trigger of ${tables.join(", ")} predates the deletion exception and could not be regenerated; re-register the app (restart the server) and retry`,
+      `org purge: the immutability trigger of ${tables.join(", ")} is not the one this release writes and could not be regenerated; re-register the app (restart the server) and retry`,
     )
     this.name = "StaleImmutableTriggerError"
   }
@@ -32,7 +33,7 @@ export class StaleImmutableTriggerError extends Error {
 
 /**
  * Check the immutability trigger of every `app_*` table and regenerate the ones
- * without the deleting branch. Idempotent; returns how many were checked and
+ * whose body is not current (no class branch). Idempotent; returns how many were checked and
  * regenerated. Throws `StaleImmutableTriggerError` for a body it cannot read.
  */
 export async function ensureImmutableTriggersCurrent(): Promise<{
@@ -57,7 +58,7 @@ export async function ensureImmutableTriggersCurrent(): Promise<{
   const regenerated: string[] = []
   const unreadable: string[] = []
   for (const t of triggers) {
-    if (t.body.includes(IMMUTABLE_TRIGGER_DELETING_BRANCH)) continue
+    if (t.body.includes(IMMUTABLE_TRIGGER_CLASS_BRANCH)) continue
     const label = `${t.schema}.${t.table}`
     const spec = immutableSpecFromTriggerBody(t.body)
     if (!spec) {
@@ -69,6 +70,8 @@ export async function ensureImmutableTriggersCurrent(): Promise<{
       // Two purges regenerating the same function at once would collide
       // ("tuple concurrently updated"): one at a time, and the second finds
       // the body current and skips.
+      // A table busy behind a long transaction fails this one, not the boot.
+      await tx.execute(drizzleSql`SET LOCAL lock_timeout = '5s'`)
       await tx.execute(
         drizzleSql`SELECT pg_advisory_xact_lock(hashtext('org-purge-immutable-triggers'))`,
       )
@@ -81,7 +84,7 @@ export async function ensureImmutableTriggersCurrent(): Promise<{
           WHERE tr.tgname = ${IMMUTABLE_TRIGGER_NAME} AND n.nspname = ${t.schema} AND c.relname = ${t.table}
         `),
       )[0]
-      if (now?.body.includes(IMMUTABLE_TRIGGER_DELETING_BRANCH)) return false
+      if (now?.body.includes(IMMUTABLE_TRIGGER_CLASS_BRANCH)) return false
       for (const stmt of ddl.split(";\n").filter((s) => s.trim())) {
         await tx.execute(drizzleSql.raw(stmt))
       }

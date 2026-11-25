@@ -519,6 +519,10 @@ export async function importOrg(opts: ImportOptions): Promise<ImportResult> {
           data = data.map((d) => {
             const row = JSON.parse(d) as Record<string, unknown>
             if (row.id !== orgId) throw new ImportRefused("the org row is another org", "format")
+            // No bundle makes a disposable org here (export refuses one; this holds for any sender).
+            if ((row.class ?? "standard") !== "standard") {
+              throw new ImportRefused("a demo workspace is never moved", "format")
+            }
             row.transfer_state = "incoming"
             row.transfer_id = transferId
             row.transfer_at = new Date().toISOString()

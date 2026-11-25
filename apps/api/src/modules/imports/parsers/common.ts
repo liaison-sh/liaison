@@ -30,6 +30,7 @@ export type ParserErrorCode =
   | "zip_too_many_entries"
   | "zip_ratio_exceeded"
   | "zip_decompressed_too_large"
+  | "zip_unsafe_entry"
 
 export class ParserError extends Error {
   constructor(

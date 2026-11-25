@@ -298,6 +298,27 @@ describe("kernel.files SELECT policy rebuild", () => {
     expect((await livePolicy())?.qual ?? "").not.toContain(APP)
   })
 
+  it("the same policy from a newer catalog records that catalog, so an older release is still refused", async () => {
+    addFileParent()
+    const parents = CatalogDerivationsTestAccess.registryFileParents()
+    expect(await rebuildFilesSelectPolicy({ parents, catalogVersions: { [APP]: "3.0.0" } })).toBe(
+      "applied",
+    )
+    const before = await livePolicy()
+    // Versions above the earlier cases' (the policy outlives each case). An upgrade bumps the app; its parents, and so the policy, are the same.
+    expect(await rebuildFilesSelectPolicy({ parents, catalogVersions: { [APP]: "4.0.0" } })).toBe(
+      "unchanged",
+    )
+    expect((await livePolicy())?.qual).toBe(before?.qual)
+    // A process of the release before, which would drop the parent, is refused on that version.
+    manifestFileParentRegistry.delete([ORG, APP, ENTITY])
+    const older = CatalogDerivationsTestAccess.registryFileParents()
+    expect(
+      await rebuildFilesSelectPolicy({ parents: older, catalogVersions: { [APP]: "3.5.0" } }),
+    ).toBe("superseded")
+    expect((await livePolicy())?.qual).toBe(before?.qual)
+  })
+
   it("the leader re-applies the catalog's policy when it takes the lease", async () => {
     await rebuildFilesSelectPolicy()
     await applyFilesSelectPolicyStatements([

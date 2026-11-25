@@ -12,7 +12,7 @@
 import { eq, sql } from "drizzle-orm"
 import type { ProvisioningConfig } from "~/cli/config/schema"
 import type { Provisioner, ProvisionPlan, ProvisionResult } from "~/cli/provisioners/types"
-import { organizations } from "~/db/schema/kernel"
+import { type OrgClass, organizations } from "~/db/schema/kernel"
 import { bumpOrgPermissionVersions } from "~/modules/auth/admin-second-factor"
 import { invalidateAuthCache } from "~/modules/auth/auth-state"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
@@ -23,7 +23,12 @@ interface OrgSection {
   created: boolean
 }
 
-export const orgProvisioner: Provisioner<ProvisioningConfig> = {
+/**
+ * The org provisioner. `orgClass`: the class an org it creates gets, for the
+ * demo seeder; a config file never says it, so `liaison config apply` makes
+ * `standard` orgs and leaves an existing org's class alone.
+ */
+export const orgProvisionerOf = (orgClass?: OrgClass): Provisioner<ProvisioningConfig> => ({
   key: "org",
 
   async plan(ctx, config): Promise<ProvisionPlan> {
@@ -51,6 +56,7 @@ export const orgProvisioner: Provisioner<ProvisioningConfig> = {
       timezone,
       locale: defaultLocale,
       credits,
+      ...(orgClass !== undefined ? { class: orgClass } : {}),
     })
     // Make the org available to every downstream provisioner's DB seam.
     ctx.orgId = orgId
@@ -98,4 +104,6 @@ export const orgProvisioner: Provisioner<ProvisioningConfig> = {
       ...(unchanged.length > 0 ? { unchanged } : {}),
     }
   },
-}
+})
+
+export const orgProvisioner: Provisioner<ProvisioningConfig> = orgProvisionerOf()

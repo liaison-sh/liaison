@@ -89,12 +89,19 @@ afterAll(async () => {
 
 describe("messages: an exact-only stamp entry is read only by its exact grant", () => {
   it("a person holding `*` reads every message but those stamped with an exact-only scope", async () => {
-    expect(await readable(["*"])).toEqual(["open", "projects"])
+    // A bare marker (`clevel`) is covered by `*` again since 0354: earlier stamps carry them.
+    expect(await readable(["*"])).toEqual(["marker", "open", "projects"])
   })
 
   it("the exact grant reads the margin message; `*` with it reads the rest too", async () => {
     expect(await readable([MARGIN])).toEqual(["margin", "open"])
-    expect(await readable(["*", MARGIN])).toEqual(["margin", "margin+projects", "open", "projects"])
+    expect(await readable(["*", MARGIN])).toEqual([
+      "margin",
+      "margin+projects",
+      "marker",
+      "open",
+      "projects",
+    ])
     expect(await readable(["*", MARGIN, "clevel"])).toEqual([
       "margin",
       "margin+projects",
@@ -119,7 +126,7 @@ describe("messages: an exact-only stamp entry is read only by its exact grant", 
   })
 })
 
-describe("kernel.scope_is_exact_only answers as isExactOnlyScope", () => {
+describe("kernel.scope_is_exact_only answers for the listed scopes only (0354)", () => {
   it("on every listed scope, bare markers, the wildcard and ordinary app scopes", async () => {
     const samples = [
       ...EXACT_ONLY_SCOPES,
@@ -137,7 +144,12 @@ describe("kernel.scope_is_exact_only answers as isExactOnlyScope", () => {
     const rows = await sql<{ s: string; exact: boolean }[]>`
       SELECT s, kernel.scope_is_exact_only(s) AS exact FROM unnest(${samples}::text[]) AS u(s)`
     for (const row of rows)
-      expect({ s: row.s, exact: row.exact }).toEqual({ s: row.s, exact: isExactOnlyScope(row.s) })
+      expect({ s: row.s, exact: row.exact }).toEqual({
+        s: row.s,
+        exact: EXACT_ONLY_SCOPES.has(row.s),
+      })
+    // The app's own check stays stricter on a bare marker (grants and ceilings).
+    expect(isExactOnlyScope("clevel")).toBe(true)
   })
 })
 
@@ -155,7 +167,7 @@ describe("the other stamp readers hold an exact-only scope only by its exact gra
     expect(await held(["*"], MARGIN)).toBe(false)
     expect(await held(["projects:*"], MARGIN)).toBe(false)
     expect(await held([MARGIN], MARGIN)).toBe(true)
-    expect(await held(["*"], "clevel")).toBe(false)
+    expect(await held(["*"], "clevel")).toBe(true)
     expect(await held(["clevel"], "clevel")).toBe(true)
     expect(await held(["*"], "projects:projects:read")).toBe(true)
     expect(await held(["projects:*"], "projects:projects:read")).toBe(true)
@@ -176,7 +188,7 @@ describe("the other stamp readers hold an exact-only scope only by its exact gra
         (7, ARRAY['*'], '[]'::jsonb)
       ) AS c(n, caller, ceiling)
       ORDER BY n`
-    expect(rows.map((r) => r.ok)).toEqual([true, false, true, true, false, false, true])
+    expect(rows.map((r) => r.ok)).toEqual([true, false, true, true, true, false, true])
   })
 
   it("the secret request, app log and approval policies read their stamps through it", async () => {

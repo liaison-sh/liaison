@@ -3,7 +3,8 @@
 // emptied = null (ungrouped), and the org's existing groups offered as
 // suggestions.
 import { fireEvent, render, screen } from "@solidjs/testing-library"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { setEnabledOrgFeatures } from "~/framework/org-features"
 
 const state = vi.hoisted(() => ({
   updateProjectFields: vi.fn(async (..._args: unknown[]) => ({})),
@@ -119,6 +120,17 @@ describe("ProjectEditForm client", () => {
     state.updateProjectFields.mockClear()
     state.projects = []
     state.archived = []
+    // The Client field is a company: shown while an admin has turned Companies on.
+    setEnabledOrgFeatures([{ app: "contacts", feature: "companies" }])
+  })
+  afterEach(() => setEnabledOrgFeatures([]))
+
+  it("has no Client field while Companies is off for the workspace", () => {
+    setEnabledOrgFeatures([])
+    render(() => (
+      <ProjectEditForm api={{} as ApiClient} project={project(null)} onDone={() => {}} />
+    ))
+    expect(screen.queryByTestId("project-edit.client-search")).toBeNull()
   })
 
   it("the Client field sets and clears the project's company", async () => {

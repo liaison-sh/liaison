@@ -176,6 +176,7 @@ Type `object[]`, optional.
 | `apps[].providers.<key>.enabled` | `boolean` | yes |  |  |
 | `apps[].config` | `map of unknown` | no |  | Non-secret app config keys (`kernel.apps.config`), written through the same allowlist as `PUT /api/apps/:app/config/:key`: each key must be declared in the app manifest's `configKeys`. A null value clears the key. |
 | `apps[].settings` | `map of unknown` | no |  | Org settings of the app's settings page (`organizations.settings.<app>`), by field path, written like `PATCH /api/apps/:app/settings/org`: each path must be an org field the manifest declares, and the value must pass its type. |
+| `apps[].features` | `map of boolean` | no |  | Switches inside the app (`kernel.org_app_features`), by feature name, written like Settings &gt; Apps &gt; &lt;app&gt; &gt; Features: each must be a feature the app declares an admin switches, and the actor must hold its adminScope. A feature left out is left as it is. |
 | `apps[].domainAccess` | `unknown` | no |  | Refused with where it went (the database app's own provisioning), so a file that still carries it fails instead of being silently ignored. |
 | `apps[].provision` | `map of unknown` | no |  | The app's own setup as data (manifest `provisioning`): validated against the schema the app declares and applied by the app's provisioning handler. |
 

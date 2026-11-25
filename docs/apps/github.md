@@ -5,6 +5,10 @@ description: "Connect a GitHub organization or user read-only so agents can read
 
 GitHub gives your agents read-only access to one GitHub organization or user: repositories, commits, pull requests, issues, milestones, labels, releases, tags, files and search. Nothing is ever written to GitHub.
 
+## Install GitHub
+
+GitHub is not installed in a workspace until an admin installs it: an existing workspace that upgrades does not get it. Open **Settings › App store**, find **GitHub** and choose **Install** (needs `kernel:apps:admin`), or list it in a config file: `apps: [{ name: github, enable: true }]` with `liaison config apply` ([the provisioning CLI](../provisioning-cli.md)). Its page, **Settings › Apps › GitHub**, appears once it is installed.
+
 ## Connect GitHub
 
 GitHub connects with a token you paste, not with OAuth.

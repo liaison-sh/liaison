@@ -55,6 +55,11 @@ import {
   primeOrgApps,
   unavailableAppsFor,
 } from "~/modules/apps/org-apps"
+import {
+  listAdminFeatures,
+  OrgFeatureError,
+  setAdminOrgAppFeature,
+} from "~/modules/apps/org-features"
 import { restToolCall } from "~/modules/apps/rest-tool-call"
 import { boundHost, signUiBundleToken } from "~/modules/apps/ui-bundle-token"
 import { invokeAppExport, toHttpException } from "~/modules/export/invoke-export"
@@ -639,6 +644,51 @@ appRoutes.put("/:appName/config/:key", requireScope("kernel:apps:admin"), async 
     source: "api",
   })
   return success(c, { key, value: result.value, changed: result.changed })
+})
+
+// GET /api/apps/:appName/features — the switches an admin turns on inside the app
+// (declared `features`, the derived ones aside), whether each is on, and whether this
+// caller may change it (the feature's declared `adminScope`).
+appRoutes.get("/:appName/features", async (c) => {
+  const orgId = c.get("orgId")
+  await ensureAppsForOrg(orgId)
+  const appName = c.req.param("appName")
+  const listed = await listAdminFeatures(orgId, appName)
+  if (listed === null) throw new HTTPException(404, { message: `App "${appName}" not found` })
+  const scopes = (c.get("scopes") as string[] | undefined) ?? []
+  return success(
+    c,
+    listed.map((f) => ({ ...f, canChange: hasScope(f.adminScope, scopes) })),
+  )
+})
+
+// PUT /api/apps/:appName/features/:feature  body { enabled }
+// An admin turns a feature of the app on or off for the workspace. The feature's
+// declared `adminScope` is checked by the writer; a derived feature is refused.
+appRoutes.put("/:appName/features/:feature", async (c) => {
+  const orgId = c.get("orgId")
+  await ensureAppsForOrg(orgId)
+  const { appName, feature } = c.req.param()
+  const body = (await c.req.json().catch(() => null)) as unknown
+  const enabled =
+    body && typeof body === "object" && "enabled" in body ? Reflect.get(body, "enabled") : undefined
+  if (typeof enabled !== "boolean") {
+    throw new HTTPException(400, { message: "Body must be { enabled: boolean }" })
+  }
+  try {
+    const { changed } = await setAdminOrgAppFeature({
+      orgId,
+      app: appName,
+      feature,
+      enabled,
+      actor: { userId: c.get("userId") ?? null, scopes: (c.get("scopes") as string[]) ?? [] },
+    })
+    return success(c, { app: appName, feature, enabled, changed })
+  } catch (err) {
+    if (err instanceof OrgFeatureError)
+      throw new HTTPException(err.status, { message: err.message })
+    throw err
+  }
 })
 
 // GET /api/apps/:appName/views/detail/:entity/:id/external-link

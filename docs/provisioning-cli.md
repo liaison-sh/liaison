@@ -715,6 +715,27 @@ it under `config`) or saved by the app's own tools are a usage error (exit `2`)
 before anything is written. Through the agent's `config_apps` tool, the person
 who approves needs the field's section admin scope as well.
 
+An app entry also takes `features`: switches inside the app that are off in
+every workspace until an admin turns them on, by name. The ones an admin
+switches today: `companies` on `contacts`, `deals` and `client_reports` on
+`projects`, `recurring` on `invoicing`, and `corporateTemplates` on
+`agreements`:
+
+```yaml
+apps:
+  - name: projects
+    enable: true
+    features:
+      deals: true
+      client_reports: false
+```
+
+A feature left out is left as it is. Each one is reported `changed` or
+`unchanged` (`apps.projects.features.deals`). An unknown name, or a feature the
+app derives from its own data (`time_budgets` on `projects`, turned on per
+project), is a usage error before anything is written. The actor needs
+`kernel:apps:admin`; the agent's `config_apps` tool takes the same `features`.
+
 The `database` app sets up who may run each catalog domain's curated reads
 (see [Restrict reports by domain](database-connector.md#restrict-reports-by-domain))
 through its `provision` block. Roles are named, people are given by email:

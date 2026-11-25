@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.39.0",
+  "version": "0.40.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1954,13 +1954,22 @@
   "approvalRoute": {"recurring_run": "approval_route_read"},
   "sendGuardProviders": {"invoicing:document": {"tool": "document_send_state", "serviceMessage": true, "pill": {"label": "Invoicing: payment reminder"}}},
   "activitySources": [{"tool": "activity_read", "scope": "invoicing:documents:read", "label": "Invoices", "filterKey": "invoicing"}],
+  "features": {
+    "recurring": {
+      "adminScope": "kernel:apps:admin",
+      "labelKey": "kernel.appFeatures.recurring.label",
+      "descriptionKey": "kernel.appFeatures.recurring.description",
+      "offMessageKey": "kernel.appFeatures.recurring.offMessage",
+      "offNextKey": "kernel.appFeatures.recurring.offNext"
+    }
+  },
   "tools": {
-    "recurring_run_get": {"description": "Read a month-end run: its state, issue and last days, and each row with its draft_id, amounts, account manager, latest change and flags. Omit run_id for the latest run.", "searchKeywords": ["mensuel", "récurrent", "month-end", "lot", "batch"], "requiredScopes": ["invoicing:documents:read"], "handler": "recurringRunGetHandler", "readOnly": true, "taintSource": true, "params": {"type": "object", "properties": {"run_id": {"type": "string"}}}},
-    "recurring_run_issue": {"summarizer": "summarizeRecurringRunIssue", "description": "Stage a month-end run's card when it has none: approving records each row and takes no number; the invoices issue on the issue day from 08:00. A card already waiting is decided by a person on it.", "searchKeywords": ["mensuel", "approuver", "récurrent", "month-end"], "requiredScopes": ["invoicing:documents:write"], "handler": "recurringRunIssueHandler", "preflight": "recurringRunIssuePreflightHandler", "timeoutMs": 30000, "gated": true, "noAutoApprove": true, "approvalImpact": "external", "approvalDedupeKeyParam": "run_id", "editableFields": [], "editWith": ["drafts_update", "drafts_create", "drafts_discard"], "writesToTable": "app_invoicing.recurring_runs", "params": {"type": "object", "properties": {"run_id": {"type": "string"}, "items": {"type": "array", "items": {"type": "object", "properties": {"item_id": {"type": "string"}, "document_id": {"type": "string"}, "content_hash": {"type": "string"}, "total_minor": {"type": "string"}, "customer": {"type": "string"}, "currency": {"type": "string"}}, "required": ["item_id", "document_id", "content_hash", "total_minor"]}}, "period": {"type": "string"}, "late": {"type": "boolean"}, "last_day": {"type": "string"}}, "required": ["run_id"]}, "approvalCard": {"summary": "Issue the month-end run {{params.run_id}}"}},
-    "recurring_run_unapprove": {"summarizer": "summarizeRecurringRunUnapprove", "description": "Undo a month-end run's approval before its first number: the run returns to drafted, edits are kept, and a new card asks again.", "searchKeywords": ["annuler", "mensuel", "récurrent", "undo"], "requiredScopes": ["invoicing:documents:write"], "handler": "recurringRunUnapproveHandler", "preflight": "recurringRunUnapprovePreflightHandler", "timeoutMs": 30000, "conditionalGate": true, "externalEffect": true, "approvalImpact": "external", "writesToTable": "app_invoicing.recurring_runs", "params": {"type": "object", "properties": {"run_id": {"type": "string"}}, "required": ["run_id"]}, "approvalCard": {"summary": "Undo the approval of month-end run {{params.run_id}}"}},
+    "recurring_run_get": {"feature": "recurring", "description": "Read a month-end run: its state, issue and last days, and each row with its draft_id, amounts, account manager, latest change and flags. Omit run_id for the latest run.", "searchKeywords": ["mensuel", "récurrent", "month-end", "lot", "batch"], "requiredScopes": ["invoicing:documents:read"], "handler": "recurringRunGetHandler", "readOnly": true, "taintSource": true, "params": {"type": "object", "properties": {"run_id": {"type": "string"}}}},
+    "recurring_run_issue": {"feature": "recurring", "summarizer": "summarizeRecurringRunIssue", "description": "Stage a month-end run's card when it has none: approving records each row and takes no number; the invoices issue on the issue day from 08:00. A card already waiting is decided by a person on it.", "searchKeywords": ["mensuel", "approuver", "récurrent", "month-end"], "requiredScopes": ["invoicing:documents:write"], "handler": "recurringRunIssueHandler", "preflight": "recurringRunIssuePreflightHandler", "timeoutMs": 30000, "gated": true, "noAutoApprove": true, "approvalImpact": "external", "approvalDedupeKeyParam": "run_id", "editableFields": [], "editWith": ["drafts_update", "drafts_create", "drafts_discard"], "writesToTable": "app_invoicing.recurring_runs", "params": {"type": "object", "properties": {"run_id": {"type": "string"}, "items": {"type": "array", "items": {"type": "object", "properties": {"item_id": {"type": "string"}, "document_id": {"type": "string"}, "content_hash": {"type": "string"}, "total_minor": {"type": "string"}, "customer": {"type": "string"}, "currency": {"type": "string"}}, "required": ["item_id", "document_id", "content_hash", "total_minor"]}}, "period": {"type": "string"}, "late": {"type": "boolean"}, "last_day": {"type": "string"}}, "required": ["run_id"]}, "approvalCard": {"summary": "Issue the month-end run {{params.run_id}}"}},
+    "recurring_run_unapprove": {"feature": "recurring", "summarizer": "summarizeRecurringRunUnapprove", "description": "Undo a month-end run's approval before its first number: the run returns to drafted, edits are kept, and a new card asks again.", "searchKeywords": ["annuler", "mensuel", "récurrent", "undo"], "requiredScopes": ["invoicing:documents:write"], "handler": "recurringRunUnapproveHandler", "preflight": "recurringRunUnapprovePreflightHandler", "timeoutMs": 30000, "conditionalGate": true, "externalEffect": true, "approvalImpact": "external", "writesToTable": "app_invoicing.recurring_runs", "params": {"type": "object", "properties": {"run_id": {"type": "string"}}, "required": ["run_id"]}, "approvalCard": {"summary": "Undo the approval of month-end run {{params.run_id}}"}},
     "approval_route_read": {"description": "Who a month-end run's card is for: its account manager when every row has the same one. Read by the kernel when the card is staged.", "readOnly": true, "agentVisible": false, "timeoutMs": 5000, "requiredScopes": ["invoicing:documents:read"], "handler": "approvalRouteReadHandler", "params": {"type": "object", "properties": {"entityType": {"type": "string"}, "entityId": {"type": "string"}}, "required": ["entityType", "entityId"]}},
-    "recurring_draft_write": {"description": "Write one month-end run draft and its lines in one commit. Called by the run's draft job only.", "requiredScopes": ["invoicing:documents:write"], "handler": "recurringDraftWriteHandler", "agentVisible": false, "trustBoundary": "internal", "timeoutMs": 20000, "writesToTable": "app_invoicing.documents", "params": {"type": "object", "properties": {"document": {"type": "object"}, "lines": {"type": "array", "maxItems": 500, "items": {"type": "object"}}}, "required": ["document", "lines"], "additionalProperties": false}},
-    "recurring_item_issue": {"summarizer": "summarizeRecurringItemIssue", "description": "Issue one approved row of a month-end run. Called by the run's issue job only.", "requiredScopes": ["invoicing:documents:write"], "handler": "recurringItemIssueHandler", "agentVisible": false, "trustBoundary": "internal", "timeoutMs": 20000, "writesToTable": "app_invoicing.documents", "params": {"type": "object", "properties": {"item_id": {"type": "string"}}, "required": ["item_id"], "additionalProperties": false}},
+    "recurring_draft_write": {"feature": "recurring", "description": "Write one month-end run draft and its lines in one commit. Called by the run's draft job only.", "requiredScopes": ["invoicing:documents:write"], "handler": "recurringDraftWriteHandler", "agentVisible": false, "trustBoundary": "internal", "timeoutMs": 20000, "writesToTable": "app_invoicing.documents", "params": {"type": "object", "properties": {"document": {"type": "object"}, "lines": {"type": "array", "maxItems": 500, "items": {"type": "object"}}}, "required": ["document", "lines"], "additionalProperties": false}},
+    "recurring_item_issue": {"feature": "recurring", "summarizer": "summarizeRecurringItemIssue", "description": "Issue one approved row of a month-end run. Called by the run's issue job only.", "requiredScopes": ["invoicing:documents:write"], "handler": "recurringItemIssueHandler", "agentVisible": false, "trustBoundary": "internal", "timeoutMs": 20000, "writesToTable": "app_invoicing.documents", "params": {"type": "object", "properties": {"item_id": {"type": "string"}}, "required": ["item_id"], "additionalProperties": false}},
     "activity_read": {"description": "A company's or a contact's documents issued, paid and credited, and the recurring schedules that bill them, newest first, for their timeline. Never drafts. Read by the kernel.", "readOnly": true, "agentVisible": false, "timeoutMs": 2000, "requiredScopes": ["invoicing:documents:read"], "handler": "activityReadHandler", "params": {"type": "object", "properties": {"contactIds": {"type": "array", "items": {"type": "string"}}, "companyId": {"type": ["string", "null"]}, "dealIds": {"type": "array", "items": {"type": "string"}}, "before": {"type": ["object", "null"]}, "limit": {"type": "integer"}, "prefix": {"type": "string"}}}},
     "einvoicing_settings_values": {
       "description": "The settings page's own read of the four e-invoicing fields (platform, cut-over date, send and booking switches), in the shape einvoicing_settings_set takes back. Not for agents (einvoicing_settings_get is).",
@@ -2624,6 +2633,7 @@
       }
     },
     "billing_plan_get": {
+      "feature": "recurring",
       "description": "A project's billing plan: the steps its quote is invoiced in (advances, milestones, the final), each with its amount, its task and the invoice it made.",
       "searchKeywords": ["échéancier", "jalon", "acompte", "plan", "milestone"],
       "requiredScopes": ["invoicing:documents:read"],
@@ -2658,6 +2668,7 @@
       }
     },
     "billing_plan_set": {
+      "feature": "recurring",
       "description": "Save a fixed-price project's billing plan from its quote: advances, milestones (each tied to its task) and the final. Milestone and final amounts must add up to the quote's total excl. VAT; an advance does not count, it is deducted from the final. Refused on a project billed by the hour or the day.",
       "searchKeywords": ["échéancier", "jalon", "acompte", "solde", "plan", "milestone"],
       "requiredScopes": ["invoicing:documents:write"],
@@ -2714,6 +2725,7 @@
       }
     },
     "billing_step_add": {
+      "feature": "recurring",
       "description": "Add one milestone to a project's billing plan for a change request the client accepted, billed when its task is done; once per change request. Called by the agreements app only, as the change request's sender.",
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "billingStepAddHandler",
@@ -2737,6 +2749,7 @@
       }
     },
     "retainer_terms_renew": {
+      "feature": "recurring",
       "description": "Renew a project's retainer from a signed agreement: its included hours, monthly fee and overage rate apply from the agreement's first month (at the earliest the next), the months before keep the old terms. Once per agreement. Called by the agreements app only, as the person who approved the agreement's send.",
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "retainerTermsRenewHandler",
@@ -2760,6 +2773,7 @@
       }
     },
     "milestone_draft_create": {
+      "feature": "recurring",
       "description": "Draft the invoice of a done milestone, from its task only: the amount comes from the billing plan, never from hours. Refused unless the task is done and flagged a milestone. The final deducts the project's advances by itself. Takes no number; issuing waits on its approval.",
       "searchKeywords": ["jalon", "solde", "milestone"],
       "requiredScopes": ["invoicing:documents:write"],
@@ -2778,6 +2792,7 @@
       }
     },
     "milestone_draft_preview": {
+      "feature": "recurring",
       "description": "What drafting a milestone's invoice would make (step, amount excluding VAT, customer), for its approval card. Called by the approval card only.",
       "requiredScopes": ["invoicing:documents:read"],
       "handler": "milestoneDraftPreviewHandler",
@@ -2792,6 +2807,7 @@
       }
     },
     "advance_draft_create": {
+      "feature": "recurring",
       "description": "Draft an advance invoice (acompte) for a project: an ordinary invoice in the normal series, with VAT, from a plan step or an amount received. The final invoice deducts it. Takes no number; issuing waits on its approval.",
       "searchKeywords": ["acompte", "advance", "deposit"],
       "requiredScopes": ["invoicing:documents:write"],
@@ -2813,6 +2829,7 @@
       }
     },
     "advance_refund_prepare": {
+      "feature": "recurring",
       "description": "Give an advance invoice back when its project stops before the final: a credit note citing the advance, capped at what remains of it. Refused while a final invoice deducts the advance.",
       "searchKeywords": ["acompte"],
       "requiredScopes": ["invoicing:documents:write"],
@@ -3285,6 +3302,7 @@
       "readOnly": true
     },
     "recurring_schedule_create": {
+      "feature": "recurring",
       "summarizer": "summarizeRecurringScheduleCreate",
       "summarizerContext": { "tool": "settings_issuer_profile_list", "params": {} },
       "description": "Save a recurring invoice schedule for one customer: cadence, billing day and lines. It drafts each period for review and never issues by itself. An agent's call waits for a person's approval.",
@@ -3339,6 +3357,7 @@
       "referenceableOutputs": ["id"]
     },
     "recurring_schedule_update": {
+      "feature": "recurring",
       "summarizer": "summarizeRecurringScheduleUpdate",
       "description": "Change a recurring schedule, resume a paused one (status active), end it (status ended) or turn issue_mode auto on or off. Drafts already made keep their amounts; a retainer's new terms apply from next month. Always waits for a person's approval.",
       "searchKeywords": ["récurrent", "abonnement", "modifier", "arrêter", "recurring", "tarif", "prix", "montant", "amount", "résilier", "contrat", "contract", "cancel", "annuler"],
@@ -3395,6 +3414,7 @@
       "approvalCard": { "summary": "Change recurring schedule {{params.id}}" }
     },
     "recurring_schedule_pause": {
+      "feature": "recurring",
       "summarizer": "summarizeRecurringSchedulePause",
       "description": "Pause a recurring schedule: it drafts nothing while paused, and its row in a run not yet issued is left out. With until it resumes on that date; the days inside the pause are not billed afterwards. Pausing a paused schedule changes nothing.",
       "searchKeywords": ["pause", "suspendre", "récurrent", "abonnement"],
@@ -3561,6 +3581,7 @@
       "approvalCard": { "summary": "Link this Stripe payment to an invoice" }
     },
     "recurring_list": {
+      "feature": "recurring",
       "description": "List recurring schedules with their next issue day and draft day. A retainer shows the terms of retainer_terms_month. Filter by status or client company; page with cursor.",
       "searchKeywords": ["récurrent", "abonnements", "échéancier", "recurring"],
       "requiredScopes": ["invoicing:documents:read"],
@@ -8027,6 +8048,7 @@
         "referenceable": false
       },
       "billing_plan": {
+        "feature": "recurring",
         "entity": "projects:project",
         "component": "InvoicingBillingPlan",
         "sidebar": "InvoicingSidebar",
@@ -8074,6 +8096,7 @@
         "referenceable": false
       },
       "recurring": {
+        "feature": "recurring",
         "component": "InvoicingRecurringList",
         "sidebar": "InvoicingSidebar",
         "icon": "InvoicingAppIcon",
@@ -8083,6 +8106,7 @@
         "referenceable": false
       },
       "schedule": {
+        "feature": "recurring",
         "entity": "recurring_schedule",
         "component": "InvoicingScheduleEditor",
         "sidebar": "InvoicingSidebar",
@@ -8093,6 +8117,7 @@
         "referenceable": false
       },
       "recurring_run": {
+        "feature": "recurring",
         "entity": "recurring_run",
         "component": "InvoicingRunDetail",
         "sidebar": "InvoicingSidebar",

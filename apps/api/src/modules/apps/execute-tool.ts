@@ -5118,7 +5118,11 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // feature's own words. Before anything can park an approval for it. A row still being
   // recomputed from a write that just committed (the first project to turn the feature on, then
   // a call that uses it) is waited for once, so the call sees what that write made.
+  // A call another app declared in its `cross_app_calls` is that app's plumbing (agreements
+  // finding a client's company, Stripe naming open deals): the switch hides a surface from
+  // people and agents, it does not break an app an admin turned on.
   if (
+    !approvedCrossAppCall &&
     isFeatureOffForTool(opts.orgId, tool) &&
     !((await settleFeatureRecomputes(opts.orgId)) && !isFeatureOffForTool(opts.orgId, tool))
   ) {

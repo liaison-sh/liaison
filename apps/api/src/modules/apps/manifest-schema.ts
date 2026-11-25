@@ -1005,8 +1005,13 @@ export const appManifestJsonSchema = {
         properties: {
           adminScope: { type: "string", minLength: 1 },
           labelKey: { type: "string", minLength: 1 },
+          // One sentence under the switch in Settings > Apps.
+          descriptionKey: { type: "string", minLength: 1 },
           offMessageKey: { type: "string", minLength: 1 },
           offNextKey: { type: "string", minLength: 1 },
+          // The app writes the row from its own data (a project's switch): an admin
+          // switch, `config apply` and the features route never offer it.
+          derived: { type: "boolean" },
         },
         required: ["adminScope", "labelKey"],
         additionalProperties: false,

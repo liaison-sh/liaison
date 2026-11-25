@@ -90,6 +90,7 @@ import { studioScenarioStart } from "~/modules/demo/worlds/studio/scenario-start
 import { runAsSeed } from "~/modules/notifications/seeded"
 import { joinPendingApprovals } from "~/seed/factories/people/membership"
 import { demoWorldPack, findDemoWorldPack } from "~/seed/worlds"
+import { type DemoFeatureSwitch, turnOnSeedFeatures } from "~/seed/worlds/services-features"
 import { DEMO_APPS, type DemoSeedPlan, demoSeedPlan } from "./demo-apps"
 import { replaceSeededDemoOrg } from "./replace-demo-org"
 import { type SeedDemoAccountsResult, seedDemoAccounts } from "./seed-accounts"
@@ -252,6 +253,18 @@ async function applyAppPlan(
   return [...off]
 }
 
+/** Turn on the world's features of the apps its plan keeps On. */
+function applyFeaturePlan(
+  orgId: string,
+  features: readonly DemoFeatureSwitch[],
+  apps: readonly string[],
+): Promise<string[]> {
+  return turnOnSeedFeatures(
+    orgId,
+    features.filter((f) => apps.includes(f.app)),
+  )
+}
+
 /**
  * Fit a POOLED workspace to the needs of the visitor who claims it.
  *
@@ -395,6 +408,12 @@ async function seedDemoWorldLayers(opts: SeedDemoWorldOptions): Promise<SeedDemo
       `world: cleared ${rows} rows across ${Object.keys(cleared).length} tables before re-seeding`,
     )
   }
+
+  // The switches inside apps the world shows (companies, deals, client reports, recurring
+  // billing): off in every workspace until an admin turns them on, so the world turns them on
+  // here, after the reset (which clears them) and before its layers write their rows.
+  const featuresOn = await applyFeaturePlan(org.orgId, pack.features ?? [], plan.apps)
+  if (featuresOn.length > 0) log(`world: turned on ${featuresOn.join(", ")}`)
 
   let support: SeedDemoSupportResult | null = null
   try {

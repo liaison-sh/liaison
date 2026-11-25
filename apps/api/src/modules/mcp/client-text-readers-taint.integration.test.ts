@@ -6,6 +6,7 @@
 // read from an imported or uploaded PDF (agreement_passage_get). Each read marks the turn in
 // chat and over MCP, so a later outbound call parks. The tools are registered with the marks
 // they ship with (the kernel's own registration, the manifests' keys), so dropping one fails.
+
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -28,6 +29,7 @@ import {
 } from "~/modules/mcp/test-helpers"
 import { handleToolCall, OUTSIDE_TEXT_KEY, type ToolCallCtx } from "~/modules/mcp/tool-call"
 import { registerPortalTools } from "~/modules/portal/tools"
+import { turnOnOrgFeatures } from "~/tests/helpers/org-features"
 
 type Shipped = {
   readOnly?: boolean
@@ -151,6 +153,7 @@ describe("reads of a client's own words mark the turn", () => {
   async function seeded() {
     const seed = await seedOrgWithTicketsApp()
     orgs.push(seed.orgId)
+    await turnOnOrgFeatures(seed.orgId)
     const conn = await seedMcpConnection({
       orgId: seed.orgId,
       userId: seed.ownerId,

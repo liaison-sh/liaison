@@ -271,16 +271,28 @@ async function loadDraftCount(): Promise<number> {
   }
 }
 
-/** Schedules that bill (active), through the app's own recurring_list, the same the agent reads. */
-async function loadScheduleCount(): Promise<number> {
+/** A refusal because the workspace's recurring billing is off (`feature_off`, HTTP 409). */
+export function isFeatureOffRefusal(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false
+  const e = err as { status?: unknown; code?: unknown; error?: { code?: unknown } }
+  return e.code === "feature_off" || e.error?.code === "feature_off"
+}
+
+/**
+ * Schedules that bill (active), through the app's own recurring_list, the same the agent
+ * reads. Null: recurring billing is off for the workspace (an admin turns it on in
+ * Settings > Apps > Invoicing), so the sidebar shows no Recurring section.
+ */
+export async function loadScheduleCount(): Promise<number | null> {
   try {
     const r = await app.invokeTool<{ rows?: unknown[] }>("recurring_list", {
       status: "active",
       limit: 200,
     })
+    if (r && isFeatureOffRefusal(r)) return null
     return r?.rows?.length ?? 0
-  } catch {
-    return 0
+  } catch (err) {
+    return isFeatureOffRefusal(err) ? null : 0
   }
 }
 
@@ -408,7 +420,8 @@ export const InvoicingSidebar: Component = () => {
   const pathname = usePathname()
   const [pendingApproval, setPendingApproval] = createSignal(0)
   const [deferredCount, setDeferredCount] = createSignal(0)
-  const [scheduleCount, setScheduleCount] = createSignal(0)
+  // Null while recurring billing is off for the workspace: no Recurring section.
+  const [scheduleCount, setScheduleCount] = createSignal<number | null>(null)
   const [draftCount, setDraftCount] = createSignal(0)
   // Writes (a new document, the approval queue, the readiness fixes) are offered
   // only to a viewer holding invoicing:documents:write; a read-only member sees
@@ -491,12 +504,19 @@ export const InvoicingSidebar: Component = () => {
           ))}
         </ul>
 
-        <SectionHeader label={tr("Recurring")} icon={ClockIcon} />
-        <ul class="flex flex-col gap-0.5">
-          {RECURRING.map((l) => (
-            <Row href={l.href} label={l.label} pathname={pathname()} badge={scheduleCount()} />
-          ))}
-        </ul>
+        <Show when={scheduleCount() !== null}>
+          <SectionHeader label={tr("Recurring")} icon={ClockIcon} />
+          <ul class="flex flex-col gap-0.5" data-testid="invoicing-sidebar-recurring">
+            {RECURRING.map((l) => (
+              <Row
+                href={l.href}
+                label={l.label}
+                pathname={pathname()}
+                badge={scheduleCount() ?? undefined}
+              />
+            ))}
+          </ul>
+        </Show>
 
         <SectionHeader label={tr("Views")} icon={ChartIcon} />
         <ul class="flex flex-col gap-0.5">

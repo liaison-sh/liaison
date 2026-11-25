@@ -5,6 +5,10 @@ description: "Open a company in Contacts to see its people, its open deal, and o
 
 A company groups the people you work with there. Its page shows what is going on with all of them in one place. This page shows how to find a company, what its page holds, who looks after it, and how the person's own page fits in.
 
+## Turn companies on
+
+Companies are off in a workspace until an admin turns them on: **Settings › Apps › Contacts**, under **Features**, switch on **Companies** (needs `kernel:apps:admin`). In a config file: `apps: [{ name: contacts, enable: true, features: { companies: true } }]` ([Switch an app's features](../admin/settings.md#switch-an-apps-features)). Off, Contacts shows people only, the company pages and the company tools of agents are gone, and the client portal (invited from a company page) cannot be offered. Turning it off again deletes no company.
+
 ## Find a company
 
 1. Click **Contacts** in the activity bar.

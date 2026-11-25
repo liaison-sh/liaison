@@ -3,6 +3,7 @@
 import { Plus, Search, Users } from "lucide-solid"
 import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js"
 import { resolveRegisteredTabType } from "~/framework/app-registry"
+import { isFeatureOff } from "~/framework/org-features"
 import { cn } from "~/lib/cn"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
@@ -371,32 +372,36 @@ export const ContactsModeNav: Component = () => {
         ? "bg-surface-active font-medium text-text"
         : "text-text-secondary hover:bg-surface-hover hover:text-text",
     )
+  // Companies are a feature an admin turns on (Settings > Apps > Contacts): off, there is
+  // one directory and no switch between two.
   return (
-    <nav class="px-1.5 pb-2" data-testid="contacts-sidebar-modes">
-      <button
-        type="button"
-        data-testid="contacts-sidebar-mode-people"
-        aria-current={onCompanies() ? undefined : "page"}
-        class={row(!onCompanies())}
-        onClick={() => openTab({ type: "contact-list", entityId: "list", label: "Contacts" })}
-      >
-        <span class="min-w-0 flex-1 truncate">{i18n.t("contacts.companies.people")}</span>
-      </button>
-      <button
-        type="button"
-        data-testid="contacts-sidebar-mode-companies"
-        aria-current={onCompanies() ? "page" : undefined}
-        class={row(onCompanies())}
-        onClick={openCompanyList}
-      >
-        <span class="min-w-0 flex-1 truncate">{i18n.t("contacts.companies.title")}</span>
-        <Show when={companiesLoaded()}>
-          <span class="font-mono text-[10.5px] tabular-nums text-text-tertiary">
-            {companiesTotal()}
-          </span>
-        </Show>
-      </button>
-    </nav>
+    <Show when={!isFeatureOff("contacts", "companies")}>
+      <nav class="px-1.5 pb-2" data-testid="contacts-sidebar-modes">
+        <button
+          type="button"
+          data-testid="contacts-sidebar-mode-people"
+          aria-current={onCompanies() ? undefined : "page"}
+          class={row(!onCompanies())}
+          onClick={() => openTab({ type: "contact-list", entityId: "list", label: "Contacts" })}
+        >
+          <span class="min-w-0 flex-1 truncate">{i18n.t("contacts.companies.people")}</span>
+        </button>
+        <button
+          type="button"
+          data-testid="contacts-sidebar-mode-companies"
+          aria-current={onCompanies() ? "page" : undefined}
+          class={row(onCompanies())}
+          onClick={openCompanyList}
+        >
+          <span class="min-w-0 flex-1 truncate">{i18n.t("contacts.companies.title")}</span>
+          <Show when={companiesLoaded()}>
+            <span class="font-mono text-[10.5px] tabular-nums text-text-tertiary">
+              {companiesTotal()}
+            </span>
+          </Show>
+        </button>
+      </nav>
+    </Show>
   )
 }
 

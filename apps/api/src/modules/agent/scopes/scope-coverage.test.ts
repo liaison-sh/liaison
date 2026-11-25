@@ -73,7 +73,7 @@ describe("exact-only scopes", () => {
     expect([...EXACT_ONLY_SCOPES].sort()).toEqual([...checked].sort())
   })
 
-  it("the database's kernel.scope_is_exact_only lists the same scopes and the bare-marker rule", () => {
+  it("the database's kernel.scope_is_exact_only lists the same scopes, without the bare-marker rule", () => {
     const dir = join(import.meta.dir, "..", "..", "..", "db", "migrations")
     const defining = readdirSync(dir)
       .filter((f) => f.endsWith(".sql"))
@@ -86,9 +86,9 @@ describe("exact-only scopes", () => {
     const list = fn.match(/ANY \(ARRAY\[([^\]]*)\]/)?.[1] ?? ""
     const listed = [...list.matchAll(/'([^']+)'/g)].map((m) => m[1] as string)
     expect([...listed].sort()).toEqual([...EXACT_ONLY_SCOPES].sort())
-    // A bare marker (no `:`) is exact-only there too, the wildcard excepted.
-    expect(fn).toContain("pg_catalog.strpos(scope, ':') OPERATOR(pg_catalog.=) 0")
-    expect(fn).toContain("scope OPERATOR(pg_catalog.<>) '*'")
+    // A bare marker (no `:`) on a stamp is covered by `*` there, as before 0347 (0354): stamps
+    // written by earlier releases carry role markers such as `clevel`.
+    expect(fn).not.toContain("pg_catalog.strpos(scope, ':')")
   })
 
   it("a bare marker scope is exact-only, the wildcard and app scopes are not", () => {

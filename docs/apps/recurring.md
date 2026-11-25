@@ -5,6 +5,10 @@ description: "Bill a customer on a fixed cadence, review each month's drafts in 
 
 Recurring invoices are for customers you bill on a fixed cadence and who pay by bank transfer or by a payment link. A schedule makes the draft, the **month-end run** asks a person to approve it, and the invoice issues on its day. Customers who pay a subscription by card on Stripe are billed by Stripe: see [Stripe](stripe.md) and [Who issues what](../money/who-issues-what.md).
 
+## Turn recurring billing on
+
+Recurring billing is off in a workspace until an admin turns it on: **Settings › Apps › Invoicing**, under **Features**, switch on **Recurring billing** (needs `kernel:apps:admin`). In a config file: `apps: [{ name: invoicing, enable: true, features: { recurring: true } }]` ([Switch an app's features](../admin/settings.md#switch-an-apps-features)). Off, the Invoicing sidebar has no **Recurring** section, the schedule, month-end run and billing plan tabs do not open, and agents have no recurring, billing plan, retainer, milestone or advance tools. Invoices, quotes and credit notes are not affected.
+
 ## See your schedules
 
 Open **Invoicing** and choose **Recurring** in the sidebar, then **Schedules**.

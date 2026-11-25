@@ -192,6 +192,8 @@ To set one up from the project, open **Automations** in the project's top bar (o
 
 ## Send a client report
 
+Client reports are off in a workspace until an admin turns them on: **Settings › Apps › Projects**, under **Features**, switch on **Client reports** (needs `kernel:apps:admin`), or `features: { client_reports: true }` on the `projects` entry of a config file ([Switch an app's features](../admin/settings.md#switch-an-apps-features)). Off, a project shows no **Client reports** line and agents have no report tools.
+
 A client report is a short status report on one project for its client, sent by mail and shown on the client portal. A person always approves it before it goes: no routine, schedule or approval policy sends one.
 
 A report exists only for a project whose reports a person shared with the client on the company's client access panel. Each section belongs to one portal share (`project_reports`, `project_progress` or `project_hours`), and a section of a share that is not open is refused when the draft is saved, and again when it is sent if the share was closed meanwhile (`SHARE_CLOSED`).

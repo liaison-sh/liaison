@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -62,7 +62,8 @@
   "features": {
     "corporateTemplates": {
       "adminScope": "agreements:templates:write",
-      "labelKey": "agreements.features.corporateTemplates"
+      "labelKey": "kernel.appFeatures.corporateTemplates.label",
+      "descriptionKey": "kernel.appFeatures.corporateTemplates.description"
     }
   },
   "entities": {

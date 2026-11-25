@@ -21,6 +21,7 @@ import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-ac
 import { handleAuditSearch } from "~/modules/agent/tools/admin-tools"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
+import { primeOrgApps } from "~/modules/apps/org-apps"
 import { createPortalSession, createSession } from "~/modules/auth/auth"
 import { SessionRevocationTestAccess } from "~/modules/auth/session-revocation"
 import { generateTotpSecret } from "~/modules/auth/totp"
@@ -146,7 +147,9 @@ const humanFrame = () => ({
   turnScopeAccumulator: createTurnScopeAccumulator(),
 })
 
-function callTool(toolName: string, threadId: string, params: Record<string, unknown>) {
+async function callTool(toolName: string, threadId: string, params: Record<string, unknown>) {
+  // As every entry point does: the portal tools follow the companies switch, read from here.
+  await primeOrgApps(w.orgId)
   return executeTool({
     toolName: `kernel:${toolName}`,
     orgId: w.orgId,

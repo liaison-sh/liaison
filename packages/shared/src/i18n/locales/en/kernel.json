@@ -7567,5 +7567,41 @@
     "batchTitle": "{{count}} approvals: {{action}}",
     "batchTitleNoAction": "{{count}} approvals of the same kind",
     "batchWhy": "The same action for the same people, staged the same day. Each is its own decision."
+  },
+  "appFeatures": {
+    "title": "Features",
+    "intro": "Parts of this app that stay off until an admin turns them on for the workspace. Turning one off hides it again; nothing is deleted.",
+    "on": "On",
+    "off": "Off",
+    "saveFailed": "Could not change {{feature}}. Try again.",
+    "noRight": "Only someone holding {{scope}} can change this.",
+    "companies": {
+      "label": "Companies",
+      "description": "Company records beside people: the Companies directory, company pages, the client portal and the company tools for agents.",
+      "offMessage": "Companies are off for this workspace, so this tool did not run and nothing changed.",
+      "offNext": "Say that companies are off. An admin can turn them on in Settings > Apps > Contacts."
+    },
+    "deals": {
+      "label": "Deals and pipelines",
+      "description": "Sales pipelines and deals in Projects, with their tools for agents (pipelines, follow-ups, forecasts).",
+      "offMessage": "Deals are off for this workspace, so this tool did not run and nothing changed.",
+      "offNext": "Say that deals are off. An admin can turn them on in Settings > Apps > Projects."
+    },
+    "clientReports": {
+      "label": "Client reports",
+      "description": "Weekly reports a project shares with its client, drafted from the project's work and sent by a person.",
+      "offMessage": "Client reports are off for this workspace, so this tool did not run and nothing changed.",
+      "offNext": "Say that client reports are off. An admin can turn them on in Settings > Apps > Projects."
+    },
+    "recurring": {
+      "label": "Recurring billing",
+      "description": "Recurring schedules, the month-end run, billing plans, retainers, milestones and advances.",
+      "offMessage": "Recurring billing is off for this workspace, so this tool did not run and nothing changed.",
+      "offNext": "Say that recurring billing is off. An admin can turn it on in Settings > Apps > Invoicing."
+    },
+    "corporateTemplates": {
+      "label": "Corporate templates",
+      "description": "Adds the corporate legal starter templates (board and shareholder documents) to the template list."
+    }
   }
 }

@@ -656,7 +656,7 @@ Your team's shared documents, policies and curated source links.
 | `add_to_collection` | Add a Knowledge document to a collection. |  | `knowledge:collections:manage` |
 | `archive` | Archive (retire) a Knowledge document — a reversible soft-archive that removes it from the active KB and from search. |  | `knowledge:documents:archive` |
 | `collection_create` | Create a Knowledge collection (folder). |  | `knowledge:collections:manage` |
-| `collection_delete` | Archive a Knowledge collection (removes it from the active tree). |  | `knowledge:collections:manage` |
+| `collection_delete` | Delete a Knowledge collection (folder). |  | `knowledge:collections:manage` |
 | `collection_update` | Update a Knowledge collection's name, description, or parent. |  | `knowledge:collections:manage` |
 | `create` | Create a local Knowledge document. |  | `knowledge:documents:create` |
 | `find_by_title` | Look up a Knowledge document by its EXACT title — DB-backed, never rides the search index, so a document created moments ago resolves immediately (unlike `search`, which is Meilisearch-backed and can lag behind a fresh write under load). |  | `knowledge:documents:read` |

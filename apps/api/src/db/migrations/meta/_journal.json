@@ -2486,6 +2486,13 @@
       "when": 1900003445001,
       "tag": "0353_projects_line_counting",
       "breakpoints": true
+    },
+    {
+      "idx": 355,
+      "version": "7",
+      "when": 1900003446001,
+      "tag": "0354_stamp_bare_markers_as_before",
+      "breakpoints": true
     }
   ]
 }

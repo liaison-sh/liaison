@@ -38,6 +38,7 @@ import {
   onMount,
   Show,
 } from "solid-js"
+import { isFeatureOff } from "~/framework/org-features"
 import { ApiError } from "~/lib/api-error"
 import { formatDay } from "~/lib/relative-time"
 import { userFromToken } from "~/modules/auth/auth-store"
@@ -860,7 +861,11 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
           class="flex shrink-0 flex-col gap-3 px-6 pb-3"
         />
         {/* The project's weekly client reports, read and sent by a person. */}
-        <Show when={project()?.companyId && !isPipeline()}>
+        <Show
+          when={
+            project()?.companyId && !isPipeline() && !isFeatureOff("projects", "client_reports")
+          }
+        >
           <ClientReportsPanel projectId={props.entityId} />
         </Show>
         {/* Time and budgets: only a project using it shows the line and the panel. */}

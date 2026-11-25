@@ -6,6 +6,7 @@
 // The bundled app is sandboxed, so the unit suite proves the rules against an in-memory store and
 // this file proves the seam: the approval gate, the stage-time refusals, the `day` columns read
 // back, the documents scope on the tables and the approver recorded on automatic issuing.
+
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -19,6 +20,7 @@ import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/poo
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { seedOrgRow, seedUserRows } from "~/seed/factories/org/rows"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { turnOnOrgFeatures } from "~/tests/helpers/org-features"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
@@ -176,6 +178,8 @@ describe("recurring schedules on the real kernel", () => {
     await initSandboxPool()
     await initWorkerPool()
     await registerApps([bundledDescriptor("invoicing") as never], ORG)
+    // Recurring billing is off in a workspace until an admin turns it on.
+    await turnOnOrgFeatures(ORG, [["invoicing", "recurring"]])
     await rawRows(
       insertSql(
         "app_invoicing.issuer_profiles",

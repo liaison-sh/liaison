@@ -44,6 +44,7 @@ import {
 import { orgAppPageEntry } from "../app-management/org-app-page"
 import { isOrgAppOff, orgAppsStore } from "../app-management/org-apps-store"
 import { useSettingsPageActive } from "../settings-page-active"
+import { AppFeatureSwitches } from "./AppFeatureSwitches"
 import { appSettingsPage } from "./app-settings-pages"
 import { AppPageProvider, createAppPageState } from "./page-context"
 import { createSaveQueue, entryLabel, visibleSections } from "./page-model"
@@ -367,6 +368,9 @@ export const AppSettingsPage: Component<{ appId: string; active?: Accessor<boole
               />
             </AppSettingsHeader>
             <Show when={!off()} fallback={<AppOffNotice name={entryLabel(i18n.t, e())} />}>
+              <Show when={canManageApps()}>
+                <AppFeatureSwitches appId={props.appId} />
+              </Show>
               <AppSettingsBody
                 entry={e()}
                 active={active}

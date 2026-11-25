@@ -1,0 +1,3 @@
+apps[].features in the config schema -> apps/api/src/cli/config/schema.ts:325
+Agent config tool takes features -> apps/api/src/modules/provisioning/config-tool-input.ts:222
+Plan and apply, unknown or derived refused -> apps/api/src/cli/provisioners/app-features.ts:33

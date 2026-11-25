@@ -6,8 +6,10 @@
  *
  * A member has no write path on the table: every write comes here, on a privileged
  * handle, after the feature's declared `adminScope` is checked, and records who and
- * when. There is no route or tool for it: an app's own writer calls it, which is how
- * a feature whose row is derived from the app's data stays true to that data.
+ * when. An app's own writer calls it for a feature whose row is derived from the
+ * app's data (`derived: true`, it stays true to that data); every other feature is an
+ * admin's switch, written through `setAdminOrgAppFeature` by the features route
+ * (Settings > Apps > <app>) and `liaison config apply` (`apps[].features`).
  *
  * A writer that keeps the row inside its own transaction uses `writeOrgAppFeature`
  * and calls `noteOrgFeatureChanged` once it has committed; `setOrgAppFeature` does
@@ -20,7 +22,12 @@ import { orgAppFeatures } from "~/db/schema/kernel"
 import { broadcastEphemeral } from "~/infra/events/event-bus"
 import { rootLogger } from "~/lib/logger"
 import { manifestRegistry } from "~/modules/apps/app-registries"
-import { FEATURE_OFF_CODE, noteOrgAppsChanged } from "~/modules/apps/org-apps"
+import {
+  enabledFeaturesFor,
+  FEATURE_OFF_CODE,
+  noteOrgAppsChanged,
+  primeOrgApps,
+} from "~/modules/apps/org-apps"
 import { seedLegalStarterTemplates } from "~/modules/documents/legal-templates/starters"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { hasScope } from "~/modules/permissions/permissions"
@@ -179,6 +186,56 @@ export async function setOrgAppFeature(write: OrgFeatureWrite): Promise<{ change
   return result
 }
 
+/** A feature an admin switches by hand, as the settings page and `config apply` see it. */
+export interface AdminFeature {
+  feature: string
+  labelKey: string
+  descriptionKey?: string
+  adminScope: string
+  enabled: boolean
+}
+
+/**
+ * The features of `app` an admin switches (every declared one but the derived), with
+ * whether each is on. Null: the app is not registered in this org.
+ */
+export async function listAdminFeatures(
+  orgId: string,
+  app: string,
+): Promise<AdminFeature[] | null> {
+  const manifest = manifestRegistry.get([orgId, app])
+  if (!manifest) return null
+  await primeOrgApps(orgId)
+  const on = new Set(enabledFeaturesFor(orgId).flatMap((f) => (f.app === app ? [f.feature] : [])))
+  return Object.entries(manifest.features ?? {})
+    .filter(([, d]) => d.derived !== true)
+    .map(([feature, d]) => ({
+      feature,
+      labelKey: d.labelKey,
+      ...(d.descriptionKey ? { descriptionKey: d.descriptionKey } : {}),
+      adminScope: d.adminScope,
+      enabled: on.has(feature),
+    }))
+    .sort((a, b) => a.feature.localeCompare(b.feature))
+}
+
+/**
+ * An admin's switch: refuses a feature the app derives from its own data (its row
+ * follows that data, a hand-set one would be overwritten), then writes like
+ * `setOrgAppFeature`.
+ */
+export async function setAdminOrgAppFeature(write: OrgFeatureWrite): Promise<{ changed: boolean }> {
+  const declared = manifestRegistry.get([write.orgId, write.app])?.features?.[write.feature]
+  if (declared?.derived === true) {
+    throw new OrgFeatureError(
+      403,
+      "forbidden",
+      `The feature ${write.feature} of ${write.app} follows the app's own data and has no switch, so nothing was written.`,
+    )
+  }
+  return setOrgAppFeature(write)
+}
+
 /** What every door answers for a tool of a feature that is off. Never retryable. */
 export interface FeatureOffAnswer {
   code: typeof FEATURE_OFF_CODE
@@ -201,10 +258,12 @@ function declaredText(key: string | undefined): string | undefined {
  */
 export function featureOffAnswer(
   orgId: string,
-  tool: { appName: string; name: string; feature?: string },
+  tool: { appName: string; name: string; feature?: string; featureApp?: string },
 ): FeatureOffAnswer {
   const feature = tool.feature ?? ""
-  const declared = manifestRegistry.get([orgId, tool.appName])?.features?.[feature]
+  const declared = manifestRegistry.get([orgId, tool.featureApp ?? tool.appName])?.features?.[
+    feature
+  ]
   const label = declaredText(declared?.labelKey) ?? feature
   return {
     code: FEATURE_OFF_CODE,

@@ -15,9 +15,10 @@ import {
   runCalendarImport,
 } from "~/apps/calendar/sync"
 import { sql } from "~/db/connection"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
+import { setUserAppSettingPath } from "~/lib/settings"
 import { getOrCreatePreferences, updatePreferences } from "~/modules/users/preferences-service"
 import { ApprovalCase, ctxOf } from "./approval-world"
 
@@ -68,6 +69,10 @@ export class CalendarCase extends ApprovalCase {
         email: string
       }>
     const email = u?.email as string
+    // Reading away days from a calendar is off until its owner turns it on (Settings > Apps > Calendar).
+    await withSystemDb("relations-calendar-away-setting", (tx) =>
+      setUserAppSettingPath(tx, this.people.person, "calendar", ["awayFromCalendar"], true),
+    )
     this.connectionId = randomUUID()
     this.eventId = `ooo-${randomUUID().slice(0, 8)}`
     await withPrivilegedDb(this.orgId, "relations-calendar-connect", async (tx) => {

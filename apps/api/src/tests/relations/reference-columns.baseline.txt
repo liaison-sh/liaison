@@ -12,10 +12,18 @@ app_calendar.sync_log.calendar_id
 app_knowledge.collection_memberships.collection_id
 app_knowledge.collection_memberships.created_by
 app_knowledge.collection_memberships.target_id
+app_knowledge.collections.index_document_id
 app_knowledge.collections.maintainer_user_ids
 app_knowledge.collections.owner_user_id
 app_knowledge.collections.parent_collection_id
+app_knowledge.collections.previous_owner_user_id
 app_knowledge.content_cache_entries.source_identity_id
+app_knowledge.document_links.source_document_id
+app_knowledge.document_links.target_document_id
+app_knowledge.document_versions.agent_id
+app_knowledge.document_versions.author_id
+app_knowledge.document_versions.document_id
+app_knowledge.document_versions.session_id
 app_knowledge.documents.acl_role_ids
 app_knowledge.documents.acl_user_ids
 app_knowledge.documents.created_by
@@ -23,6 +31,7 @@ app_knowledge.documents.owner_user_id
 app_knowledge.documents.participant_ids
 app_knowledge.documents.source_identity_id
 app_knowledge.documents.synced_source_id
+app_knowledge.documents.trashed_by
 app_knowledge.documents.updated_by
 app_knowledge.documents.verified_by
 app_knowledge.source_identities.external_id
@@ -357,6 +366,7 @@ kernel.oauth_accounts.user_id
 kernel.oauth_providers.client_id
 kernel.org_app_access.principal_id
 kernel.org_app_features.changed_by
+kernel.org_billing_state.org_class
 kernel.org_deletions.deleted_org_id
 kernel.org_deletions.run_id
 kernel.org_exports.run_id

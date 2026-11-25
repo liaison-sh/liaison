@@ -46,7 +46,7 @@ To run Compose yourself, name the project and file: `docker compose -p liaison -
 | `objectstore` | `chrislusf/seaweedfs:4.48` | S3-compatible file storage | 1 GB |
 | `objectstore-init` | SeaweedFS | Creates the bucket once, then exits | |
 | `data-init` | `busybox` | Prepares the app's data directory, then exits | |
-| `sandbox` | the app's image | Runs the sandboxed apps (workerd under gVisor), on its own network: [The app sandbox service](sandbox.md) | 2 GB |
+| `sandbox` | the app's image | Runs the sandboxed apps (workerd under gVisor), on its own network: [The app sandbox service](sandbox.md). Its host firewall step comes back at every boot before Docker starts ([At boot](sandbox.md#at-boot)) | 2 GB |
 
 All services share an internal network, and only the app publishes a port: `${APP_BIND}:${APP_PORT}`, which defaults to `127.0.0.1:3000`: it speaks plain HTTP and is meant to sit behind a TLS reverse proxy on the same host. Set `APP_BIND=0.0.0.0` only when the proxy runs on another host on a trusted network.
 

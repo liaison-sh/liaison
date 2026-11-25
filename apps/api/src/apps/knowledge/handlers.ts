@@ -318,7 +318,8 @@ export async function update(
   return JSON.parse(await ctx.knowledge_update(JSON.stringify(p)))
 }
 
-// archive — retire a Knowledge document (reversible soft-archive). Gated behind
+// archive: move a Knowledge document to Trash (people see "Move to trash"); it is
+// deleted for good after 30 days unless restored. Gated behind
 // knowledge:documents:archive (enforced in the bridge + archiveKnowledgeDocument).
 // Lets the agent cleanly retire a wrong/superseded/duplicate doc instead of
 // fabricating an '[ARCHIVED]' stub.
@@ -332,10 +333,10 @@ export async function archive(
     if (scope === "organization") {
       const parked = await parkForApproval(ctx, {
         tool_name: "knowledge:archive",
-        summary: `Archive organization knowledge document ${String(p.id ?? "")}`,
+        summary: `Move organization knowledge document ${String(p.id ?? "")} to Trash`,
         lines: [
           `Document: ${String(p.id ?? "")}`,
-          "Archiving hides it from the whole org (reversible via restore).",
+          "It goes to Trash and is deleted after 30 days. Anyone who can edit it can restore it until then.",
         ],
         payload: p,
       })
@@ -345,7 +346,7 @@ export async function archive(
   return JSON.parse(await ctx.knowledge_archive(JSON.stringify(p)))
 }
 
-// restore — un-archive a previously-archived document. No-op if already active.
+// restore: bring a document back from Trash (un-archive). No-op if already active.
 export async function restore(
   params: Record<string, unknown> | undefined,
   ctx: KnowledgeCtx,

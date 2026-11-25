@@ -193,6 +193,24 @@ afterEach(async () => {
 })
 
 describe("createPageSaver", () => {
+  it("outside a secure context the session id is still a random v4 uuid", () => {
+    const spy = vi.spyOn(crypto, "randomUUID").mockImplementation(() => {
+      throw new TypeError("crypto.randomUUID is not available")
+    })
+    const random = vi.spyOn(Math, "random")
+    try {
+      const ids = [0, 1, 2].map(() => tab({ server, api, drafts, liveness: locks }).saver.sessionId)
+      for (const id of ids) {
+        expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+      }
+      expect(new Set(ids).size).toBe(3)
+      expect(random).not.toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+      random.mockRestore()
+    }
+  })
+
   it("saves within 2 s of the last key, and at most every 10 s while typing", async () => {
     const t = tab({ server, api, drafts, liveness: locks })
     // A key every 500 ms for 30 s.

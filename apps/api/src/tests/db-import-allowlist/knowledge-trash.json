@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "apps/knowledge/trash.ts": "Trash: the nightly job deletes pages in Trash for 30 days (a system read of the orgs that have some, then per page one transaction pinned to that org that locks the row and checks the Trash rule again), prunes page versions older than a year, and re-queues a purged page's search and object removal. Delete for good from a person runs its checks under the person's own row view first (edit right, admin scope, in Trash), then the same locked delete pinned to the person's org."
+  }
+}

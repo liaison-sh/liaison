@@ -22,7 +22,14 @@ import {
 
 export type { KnowledgeSourceStatus } from "@liaison/shared"
 
-export type KnowledgeView = "home" | "search" | "collection" | "tag" | "review" | "unfiled"
+export type KnowledgeView =
+  | "home"
+  | "search"
+  | "collection"
+  | "tag"
+  | "review"
+  | "unfiled"
+  | "trash"
 
 export interface KnowledgeDocListItem {
   id: string

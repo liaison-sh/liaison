@@ -184,6 +184,45 @@ export async function restoreKnowledgeDocument(api: ApiClient, id: string): Prom
   return api.post(`/knowledge/documents/${id}/restore`, {})
 }
 
+/** One page in Trash, as `GET /knowledge/trash` lists it (apps/api knowledge trash.ts). */
+export interface KnowledgeTrashEntry {
+  id: string
+  title: string
+  archivedAt: string
+  /** When it went to Trash; null for a page archived before Trash (kept). */
+  trashedAt: string | null
+  trashedBy: string | null
+  trashedByName: string | null
+  /** Whole days before it is deleted; null when it is kept (never deleted automatically). */
+  daysLeft: number | null
+}
+
+/** The pages in Trash the caller may restore, newest first. */
+export async function listKnowledgeTrash(api: ApiClient): Promise<KnowledgeTrashEntry[]> {
+  return api.get<KnowledgeTrashEntry[]>("/knowledge/trash")
+}
+
+/** One page's Trash entry (404 when the caller cannot restore it, or it is not in Trash). */
+export async function getKnowledgeTrashEntry(
+  api: ApiClient,
+  id: string,
+): Promise<KnowledgeTrashEntry> {
+  return api.get<KnowledgeTrashEntry>(`/knowledge/trash/${id}`)
+}
+
+/** "Move to trash": deleted for good 30 days later unless restored. */
+export async function trashKnowledgeDocument(api: ApiClient, id: string): Promise<unknown> {
+  return api.post(`/knowledge/documents/${id}/trash`, {})
+}
+
+/** Delete for good a page in Trash (administrators who can edit it). */
+export async function deleteKnowledgeDocumentForGood(
+  api: ApiClient,
+  id: string,
+): Promise<{ id: string; deleted: boolean }> {
+  return api.delete<{ id: string; deleted: boolean }>(`/knowledge/documents/${id}`)
+}
+
 export async function verifyKnowledgeDocument(
   api: ApiClient,
   id: string,

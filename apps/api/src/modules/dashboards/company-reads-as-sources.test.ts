@@ -10,6 +10,7 @@ import { createCompanies } from "~/modules/contacts/companies"
 import { type BlockCacheStore, BlockCacheTestAccess } from "~/modules/dashboards/cache"
 import { createDashboard, getBlockData } from "~/modules/dashboards/service"
 import * as minimal from "~/seed/tiers/minimal"
+import { turnOnOrgFeatures } from "~/tests/helpers/org-features"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const SCOPES = [
@@ -56,6 +57,8 @@ function memoryStore(): BlockCacheStore {
 beforeAll(async () => {
   await acquireTestLock()
   orgId = (await minimal.secondOrg({ name: "Company Sources Org" })).orgId
+  // Companies are off in a new workspace: the company reads need them on.
+  await turnOnOrgFeatures(orgId, [["contacts", "companies"]])
   owner = (await minimal.orgAdmin(orgId)).id
   const [company] = await withRlsContext(as(), (tx) =>
     createCompanies(tx as never, {

@@ -24,6 +24,7 @@ import type { Scope } from "~/modules/permissions/types"
 import { registerAppSlots } from "~/modules/slots/registry"
 import { slotsRoutes } from "~/modules/slots/routes"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { turnOnOrgFeatures } from "~/tests/helpers/org-features"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import invoicingManifest from "../../../../../bundled-apps/invoicing/app.manifest.json"
 import {
@@ -149,6 +150,8 @@ const body = (block: string | undefined): string => FENCE.exec(block ?? "")?.[1]
 beforeAll(async () => {
   await acquireTestLock()
   w = await makeDealWorld("company-parts")
+  // Companies and deals are off in a new workspace: the company page needs them on.
+  await turnOnOrgFeatures(w.orgId)
   await ensureAppsForOrg(w.orgId)
   // Invoicing ships as a catalog package: its manifest's slots go through the same registry.
   registerAppSlots(

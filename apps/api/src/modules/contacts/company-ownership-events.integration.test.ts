@@ -19,6 +19,7 @@ import { signAccessToken } from "~/modules/auth/jwt"
 import { HANDOVER_KIND, UNOWNED_KIND } from "~/modules/contacts/company-unowned"
 import { everyMemberScopeGrants } from "~/modules/permissions/permissions"
 import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
+import { turnOnOrgFeatures } from "~/tests/helpers/org-features"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -56,6 +57,8 @@ beforeAll(async () => {
       })),
     ),
   )
+  // Companies are off in a new workspace: giving them to someone needs them on.
+  await turnOnOrgFeatures(ORG, [["contacts", "companies"]])
   await awaitOrgApps(ORG)
   const everyMember = await withPrivilegedDb(ORG, "ownership-events-test-scopes", (tx) =>
     everyMemberScopeGrants(tx, ADMIN, ORG),

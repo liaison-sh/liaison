@@ -168,7 +168,7 @@ export async function handleSetupState(
   )
   const state = await computeSetupState(ctx.orgId)
   const managed = isManagedEdition()
-  const goal = managed ? await kickoffGoal(ctx.orgId) : null
+  const goal = managed ? await readKickoffGoal(ctx.orgId) : null
   return {
     ...state,
     canConfigure: holdsAdminScope(ctx.orgId, perms.scopes),
@@ -185,7 +185,7 @@ export async function handleSetupState(
 }
 
 /** The goal on the workspace's setup card (provisioning/setup-kickoff.ts), if any. */
-async function kickoffGoal(orgId: string): Promise<KickoffGoal | null> {
+async function readKickoffGoal(orgId: string): Promise<KickoffGoal | null> {
   const k = drizzleSql.raw(schemaRef("kernel"))
   const [row] = await withPrivilegedDb(orgId, "setup-state-goal", async (tx) =>
     extractRows<{ goal: string | null }>(

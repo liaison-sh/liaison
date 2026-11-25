@@ -500,7 +500,11 @@ export function createKnowledgeMethods(ctx: BridgeContext): Record<string, any> 
           } catch {
             return null
           }
-          return row
+          // What each file token of the text is, so an agent can tell an image from a
+          // file: the page's own files and any other file its text names, as this
+          // reader sees them.
+          const { pageFilesOf } = await import("~/apps/knowledge/page-files")
+          return { ...row, files: await pageFilesOf(tx, row) }
         })
         if (!read) return JSON.stringify({ status: "not_found" })
         const row = read

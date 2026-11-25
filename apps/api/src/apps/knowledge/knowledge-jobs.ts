@@ -18,6 +18,7 @@
 import { sql as drizzleSql } from "drizzle-orm"
 import { runAppSourceSyncJob } from "~/apps/knowledge/app-sources"
 import { flushPendingUpdateEvents } from "~/apps/knowledge/event-coalesce"
+import { sweepUnparentedPageCopies } from "~/apps/knowledge/page-file-sweep"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import type { KnowledgeSourceAdapter } from "~/apps/knowledge/source-protocol"
 import { reconcileSyncedSource } from "~/apps/knowledge/sync-reconciler"
@@ -363,6 +364,11 @@ export async function registerKnowledgeJobs(opts: RunSyncWorkerDeps = {}): Promi
   })
   registerJobWorker<TrashResidueJobPayload>("knowledge", "trash-residue", async (payload) => {
     await checkTrashResidue(payload)
+  })
+
+  // Copies of files made for a page whose create rolled back (page-file-sweep.ts).
+  await registerScheduledJob("knowledge", "unparented-copies-sweep", "17 * * * *", async () => {
+    await sweepUnparentedPageCopies()
   })
 
   registerJobWorker<SyncJobPayload>("knowledge", "sync-source", async (payload) => {

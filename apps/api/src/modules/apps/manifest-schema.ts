@@ -1313,6 +1313,11 @@ export const appManifestJsonSchema = {
               // Who may delete a file on this parent: its uploader, or a holder
               // of this scope (both also need writeScope). Absent: writeScope.
               deleteScope: { type: "string" },
+              // Who may add or remove a file on one row: a SQL function in the parent's
+              // schema, `fn(uuid) RETURNS boolean`, run under the caller's row security
+              // (e.g. knowledge's `can_edit_document`: the edit right on that page).
+              // Absent: writeScope with the row visible, as before.
+              canWrite: { type: "string", pattern: "^[a-z_][a-z0-9_]{0,62}$" },
             },
             required: ["tableName", "schemaRef", "joinOn", "readScope", "writeScope"],
             additionalProperties: false,

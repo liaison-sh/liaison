@@ -8,7 +8,10 @@ import type { CivilTime, TimeSurface } from "./issue-date"
 /** An org with no zone, unless `orgZone` says otherwise; `UTC` means "not set", as on the host. */
 export function testTime(orgZone = "UTC"): TimeSurface["time"] {
   return {
-    async civil({ timezone, at }): Promise<CivilTime> {
+    async civil(params): Promise<CivilTime> {
+      // No rows here: a `timezoneOf` read is the host's, proven by the bridge's own test.
+      if (!("timezone" in params)) throw new Error("testTime reads no row's zone (timezoneOf)")
+      const { timezone, at } = params
       const zone = timezone === "UTC" ? orgZone : timezone
       let parts: Map<string, string>
       try {

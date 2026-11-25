@@ -438,6 +438,7 @@ describe("an errored turn still tags what it writes", () => {
     test("a lost accumulator on a `*` ceiling is projected: no `*` entry, every catalogued read", async () => {
       const { turnEndRequiredScopes } = await import("~/modules/agent/runtime/agent-service")
       const { taintReadCatalog } = await import("~/modules/agent/scopes/taint-read-scopes")
+      const { isExactOnlyScope } = await import("~/modules/agent/scopes/scope-coverage")
       const stamp = turnEndRequiredScopes({
         accumulator: undefined,
         fullEffectiveScope: ["*", ALPHA, "abn:alpha:write"],
@@ -446,7 +447,11 @@ describe("an errored turn still tags what it writes", () => {
       expect(stamp.filter((s) => s.split(":").includes("*"))).toEqual([])
       expect(stamp).toContain(ALPHA)
       expect(stamp).not.toContain("abn:alpha:write")
-      for (const read of taintReadCatalog()) expect(stamp).toContain(read)
+      // An exact-only read is held by no wildcard, so `*` reads nothing it classifies.
+      for (const read of taintReadCatalog()) {
+        if (isExactOnlyScope(read)) expect(stamp).not.toContain(read)
+        else expect(stamp).toContain(read)
+      }
     })
 
     test("a lost accumulator with no ceiling falls back to the requester scopes, projected, never empty", async () => {

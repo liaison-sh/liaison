@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { type MessageQuote, PERSONAL_AGENT_DISPLAY_NAME } from "@liaison/shared"
+import {
+  type CardLabel,
+  type MessageQuote,
+  PERSONAL_AGENT_DISPLAY_NAME,
+  type ResolvedCard,
+} from "@liaison/shared"
 import { createSignal } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { getAppTabAction } from "~/framework/app-registry"
@@ -25,6 +30,19 @@ export interface ToolCallState {
   status: "pending" | "running" | "completed" | "error"
   /** A step's one-line summary, when its producer gives one (a node chat step). */
   summary?: string
+  /** The registry's facts on an app tool, on the live `tool_call` frame and the stored call. */
+  readOnly?: boolean
+  appLabel?: string
+  runningLabel?: string
+  runningLabelKey?: string
+  /** The result's card, resolved by the server when the call returned (never rebuilt here). */
+  card?: ResolvedCard
+  /** A failed call of a tool that declares a card: the error card is drawn under this pill. */
+  cardError?: { pill: CardLabel }
+  /** Absent means 1. Each replace from a card action adds one. */
+  cardRevision?: number
+  /** A newer card with the same key lives in this thread: this one draws collapsed. */
+  cardSuperseded?: true
 }
 
 /**
@@ -77,6 +95,8 @@ export interface MessageMetadata {
      *  participant. Rendered as a muted centered line with no author and no
      *  avatar, in the reader's language, from the fields below. */
     | "participant-added"
+    /** A failed sequence's note to the agent, stamped with the requester's id: never drawn. */
+    | "bundle-reinvoke"
   /** `participant-added` only: who did the adding, who was added, and whether
    *  the newcomer is an agent or a person. */
   actorName?: string
@@ -129,6 +149,8 @@ export interface MessageMetadata {
     runKey: string
     /** `waiting_approval`: the run paused on a gated call and resumes once it is decided. */
     status: "running" | "waiting_approval" | "succeeded" | "failed"
+    /** A follow-up run that ended with drafts still waiting for a person: how many. */
+    draftsWaiting?: number
   }
   /** §1.4.5 — discriminator for sub-agent dispatch cards. When `"sub_run"`,
    *  the renderer dispatches to `SubRunCard` and `subRun` carries the live state. */
@@ -175,6 +197,10 @@ export interface MessageMetadata {
    *  nobody decided (an expiry, a cancellation), which is exactly the notice
    *  that renders as a muted system line rather than a decision row. */
   actorId?: string
+  /** `approval-decision` only: the agent that acted on its own request (a withdraw), and
+   *  the name it signs with. Such a notice carries no `actorId`: no person decided it. */
+  actorAgentId?: string
+  actorAgentName?: string
   /** What the room floor made this turn leave out, for the requester only. The
    *  server projects it per viewer on both the read path and the socket, so a
    *  copy that carries it is a copy meant for this reader. */
@@ -636,6 +662,17 @@ export function isClientMessageId(id: string): boolean {
   return id.startsWith("pending-") || id.startsWith("optimistic-")
 }
 
+/** The pending send (not yet claimed by another fetched row) that a fetched
+ *  server row echoes: same author, same text. A page carries no correlationId,
+ *  so this is the same fallback match the socket echo uses without one. */
+function pendingEchoedBy(t: ThreadMessages, m: Message, claimed: Set<string>): string | undefined {
+  return t.ids.find((id) => {
+    if (claimed.has(id) || !isClientMessageId(id)) return false
+    const p = t.byId[id]
+    return !!p?.pending && p.authorId === m.authorId && p.content === m.content
+  })
+}
+
 function ensureThread(s: MessageStoreState, threadId: string): ThreadMessages {
   if (!s.threads[threadId]) {
     s.threads[threadId] = { ids: [], byId: {} }
@@ -754,6 +791,78 @@ function messageCopies(s: MessageStoreState, threadId: string, messageId: string
     if (reply) out.push(reply)
   }
   return out
+}
+
+/** The registry's facts a live `tool_call` frame carries, as the stored call keeps them. */
+function toolCallPresentation(data: any): Partial<ToolCallState> {
+  return {
+    ...(typeof data.readOnly === "boolean" ? { readOnly: data.readOnly } : {}),
+    ...(typeof data.appLabel === "string" && data.appLabel ? { appLabel: data.appLabel } : {}),
+    ...(typeof data.runningLabel === "string" && data.runningLabel
+      ? { runningLabel: data.runningLabel }
+      : {}),
+    ...(typeof data.runningLabelKey === "string" && data.runningLabelKey
+      ? { runningLabelKey: data.runningLabelKey }
+      : {}),
+  }
+}
+
+/**
+ * The stored message that holds a tool call, or null while its turn still streams (the reply is
+ * written when the turn ends). A card action names this message as its `cardRef`.
+ */
+export function findToolCallMessage(
+  toolCallId: string,
+): { messageId: string; threadId: string } | null {
+  const holds = (m: Message | undefined) =>
+    !!m?.metadata?.toolCalls?.some((tc) => tc.toolCallId === toolCallId)
+  for (const [threadId, list] of Object.entries(messageStore.threads)) {
+    for (const id of list?.ids ?? []) {
+      if (holds(list.byId[id])) return { messageId: id, threadId }
+    }
+  }
+  for (const cache of Object.values(messageStore.replies)) {
+    if (!cache) continue
+    if (cache.root && holds(cache.root)) {
+      return { messageId: cache.root.id, threadId: cache.threadId }
+    }
+    for (const reply of Object.values(cache.byId)) {
+      if (holds(reply)) return { messageId: reply.id, threadId: cache.threadId }
+    }
+  }
+  return null
+}
+
+/** Nothing came after this message in its conversation (or its reply thread): it is the newest. */
+export function isNewestMessage(threadId: string, messageId: string): boolean {
+  const ids = messageStore.threads[threadId]?.ids
+  if (ids?.includes(messageId)) return ids[ids.length - 1] === messageId
+  for (const cache of Object.values(messageStore.replies)) {
+    if (!cache || cache.threadId !== threadId) continue
+    if (cache.root?.id === messageId) return cache.ids.length === 0
+    if (cache.ids.includes(messageId)) return cache.ids[cache.ids.length - 1] === messageId
+  }
+  return false
+}
+
+/** Draw the card a card action's answer carries on every copy of its message. */
+export function replaceStoredToolCard(
+  threadId: string,
+  messageId: string,
+  toolCallId: string,
+  card: ResolvedCard,
+  cardRevision: number | null | undefined,
+): void {
+  setMessageStore(
+    produce((s) => {
+      for (const msg of messageCopies(s, threadId, messageId)) {
+        const tc = msg.metadata?.toolCalls?.find((entry) => entry.toolCallId === toolCallId)
+        if (!tc) continue
+        tc.card = card
+        if (typeof cardRevision === "number") tc.cardRevision = cardRevision
+      }
+    }),
+  )
 }
 
 /** Reads the first copy of a message outside a store update. */
@@ -1121,10 +1230,18 @@ export async function loadMessages(
         }
         const nextIds: string[] = []
         const seen = new Set<string>()
+        const echoed = new Set<string>()
         for (const m of ordered) {
           const prev = existing.byId[m.id]
           if (prev) assignFetched(prev, m)
-          else existing.byId[m.id] = m
+          else {
+            // A page read after a send reached the server but before its
+            // answer came back already holds the sent message: it echoes the
+            // pending row, which goes, or the list shows the message twice.
+            const echo = pendingEchoedBy(existing, m, echoed)
+            if (echo) echoed.add(echo)
+            existing.byId[m.id] = m
+          }
           // A sub_run card a fetch brings in takes the update that beat it here.
           if (m.metadata?.subRun) applyPendingSubRunUpdateIfMatch(existing.byId[m.id]!)
           nextIds.push(m.id)
@@ -1148,6 +1265,7 @@ export async function loadMessages(
         const tail = existing.ids.filter(
           (id) =>
             !seen.has(id) &&
+            !echoed.has(id) &&
             !keptPrefix.includes(id) &&
             (isClientMessageId(id) || !idsAtRequest.has(id)),
         )
@@ -1820,6 +1938,12 @@ function applyCreate(
   // payload carries that the stored copy lacks (never downgrade).
   if (t.byId[data.id]) {
     const existing = t.byId[data.id]
+    // A page read may have brought the real row in while the send it answers
+    // was still pending: the echo still retires that pending row.
+    if (typeof data.correlationId === "string" && t.byId[data.correlationId]?.pending) {
+      delete t.byId[data.correlationId]
+      t.ids = t.ids.filter((id) => id !== data.correlationId)
+    }
     const incoming = data.metadata as MessageMetadata | null | undefined
     const merged = incoming ? withMissingMetadata(incoming, existing.metadata) : null
     if (merged) existing.metadata = merged
@@ -2035,6 +2159,11 @@ export function handleWsMessageEvent(action: string, data: any): void {
           if (data.editedAt !== undefined) msg.editedAt = data.editedAt
           // A routine's "is running" line settles in place (routine-report.ts).
           if (data.metadata !== undefined) msg.metadata = data.metadata ?? null
+          // A card replaced from a card action (or superseded by a newer one) arrives as the
+          // row's calls alone: the rest of its metadata stays as this copy holds it.
+          if (Array.isArray(data.toolCalls)) {
+            msg.metadata = { ...(msg.metadata ?? {}), toolCalls: data.toolCalls }
+          }
           // Attachments are reparented onto the message AFTER it is inserted, so
           // `message:create` never carries them: this update is how every client
           // other than the sender learns the message has files.
@@ -2197,13 +2326,30 @@ export async function reconcileAgentStreamsWithServer(
         if (!key.startsWith(prefix) || stream.state !== "streaming") continue
         if (stream.lastActivityAt > askedAt - AGENT_STREAM_RECHECK_QUIET_MS) continue
         const agentId = agentOfStreamKey(key, prefix)
-        const running = runs.some((run) => {
-          const runAgent = typeof run.agentId === "string" ? run.agentId : null
+        const run = runs.find((r) => {
+          const runAgent = typeof r.agentId === "string" ? r.agentId : null
           if (runAgent !== agentId) return false
-          const runTurn = typeof run.turnId === "string" && run.turnId ? run.turnId : null
+          const runTurn = typeof r.turnId === "string" && r.turnId ? r.turnId : null
           return !stream.turnId || !runTurn || runTurn === stream.turnId
         })
-        if (running) continue
+        // The server still runs it: the turn is working (a model thinking sends nothing for a
+        // while), so it reads Working again until it is quiet for another threshold. When the
+        // server drew past what this client holds, its frames stopped reaching this client while
+        // the turn went on: the block takes the server's snapshot, so the text does not stay
+        // frozen mid-word until a reload.
+        if (run) {
+          stream.lastActivityAt = askedAt
+          const snapSeq = typeof run.seq === "number" && run.seq > 0 ? run.seq : null
+          if (snapSeq !== null && snapSeq > (stream.lastSeq ?? 0)) {
+            stream.content = (run.content as string) ?? stream.content
+            stream.reasoning = (run.reasoning as string) ?? stream.reasoning
+            stream.reasoningStreaming = Boolean(run.reasoningStreaming)
+            if (Array.isArray(run.toolCalls)) stream.toolCalls = run.toolCalls as never[]
+            if (Array.isArray(run.timeline)) stream.timeline = run.timeline as never[]
+            stream.lastSeq = snapSeq
+          }
+          continue
+        }
         noteTurnEnded(threadId, agentId, stream.turnId)
         if (key.includes("#")) delete s.agentStreams[key]
         else s.agentStreams[key] = createIdleAgentStream()
@@ -2742,6 +2888,7 @@ function applyAgentStreamFrame(action: string, data: any): void {
             args: data.args,
             status: "running",
             ...(typeof data.summary === "string" && data.summary ? { summary: data.summary } : {}),
+            ...toolCallPresentation(data),
           })
           stream.timeline.push(
             itemId
@@ -2756,6 +2903,10 @@ function applyAgentStreamFrame(action: string, data: any): void {
           if (toolCall) {
             toolCall.result = data.result
             toolCall.status = isError ? "error" : "completed"
+            if (data.card && typeof data.card === "object") toolCall.card = data.card
+            if (data.cardError && typeof data.cardError === "object") {
+              toolCall.cardError = data.cardError
+            }
           }
           return
         }

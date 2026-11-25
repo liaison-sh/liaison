@@ -29,8 +29,28 @@ export function hashParams(params: unknown): string {
   return createHash("sha256").update(canonicalize(params)).digest("hex")
 }
 
+/**
+ * The caller-scoped form of an idempotency key: a stored answer is one caller's (read under
+ * their access, stamped for their turn), so another caller with the same key runs as their own.
+ */
+export function callerIdempotencyKey(
+  actor: { actorType: string; userId?: string | null; agentId?: string | null },
+  plainKey: string,
+): string {
+  return `${actor.actorType}:${actor.userId ?? "-"}:${actor.agentId ?? "-"}:${plainKey}`
+}
+
 function key(orgId: string, targetTool: string, idemKey: string): string {
   return `app_idem:${orgId}:${targetTool}:${idemKey}`
+}
+
+/**
+ * The set of caller-scoped entries made under one plain key. A tool call's cache entry is
+ * keyed per caller, while a cleanup that undoes the call (an app deleting what it created,
+ * so its retry runs fresh) names only the plain key: it clears every entry listed here.
+ */
+function indexKey(orgId: string, targetTool: string, plainKey: string): string {
+  return `app_idem_idx:${orgId}:${targetTool}:${plainKey}`
 }
 
 export async function reserveIdempotency(
@@ -38,6 +58,8 @@ export async function reserveIdempotency(
   targetTool: string,
   idemKey: string,
   params: unknown,
+  /** The caller's own key when `idemKey` is a caller-scoped form of it. */
+  plainKey?: string,
 ): Promise<ReserveOutcome> {
   const k = key(orgId, targetTool, idemKey)
   const requestHash = hashParams(params)
@@ -48,6 +70,10 @@ export async function reserveIdempotency(
     PENDING_TTL_S,
     "NX",
   )
+  if (reserved && plainKey !== undefined && plainKey !== idemKey) {
+    const idx = indexKey(orgId, targetTool, plainKey)
+    await redis.multi().sadd(idx, k).expire(idx, COMPLETED_TTL_S).exec()
+  }
   if (reserved) return { outcome: "reserved" }
   const existing = await redis.get(k)
   if (!existing) return { outcome: "reserved" }
@@ -111,5 +137,7 @@ export async function invalidateIdempotency(
   targetTool: string,
   idemKey: string,
 ): Promise<void> {
-  await redis.del(key(orgId, targetTool, idemKey))
+  const idx = indexKey(orgId, targetTool, idemKey)
+  const scoped = await redis.smembers(idx)
+  await redis.del(key(orgId, targetTool, idemKey), ...scoped, idx)
 }

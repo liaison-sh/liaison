@@ -1,0 +1,15 @@
+{
+  "entry": "job:change-request-effects",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "agreements",
+        "{\"where\":{\"kind\":\"change_request\",\"status\":\"accepted\",\"effects_done_at\":null},\"limit\":50}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

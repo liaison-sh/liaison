@@ -36,6 +36,7 @@ A body is a list of blocks: `heading`, `paragraph`, `list`, `table`, `repeat`, `
 - A computed value with a missing or non-numeric operand, or a division by zero, counts as missing: it prints grey and is listed as a blank, and `??` words apply to it too.
 - `{{path ?? words}}` prints the words, grey, when the value is missing (still a blank to fill). `{{path ??}}` prints nothing (an optional field, such as a phone number nobody gave).
 - `when` on any block prints it only when its conditions hold. A condition is `{ "path": ..., "is": "present" | "absent" }`, `{ "path": ..., "equals": ... }`, `{ "path": ..., "in": [...] }`, or `{ "path": ..., "atLeast": 2 }` / `{ "path": ..., "atMost": 10 }` for a number; a list of conditions must all hold. A `*` in the path means any line: `lines.*.attributes.material` equals `steel` holds when any line is made of steel.
+- `list` prints one `line` per line of `from` (keep some lines with `where`), or the `items` you write, each a text like a paragraph's; a list takes one or the other.
 - `table` prints a header and one row per line of `from` (keep some lines with `where`), or the fixed `rows` you write. A fixed row can carry its own `when`.
 - `repeat` prints its blocks once per kept line of `from`: a section per product.
 - Inside a row, a path reads the line first and the order when the line has no such field, so `{{invoice.number}}` still works there.

@@ -1,0 +1,1319 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# Links between objects that this tree builds, against every event that can break them.
+#
+# Events: Rn rename, Mg merge (a person too), Dl delete or archive, Dx a person deactivated,
+# Pm a permission lost, Ap an app switched off, Mv a move, Rs a restricted document, Dr a demo
+# reset, Ex export and data subject request, Mi an old row from before the link existed, Rv the
+# way back (reactivated, permission regained, away ended), Aw a person away.
+#
+# Classes (upper case): K keep, P repoint, S snapshot, C close, H hide, R refuse, E export,
+# M migrate, Z reset, V return, W pass on (classes.ts says what each must see).
+# Pruned (lower case): a the event cannot happen to this link, c the same code path as a named
+# cell, e demo reset is one check after the demo reset test, b frozen by design.
+#
+# `columns`: the schema columns that hold the link, which the schema guard reads.
+#
+# A kept cell has a generated test (cells.integration.test.ts), or an `open` reason: what it waits
+# for. `broken`: the cell's test shows the product does not do what the class says yet; the test
+# runs as an expected failure and turns red once fixed, when the entry goes.
+
+links:
+  - name: approval-target
+    what: a pending approval to the record it would change
+    storedIn: kernel.approval_requests payload and targetRowParam
+    columns: []
+    paths:
+      - apps/api/src/modules/approvals/
+      - apps/api/src/apps/projects/service/tasks.ts
+      - apps/api/src/apps/tickets/merge.ts
+    visibleState: [cancelled, expired, failed]
+    whoIsTold: [requester]
+    copiedNameAt: []
+    cells: { Rn: S, Mg: C, Dl: C, Dx: a, Pm: C, Ap: C, Mv: C, Rs: H, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Pm: no reader of the target is defined that loses a permission while a decider keeps theirs
+      Mv: the visible state of a pending row whose task moved project is not defined yet
+      Rs: no approval targets a restricted document in this tree
+      Ex: no data subject export exists for a person; the export takes a contact
+
+  - name: approval-requester
+    what: a pending approval to the person who asked for it
+    storedIn: kernel.approval_requests.requested_by
+    columns: [kernel.approval_requests.requested_by]
+    paths:
+      - apps/api/src/modules/approvals/
+      - apps/api/src/modules/users/service.ts
+      - apps/api/src/modules/users/merge-placeholder.ts
+    visibleState: [cancelled, usual]
+    whoIsTold: [usual]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: C, Pm: C, Ap: c, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: W }
+    open:
+      Mg: only an import placeholder merges, and a placeholder cannot ask for anything
+      Dx: what a request shows once the person who asked has left is not defined; today it stays pending as it was
+      Pm: what a request shows once the person who asked lost the permission it needs is not defined
+      Ex: no data subject export exists for a person; the export takes a contact
+      Aw: what the person who asked hands on while away is not defined; the request is the deciders'
+
+  - name: approval-route
+    what: a pending approval to the person it is for
+    storedIn: kernel.approval_requests.route_person_id, route_company_id
+    columns: [kernel.approval_requests.route_person_id, kernel.approval_requests.route_company_id]
+    paths:
+      - apps/api/src/modules/approvals/route-world.ts
+      - apps/api/src/modules/approvals/attention.ts
+      - apps/api/src/modules/users/service.ts
+      - apps/api/src/modules/users/away.ts
+      - packages/shared/src/approvals/authority.ts
+    visibleState: [usual]
+    whoIsTold: [usual]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: C, Pm: C, Ap: c, Mv: K, Rs: H, Dr: e, Ex: a, Mi: M, Rv: V, Aw: W }
+    open:
+      Mg: a request is routed to an import placeholder only through an import, which this file does not drive
+      Rs: no route resolver reads a restricted document in this tree
+
+  - name: routine-owner
+    what: a routine to the person it acts for
+    storedIn: kernel.routines.owner_user_id
+    columns: [kernel.routines.owner_user_id]
+    paths:
+      - apps/api/src/modules/agent/routines/
+      - apps/api/src/modules/users/service.ts
+    visibleState: [paused_user, paused_scope_mismatch, paused_app_disabled]
+    whoIsTold: [owner]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: C, Pm: C, Ap: C, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: W }
+    open:
+      Mg: a person merge refuses while the placeholder owns a routine (merge-references.ts), so the expected class is refuse, not repoint
+      Dl: what a routine shows once it is deleted is its absence; no reader is defined who must be told
+      Ap: no code sets a routine to paused_app_disabled; what it shows once its app is switched off is not defined
+      Ex: no data subject export exists for a person; the export takes a contact
+      Aw: what a routine does while its owner is away is not defined
+
+  - name: calendar-event-away-range
+    what: a calendar event to the away range read from it
+    storedIn: kernel.away_ranges.source_event_ref
+    columns: [kernel.away_ranges.source_event_ref]
+    paths:
+      - apps/api/src/apps/calendar/away-from-calendar.ts
+      - apps/api/src/modules/users/away.ts
+    visibleState: [here, usual]
+    whoIsTold: [usual]
+    copiedNameAt: []
+    cells: { Rn: K, Mg: a, Dl: C, Dx: C, Pm: a, Ap: C, Mv: C, Rs: a, Dr: e, Ex: E, Mi: M, Rv: V, Aw: a }
+    open:
+      Ex: no data subject export exists for a person; the export takes a contact
+      Mi: no calendar range is older than away ranges themselves; nothing to migrate yet
+
+  - name: away-range-person
+    what: an away range to the person away
+    storedIn: kernel.away_ranges.user_id
+    columns: [kernel.away_ranges.user_id]
+    paths:
+      - apps/api/src/modules/users/away.ts
+      - apps/api/src/modules/users/service.ts
+      - apps/api/src/modules/approvals/route-world.ts
+    visibleState: [usual, here]
+    whoIsTold: [usual]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: P, Dl: C, Dx: C, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Mg: a person merge moves the placeholder's away record to the person (merge-references.ts, tested in merge-placeholder.test.ts); no placeholder is away in this world, so the cell's reader test waits for one
+      Ex: no data subject export exists for a person; the export takes a contact
+      Rv: a range is deleted when its person is deactivated, so after reactivation it cannot read as before; the way back is not defined
+
+  - name: away-range-next-in-line
+    what: an away range to the colleague who stands in
+    storedIn: kernel.away_ranges.next_in_line_id, kernel.user_preferences.next_in_line_id
+    columns: [kernel.away_ranges.next_in_line_id, kernel.user_preferences.next_in_line_id]
+    paths:
+      - apps/api/src/modules/users/away.ts
+      - apps/api/src/modules/approvals/route-world.ts
+      - apps/api/src/modules/approvals/attention.ts
+    visibleState: [left, blocked]
+    whoIsTold: [usual, person]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: c, Dx: C, Pm: C, Ap: a, Mv: K, Rs: H, Dr: e, Ex: E, Mi: a, Rv: V, Aw: W }
+    open:
+      Mg: only an import placeholder merges, and a placeholder is never named next in line
+      Mv: what moves for a next in line is not defined
+      Rs: no stand-in row comes from a restricted document in this tree
+      Ex: no data subject export exists for a person; the export takes a contact
+
+  - name: stand-in-row-item
+    what: the Home row of a stand-in to the item it stands in for
+    storedIn: placement at read, from the approval and the away range
+    columns: []
+    paths:
+      - apps/api/src/modules/approvals/attention.ts
+      - apps/api/src/modules/approvals/route-world.ts
+      - apps/api/src/modules/approvals/decide.ts
+      - apps/api/src/modules/users/away.ts
+    visibleState: [denied, approved, cancelled, left, blocked]
+    whoIsTold: [usual, person]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: P, Dl: C, Dx: C, Pm: C, Ap: C, Mv: K, Rs: H, Dr: e, Ex: a, Mi: a, Rv: V, Aw: W }
+    open:
+      Mg: only an import placeholder merges, and a placeholder never stands in
+      Rs: no stand-in row comes from a restricted document in this tree
+
+  - name: thread-created-from
+    what: a conversation to the record it was made from
+    storedIn: kernel.threads.created_from
+    columns: [kernel.threads.created_from]
+    paths:
+      - apps/api/src/modules/threads/
+      - apps/api/src/apps/tickets/merge.ts
+      - apps/api/src/apps/projects/service/tasks.ts
+    visibleState: [gone]
+    whoIsTold: [owner]
+    copiedNameAt: [owner, member]
+    cells: { Rn: K, Mg: P, Dl: C, Dx: a, Pm: H, Ap: C, Mv: K, Rs: H, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Dl: what a conversation shows once its record is deleted is not defined
+      Rs: needs a knowledge document as the record
+      Ex: no data subject export exists for a person; the export takes a contact
+
+  - name: dashboard-owner
+    what: a dashboard to the person whose it is
+    storedIn: kernel.dashboards.owner_user_id
+    columns: [kernel.dashboards.owner_user_id]
+    paths:
+      - apps/api/src/modules/dashboards/
+      - apps/api/src/modules/users/service.ts
+      - apps/api/src/modules/users/merge-references.ts
+      - apps/api/src/modules/export/member-data-subject-bundle.ts
+    visibleState: []
+    whoIsTold: [owner, admin, colleague]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: K, Pm: K, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Mg: only an import placeholder merges, and a placeholder never owns a dashboard (dashboards are never imported); the merge moves the owner to the person (merge-references.ts)
+      Dl: what an organization dashboard shows once its owner deleted their account is not defined; erasure deletes personal dashboards and leaves organization ones without an owner
+
+  - name: dashboard-author
+    what: a dashboard to the people who made it and last changed it
+    storedIn: kernel.dashboards.created_by, updated_by
+    columns: [kernel.dashboards.created_by, kernel.dashboards.updated_by]
+    paths:
+      - apps/api/src/modules/dashboards/
+      - apps/api/src/modules/users/service.ts
+      - apps/api/src/modules/users/merge-references.ts
+      - apps/api/src/modules/export/member-data-subject-bundle.ts
+    visibleState: []
+    whoIsTold: [owner, admin, colleague]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: K, Pm: c, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: a }
+    open:
+      Mg: only an import placeholder merges, and a placeholder never makes a dashboard; the merge moves the author columns to the person (merge-references.ts)
+      Dl: what a dashboard shows once the person who made it deleted their account is not defined; erasure clears the author columns
+
+  - name: store-document-author
+    what: a data store document to the people who wrote it and last changed it
+    storedIn: kernel.app_documents.created_by, updated_by
+    columns: [kernel.app_documents.created_by, kernel.app_documents.updated_by]
+    paths:
+      - apps/api/src/modules/data-store/
+      - apps/api/src/modules/users/service.ts
+      - apps/api/src/modules/users/merge-references.ts
+      - apps/api/src/modules/export/member-data-subject-bundle.ts
+    visibleState: []
+    whoIsTold: [owner, admin, colleague]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: K, Pm: c, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: a }
+    open:
+      Mg: only an import placeholder merges, and a placeholder never writes a store document (they are never imported); the merge moves the author columns to the person (merge-references.ts)
+      Dl: what a store document shows once the person who wrote it deleted their account is not defined; erasure clears the author columns
+
+  - name: store-document-key
+    what: a data store document to its own key, which the app that owns the collection chooses
+    storedIn: kernel.app_documents.doc_id
+    columns: [kernel.app_documents.doc_id]
+    paths:
+      - apps/api/src/modules/data-store/
+    visibleState: []
+    whoIsTold: []
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: a, Dx: a, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: a, Mi: a, Rv: a, Aw: a }
+
+  - name: contact-company
+    what: a person to the company they belong to
+    storedIn: kernel.contacts.company_id, company (the copied name)
+    columns: [kernel.contacts.company_id]
+    paths:
+      - apps/api/src/modules/contacts/companies.ts
+      - apps/api/src/modules/contacts/service.ts
+      - apps/api/src/modules/export/data-subject-export-tool.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: [admin, seller]
+    cells: { Rn: K, Mg: P, Dl: C, Dx: a, Pm: H, Ap: a, Mv: K, Rs: a, Dr: e, Ex: E, Mi: M, Rv: V, Aw: a }
+    open:
+      Dl: a company delete with people linked is not driven in this file yet
+      Pm: a reader who loses the read scope of the other end is not driven in this file yet
+      Mv: what moves for this link is not driven in this file yet
+      Mi: no row is older than this link, its column arrived with it, so nothing to migrate yet
+      Rv: the way back after the cell's event is not driven in this file yet
+
+  - name: company-account-manager
+    what: a company to the colleague who looks after it
+    storedIn: kernel.companies.owner_user_id
+    columns: [kernel.companies.owner_user_id]
+    paths:
+      - apps/api/src/modules/contacts/companies.ts
+      - apps/api/src/modules/apps/kernel-bulk.ts
+      - apps/api/src/modules/export/member-data-subject-bundle.ts
+      - apps/api/src/modules/users/merge-references.ts
+      - apps/api/src/modules/users/service.ts
+    visibleState: [unowned]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: C, Pm: C, Ap: a, Mv: K, Rs: a, Dr: e, Ex: E, Mi: M, Rv: V, Aw: W }
+    open:
+      Mg: only an import placeholder merges, and a placeholder is never an account manager or a deal owner; the merge moves the column to the person (merge-references.ts)
+      Dl: what a company shows once its account manager deleted their account is not defined; the column is cleared (ON DELETE SET NULL)
+      Pm: the account manager grants nothing, so a lost permission changes no reading of the company; what the manager's own page shows is not defined
+      Mv: what moves for this link is not driven in this file yet
+      Mi: no row is older than this link, its column arrived with it, so nothing to migrate yet
+      Rv: the way back after the cell's event is not driven in this file yet
+      Aw: what the person hands on while away for this link is not driven in this file yet
+
+  - name: company-main-contact
+    what: a company to its main contact
+    storedIn: kernel.companies.main_contact_id (soft)
+    columns: [kernel.companies.main_contact_id]
+    paths:
+      - apps/api/src/modules/contacts/companies.ts
+      - apps/api/src/modules/contacts/service.ts
+      - apps/api/src/modules/contacts/erasure.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: H, Ap: a, Mv: C, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Pm: a reader who loses the read scope of the other end is not driven in this file yet
+      Mv: what moves for this link is not driven in this file yet
+      Ex: no export of a company exists; a person's export carries their company, not which company names them main contact
+      Rv: the way back after the cell's event is not driven in this file yet
+
+  - name: deal-company
+    what: a deal to the company it is with
+    storedIn: app_projects.deals.company_id
+    columns: [app_projects.deals.company_id]
+    paths:
+      - apps/api/src/modules/contacts/companies.ts
+      - apps/api/src/apps/projects/service/deals.ts
+      - apps/api/src/apps/projects/service/tasks.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: H, Ap: H, Mv: K, Rs: a, Dr: e, Ex: E, Mi: M, Rv: V, Aw: a }
+    open:
+      Pm: a reader who loses the read scope of the other end is not driven in this file yet
+      Ap: switching the owning app off is not driven in this file yet
+      Mv: what moves for this link is not driven in this file yet
+      Ex: no export of a company exists; deals reach exports through their person and their owner
+      Mi: no row is older than this link, its column arrived with it, so nothing to migrate yet
+      Rv: the way back after the cell's event is not driven in this file yet
+
+  - name: deal-contact
+    what: a deal to the person it is with
+    storedIn: app_projects.deals.contact_id
+    columns: [app_projects.deals.contact_id]
+    paths:
+      - apps/api/src/modules/contacts/service.ts
+      - apps/api/src/modules/contacts/erasure.ts
+      - apps/api/src/apps/projects/service/deals.ts
+      - apps/api/src/modules/export/data-subject-export-tool.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: H, Ap: c, Mv: K, Rs: a, Dr: e, Ex: E, Mi: M, Rv: V, Aw: a }
+    open:
+      Pm: a reader who loses the read scope of the other end is not driven in this file yet
+      Mv: what moves for this link is not driven in this file yet
+      Mi: no row is older than this link, its column arrived with it, so nothing to migrate yet
+      Rv: the way back after the cell's event is not driven in this file yet
+
+  - name: deal-owner
+    what: a deal to its owner, the deal task's assignee
+    storedIn: app_projects.tasks.assignee_id of the deal task (named by the task-assignee link)
+    columns: []
+    paths:
+      - apps/api/src/apps/projects/service/deals.ts
+      - apps/api/src/apps/projects/service/tasks.ts
+      - apps/api/src/modules/export/member-data-subject-bundle.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: C, Pm: H, Ap: c, Mv: K, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: W }
+    open:
+      Mg: only an import placeholder merges, and a placeholder is never an account manager or a deal owner; the merge moves the column to the person (merge-references.ts)
+      Dl: what the link shows once the other end is deleted is not driven in this file yet
+      Dx: what the link shows once the person is deactivated is not driven in this file yet
+      Pm: a reader who loses the read scope of the other end is not driven in this file yet
+      Mv: what moves for this link is not driven in this file yet
+      Rv: the way back after the cell's event is not driven in this file yet
+      Aw: what the person hands on while away for this link is not driven in this file yet
+
+  - name: deal-pipeline-project
+    what: a deal to the pipeline it is on
+    storedIn: app_projects.tasks.project_id of the deal task (named by the task-project link)
+    columns: []
+    paths:
+      - apps/api/src/apps/projects/service/deals.ts
+      - apps/api/src/apps/projects/service/move-task.ts
+      - apps/api/src/apps/projects/service/tasks.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: H, Ap: H, Mv: R, Rs: a, Dr: e, Ex: E, Mi: M, Rv: V, Aw: a }
+    open:
+      Mg: no cell drives this merge in this file yet
+      Dl: what the link shows once the other end is deleted is not driven in this file yet
+      Pm: a reader who loses the read scope of the other end is not driven in this file yet
+      Ap: switching the owning app off is not driven in this file yet
+      Ex: which export carries this link is not driven in this file yet
+      Mi: no row is older than this link, its column arrived with it, so nothing to migrate yet
+      Rv: the way back after the cell's event is not driven in this file yet
+
+  - name: ticket-contact
+    what: a ticket to the person who raised it, their company through them
+    storedIn: app_tickets.tickets.contact_id
+    columns: [app_tickets.tickets.contact_id]
+    paths:
+      - apps/api/src/apps/tickets/
+      - apps/api/src/modules/contacts/service.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: H, Ap: H, Mv: K, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Mg: a person merge re-points tickets through the tickets app's merge subscriber; no ticket world is built in this file yet
+      Dl: what the link shows once the other end is deleted is not driven in this file yet
+      Pm: a reader who loses the read scope of the other end is not driven in this file yet
+      Ap: switching the owning app off is not driven in this file yet
+      Mv: what moves for this link is not driven in this file yet
+      Ex: which export carries this link is not driven in this file yet
+      Rv: the way back after the cell's event is not driven in this file yet
+
+  - name: ticket-assignee
+    what: a ticket to the colleague it is assigned to
+    storedIn: app_tickets.tickets.assigned_to
+    columns: []
+    paths:
+      - apps/api/src/apps/tickets/
+      - apps/api/src/modules/users/service.ts
+    visibleState: [unassigned]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: C, Pm: c, Ap: c, Mv: K, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: W }
+    open:
+      Mg: only an import placeholder merges, and a placeholder is never assigned a ticket
+      Dl: what the link shows once the other end is deleted is not driven in this file yet
+      Dx: what the link shows once the person is deactivated is not driven in this file yet
+      Mv: what moves for this link is not driven in this file yet
+      Ex: which export carries this link is not driven in this file yet
+      Rv: the way back after the cell's event is not driven in this file yet
+      Aw: what the person hands on while away for this link is not driven in this file yet
+
+  - name: mail-conversation-contact
+    what: a mail conversation to the person and their company, by address
+    storedIn: matched at read by address (timeline, send guard)
+    columns: []
+    paths:
+      - apps/api/src/modules/mail/
+      - apps/api/src/modules/contacts/activity.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: K, Dx: a, Pm: H, Ap: C, Mv: K, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Mg: no mail world is built in this file yet
+      Dl: what the link shows once the other end is deleted is not driven in this file yet
+      Pm: a reader who loses the read scope of the other end is not driven in this file yet
+      Ap: switching the owning app off is not driven in this file yet
+      Mv: what moves for this link is not driven in this file yet
+      Ex: which export carries this link is not driven in this file yet
+      Rv: the way back after the cell's event is not driven in this file yet
+
+  - name: project-company
+    what: a project to its client company
+    storedIn: app_projects.projects.company_id
+    columns: [app_projects.projects.company_id]
+    paths:
+      - apps/api/src/modules/contacts/companies.ts
+      - apps/api/src/apps/projects/service/update-project.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: H, Ap: H, Mv: K, Rs: a, Dr: e, Ex: E, Mi: M, Rv: V, Aw: a }
+    open:
+      Pm: a reader who loses the read scope of the other end is not driven in this file yet
+      Ap: switching the owning app off is not driven in this file yet
+      Mv: what moves for this link is not driven in this file yet
+      Ex: no export of a company or a project exists
+      Mi: no row is older than this link, its column arrived with it, so nothing to migrate yet
+      Rv: the way back after the cell's event is not driven in this file yet
+
+  - name: routine-follow-up-refs
+    what: a follow-up routine to the deal or invoice it follows
+    storedIn: kernel.routines follow-up refs (jsonb)
+    columns: []
+    paths:
+      - apps/api/src/modules/agent/routines/
+      - apps/api/src/apps/projects/service/deals.ts
+    visibleState: [gone]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: H, Ap: C, Mv: K, Rs: a, Dr: e, Ex: a, Mi: a, Rv: V, Aw: a }
+    open:
+      Mg: no follow-up routine world is built in this file yet
+      Dl: what the link shows once the other end is deleted is not driven in this file yet
+      Pm: a reader who loses the read scope of the other end is not driven in this file yet
+      Ap: switching the owning app off is not driven in this file yet
+      Mv: what moves for this link is not driven in this file yet
+      Rv: the way back after the cell's event is not driven in this file yet
+
+  - name: suppression-contact
+    what: an opt-out to the address it holds, the person through it
+    storedIn: kernel.suppressions, kernel.suppression_links (by address fingerprint, no person id)
+    columns: []
+    paths:
+      - apps/api/src/modules/mail/suppressions.ts
+      - apps/api/src/modules/contacts/service.ts
+      - apps/api/src/modules/export/data-subject-export-tool.ts
+    visibleState: []
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: P, Dl: K, Dx: a, Pm: H, Ap: K, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: a, Aw: a }
+    open:
+      Mg: an opt-out is held by address, so a person merge leaves it on the address; what the survivor shows for the merged-away address is not driven in this file yet
+      Pm: a reader who loses the read scope of the other end is not driven in this file yet
+      Ap: switching the owning app off is not driven in this file yet
+
+  - name: deal-value-deal
+    what: a deal's amount to its deal
+    storedIn: app_projects.deal_values.task_id
+    columns: [app_projects.deal_values.task_id]
+    paths:
+      - apps/api/src/apps/projects/service/deals.ts
+      - apps/api/src/apps/projects/service/tasks.ts
+    visibleState: [gone]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: P, Dl: C, Dx: a, Pm: H, Ap: H, Mv: K, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Mg: a deal merge (task merge) carrying the amount is not driven in this file yet
+      Dl: what the link shows once the other end is deleted is not driven in this file yet
+      Pm: a reader who loses the read scope of the other end is not driven in this file yet
+      Ap: switching the owning app off is not driven in this file yet
+      Mv: what moves for this link is not driven in this file yet
+      Ex: which export carries this link is not driven in this file yet
+      Rv: the way back after the cell's event is not driven in this file yet
+
+  - name: search-index-row
+    what: a search index entry to the row it indexes
+    storedIn: Meilisearch documents
+    columns: []
+    paths:
+      - apps/api/src/modules/search/
+    visibleState: [gone]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: K, Mg: P, Dl: C, Dx: a, Pm: H, Ap: H, Mv: K, Rs: H, Dr: Z, Ex: a, Mi: a, Rv: V, Aw: a }
+    open:
+      Rn: reading the index after a rename is not driven in this file yet
+      Mg: reading the index after a merge is not driven in this file yet
+      Dl: what the link shows once the other end is deleted is not driven in this file yet
+      Pm: a reader who loses the read scope of the other end is not driven in this file yet
+      Ap: switching the owning app off is not driven in this file yet
+      Mv: what moves for this link is not driven in this file yet
+      Rs: no reader of a restricted record in this world
+      Dr: the index after a demo reset is not counted in this file yet
+      Rv: the way back after the cell's event is not driven in this file yet
+
+  - name: app-draft-author
+    what: an app draft and its versions to the people who made and last changed them
+    storedIn: kernel.app_drafts.created_by, updated_by, kernel.app_draft_versions.created_by
+    columns: [kernel.app_drafts.created_by, kernel.app_drafts.updated_by, kernel.app_draft_versions.created_by]
+    paths:
+      - apps/api/src/modules/app-builder/
+      - apps/api/src/modules/users/service.ts
+      - apps/api/src/modules/users/merge-references.ts
+      - apps/api/src/modules/export/member-data-subject-bundle.ts
+      - apps/api/src/modules/erasure/erase-user.ts
+    visibleState: []
+    whoIsTold: [owner, admin, colleague]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: K, Pm: c, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: a }
+    open:
+      Mg: only an import placeholder merges, and a placeholder never builds an app; the merge moves the author columns to the person (merge-references.ts)
+      Dl: what a draft shows once the person who made it deleted their account is not defined; erasure clears the author columns
+
+  - name: app-draft-part
+    what: an app draft's versions, build artifacts and logs to the draft they belong to
+    storedIn: kernel.app_draft_versions.draft_id, kernel.app_build_artifacts.draft_id, kernel.app_logs.draft_id
+    columns: [kernel.app_draft_versions.draft_id, kernel.app_build_artifacts.draft_id, kernel.app_logs.draft_id]
+    paths:
+      - apps/api/src/modules/app-builder/
+    visibleState: []
+    whoIsTold: []
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: a, Dx: a, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: a, Mi: a, Rv: a, Aw: a }
+
+  - name: app-log-actor
+    what: an app log line to the person whose action wrote it
+    storedIn: kernel.app_logs.actor_user_id
+    columns: [kernel.app_logs.actor_user_id]
+    paths:
+      - apps/api/src/modules/app-builder/logs.ts
+      - apps/api/src/modules/users/merge-references.ts
+      - apps/api/src/modules/erasure/erase-user.ts
+      - apps/api/src/modules/export/member-data-subject-bundle.ts
+    visibleState: []
+    whoIsTold: [owner]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: K, Pm: H, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: a }
+    open:
+      Mg: only an import placeholder merges, and a placeholder never runs an app; the merge moves the column to the person (merge-references.ts)
+      Dl: erasure deletes the person's draft log lines and clears the actor on the others; no reader of a deleted person's log lines is defined
+      Dx: no log world (an app run writing lines as a person) is built in this file yet
+      Pm: a draft's log lines are read by their actor, the rest under kernel:apps:logs; no log world is built in this file yet
+      Ex: no log world is built in this file yet; the member export's run logs section is tested in modules/export/member-data-subject-export.integration.test.ts
+
+  - name: app-log-run
+    what: app log lines to the run that wrote them
+    storedIn: kernel.app_logs.run_id
+    columns: [kernel.app_logs.run_id]
+    paths:
+      - apps/api/src/modules/app-builder/logs.ts
+    visibleState: []
+    whoIsTold: []
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: a, Dx: a, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: a, Mi: a, Rv: a, Aw: a }
+
+  - name: invoice-party
+    what: an invoice to the person and company it bills, with their name copied onto it
+    storedIn: app_invoicing.documents.counterparty_contact_id, counterparty_name (the copied name)
+    columns: [app_invoicing.documents.counterparty_contact_id]
+    paths:
+      - bundled-apps/invoicing/
+      - apps/api/src/modules/contacts/service.ts
+      - apps/api/src/modules/export/data-subject-export-tool.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, clerk]
+    copiedNameAt: [admin, clerk]
+    cells: { Rn: S, Mg: P, Dl: R, Dx: a, Pm: H, Ap: H, Mv: K, Rs: a, Dr: e, Ex: E, Mi: M, Rv: V, Aw: a }
+    open:
+      Dl: deleting the person or the company of an issued invoice is not driven in this file yet
+      Ap: with invoicing off its tools and views are gone, but its tables still answer a reader's row security; on which read path an off app's rows must be hidden is not defined yet
+      Mv: what moves for this link is not driven in this file yet
+      Mi: an invoice written before the party columns is not built in this file yet
+
+  - name: invoice-pdf-file
+    what: an issued invoice to its PDF, the legal original
+    storedIn: app_invoicing.documents.pdf_file_id, the file's parent
+    columns: [app_invoicing.documents.pdf_file_id]
+    paths:
+      - bundled-apps/invoicing/
+      - apps/api/src/modules/files/
+    visibleState: []
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: R, Dx: a, Pm: H, Ap: b, Mv: a, Rs: a, Dr: Z, Ex: E, Mi: b, Rv: V, Aw: a }
+    open:
+      Dl: no rendered PDF is built in this file yet (the PDF is written by the invoicing app's render job)
+      Pm: no rendered PDF is built in this file yet
+      Dr: object store bytes after a demo reset are not counted in this file yet
+      Ex: no rendered PDF is built in this file yet
+      Rv: no rendered PDF is built in this file yet
+
+  - name: schedule-party
+    what: a recurring invoice schedule to the company it bills
+    storedIn: app_invoicing.recurring_schedules.company_id
+    columns: [app_invoicing.recurring_schedules.company_id]
+    paths:
+      - bundled-apps/invoicing/src/recurring/
+      - apps/api/src/modules/contacts/companies.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: K, Mg: P, Dl: R, Dx: a, Pm: H, Ap: H, Mv: K, Rs: a, Dr: e, Ex: c, Mi: a, Rv: V, Aw: a }
+    open:
+      Ap: with invoicing off its tools and views are gone, but its tables still answer a reader's row security; on which read path an off app's rows must be hidden is not defined yet
+      Mv: what moves for this link is not driven in this file yet
+
+  - name: schedule-contact
+    what: a recurring invoice schedule to the person it bills (a delete is refused while the schedule has not ended; an ended schedule lets go of the person, its contact cleared)
+    storedIn: app_invoicing.recurring_schedules.contact_id
+    columns: [app_invoicing.recurring_schedules.contact_id]
+    paths:
+      - bundled-apps/invoicing/src/recurring/
+      - apps/api/src/modules/contacts/service.ts
+      - apps/api/src/modules/export/data-subject-export-tool.ts
+    visibleState: []
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: R, Dx: a, Pm: c, Ap: c, Mv: c, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: a }
+
+  - name: schedule-issuer-profile
+    what: a recurring invoice schedule to the issuer profile it bills from
+    storedIn: app_invoicing.recurring_schedules.issuer_profile_id (foreign key, restrict)
+    columns: [app_invoicing.recurring_schedules.issuer_profile_id]
+    paths:
+      - bundled-apps/invoicing/
+    visibleState: []
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: R, Dx: a, Pm: c, Ap: c, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: a, Aw: a }
+    open:
+      Dl: the issuer profile delete runs in the invoicing app's sandbox, which this file does not start yet
+      Ex: the org export of settings is not driven in this file yet
+
+  - name: run-item-schedule-draft
+    what: a month-end run item to the schedule it bills for and the draft it made
+    storedIn: app_invoicing.recurring_run_items.schedule_id, document_id, the draft's external_ref
+    columns: [app_invoicing.recurring_run_items.schedule_id, app_invoicing.recurring_run_items.document_id, app_invoicing.recurring_run_items.run_id]
+    paths:
+      - bundled-apps/invoicing/src/recurring/
+    visibleState: [unlinked]
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: C, Dx: a, Pm: H, Ap: C, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Dl: ending a schedule with an open run item runs in the invoicing app's sandbox, which this file does not start yet
+      Ap: switching invoicing off is not driven in this file yet
+      Ex: the org export of run items is not driven in this file yet
+
+  - name: payments-customer-party
+    what: a payments customer (and its subscriptions) to the company it was matched to
+    storedIn: app_stripe.stripe_customers.company_id
+    columns: [app_stripe.stripe_customers.company_id]
+    paths:
+      - bundled-apps/stripe/
+      - apps/api/src/modules/contacts/companies.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: K, Mg: P, Dl: C, Dx: a, Pm: H, Ap: C, Mv: K, Rs: a, Dr: Z, Ex: c, Mi: a, Rv: V, Aw: a }
+    open:
+      Ap: what a customer card shows of its link while the connector is off is not defined yet
+      Mv: what moves for this link is not driven in this file yet
+      Dr: the payments fixtures after a demo reset are not counted in this file yet
+
+  - name: payments-customer-contact
+    what: a payments customer (and its subscriptions) to the person it was matched to
+    storedIn: app_stripe.stripe_customers.contact_id
+    columns: [app_stripe.stripe_customers.contact_id]
+    paths:
+      - bundled-apps/stripe/
+      - apps/api/src/modules/contacts/service.ts
+      - apps/api/src/modules/contacts/erasure.ts
+      - apps/api/src/modules/export/data-subject-export-tool.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: c, Ap: c, Mv: c, Rs: a, Dr: c, Ex: E, Mi: a, Rv: c, Aw: a }
+
+  - name: payments-invoice-document
+    what: a payments invoice to the invoice document Liaison issued for it
+    storedIn: app_stripe.stripe_invoices.liaison_document_id
+    columns: [app_stripe.stripe_invoices.liaison_document_id]
+    paths:
+      - bundled-apps/stripe/
+      - bundled-apps/invoicing/
+    visibleState: []
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: S, Mg: a, Dl: R, Dx: a, Pm: H, Ap: C, Mv: a, Rs: a, Dr: Z, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Rn: renaming the party of an issued invoice is not driven in this file yet
+      Dl: deleting an issued invoice runs in the invoicing app's sandbox, which this file does not start yet
+      Ap: what the payments invoice shows of its document while the connector is off is not defined yet
+      Dr: the payments fixtures after a demo reset are not counted in this file yet
+      Ex: the org export of payments invoices is not driven in this file yet
+
+  - name: payments-refund-charge
+    what: a payments refund to the charge it refunds and the credit note issued for it
+    storedIn: app_stripe.stripe_refunds.payment_id, liaison_document_id, app_stripe.stripe_payments.invoice_id
+    columns: [app_stripe.stripe_refunds.payment_id, app_stripe.stripe_refunds.liaison_document_id, app_stripe.stripe_payments.invoice_id]
+    paths:
+      - bundled-apps/stripe/
+    visibleState: []
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: R, Dx: a, Pm: H, Ap: C, Mv: a, Rs: a, Dr: Z, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Dl: deleting a refunded charge's credit note runs in the invoicing app's sandbox, which this file does not start yet
+      Ap: what a refund shows of its charge while the connector is off is not defined yet
+      Dr: the payments fixtures after a demo reset are not counted in this file yet
+      Ex: the org export of payments refunds is not driven in this file yet
+
+  - name: client-action-target
+    what: a client action to the record the client signs, accepts or approves, and the round of signers it belongs to
+    storedIn: kernel.client_actions.target_app, target_type, target_id, target_sha256 (frozen at send), group_id
+    columns: [kernel.client_actions.target_id, kernel.client_actions.group_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+      - apps/api/src/db/schema/kernel/client-actions.ts
+    visibleState: [revoked, expired, signed, accepted, approved, declined]
+    whoIsTold: [sender]
+    copiedNameAt: []
+    cells: { Rn: S, Mg: a, Dl: C, Dx: a, Pm: H, Ap: K, Mv: a, Rs: H, Dr: e, Ex: c, Mi: a, Rv: b, Aw: a }
+    open:
+      Rn: the target's hash is frozen at send and checked again at the decision; no reader of an action's target title is built yet
+      Dl: revoking an open action whose target is voided (reason sender_voided) is not built yet; a decided action stays as the legal record
+      Pm: no member read of client actions exists yet under kernel:client_actions:read
+      Ap: the token page's down frame for a target whose app is off is not built yet; the action itself stays as it was
+      Rs: the visible_to clause for a restricted target is in the schema, but nothing keeps it in step with the document's access yet
+
+  - name: client-action-company
+    what: a client action to the client company it was sent for
+    storedIn: kernel.client_actions.company_id (stamped at send)
+    columns: [kernel.client_actions.company_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+      - apps/api/src/modules/contacts/companies.ts
+    visibleState: [revoked]
+    whoIsTold: [sender, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: a, Ap: a, Mv: c, Rs: a, Dr: e, Ex: c, Mi: a, Rv: b, Aw: a }
+    open:
+      Mg: a company merge does not move client actions to the surviving company yet
+      Dl: revoking a company's open actions when its portal access ends (reason access_ended) is not built yet; a deleted company clears the column (ON DELETE SET NULL)
+
+  - name: client-action-contact
+    what: a client action to the client person it was sent to
+    storedIn: kernel.client_actions.contact_id, invited_name and invited_email (copied at send)
+    columns: [kernel.client_actions.contact_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+      - apps/api/src/modules/contacts/service.ts
+      - apps/api/src/modules/contacts/erasure.ts
+      - apps/api/src/modules/export/data-subject-export-tool.ts
+    visibleState: [revoked]
+    whoIsTold: [sender]
+    copiedNameAt: []
+    cells: { Rn: S, Mg: P, Dl: C, Dx: a, Pm: a, Ap: a, Mv: K, Rs: a, Dr: e, Ex: E, Mi: a, Rv: b, Aw: a }
+    open:
+      Rn: the name and address an action was sent to are copied at send; no reader of them is built yet
+      Mg: a contact merge does not move client actions to the surviving contact yet
+      Dl: an erasure that revokes the person's open actions, keeps decided signatures and approvals, and anonymises the rest is not built yet; a deleted contact clears the column (ON DELETE SET NULL)
+      Mv: an action keeps the company stamped at send when its person moves to another company; no reader of it is built yet
+      Ex: the data subject export does not carry a contact's client actions yet
+
+  - name: client-action-decider
+    what: a client action to the person who signs or decides it, staff of the org or a client on the portal
+    storedIn: kernel.client_actions.signer_user_id, decided_user_id (portal path only), typed_name (the legal name)
+    columns: [kernel.client_actions.signer_user_id, kernel.client_actions.decided_user_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+      - apps/api/src/modules/erasure/erase-user.ts
+    visibleState: [revoked]
+    whoIsTold: [sender]
+    copiedNameAt: []
+    cells: { Rn: S, Mg: a, Dl: K, Dx: C, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: b, Aw: b }
+    open:
+      Rn: a decision keeps the name typed at the decision; no reader of who decided is built yet
+      Dl: an erasure keeps a decided action and who decided it as a legal record; neither the decision path nor its reader is built yet
+      Dx: revoking a removed person's open actions (reason person_removed) is not built yet
+      Ex: the data subject export does not carry a person's decisions yet
+
+  - name: client-action-sender
+    what: a client action to the colleague or agent who sent it, and the person who approved the send
+    storedIn: kernel.client_actions.created_by_user_id, created_by_agent_id, approved_by_user_id
+    columns: [kernel.client_actions.created_by_user_id, kernel.client_actions.created_by_agent_id, kernel.client_actions.approved_by_user_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+      - apps/api/src/modules/erasure/erase-user.ts
+    visibleState: [usual]
+    whoIsTold: [sender]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: K, Dx: K, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: W }
+    open:
+      Dl: the erasure rule keeps who sent an action as part of the decision's legal record (erase-user.ts); no reader of the sender is built yet
+      Dx: what an open action shows once its sender left is not defined; it stays open as it was
+      Ex: no data subject export exists for a person; the export takes a contact
+      Aw: the Home row a decision raises for its sender is not built yet, nor who gets it while the sender is away
+
+  - name: client-action-event-action
+    what: a client action's trail entry to its action
+    storedIn: kernel.client_action_events.action_id (append only, kept a year)
+    columns: [kernel.client_action_events.action_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+    visibleState: []
+    whoIsTold: [sender]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: b, Dx: a, Pm: c, Ap: a, Mv: a, Rs: c, Dr: e, Ex: c, Mi: a, Rv: a, Aw: a }
+
+  - name: client-action-event-actor
+    what: a client action's trail entry to the person who caused it
+    storedIn: kernel.client_action_events.actor_user_id, actor_kind
+    columns: [kernel.client_action_events.actor_user_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+    visibleState: []
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: b, Dx: b, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: a, Aw: a }
+    open:
+      Ex: the access log in a person's data subject export is not built yet
+
+  - name: client-action-event-mail
+    what: a client action's trail entry to the system mail it sent
+    storedIn: kernel.client_action_events.mail_id (text)
+    columns: [kernel.client_action_events.mail_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+    visibleState: []
+    whoIsTold: [sender]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: b, Dx: a, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: c, Mi: a, Rv: a, Aw: a }
+
+  - name: client-action-device-event
+    what: the address and browser of a trail entry to that entry
+    storedIn: kernel.client_action_devices.event_id
+    columns: [kernel.client_action_devices.event_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+    visibleState: []
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: b, Dx: a, Pm: H, Ap: a, Mv: a, Rs: a, Dr: e, Ex: c, Mi: a, Rv: a, Aw: a }
+    open:
+      Pm: no reader of devices exists yet under kernel:portal:logs; the table is closed to every other member read
+
+  - name: portal-person-account
+    what: a portal person to the client's own sign-in account
+    storedIn: kernel.portal_people.user_id (an external user row)
+    columns: [kernel.portal_people.user_id]
+    paths:
+      - apps/api/src/modules/portal/
+      - apps/api/src/db/portal-rls.ts
+      - apps/api/src/modules/users/merge-references.ts
+      - apps/api/src/modules/erasure/erase-user.ts
+    visibleState: [ended]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: R, Dl: C, Dx: C, Pm: a, Ap: a, Mv: C, Rs: a, Dr: e, Ex: E, Mi: a, Rv: b, Aw: a }
+    open:
+      Mg: a person merge refuses a portal account (merge-references.ts); a placeholder is never a portal person, so the refusal has no world to run in
+      Dl: removing a portal person with erasure, keeping invoices and signed agreements and saying which, is not built yet; the row goes with the account (ON DELETE CASCADE)
+      Dx: removing a portal person (sessions ended, open links revoked) is not built yet; a deactivated account already reads nothing through portal.me
+      Mv: moving a person to another client company, which ends their sessions and carries nothing, is not built yet
+      Ex: the data subject export does not carry a portal person's sign-ins and decisions yet
+
+  - name: portal-person-company
+    what: a portal person to the client company whose portal they see
+    storedIn: kernel.portal_people.company_id
+    columns: [kernel.portal_people.company_id]
+    paths:
+      - apps/api/src/modules/portal/
+      - apps/api/src/db/portal-rls.ts
+      - apps/api/src/modules/contacts/companies.ts
+    visibleState: [ended]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: a, Ap: a, Mv: c, Rs: a, Dr: e, Ex: c, Mi: a, Rv: b, Aw: a }
+    open:
+      Mg: a company merge does not move portal people yet, nor limit them to what they saw before
+      Dl: ending a company's portal access in one transaction (sessions, links, shares) is not built yet; portal.company_id() already answers nothing for a closed company
+
+  - name: portal-person-contact
+    what: a portal person to the contact they are in the organisation's records
+    storedIn: kernel.portal_people.contact_id (soft)
+    columns: [kernel.portal_people.contact_id]
+    paths:
+      - apps/api/src/modules/portal/
+      - apps/api/src/modules/contacts/service.ts
+      - apps/api/src/modules/contacts/erasure.ts
+    visibleState: [ended]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: a, Ap: a, Mv: C, Rs: a, Dr: e, Ex: E, Mi: a, Rv: b, Aw: a }
+    open:
+      Mg: a contact merge does not move a portal person to the surviving contact yet
+      Dl: a deleted contact ending its portal access is not built yet
+      Mv: a contact whose company changes ending its portal access is not built yet
+      Ex: the data subject export of a contact does not carry a portal section yet
+
+  - name: portal-person-inviter
+    what: a portal person to the colleague who invited them
+    storedIn: kernel.portal_people.invited_by_user_id
+    columns: [kernel.portal_people.invited_by_user_id]
+    paths:
+      - apps/api/src/modules/portal/
+    visibleState: [usual]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: K, Dx: c, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: a }
+    open:
+      Dl: inviting a portal person is not built yet, nor what their row shows once the colleague who invited them is erased
+      Ex: no data subject export exists for a person; the export takes a contact
+
+  - name: portal-person-merge-limit
+    what: a portal person to the shares and contacts they keep seeing after a company merge
+    storedIn: kernel.portal_people.sees_only_share_ids, sees_only_contact_ids (NULL means the whole company)
+    columns: [kernel.portal_people.sees_only_share_ids, kernel.portal_people.sees_only_contact_ids]
+    paths:
+      - apps/api/src/modules/portal/
+      - apps/api/src/db/portal-rls.ts
+    visibleState: []
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: P, Dl: C, Dx: a, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: a, Mi: a, Rv: a, Aw: a }
+    open:
+      Mg: the company merge that writes these lists is not built yet, nor what a merge of a listed contact does to them
+      Dl: what a listed share closed or a listed contact deleted reads as is not defined; nothing writes the lists yet
+
+  - name: portal-share-company
+    what: something shared on the portal to the client company that may see it
+    storedIn: kernel.portal_shares.company_id
+    columns: [kernel.portal_shares.company_id]
+    paths:
+      - apps/api/src/modules/portal/
+      - apps/api/src/db/portal-rls.ts
+      - apps/api/src/modules/contacts/companies.ts
+    visibleState: [closed]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: a, Mi: a, Rv: b, Aw: a }
+    open:
+      Mg: a company merge does not move shares yet, nor close one that would duplicate an open share of the surviving company
+      Dl: ending a company's portal access closes its shares in the same transaction, which is not built yet; a deleted company takes its shares with it (ON DELETE CASCADE)
+
+  - name: portal-share-object
+    what: something shared on the portal to the project, agreement, file or ticket it opens
+    storedIn: kernel.portal_shares.kind, object_id (NULL for invoices and requests)
+    columns: [kernel.portal_shares.object_id]
+    paths:
+      - apps/api/src/modules/portal/
+      - apps/api/src/db/portal-rls.ts
+    visibleState: [closed]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: C, Dl: C, Dx: a, Pm: a, Ap: C, Mv: C, Rs: H, Dr: e, Ex: a, Mi: a, Rv: a, Aw: a }
+    open:
+      Mg: no portal view reads a shared object yet; a ticket merged into another is to read as gone on the portal
+      Dl: no portal view reads a shared object yet, so what a share of a deleted object shows is not driven
+      Ap: what a share shows once its object's app is switched off is not defined
+      Mv: the file read that checks a shared file's parent again at every read is not built yet
+      Rs: the file read that refuses a shared file whose parent turned restricted is not built yet
+
+  - name: portal-share-people
+    what: something shared on the portal to the named client people who may see it
+    storedIn: kernel.portal_shares.only_user_ids (NULL means the whole company)
+    columns: [kernel.portal_shares.only_user_ids]
+    paths:
+      - apps/api/src/modules/portal/
+      - apps/api/src/db/portal-rls.ts
+    visibleState: [closed]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: c, Dx: c, Pm: a, Ap: a, Mv: c, Rs: H, Dr: e, Ex: a, Mi: a, Rv: b, Aw: a }
+    open:
+      Rs: requiring named people on a share of a restricted document, and reading it on the portal, is not built yet
+
+  - name: portal-share-author
+    what: something shared on the portal to the colleague who opened or closed it
+    storedIn: kernel.portal_shares.shared_by_user_id, closed_by_user_id
+    columns: [kernel.portal_shares.shared_by_user_id, kernel.portal_shares.closed_by_user_id]
+    paths:
+      - apps/api/src/modules/portal/
+    visibleState: [usual]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: K, Dx: c, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: a }
+    open:
+      Dl: opening and closing shares from the client access panel is not built yet, nor what a share shows once the colleague who opened it is erased
+      Ex: no data subject export exists for a person; the export takes a contact
+
+  - name: ticket-company
+    what: a ticket to the client company it is for, stamped when it is created (the portal person's company, else its contact's) and never followed afterwards
+    storedIn: app_tickets.tickets.company_id (stamped at creation)
+    columns: [app_tickets.tickets.company_id]
+    paths:
+      - apps/api/src/apps/tickets/create.ts
+      - apps/api/src/modules/contacts/companies.ts
+      - apps/api/src/modules/portal/
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: a, Ap: H, Mv: b, Rs: a, Dr: e, Ex: c, Mi: M, Rv: b, Aw: a }
+    open:
+      Mg: a company merge does not move tickets to the surviving company yet
+      Dl: what a ticket shows once its company is deleted is not driven in this file yet
+      Ap: switching the tickets app off is not driven in this file yet
+      Mi: open tickets are stamped once from their contact's company by the migration that added the column; that stamp is not driven in this file yet
+
+  - name: document-company
+    what: an issued invoicing document to the client company it is made out to, stamped once at issue from the counterparty's company and never followed afterwards
+    storedIn: app_invoicing.documents.company_id (stamped at issue)
+    columns: [app_invoicing.documents.company_id]
+    paths:
+      - bundled-apps/invoicing/src/issue.ts
+      - apps/api/src/modules/contacts/companies.ts
+      - apps/api/src/modules/portal/
+    visibleState: [unlinked]
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: R, Dx: a, Pm: a, Ap: H, Mv: b, Rs: a, Dr: e, Ex: c, Mi: a, Rv: b, Aw: a }
+    open:
+      Mg: a company merge does not move issued documents to the surviving company yet
+      Dl: deleting the company of an issued document is not driven in this file yet
+      Ap: with invoicing off its tools and views are gone, but its tables still answer a reader's row security; on which read path an off app's rows must be hidden is not defined yet
+
+  - name: agreement-party
+    what: an agreement to the client company and the person it is made with
+    storedIn: app_agreements.agreements.company_id, contact_id (soft)
+    columns: [app_agreements.agreements.company_id, app_agreements.agreements.contact_id]
+    paths:
+      - bundled-apps/agreements/
+      - apps/api/src/modules/contacts/companies.ts
+      - apps/api/src/modules/contacts/service.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: S, Mg: P, Dl: R, Dx: a, Pm: H, Ap: H, Mv: K, Rs: H, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Rn: an agreement copies no party name yet, so what a renamed company or person reads as on a sent agreement is not driven
+      Mg: a company or contact merge does not move agreements to the surviving record yet
+      Dl: refusing to delete the company or person of a sent or signed agreement is not built yet
+      Pm: an agreement is read through its own access rows (agreement-access); a reader who loses agreements access is not driven in this file yet
+      Ap: with agreements off its tools are gone, but its tables still answer a reader's row security; on which read path an off app's rows must be hidden is not defined yet
+      Mv: what a person moving to another company leaves on their agreements is not driven in this file yet
+      Rs: no agreement world is built in this file yet
+      Ex: the data subject export of a contact does not carry an agreements section yet
+      Rv: no agreement world is built in this file yet
+
+  - name: agreement-parent
+    what: an agreement to the deal, project and quote it came from, and to the agreement it changes or became
+    storedIn: app_agreements.agreements.deal_task_id, project_id, quote_document_id, parent_agreement_id, became_agreement_id, effects_task_id (soft)
+    columns: [app_agreements.agreements.deal_task_id, app_agreements.agreements.project_id, app_agreements.agreements.quote_document_id, app_agreements.agreements.parent_agreement_id, app_agreements.agreements.became_agreement_id, app_agreements.agreements.effects_task_id]
+    paths:
+      - bundled-apps/agreements/
+      - apps/api/src/apps/projects/
+      - bundled-apps/invoicing/
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: H, Ap: H, Mv: C, Rs: H, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Mg: a deal or project merge does not move agreements yet
+      Dl: what an agreement shows once its deal, project or quote is deleted is not driven in this file yet
+      Pm: a reader of the agreement who cannot read its deal or project is not driven in this file yet
+      Ap: what an agreement shows once projects or invoicing is switched off is not defined
+      Mv: a deal moved to another project is not driven in this file yet
+      Rs: no agreement world is built in this file yet
+      Ex: the org export does not carry agreements yet
+      Rv: no agreement world is built in this file yet
+
+  - name: agreement-template
+    what: an agreement to the template it was written from, and a template's settings and saved versions to the template
+    storedIn: app_agreements.agreements.template_id with template_version, agreement_template_meta.template_id, agreement_template_versions.template_id
+    columns: [app_agreements.agreements.template_id, app_agreements.agreement_template_meta.template_id, app_agreements.agreement_template_versions.template_id]
+    paths:
+      - bundled-apps/agreements/src/templates.ts
+      - apps/api/src/modules/documents/
+    visibleState: []
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: K, Dx: a, Pm: a, Ap: c, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: a, Aw: a }
+    open:
+      Dl: an agreement keeps the text of the template version it was written from (agreements.test.ts); archiving or deleting the template is not driven in this file yet
+      Ex: the org export does not carry agreement templates yet
+
+  - name: agreement-version-file
+    what: an agreement to its drafts and frozen versions, and a version to its file, its statement of work document and its evidence package
+    storedIn: app_agreements.agreement_drafts.agreement_id, upload_file_id, agreement_versions.agreement_id, file_id, evidence_packages.version_id and its file columns (write once)
+    columns: [app_agreements.agreement_drafts.agreement_id, app_agreements.agreement_drafts.upload_file_id, app_agreements.agreement_versions.agreement_id, app_agreements.agreement_versions.file_id, app_agreements.evidence_packages.version_id, app_agreements.evidence_packages.signed_pdf_file_id, app_agreements.evidence_packages.evidence_file_id, app_agreements.evidence_packages.signer_copy_file_ids, app_agreements.evidence_packages.tsr_file_id, app_agreements.evidence_packages.stamped_evidence_file_id, app_agreements.evidence_packages.stamped_signer_copy_file_ids]
+    paths:
+      - bundled-apps/agreements/
+      - apps/api/src/modules/signing/
+      - apps/api/src/modules/files/
+    visibleState: []
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: b, Dx: a, Pm: H, Ap: b, Mv: a, Rs: H, Dr: Z, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Pm: a reader who loses agreements access reading a version's file is not driven in this file yet
+      Rs: no agreement world is built in this file yet
+      Dr: object store bytes of versions and evidence after a demo reset are not counted in this file yet
+      Ex: no frozen version is built in this file yet
+      Rv: no frozen version is built in this file yet
+
+  - name: statement-of-work-agreement
+    what: a frozen agreement version to the knowledge document that carries its statement of work, and the role allowed to read it
+    storedIn: app_agreements.agreement_versions.knowledge_document_id, agreements_settings.sow_reader_role_id
+    columns: [app_agreements.agreement_versions.knowledge_document_id, app_agreements.agreements_settings.sow_reader_role_id]
+    paths:
+      - bundled-apps/agreements/
+      - apps/api/src/modules/knowledge/
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: K, Mg: a, Dl: C, Dx: a, Pm: H, Ap: C, Mv: a, Rs: H, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Rn: writing the statement of work document at freeze is not built yet
+      Dl: writing the statement of work document at freeze is not built yet
+      Pm: writing the statement of work document at freeze is not built yet
+      Ap: writing the statement of work document at freeze is not built yet
+      Rs: writing the statement of work document at freeze is not built yet
+      Ex: writing the statement of work document at freeze is not built yet
+      Rv: writing the statement of work document at freeze is not built yet
+
+  - name: signature-version
+    what: a signature to the agreement version it signs and the client action that asked for it
+    storedIn: app_agreements.signature_events.version_id, client_action_id (write once)
+    columns: [app_agreements.signature_events.version_id, app_agreements.signature_events.client_action_id]
+    paths:
+      - bundled-apps/agreements/
+      - apps/api/src/modules/client-actions/
+      - apps/api/src/modules/signing/
+    visibleState: [revoked, expired, signed]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: C, Dx: a, Pm: H, Ap: C, Mv: a, Rs: H, Dr: Z, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Dl: sending an agreement for signature is not built yet, nor what a voided version's open link reads as
+      Pm: sending an agreement for signature is not built yet
+      Ap: sending an agreement for signature is not built yet, nor what its open links read as once agreements is switched off
+      Rs: sending an agreement for signature is not built yet
+      Dr: sending an agreement for signature is not built yet
+      Ex: sending an agreement for signature is not built yet
+      Rv: sending an agreement for signature is not built yet
+
+  - name: signature-signer
+    what: a signature to the person who signed, a client contact or a colleague
+    storedIn: app_agreements.signature_events.signer_contact_id, signer_user_id, invited_email (write once, kept on erasure)
+    columns: [app_agreements.signature_events.signer_contact_id, app_agreements.signature_events.signer_user_id]
+    paths:
+      - bundled-apps/agreements/
+      - apps/api/src/modules/client-actions/
+      - apps/api/src/modules/erasure/
+    visibleState: [signed]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: S, Mg: P, Dl: C, Dx: C, Pm: a, Ap: c, Mv: R, Rs: a, Dr: Z, Ex: E, Mi: a, Rv: V, Aw: W }
+    open:
+      Rn: signing is not built yet; the typed name is the signer's copy at signing
+      Mg: signing is not built yet; a merged contact's signature resolves through the merge on read
+      Dl: signing is not built yet
+      Dx: signing is not built yet
+      Mv: signing is not built yet
+      Dr: signing is not built yet
+      Ex: signing is not built yet
+      Rv: signing is not built yet
+      Aw: signing is not built yet
+
+  - name: agreement-access
+    what: an agreement to the colleagues on its list, who may read it while its access is restricted
+    storedIn: app_agreements.agreements.acl_user_ids, agreement_shares.agreement_id, user_id, created_by (the sharedRows list)
+    columns: [app_agreements.agreements.acl_user_ids, app_agreements.agreement_shares.agreement_id, app_agreements.agreement_shares.user_id, app_agreements.agreement_shares.created_by]
+    paths:
+      - bundled-apps/agreements/src/access.ts
+      - apps/api/src/modules/permissions/rls-generator.ts
+      - apps/api/src/modules/users/merge-references.ts
+    visibleState: []
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: P, Dl: C, Dx: C, Pm: K, Ap: H, Mv: a, Rs: H, Dr: Z, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Mg: a person merge does not move agreement list rows yet
+      Dl: the list rows of an erased person are anonymized by the app's user columns; what the agreement shows is not driven in this file yet
+      Dx: a deactivated colleague on an agreement's list is not driven in this file yet
+      Pm: the list is read at the data layer (restricted.integration.test.ts); a listed colleague who loses agreements access is not driven in this file yet
+      Ap: with agreements off its tools are gone, but its tables still answer a reader's row security; on which read path an off app's rows must be hidden is not defined yet
+      Rs: no agreement world is built in this file yet
+      Dr: list rows after a demo reset are not counted in this file yet
+      Ex: no data subject export exists for a person; the export takes a contact
+      Rv: a colleague put back on the list is not driven in this file yet
+
+  - name: agreement-author
+    what: an agreement, its drafts, versions and templates to the colleagues and agents who wrote, priced, froze or saved them
+    storedIn: app_agreements.agreements.created_by_user_id, created_by_agent_id, priced_by_user_id, what_it_is_by_user_id, not_a_guarantee_by_user_id, agreement_drafts.updated_by_user_id, updated_by_agent_id, agreement_versions.frozen_by_user_id, agreement_template_versions.saved_by_user_id
+    columns: [app_agreements.agreements.created_by_user_id, app_agreements.agreements.created_by_agent_id, app_agreements.agreements.priced_by_user_id, app_agreements.agreements.what_it_is_by_user_id, app_agreements.agreements.not_a_guarantee_by_user_id, app_agreements.agreement_drafts.updated_by_user_id, app_agreements.agreement_drafts.updated_by_agent_id, app_agreements.agreement_versions.frozen_by_user_id, app_agreements.agreement_template_versions.saved_by_user_id]
+    paths:
+      - bundled-apps/agreements/
+      - apps/api/src/modules/erasure/
+      - apps/api/src/modules/users/merge-references.ts
+    visibleState: [usual]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: K, Pm: c, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: a }
+    open:
+      Mg: a person merge does not move agreement author columns yet
+      Dl: erasure anonymizes the app's user columns (onErase anonymize); what an agreement shows once its author is erased is not driven in this file yet
+      Dx: what an agreement shows once its author is deactivated is not driven in this file yet
+      Ex: no data subject export exists for a person; the export takes a contact
+
+  - name: client-report-project
+    what: a client report to its project and the client company stamped on it when drafted
+    storedIn: app_projects.client_reports.project_id, company_id (stamped at the draft)
+    columns: [app_projects.client_reports.project_id, app_projects.client_reports.company_id]
+    paths:
+      - apps/api/src/apps/projects/service/client-reports.ts
+      - apps/api/src/modules/portal/company-merge.ts
+    visibleState: [usual]
+    whoIsTold: [usual]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: K, Dx: a, Pm: H, Ap: a, Mv: K, Rs: a, Dr: e, Ex: a, Mi: a, Rv: c, Aw: a }
+    open:
+      Mg: a company merge re-points the report to the survivor (tested beside the portal doors); no generated cell yet
+      Dl: a project with reports cannot be deleted (ON DELETE RESTRICT); an archived project keeps its sent reports
+      Pm: a person without projects:reports:read reads no report (row security); no generated cell yet
+      Mv: a report keeps the company stamped at its draft when the project's company changes; no reader of the change is built yet
+
+  - name: client-report-recipient
+    what: a client report to the client contact it is mailed to, and the mail it went out as
+    storedIn: app_projects.client_reports.recipient_contact_id, mail_message_id
+    columns: [app_projects.client_reports.recipient_contact_id, app_projects.client_reports.mail_message_id]
+    paths:
+      - apps/api/src/apps/projects/service/client-reports.ts
+      - apps/api/src/apps/projects/service/client-report-mail.ts
+    visibleState: [usual]
+    whoIsTold: [usual]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: K, Dl: K, Dx: a, Pm: a, Ap: a, Mv: K, Rs: a, Dr: e, Ex: K, Mi: a, Rv: a, Aw: a }
+    open:
+      Mg: a contact merge does not move a draft's recipient yet; the send reads the company's contact with an address
+      Dl: a sent report keeps who it went to; a draft whose contact is gone goes to another contact of the company with an address
+      Mv: a sent report keeps its recipient when the person moves to another company
+      Ex: the data subject export does not carry the reports a contact received yet
+
+  - name: client-report-people
+    what: a client report to the person who approved its send, the routine that drafted it and its thread
+    storedIn: app_projects.client_reports.approved_by_user_id, routine_id, thread_id
+    columns: [app_projects.client_reports.approved_by_user_id, app_projects.client_reports.routine_id, app_projects.client_reports.thread_id]
+    paths:
+      - apps/api/src/apps/projects/service/client-reports.ts
+      - apps/api/src/modules/apps/sandbox/bridge/projects.ts
+    visibleState: [usual]
+    whoIsTold: [usual]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: K, Dx: K, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: K, Mi: a, Rv: a, Aw: a }
+    open:
+      Dl: a sent report keeps who approved it, as the record of a person's act; the portal shows their name only while it is on file
+      Dx: a sent report keeps who approved it after they leave
+      Ex: the data subject export does not carry the reports a person approved yet
+
+  - name: reconcile-left-out-task
+    what: a reconcile card to the tasks left out of it as the client's own work
+    storedIn: app_projects.reconciliations.excluded_task_ids
+    columns: [app_projects.reconciliations.excluded_task_ids]
+    paths:
+      - apps/api/src/apps/projects/service/reconcile.ts
+      - apps/api/src/apps/projects/service/late-work.ts
+    visibleState: [usual]
+    whoIsTold: [nobody]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: K, Dl: K, Dx: a, Pm: a, Ap: a, Mv: K, Rs: a, Dr: e, Ex: a, Mi: K, Rv: a, Aw: a }
+    open:
+      Mg: a merged task is archived and never late work; the survivor is its own task, listed when nothing billed it; no generated cell yet
+      Dl: an archived or deleted task is never late work, so its id on the card matches nothing; no generated cell yet
+      Mv: a task moved to another project leaves the card's project, so its id on the card matches nothing; no generated cell yet
+      Mi: a card made before the list was kept has only a count, and then only work closed after it is offered (tested beside the late work); no generated cell yet

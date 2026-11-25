@@ -1,0 +1,2 @@
+# The services world's copy (tours, door, limits) holds no literal of another world.
+src/seed/worlds/studio/world-honesty.studio.test.ts

@@ -166,6 +166,19 @@ describe("seeding an existing org that is not a demo org", () => {
     expect(await marker()).toBeNull()
   })
 
+  it("is never deleted by a reset on a private box: the replace refuses it and the org stays", async () => {
+    DemoModeTestAccess.set(false)
+    try {
+      await expect(
+        runSeedDemoCli(["--slug", SLUG, "--world", "saas", "--variant", "visitor", "--reset"]),
+      ).rejects.toThrow(new RegExp(`'${SLUG}': it is not a demo org`))
+    } finally {
+      DemoModeTestAccess.set(null)
+    }
+    expect(await orgIdBySlug(SLUG)).toBe(orgId)
+    expect(await marker()).toBeNull()
+  })
+
   it("is refused from the CLI too, whatever flag the operator adds", async () => {
     await expect(
       runSeedDemoCli(["--slug", SLUG, "--variant", "visitor", "--adopt-non-demo-org"]),

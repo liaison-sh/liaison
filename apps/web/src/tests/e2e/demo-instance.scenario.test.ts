@@ -68,6 +68,9 @@ test.describe("the public demo instance", () => {
     // test drives the real "in the product while the world fills in" path
     // rather than jumping straight to a finished workspace.
     let polls = 0
+    // The seed finishes only once the test has seen it running: a slow runner may poll
+    // twice before the first look, so readiness follows the test, not the poll count.
+    let seeded = false
     const expiresAt = new Date(Date.now() + 72 * 3600 * 1000).toISOString()
     await page.route(`**/api/demo/orgs/${DEMO_ORG_ID}/status`, (route) => {
       polls += 1
@@ -77,9 +80,9 @@ test.describe("the public demo instance", () => {
         body: JSON.stringify({
           data: {
             orgId: DEMO_ORG_ID,
-            state: polls >= 2 ? "ready" : "provisioning",
+            state: seeded ? "ready" : "provisioning",
             startedAt: new Date().toISOString(),
-            finishedAt: polls >= 2 ? new Date().toISOString() : null,
+            finishedAt: seeded ? new Date().toISOString() : null,
             expiresAt,
           },
         }),
@@ -143,6 +146,7 @@ test.describe("the public demo instance", () => {
     // The seed's honest state, then ready: the poll really ran and really
     // settled, so the notice goes on its own.
     await expect(page.getByTestId("demo-state-provisioning")).toBeVisible()
+    seeded = true
     await expect(page.getByTestId("demo-state-provisioning")).toHaveCount(0, { timeout: 30000 })
     expect(polls).toBeGreaterThanOrEqual(2)
 

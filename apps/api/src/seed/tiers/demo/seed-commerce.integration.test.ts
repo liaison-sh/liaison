@@ -340,8 +340,8 @@ describe("seedDemoCommerce against a real database", () => {
   it("issued documents carry the app's own retry-me PDF state, drafts carry none", () => {
     for (const doc of docs) {
       expect(doc.pdf_file_id).toBeNull()
-      if (doc.status === "draft") expect(doc.pdf_status).toBeNull()
-      else expect(doc.pdf_status).toBe("pending")
+      // No PDF made yet, drafts and issued alike: never an owed render the sweep would take up.
+      expect(doc.pdf_status).toBeNull()
     }
   })
 

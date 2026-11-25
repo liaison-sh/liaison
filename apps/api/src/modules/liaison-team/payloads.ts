@@ -34,7 +34,7 @@ export async function countActiveUsers(db: Pick<PrivilegedDb, "execute">): Promi
       SELECT count(*)::int AS n
         FROM ${K}.users u
         JOIN ${K}.organizations o ON o.id = u.org_id
-       WHERE u.status = 'active'
+       WHERE u.status = 'active' AND u.user_type = 'member'
          AND COALESCE(u.email, '') NOT LIKE '%@import.invalid'
          AND o.deleting_at IS NULL
          AND jsonb_typeof(o.settings -> 'demo') IS DISTINCT FROM 'object'`),

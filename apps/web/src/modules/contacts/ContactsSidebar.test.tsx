@@ -163,3 +163,27 @@ describe("ContactListSidebar: groups on the list page", () => {
     expect(exports.ContactListSidebar).toBeDefined()
   })
 })
+
+describe("ContactsSidebar: the People / Companies switch", () => {
+  beforeEach(async () => {
+    mocks.api = fakeApi()
+    await freshStores()
+  })
+  afterEach(async () => {
+    const { setEnabledOrgFeatures } = await import("~/framework/org-features")
+    setEnabledOrgFeatures([])
+    cleanup()
+  })
+
+  it("is absent while Companies is off for the workspace, and shown once an admin turns it on", async () => {
+    const { ContactsModeNav } = await import("./ContactsSidebar")
+    const { setEnabledOrgFeatures } = await import("~/framework/org-features")
+    setEnabledOrgFeatures([])
+    const off = render(() => <ContactsModeNav />)
+    expect(screen.queryByTestId("contacts-sidebar-mode-companies")).toBeNull()
+    off.unmount()
+    setEnabledOrgFeatures([{ app: "contacts", feature: "companies" }])
+    render(() => <ContactsModeNav />)
+    expect(screen.getByTestId("contacts-sidebar-mode-companies")).toBeTruthy()
+  })
+})

@@ -30,11 +30,20 @@ const DEMO_DOOR =
  * file may hold. Never add an org-facing link here: build it from the helper.
  */
 const ALLOWLIST: Record<string, { reads: number; reason: string }> = {
-  "lib/env.ts": { reads: 2, reason: "the variable's own boot checks" },
+  "lib/env.ts": {
+    reads: 3,
+    reason:
+      "the variable's own boot checks, the fake Shopify admin gate's public-host refusal among them",
+  },
   "lib/app-frame-host.ts": {
     reads: 2,
     reason:
       "boot check of the app frame origin: refuses a frame domain that shares BASE_URL's host or registrable domain, builds no link",
+  },
+  "modules/portal/auth-routes.ts": {
+    reads: 1,
+    reason:
+      "the portal refresh route's Origin check against the instance's web origins, builds no link",
   },
   "app.ts": {
     reads: 3,
@@ -48,6 +57,11 @@ const ALLOWLIST: Record<string, { reads: number; reason: string }> = {
   },
   "modules/demo/demo-verification.ts": { reads: 1, reason: DEMO_DOOR },
   "modules/demo/demo-leads.ts": { reads: 1, reason: DEMO_DOOR },
+  "modules/apps/sandbox/bridge/shopify-fake-admin.ts": {
+    reads: 1,
+    reason:
+      "the fake Shopify admin gate: refuses the hook when BASE_URL is a public host, builds no link",
+  },
   "modules/demo/demo-mode.ts": {
     reads: 1,
     reason:
@@ -56,10 +70,6 @@ const ALLOWLIST: Record<string, { reads: number; reason: string }> = {
   "modules/apps/instance-config-defaults.ts": {
     reads: 1,
     reason: "the server's own Meta callback: one subscription URL for the shared Meta app",
-  },
-  "modules/apps/sandbox/bridge/shared.ts": {
-    reads: 2,
-    reason: "origin binding: the server's own hosts an app fetch must not reach, builds no link",
   },
   "modules/apps/workers/config.ts": {
     reads: 2,

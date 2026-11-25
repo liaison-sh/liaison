@@ -61,6 +61,8 @@ When you click the button yourself, the confirmation is the approval. An agent's
 | `rejected` | Declined, or its Shopify draft order was deleted |
 | `expired` | No longer valid |
 
+A quote's outcome is set once (`quote_set_outcome`: accepted, rejected or expired); an agent's call waits for approval. When a client answers a quote's link, Invoicing records the outcome itself. No outcome creates an invoice: converting an accepted quote is its own step.
+
 ## Other documents for a deal
 
 | Document | When to use it | How it starts |

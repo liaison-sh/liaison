@@ -219,7 +219,7 @@ describe("scope taint: a write to a declared sink is judged by that sink's reade
       expect(parked(comment)).toBe(true)
       // The card says readers of the feed would see what the turn read once approved.
       const text = JSON.stringify(comment)
-      expect(text).toContain(`some people who can read ${SINK} cannot see`)
+      expect(text).toContain("some people who can read comments in feedapp cannot see")
       expect(ran).toEqual(["feedapp:run_metric"])
     } finally {
       await sql`DELETE FROM kernel.user_scope_grants

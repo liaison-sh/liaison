@@ -1,0 +1,1 @@
+An exact-only grant given after a narrowing reaches the personal agent unless removed -> apps/api/src/modules/agent/directory/personal-agent.ts (personalCeiling) ; apps/api/src/modules/agent/scopes/scope-coverage.ts (withinBounds)

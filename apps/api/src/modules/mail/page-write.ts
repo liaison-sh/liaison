@@ -6,6 +6,8 @@
 // IMAP batch). The sandboxed mail bundle fetches and normalizes the page and
 // hands it here through `mail_writePage`; this writes it whole:
 //
+//   0. this org's own signing mail is dropped (client-actions/synced-mail.ts):
+//      no row, no index, no event; a quoted signing link is cut from the rest
 //   1. one lookup of the page's external ids   -> skip what is already stored
 //   2. one lookup of the page's threads         -> which conversations exist
 //   3. the senders -> contact ids, under the mailbox's policy (sender-contacts.ts)
@@ -15,6 +17,7 @@
 //   6. the roll-up of every conversation the page touched
 //   7. the events: one per conversation, one per message (search indexing and
 //      the new-mail notifier consume them)
+//   8. a new reply asking to stop becomes an opt-out proposal (optout-wording.ts)
 //
 // WHY HOST SIDE AND ONE TRANSACTION. Each bridge call is its own transaction,
 // so a page split across calls could be interrupted after its messages were
@@ -42,6 +45,7 @@
 // and 140M sequentially scanned tuples to a few calls per page on the
 // (org_id, account_id, external_*) indexes of migration 0116.
 
+import { maskHtmlWithNote, maskPaymentSecrets, maskWithNote } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { extractRows } from "~/db"
@@ -49,6 +53,9 @@ import { sanitizeCustomerHtml } from "~/lib/email/sanitize"
 import { evaluateAuthenticationResults, trustedAuthservIdsFor } from "~/lib/email/sender-auth"
 import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
+import { cutSigningLinks } from "~/modules/client-actions/quoted-link"
+import { withoutActionMail } from "~/modules/client-actions/synced-mail"
+import { type OptOutCandidate, optOutPhraseIn, proposeOptOuts } from "~/modules/mail/optout-wording"
 import { resolveSenderContacts } from "~/modules/mail/sender-contacts"
 import {
   applyMailSealToRow,
@@ -177,6 +184,22 @@ export function isBulkMessage(message: PageMessage): boolean {
   const autoSubmitted = (headerOf(message, "auto-submitted") ?? "").trim().toLowerCase()
   if (autoSubmitted !== "" && autoSubmitted !== "no") return true
   return (message.labels ?? []).some((label) => BULK_GMAIL_CATEGORIES.includes(label))
+}
+
+/** A message's subject, bodies and snippet, masked in place, the bodies noted. */
+function maskPageMessage(m: PageMessage): void {
+  if (m.subject) m.subject = maskPaymentSecrets(m.subject).text
+  if (m.textBody) m.textBody = maskWithNote(m.textBody).text
+  if (m.htmlBody) m.htmlBody = maskHtmlWithNote(m.htmlBody).text
+  if (m.snippet) m.snippet = maskPaymentSecrets(m.snippet).text
+}
+
+/** A message's subject, bodies and snippet with every signing link cut out. */
+function cutPageMessageLinks(m: PageMessage): void {
+  if (m.subject) m.subject = cutSigningLinks(m.subject)
+  if (m.textBody) m.textBody = cutSigningLinks(m.textBody)
+  if (m.htmlBody) m.htmlBody = cutSigningLinks(m.htmlBody)
+  if (m.snippet) m.snippet = cutSigningLinks(m.snippet)
 }
 
 function sentAtMs(message: PageMessage): number {
@@ -520,9 +543,20 @@ export async function writeMailPage(
   const recipient = sealing ? resolveSealRecipient(account, actorId) : null
   const accountId = account.id
 
+  // 0. A link or code mail of this org, synced back from a mailbox, is never
+  // stored: it holds a live link or code. Matched on the stored mail id only,
+  // so a forged header is ordinary mail.
+  const { kept, dropped } = await withoutActionMail(orgId, page)
+  if (dropped > 0) {
+    log.info(
+      { orgId, accountId: input.accountId, origin, dropped },
+      "mail page write: signing mail synced back from the mailbox was not stored",
+    )
+  }
+
   // 1. What is new, and what an earlier run stored without finishing.
   const seen = new Set<string>()
-  const candidates = page.filter(
+  const candidates = kept.filter(
     (m) => !seen.has(m.externalMessageId) && seen.add(m.externalMessageId),
   )
   if (candidates.length === 0) return { entries: [] }
@@ -551,6 +585,15 @@ export async function writeMailPage(
   )
   const fresh = candidates.filter((m) => !stored.has(m.externalMessageId))
   if (fresh.length === 0) return { entries }
+
+  // Card numbers and payment keys are masked in the page itself, before the
+  // rows, the conversation rollup, the index and the triggered jobs read it. A
+  // sealed mailbox is the documented exception: the server never stores its
+  // plaintext, and its text is masked where the agent reads it instead
+  // (agent/mailbox-plaintext).
+  // A quoted signing link is cut from every stored text, sealed mailbox or not.
+  for (const m of fresh) cutPageMessageLinks(m)
+  if (!sealing) for (const m of fresh) maskPageMessage(m)
 
   // 2. The page's threads.
   const threads = new Map<string, ThreadWrite>()
@@ -837,8 +880,45 @@ export async function writeMailPage(
   // Conversation events first: a consumer of a message event may look up its
   // conversation.
   await deps.queueEvents([...conversationEvents, ...messageEvents])
+
+  // 8. A reply asking to stop: a proposal for a person, never an opt-out by itself. Plaintext
+  //    mail of a person only (a sealed body is unreadable, a list or a machine is not a person),
+  //    whose sender the receiving provider did not find forged, and only mail arriving now: a
+  //    backfill of old history raises nothing.
+  if (!sealing && origin !== "initial" && origin !== "reset") {
+    const asked: OptOutCandidate[] = []
+    for (const thread of writable) {
+      for (const { message, id } of thread.inserted) {
+        if (!isInbound(message) || isBulkMessage(message) || !message.from?.email) continue
+        const auth = evaluateAuthenticationResults(
+          message.authenticationResults,
+          message.from.email,
+          trustedAuthservIdsFor(message),
+        )
+        if (auth === "fail") continue
+        const sent = Date.parse(message.sentAt ?? "")
+        if (Number.isFinite(sent) && sent < Date.now() - OPT_OUT_RECENT_MS) continue
+        try {
+          if (optOutPhraseIn(message.textBody))
+            asked.push({ email: message.from.email, messageId: id })
+        } catch (err) {
+          log.error({ err, orgId, accountId }, "opt-out reply: the text could not be read")
+        }
+      }
+    }
+    if (asked.length > 0) {
+      await proposeOptOuts(
+        orgId,
+        { id: accountId, ownerType: account.ownerType, ownerId: account.ownerId },
+        asked,
+      )
+    }
+  }
   return { entries }
 }
+
+/** A reply older than this, synced late, raises no opt-out proposal: it is history. */
+const OPT_OUT_RECENT_MS = 30 * 24 * 60 * 60 * 1000
 
 /**
  * A reply the user sent reads the conversation up to it: they obviously saw

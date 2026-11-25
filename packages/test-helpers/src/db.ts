@@ -625,43 +625,42 @@ export function createDbClient(databaseUrl: string): DbClient {
         }
       }
 
-      // 7. Recreate cross-table foreign keys
-      // NOTE: This query assumes single-column FKs. Multi-column composite FKs
-      // would produce a cartesian product and create incorrect constraints.
-      // Current kernel tables use only single-column FKs — if composite FKs are
-      // added in the future, this query needs array_agg grouping by constraint_name.
-      // pg_constraint carries the referential actions (confdeltype /
-      // confupdtype) that information_schema does not expose conveniently. Join
-      // it on constraint_name + the source schema's constrained relation so the
-      // cloned FK reproduces the source's ON DELETE / ON UPDATE behavior instead
-      // of silently degrading to NO ACTION (BL-203). The join is keyed by
-      // (conname, conrelid in srcSchema), which is unique per single-column FK.
+      // 7. Recreate cross-table foreign keys, read from pg_constraint so a
+      // composite key keeps its column pairs in order: (org_id, org_class)
+      // REFERENCES organizations (id, class) is one constraint, never four
+      // single-column ones (information_schema's column usage views would pair
+      // every source column with every referenced column, and whichever pair
+      // came first won the constraint's name). pg_constraint also carries the
+      // referential actions (confdeltype / confupdtype), so the cloned FK
+      // reproduces the source's ON DELETE / ON UPDATE behaviour instead of
+      // degrading to NO ACTION (BL-203).
       const fks = await sql`
         SELECT
-          tc.constraint_name,
-          tc.table_name AS src_table,
-          kcu.column_name AS src_column,
-          ccu.table_schema AS ref_schema,
-          ccu.table_name AS ref_table,
-          ccu.column_name AS ref_column,
+          con.conname AS constraint_name,
+          src.relname AS src_table,
+          ARRAY(
+            SELECT a.attname::text FROM unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord)
+            JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum
+            ORDER BY k.ord
+          ) AS src_columns,
+          refns.nspname AS ref_schema,
+          ref.relname AS ref_table,
+          ARRAY(
+            SELECT a.attname::text FROM unnest(con.confkey) WITH ORDINALITY AS k(attnum, ord)
+            JOIN pg_attribute a ON a.attrelid = con.confrelid AND a.attnum = k.attnum
+            ORDER BY k.ord
+          ) AS ref_columns,
           con.confdeltype,
           con.confupdtype
-        FROM information_schema.table_constraints tc
-        JOIN information_schema.key_column_usage kcu
-          ON kcu.constraint_name = tc.constraint_name AND kcu.constraint_schema = tc.constraint_schema
-        JOIN information_schema.constraint_column_usage ccu
-          ON ccu.constraint_name = tc.constraint_name AND ccu.constraint_schema = tc.constraint_schema
-        JOIN pg_constraint con
-          ON con.conname = tc.constraint_name
-          AND con.contype = 'f'
-          AND con.conrelid = (
-            SELECT c.oid FROM pg_class c
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = tc.table_schema AND c.relname = tc.table_name
-          )
-        WHERE tc.constraint_type = 'FOREIGN KEY'
-          AND tc.constraint_schema = ${srcSchema}
-          AND tc.table_name != ccu.table_name
+        FROM pg_constraint con
+        JOIN pg_class src ON src.oid = con.conrelid
+        JOIN pg_namespace srcns ON srcns.oid = src.relnamespace
+        JOIN pg_class ref ON ref.oid = con.confrelid
+        JOIN pg_namespace refns ON refns.oid = ref.relnamespace
+        WHERE con.contype = 'f'
+          AND srcns.nspname = ${srcSchema}
+          AND src.relname != ref.relname
+        ORDER BY src.relname, con.conname
       `
       for (const fk of fks) {
         const fkName = clonedConstraintName(prefix, fk.constraint_name)
@@ -677,7 +676,7 @@ export function createDbClient(databaseUrl: string): DbClient {
         try {
           await sql.unsafe(
             `ALTER TABLE ${quoteIdent(dstSchema)}.${quoteIdent(fk.src_table)} ADD CONSTRAINT ${quoteIdent(fkName)}
-             FOREIGN KEY (${quoteIdent(fk.src_column)}) REFERENCES ${quoteIdent(refSchema)}.${quoteIdent(fk.ref_table)} (${quoteIdent(fk.ref_column)})${onDelete}${onUpdate}`,
+             FOREIGN KEY (${(fk.src_columns as string[]).map(quoteIdent).join(", ")}) REFERENCES ${quoteIdent(refSchema)}.${quoteIdent(fk.ref_table)} (${(fk.ref_columns as string[]).map(quoteIdent).join(", ")})${onDelete}${onUpdate}`,
           )
         } catch (err: any) {
           if (err.message?.includes("already exists")) continue

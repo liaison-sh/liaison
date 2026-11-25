@@ -130,12 +130,21 @@ describe("autosave update events", () => {
     }
     const STEP = 1.5
     const SAVES = 120
+    // The window is read off the database clock, which also moves while the loop runs: each
+    // step ages the row by the simulated time minus the real time spent since the last step,
+    // so 120 saves on a loaded machine still read as 1.5 s apart, not more.
+    let agedAt = performance.now()
+    const advance = async (seconds: number) => {
+      const real = (performance.now() - agedAt) / 1000
+      await age(doc.id, seconds - real)
+      agedAt = performance.now()
+    }
     let t = 0
     for (let i = 0; i < SAVES; i++) {
       t = i * STEP
       await save(doc.id, `typed ${i}`, { autosave: true })
       await note(t)
-      await age(doc.id, STEP)
+      await advance(STEP)
       // The flush job runs every minute.
       if (Math.round((t + STEP) * 10) % 600 === 0) {
         await flushPendingUpdateEvents()
@@ -144,7 +153,7 @@ describe("autosave update events", () => {
     }
     const last = t
     for (const extra of [60, 60]) {
-      await age(doc.id, extra)
+      await advance(extra)
       await flushPendingUpdateEvents()
       await note(last + extra)
     }

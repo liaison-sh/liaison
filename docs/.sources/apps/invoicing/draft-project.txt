@@ -1,0 +1,1 @@
+A draft's project can change until issue; an unreadable project is refused -> bundled-apps/invoicing/src/mutations/drafts.ts (draftProjectOrRefuse) ; bundled-apps/invoicing/src/mutations/db-helpers.ts (updateDraftRow)

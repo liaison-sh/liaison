@@ -15,6 +15,8 @@
 // client-side filter on a few hundred rows is fine.
 
 import { resolveIdentityAttention } from "./einvoicing/gate"
+import { ISSUER_PARK_KIND, resolveIssuerAttention } from "./einvoicing/seller"
+import { LINES_PARK, type LinesCtx, recountGroup } from "./handlers/stripe-lines"
 
 export type DeferredStatus =
   | "awaiting_config"
@@ -44,6 +46,8 @@ export interface DeferredDb {
       where?: Record<string, unknown>
       orderBy?: Record<string, "asc" | "desc">
       limit?: number
+      offset?: number
+      select?: string[]
     },
   ): Promise<unknown[]>
   findOne(entity: string, id: string): Promise<unknown | null>
@@ -111,13 +115,81 @@ export function isIdentityWait(blocked_on: Record<string, unknown> | null | unde
   return IDENTITY_WAIT_KINDS.has(String(blocked_on?.kind ?? ""))
 }
 
+/**
+ * Parks that wait on the organization's own issuer profile: an e-invoice its issuer cannot sign
+ * (no SIREN or no structured address) in an org that enforces e-invoicing. Only a person filling
+ * Settings clears them, so like identity waits they are exempt from the retry cap and never
+ * dead-letter, and they are due as soon as that issuer profile changed after their last try.
+ */
+export const ISSUER_WAIT_KIND = ISSUER_PARK_KIND
+
+export function isIssuerWait(blocked_on: Record<string, unknown> | null | undefined): boolean {
+  return String(blocked_on?.kind ?? "") === ISSUER_WAIT_KIND
+}
+
+/** A wait only a person can clear: never capped, never dead-lettered. */
+function waitsOnPerson(blocked_on: Record<string, unknown> | null | undefined): boolean {
+  return isIdentityWait(blocked_on) || isIssuerWait(blocked_on)
+}
+
+/** A Stripe invoice parked before its issue. */
+export const STRIPE_INVOICE_PARK = "stripe_invoice"
+/** A Stripe refund's credit note parked before its issue. */
+export const STRIPE_CREDIT_NOTE_PARK = "stripe_credit_note"
+
+/**
+ * Parks of card payments that wait on a record: a Stripe invoice on its buyer (an email or an
+ * address a person adds in Stripe) or on the issuer, a refund's credit note on its invoice. They
+ * are never dead-lettered: money was taken, so a person must see them through.
+ */
+export function waitsOnRecord(blocked_on: Record<string, unknown> | null | undefined): boolean {
+  const kind = String(blocked_on?.kind ?? "")
+  return (
+    kind === STRIPE_INVOICE_PARK ||
+    (kind === STRIPE_CREDIT_NOTE_PARK && typeof blocked_on?.invoice_ref === "string")
+  )
+}
+
+/**
+ * A park whose record was not there through every ordinary retry (DEAD_LETTER_CAP of them): the
+ * sweep no longer tries it. What happens then differs:
+ *   - a Stripe invoice: nothing issues it but a person. The safety job notices that its buyer is
+ *     complete and says so on Home (handlers/stripe-lines.ts). A person's click
+ *     (`invoice_from_stripe_payment`) reads the invoice from Stripe at that moment, never the
+ *     payload stored here, and issues it with the next number dated that day, or refuses saying
+ *     why: already invoiced by hand, void in Stripe, the buyer still incomplete, Stripe
+ *     unreadable. A refusal takes no number and leaves the park here, with the person;
+ *   - a refund's credit note: it follows its invoice. Once that invoice exists (a person issued
+ *     it, or linked its payment to one made by hand) the safety job hands the park back to the
+ *     sweep (`revive`).
+ */
+export function isStalled(r: DeferredRow): boolean {
+  return (
+    !TERMINAL_STATUSES.has(r.status) &&
+    r.retry_count >= DEAD_LETTER_CAP &&
+    waitsOnRecord(r.blocked_on)
+  )
+}
+
+/**
+ * The invoice a stalled credit note waited for is there: the next sweep tries the park, after the
+ * rows already due, with the ordinary retries again.
+ */
+export async function revive(
+  ctx: { db: Pick<ParkDb, "update"> },
+  id: string,
+  now: Date = new Date(),
+): Promise<void> {
+  await ctx.db.update("deferred_events", id, { retry_count: 0, retried_at: now.toISOString() })
+}
+
 /** An automatic credit note refused for a reason other than the buyer's identity (an incomplete
  *  recipient, an over-credit…): parked with its own arguments and an attention item. */
 export const AUTO_CREDIT_NOTE_PARK_KIND = "auto_credit_note"
 
 /** The db + emit surface closing a park's attention item needs. */
 export interface ParkAttentionCtx {
-  db: Pick<ParkDb, "findMany">
+  db: Pick<ParkDb, "findMany"> & Partial<Pick<ParkDb, "update">>
   emit?(event: { entity: string; action: string; entityId?: string; data?: unknown }): Promise<void>
 }
 
@@ -136,6 +208,40 @@ export async function resolveParkAttention(
     await resolveIdentityAttention(ctx, { parkId: row.id, contact_id: contact })
     return
   }
+  if (isIssuerWait(blocked)) {
+    const issuer =
+      typeof blocked.issuer_profile_id === "string" && blocked.issuer_profile_id
+        ? blocked.issuer_profile_id
+        : null
+    await resolveIssuerAttention(ctx, { parkId: row.id, issuer_profile_id: issuer })
+    return
+  }
+  // An unmatched card payment's line (or its money-first question) goes with its park: the
+  // payment was invoiced, linked, or drafted as the advance. The kind is stripe-payment-unmatched's.
+  if (
+    blocked.kind === "stripe_unmatched_payment" &&
+    ctx.emit &&
+    typeof blocked.charge_id === "string"
+  ) {
+    await ctx.emit({
+      entity: "stripe_payment",
+      action: typeof blocked.step_id === "string" ? "advance_received" : "unmatched",
+      entityId: blocked.charge_id,
+      data: { charge_id: blocked.charge_id, resolved: true },
+    })
+    return
+  }
+  // A Stripe invoice's line goes with its park, whatever it waited for.
+  const stripeItem = stripeInvoiceItemOf(blocked)
+  if (stripeItem && ctx.emit) {
+    await ctx.emit({
+      ...stripeItem,
+      entityId: row.id,
+      data: { deferred_id: row.id, resolved: true },
+    })
+    if (blocked.kind === STRIPE_INVOICE_PARK) await recountGroup(ctx as LinesCtx)
+    return
+  }
   if (blocked.kind === AUTO_CREDIT_NOTE_PARK_KIND && ctx.emit) {
     await ctx.emit({
       entity: "deferred",
@@ -146,7 +252,36 @@ export async function resolveParkAttention(
   }
 }
 
-function isBulkDeadLettered(reason: string | null): boolean {
+/** The attention item a parked Stripe invoice raises under its park's id, by what it waits for. */
+function stripeInvoiceItemOf(
+  blocked: Record<string, unknown>,
+): { entity: string; action: string } | null {
+  if (typeof blocked.stripe_invoice_id !== "string") return null
+  if (blocked.kind === STRIPE_INVOICE_PARK)
+    return { entity: "stripe_invoice", action: "needs_person" }
+  if (blocked.kind === "stripe_issuer_undecided")
+    return { entity: "stripe_invoice", action: "issuer_undecided" }
+  if (blocked.kind === "tax_check") return { entity: "deferred", action: "stripe_tax_review" }
+  return null
+}
+
+/**
+ * The event now waits elsewhere: close its open parks of `kind`, with their
+ * attention, so one event never waits (and is never tried again) twice.
+ */
+export async function closeParksOfKind(
+  ctx: { db: Pick<ParkDb, "findMany" | "update">; emit?: ParkAttentionCtx["emit"] },
+  event_id: string,
+  kind: string,
+): Promise<void> {
+  for (const r of await openParksOf(ctx, event_id)) {
+    if (r.blocked_on.kind !== kind) continue
+    await ctx.db.update("deferred_events", r.id, { status: "resolved", reason: "waits_elsewhere" })
+    await resolveParkAttention(ctx, r)
+  }
+}
+
+export function isBulkDeadLettered(reason: string | null): boolean {
   return (reason ?? "").trim().toLowerCase().startsWith(DEAD_LETTERED_REASON_PREFIX)
 }
 
@@ -172,7 +307,7 @@ function toDate(v: unknown): Date {
   return new Date(0)
 }
 
-function toDeferredRow(row: unknown): DeferredRow {
+export function toDeferredRow(row: unknown): DeferredRow {
   const r = row as Record<string, unknown>
   return {
     id: String(r.id),
@@ -231,13 +366,9 @@ export async function park(
   },
 ): Promise<{ id: string; created: boolean }> {
   const key = parkDedupKey(input.blocked_on)
-  const existing = (await ctx.db.findMany("deferred_events", {
-    where: { event_id: input.event_id },
-    limit: 500,
-  })) as unknown[]
-  const dup = existing
-    .map(toDeferredRow)
-    .find((r) => !TERMINAL_STATUSES.has(r.status) && parkDedupKey(r.blocked_on) === key)
+  const dup = (await openParksOf(ctx, input.event_id)).find(
+    (r) => parkDedupKey(r.blocked_on) === key,
+  )
   // The contact a park waits on, as a column: identity lookups filter on it (never a scan).
   const contactId =
     typeof input.blocked_on?.contact_id === "string" && input.blocked_on.contact_id
@@ -248,7 +379,11 @@ export async function park(
       event_payload_json: input.event_payload_json,
       status: input.status,
       reason: input.reason,
-      blocked_on: input.blocked_on,
+      // What its Home line says now stays with the park (handlers/stripe-lines.ts).
+      blocked_on:
+        typeof dup.blocked_on.line === "string"
+          ? { ...input.blocked_on, line: dup.blocked_on.line }
+          : input.blocked_on,
       contact_id: contactId,
     })
     return { id: dup.id, created: false }
@@ -274,23 +409,108 @@ const OPEN_STATUSES: readonly DeferredStatus[] = [
   "email_failed",
 ]
 
-/** Per-status fetch ceiling for the open set. */
-const OPEN_FETCH_LIMIT = 500
+/** Rows read at a time. */
+const PAGE = 500
+
+/** Every field but the payload, which can be large: a scan reads all the waiting rows. */
+const ROW_FIELDS = [
+  "id",
+  "event_id",
+  "status",
+  "reason",
+  "blocked_on",
+  "retry_count",
+  "retried_at",
+  // The kernel's own column, under the name it declares; the row carries it as created_at.
+  "createdAt",
+]
+
+interface PageDb {
+  findMany(entity: string, opts?: Record<string, unknown>): Promise<unknown[]>
+}
+
+/** The rows a read matches, a page at a time, however many there are. */
+async function* pagesOf(
+  db: PageDb,
+  opts: Record<string, unknown>,
+): AsyncGenerator<Array<Record<string, unknown>>> {
+  let last = ""
+  for (let offset = 0; ; offset += PAGE) {
+    const rows = (await db.findMany("deferred_events", {
+      ...opts,
+      orderBy: { id: "asc" },
+      limit: PAGE,
+      offset,
+    })) as Array<Record<string, unknown>>
+    const first = String(rows[0]?.id ?? "")
+    // A store that ignores `offset` answers the same page again.
+    if (rows.length === 0 || first === last) return
+    last = first
+    yield rows
+    if (rows.length < PAGE) return
+  }
+}
+
+/** The parks of one event that are not resolved, the given-up ones included. */
+export async function parksOf(
+  ctx: { db: Pick<ParkDb, "findMany"> },
+  event_id: string,
+): Promise<DeferredRow[]> {
+  const open = (rows: unknown[]) => rows.map(toDeferredRow).filter((r) => r.status !== "resolved")
+  const first = await ctx.db.findMany("deferred_events", { where: { event_id }, limit: PAGE })
+  if (first.length < PAGE) return open(first)
+  const out: DeferredRow[] = []
+  for await (const page of pagesOf(ctx.db as PageDb, { where: { event_id } }))
+    out.push(...open(page))
+  return out
+}
+
+/** The open parks of one event. */
+async function openParksOf(
+  ctx: { db: Pick<ParkDb, "findMany"> },
+  event_id: string,
+): Promise<DeferredRow[]> {
+  return (await parksOf(ctx, event_id)).filter((r) => !TERMINAL_STATUSES.has(r.status))
+}
+
+/** Every open park whose event id contains `prefix`, with or without its payload. */
+export async function* openRowsOf(
+  ctx: { db: PageDb },
+  prefix: string,
+  opts: { payload?: boolean; statuses?: readonly DeferredStatus[] } = {},
+): AsyncGenerator<DeferredRow> {
+  const read = {
+    where: { status: { in: [...(opts.statuses ?? OPEN_STATUSES)] } },
+    search: { fields: ["event_id"], query: prefix },
+    ...(opts.payload ? {} : { select: ROW_FIELDS }),
+  }
+  for await (const page of pagesOf(ctx.db, read))
+    for (const r of page.map(toDeferredRow)) if (r.event_id.startsWith(prefix)) yield r
+}
 
 /**
- * Every NON-terminal row, fetched per open status. The table keeps its resolved and
- * dead-lettered history forever, so a single `orderBy id limit 500` page over the WHOLE table
- * (uuid order, terminal rows included) could be filled entirely by history and never reach a
- * row that is actually waiting: those rows were then starved forever.
+ * Every NON-terminal row, per open status, without its payload (`withPayload` reads the ones a
+ * sweep takes). The table keeps its resolved and dead-lettered history forever, so terminal rows
+ * are never read; and every page is: a row past the first 500 waiting is tried like the others.
  */
 async function fetchOpenRows(ctx: DeferredCtx): Promise<DeferredRow[]> {
   const out: DeferredRow[] = []
-  for (const status of OPEN_STATUSES) {
-    const rows = await ctx.db.findMany("deferred_events", {
-      where: { status },
-      limit: OPEN_FETCH_LIMIT,
-    })
-    for (const r of rows) out.push(toDeferredRow(r))
+  for (const status of OPEN_STATUSES)
+    for await (const page of pagesOf(ctx.db as PageDb, { where: { status }, select: ROW_FIELDS }))
+      for (const r of page) out.push(toDeferredRow(r))
+  return out
+}
+
+/** The rows with the payload the scan left out. */
+async function withPayload(ctx: DeferredCtx, rows: DeferredRow[]): Promise<DeferredRow[]> {
+  const out: DeferredRow[] = []
+  for (const r of rows) {
+    if (r.event_payload_json !== undefined) {
+      out.push(r)
+      continue
+    }
+    const [full] = await ctx.db.findMany("deferred_events", { where: { id: r.id }, limit: 1 })
+    if (full) out.push(toDeferredRow(full))
   }
   return out
 }
@@ -352,13 +572,8 @@ export async function resolveOpenParks(
   patch?: Record<string, unknown>,
 ): Promise<{ resolved: number }> {
   if (!event_id) return { resolved: 0 }
-  const rows = (await ctx.db.findMany("deferred_events", {
-    where: { event_id },
-    limit: 500,
-  })) as unknown[]
   let resolved = 0
-  for (const r of rows.map(toDeferredRow)) {
-    if (TERMINAL_STATUSES.has(r.status)) continue
+  for (const r of await openParksOf(ctx, event_id)) {
     await ctx.db.update("deferred_events", r.id, { ...(patch ?? {}), status: "resolved", reason })
     resolved += 1
     await resolveParkAttention(ctx, r)
@@ -378,13 +593,14 @@ export async function resolveOpenParks(
  * when the eligible set is larger than one batch.
  *
  * Generic `where` supports only equality, so status/cap/backoff/dead-letter
- * exclusions are a post-filter. We over-fetch (a multiple of the batch) so the
- * batch is drawn from the genuinely-eligible set even when the raw page is
- * dominated by terminal/dead/not-yet-due rows.
+ * exclusions are a post-filter over every open row (fetchOpenRows).
  */
 export type IdentityChangedAt =
   | ReadonlyMap<string, Date>
   | ((contactIds: string[]) => Promise<ReadonlyMap<string, Date>>)
+
+/** `updated_at` of the issuer profiles the sweep's waiting issuer parks are blocked on, by id. */
+export type IssuerChangedAt = (issuerProfileIds: string[]) => Promise<ReadonlyMap<string, Date>>
 
 export async function retryEligible(
   ctx: DeferredCtx,
@@ -396,6 +612,9 @@ export async function retryEligible(
      *  map, or a loader asked only for the contacts of identity parks whose backoff has not
      *  elapsed (so a sweep reads those identities alone, filtered by contact). */
     identityChangedAt?: IdentityChangedAt
+    /** Loader of the issuer profiles' `updated_at`, asked only for the issuer parks whose
+     *  backoff has not elapsed. */
+    issuerChangedAt?: IssuerChangedAt
   },
 ): Promise<DeferredRow[]> {
   const now = opts?.now ?? new Date()
@@ -404,8 +623,8 @@ export async function retryEligible(
   const rows = await fetchOpenRows(ctx)
   const candidates = rows
     .filter((r) => !isBulkDeadLettered(r.reason))
-    .filter((r) => !needsHumanReview(r.blocked_on))
-    .filter((r) => isIdentityWait(r.blocked_on) || r.retry_count < cap)
+    .filter((r) => !needsHumanReview(r.blocked_on) && r.blocked_on.kind !== LINES_PARK)
+    .filter((r) => waitsOnPerson(r.blocked_on) || r.retry_count < cap)
   const lastTry = (r: DeferredRow) => r.retried_at ?? r.created_at
   const backoffElapsed = (r: DeferredRow) =>
     now.getTime() - lastTry(r).getTime() >= defaultBackoffMs(r.retry_count)
@@ -415,6 +634,15 @@ export async function retryEligible(
     const contactId = String(r.blocked_on.contact_id ?? "")
     if (isIdentityWait(r.blocked_on) && contactId && !backoffElapsed(r)) waiting.add(contactId)
   }
+  const issuersWaiting = new Set<string>()
+  for (const r of candidates) {
+    const issuerId = String(r.blocked_on.issuer_profile_id ?? "")
+    if (isIssuerWait(r.blocked_on) && issuerId && !backoffElapsed(r)) issuersWaiting.add(issuerId)
+  }
+  const issuerChanged: ReadonlyMap<string, Date> =
+    opts?.issuerChangedAt && issuersWaiting.size > 0
+      ? await opts.issuerChangedAt([...issuersWaiting])
+      : new Map()
   const source = opts?.identityChangedAt
   const changed: ReadonlyMap<string, Date> =
     typeof source === "function"
@@ -424,6 +652,11 @@ export async function retryEligible(
       : (source ?? new Map())
   const eligible = candidates.filter((r) => {
     if (backoffElapsed(r)) return true
+    if (isIssuerWait(r.blocked_on)) {
+      // Due as soon as the issuer profile it waits on was edited after its last try.
+      const at = issuerChanged.get(String(r.blocked_on.issuer_profile_id ?? ""))
+      return !!at && at.getTime() > lastTry(r).getTime()
+    }
     if (!isIdentityWait(r.blocked_on)) return false
     const contactId = String(r.blocked_on.contact_id ?? "")
     const changedAt = contactId ? changed.get(contactId) : undefined
@@ -437,7 +670,7 @@ export async function retryEligible(
     if (ta !== tb) return ta - tb
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   })
-  return eligible.slice(0, batchSize)
+  return withPayload(ctx, eligible.slice(0, batchSize))
 }
 
 /** The parks whose remaining step is a document's automatic mail. */
@@ -497,7 +730,7 @@ export async function markPermanentFailure(
   const minAgeMs = opts?.minAgeMs ?? DEAD_LETTER_MIN_AGE_MS
   const cap = opts?.cap ?? DEAD_LETTER_CAP
   const ageMs = now.getTime() - row.created_at.getTime()
-  if (isIdentityWait(row.blocked_on)) return row
+  if (waitsOnPerson(row.blocked_on) || waitsOnRecord(row.blocked_on)) return row
   if (row.retry_count < cap || ageMs < minAgeMs) return row
   await ctx.db.update("deferred_events", row.id, { status: "permanent_failure" })
   return { ...row, status: "permanent_failure" }

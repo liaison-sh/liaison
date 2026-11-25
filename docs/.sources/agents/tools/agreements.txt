@@ -1,0 +1,1 @@
+Two apps may share a tool's bare name; the prefix tells them apart -> apps/api/src/modules/agent/tools/tool-bench/allowed-duplicates.json (templates_list, template_save)

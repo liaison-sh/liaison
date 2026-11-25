@@ -7,6 +7,7 @@ import {
   migrationConnectionIsDirect,
   POLICY_ROLES,
   policyRolesSql,
+  portalLoginPasswordSql,
   preflightMigrationUrl,
   requestLoginPasswordSql,
   scramSha256Verifier,
@@ -70,6 +71,15 @@ describe("request login password", () => {
     )
     // A fresh salt per statement.
     expect(requestLoginPasswordSql(password)).not.toBe(stmt)
+  })
+
+  it("the portal login gets LOGIN with the same verifier rule, never the password", () => {
+    const stmt = portalLoginPasswordSql(password)
+    expect(stmt).not.toContain(password)
+    expect(stmt).toMatch(
+      /^ALTER ROLE liaison_portal WITH LOGIN PASSWORD 'SCRAM-SHA-256\$4096:[A-Za-z0-9+/]+=*\$[A-Za-z0-9+/]+=*:[A-Za-z0-9+/]+=*'$/,
+    )
+    expect(() => portalLoginPasswordSql("caf\u00e9")).toThrow(/printable ASCII/)
   })
 
   it("refuses a password whose SCRAM normalisation is not the identity", () => {

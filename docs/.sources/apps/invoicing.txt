@@ -212,3 +212,15 @@ number taken in the same step that saves the document, lines and commit_with wri
 no gap, no shared number under concurrency -> apps/api/src/tests/integration/sandbox-bridge-batch.test.ts:1
 deferred-retry renders a document still pending after ten minutes and parks the owed paid-order email -> bundled-apps/invoicing/src/handlers/resume-interrupted.ts:21 ; bundled-apps/invoicing/src/handlers/deferred-dispatch.ts:202
 automatic refund/cancel credit note never issued twice per invoice -> bundled-apps/invoicing/src/einvoicing/parked-credit-note.ts:115
+A parked Stripe invoice voided or uncollectible in Stripe is dropped and never numbered -> bundled-apps/invoicing/src/handlers/stripe-invoice-finalized.ts:362 ; bundled-apps/invoicing/src/handlers/stripe-invoice-paid.ts:180
+A payment is reported to the platform once whatever marked it paid -> bundled-apps/invoicing/src/einvoicing/collection.ts:73
+Issuer SIREN, Street address, Postcode, City, Address country fields -> bundled-apps/invoicing/src/ui/settings.tsx:474
+An e-invoice whose issuer lacks SIREN or address is refused before a number, naming the fields -> bundled-apps/invoicing/src/einvoicing/seller.ts:31 ; bundled-apps/invoicing/src/issue.ts:1239
+A sale outside e-invoicing issues without them -> bundled-apps/invoicing/src/einvoicing/seller.ts:54
+sidebar Drafts row with its count -> bundled-apps/invoicing/src/ui/sidebar.tsx:210
+Drafts count through documents_search status=draft -> bundled-apps/invoicing/src/ui/sidebar.tsx:262
+Drafts list asks the server for drafts only; other entries strip drafts -> bundled-apps/invoicing/src/ui/DocumentsList.tsx:221
+drafts listed newest first -> bundled-apps/invoicing/src/reads.ts:820
+drafts_create project_id param -> bundled-apps/invoicing/app.manifest.json:3583
+project unreadable refused before anything is drafted -> bundled-apps/invoicing/src/mutations/drafts.ts:436
+issued invoice company: contact's, else the project's -> bundled-apps/invoicing/src/issue.ts:1416

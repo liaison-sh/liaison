@@ -107,3 +107,43 @@ export function requestPublicBaseUrl(c: Context): string {
   const binding = requestHostBinding(c)
   return binding.kind === "org" ? orgPublicBaseUrlForSlug(binding.slug) : env.BASE_URL
 }
+
+/**
+ * The host names of this server itself: its base URL, its web origins and, with
+ * org hosts, the template's parent domain and every host under it. Builds no
+ * link; egress checks read it to refuse a fetch of this server's own routes.
+ */
+export function instanceHostnames(): { exact: Set<string>; suffixes: string[] } {
+  const exact = new Set<string>()
+  const suffixes: string[] = []
+  const add = (u: string | undefined) => {
+    if (!u) return
+    try {
+      exact.add(new URL(u).hostname.toLowerCase().replace(/^\[|\]$/g, ""))
+    } catch {
+      // not a URL: ignored
+    }
+  }
+  add(env.BASE_URL)
+  for (const o of (env.ALLOWED_ORIGINS ?? "").split(",")) add(o.trim())
+  const template = env.LIAISON_ORG_HOST_TEMPLATE
+  if (template) {
+    const host = /^[a-z]+:\/\/([^/:]+)/i.exec(template)?.[1]?.toLowerCase() ?? ""
+    const suffix = host.startsWith("{slug}.") ? host.slice("{slug}.".length) : ""
+    if (suffix) {
+      exact.add(suffix)
+      suffixes.push(`.${suffix}`)
+    }
+  }
+  return { exact, suffixes }
+}
+
+/** Whether `hostname` is one of this server's own names (`instanceHostnames`). */
+export function isInstanceHostname(hostname: string): boolean {
+  const h = hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.$/, "")
+  const { exact, suffixes } = instanceHostnames()
+  return exact.has(h) || suffixes.some((s) => h.endsWith(s))
+}

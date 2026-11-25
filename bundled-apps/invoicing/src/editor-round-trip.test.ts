@@ -23,7 +23,7 @@
 // internal state.
 
 import { describe, expect, test } from "bun:test"
-import { FICTIONAL_SIRENS } from "./einvoicing/test-fixtures"
+import { FICTIONAL_SIRENS, FR_SELLER_IDENTITY } from "./einvoicing/test-fixtures"
 import type { Counterparty, IssuerProfile } from "./issue"
 import { draftsCreate, draftsUpdate, invoiceIssue, type MutationsCtx } from "./mutations"
 import { documentsGet, type ReadsCtx } from "./reads"
@@ -53,6 +53,7 @@ const inclusiveIssuer: IssuerProfile = {
   prefix_proforma: "PRO-{YYYY}-",
   prefix_po: "PO-{YYYY}-",
   prefix_credit_note: "CN-{YYYY}-",
+  ...FR_SELLER_IDENTITY,
 }
 
 const defaultCounterparty: Counterparty = {
@@ -88,6 +89,7 @@ function makeCtx(): { ctx: MutationsCtx; readsCtx: ReadsCtx; db: MockDb } {
           require_two_eyes: false,
           mail_account_id: "acct-mail-1",
           prices_include_tax: true,
+          ...FR_SELLER_IDENTITY,
         },
       ],
       // E-invoicing gate in enforce mode.
@@ -129,7 +131,14 @@ function makeCtx(): { ctx: MutationsCtx; readsCtx: ReadsCtx; db: MockDb } {
     },
     requestApproval: async () => ({ approval_id: "appr-1" }),
     decideApproval: async () => ({ status: "error", error: { code: "not_found", message: "n/a" } }),
-    executeTool: async () => ({ status: "completed", result: { dispatched: true } }),
+    executeTool: async (name: string) =>
+      // No Stripe app here: the kernel answers an absent app's tool as not found.
+      name.startsWith("stripe:")
+        ? {
+            status: "error" as const,
+            error: { code: "tool_not_found", message: "tool not registered" },
+          }
+        : { status: "completed", result: { dispatched: true } },
     emit: async () => {},
   }
   const readsCtx: ReadsCtx = {

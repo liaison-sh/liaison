@@ -27,8 +27,10 @@ import { executeTool } from "~/modules/apps/execute-tool"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
 import { registerTemplate } from "~/modules/pdf/registry"
 import { getFileBytes } from "~/modules/pdf/render"
+import { specimenNoteText } from "~/modules/pdf/specimen"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { validateFacturxXml } from "../../../../../tools/schematron/validate"
 import { failing, structuralAsserts } from "../../../test-support/pdfa/structural-asserts"
@@ -298,20 +300,108 @@ describe("Factur-X legal original at issue (real Postgres, sandbox, kernel rende
     expect(los.length).toBe(1)
   }, 120_000)
 
-  it("facturx_failed, then a retry once the issuer is fixed records it, the host committing the row", async () => {
+  it("an issuer with no SIREN is refused before a number is taken", async () => {
     await sql`UPDATE app_invoicing.issuer_profiles SET siren = NULL WHERE id = ${issuerId}`
-    let id: string
     try {
-      id = await issue()
+      const before =
+        await sql`SELECT count(*)::int AS n FROM app_invoicing.documents WHERE org_id = ${ORG}`
+      const res = await executeTool({
+        toolName: "invoicing:invoice_create_and_issue",
+        orgId: ORG,
+        actor,
+        params: {
+          counterparty: buyer,
+          issuer_profile_id: issuerId,
+          currency: "EUR",
+          operation_category: "goods",
+          items,
+        },
+        threadId: THREAD,
+        origin: "human-ui",
+      }).catch((err: unknown) => ({
+        thrown: { ...(err as object), message: String((err as Error).message) },
+      }))
+      expect(JSON.stringify(res)).toMatch(/issuer_incomplete|your company's SIREN/)
+      const after =
+        await sql`SELECT count(*)::int AS n FROM app_invoicing.documents WHERE org_id = ${ORG}`
+      expect(after[0]?.n).toBe(before[0]?.n)
     } finally {
       await sql`UPDATE app_invoicing.issuer_profiles SET siren = '902000009' WHERE id = ${issuerId}`
     }
+  }, 120_000)
+
+  it("warn mode: an issuer with only a French VAT number and a one-line address issues with a plain PDF and a warning", async () => {
+    // A fictional company: SIREN 904000007 read off its VAT number FR22904000007; no structured
+    // address, only the free-text one.
+    await sql`UPDATE app_invoicing.issuer_profiles
+      SET siren = NULL, vat_id = 'FR22904000007', address_line1 = NULL, postcode = NULL, city = NULL
+      WHERE id = ${issuerId}`
+    await sql`UPDATE app_invoicing.einvoicing_settings SET gate_mode = 'warn' WHERE org_id = ${ORG}`
+    try {
+      const res = await executeTool({
+        toolName: "invoicing:invoice_create_and_issue",
+        orgId: ORG,
+        actor,
+        params: {
+          counterparty: buyer,
+          issuer_profile_id: issuerId,
+          currency: "EUR",
+          operation_category: "goods",
+          items,
+        },
+        threadId: THREAD,
+        origin: "human-ui",
+      })
+      const data = res.data as {
+        document_id: string
+        einvoicing_warning?: { code: string; message: string }
+      }
+      expect(data.einvoicing_warning?.code).toBe("issuer_incomplete")
+      expect(data.einvoicing_warning?.message).toContain(
+        "street address, postcode and city are missing",
+      )
+      const d = await doc(data.document_id)
+      expect(d.number).toBeTruthy()
+      expect(d.pdf_status).toBe("ready")
+      expect(d.pdf_file_id).toBeTruthy()
+      const los = await sql<Array<{ kind: string }>>`
+        SELECT kind FROM app_invoicing.legal_originals WHERE document_id = ${data.document_id}`
+      expect(los.map((l) => l.kind)).toEqual(["issued_pdf"])
+    } finally {
+      await sql`UPDATE app_invoicing.issuer_profiles
+        SET siren = '902000009', vat_id = 'FR40902000009', address_line1 = '1 rue de Test',
+            postcode = '75011', city = 'Paris'
+        WHERE id = ${issuerId}`
+      await sql`UPDATE app_invoicing.einvoicing_settings SET gate_mode = 'enforce' WHERE org_id = ${ORG}`
+    }
+  }, 120_000)
+
+  it("facturx_failed, then a retry once the data is complete records it, the host committing the row", async () => {
+    // The buyer's street line is the one gap the issue gate does not see: the Factur-X fails after
+    // the number is taken, and the retry builds it once the line is on the document.
+    const res = await executeTool({
+      toolName: "invoicing:invoice_create_and_issue",
+      orgId: ORG,
+      actor,
+      params: {
+        counterparty: { ...buyer, billing_line1: null },
+        issuer_profile_id: issuerId,
+        currency: "EUR",
+        operation_category: "goods",
+        items,
+      },
+      threadId: THREAD,
+      origin: "human-ui",
+    })
+    const id = (res.data as { document_id?: string } | undefined)?.document_id
+    if (!id) throw new Error(`issue failed: ${JSON.stringify(res)}`)
     const failed = await doc(id)
     expect(failed.pdf_status).toBe("facturx_failed")
     expect(failed.legal_original_id).toBeNull()
     expect(
       (await sql`SELECT 1 FROM app_invoicing.legal_originals WHERE document_id = ${id}`).length,
     ).toBe(0)
+    await sql`UPDATE app_invoicing.documents SET billing_line1 = '10 rue Domestic' WHERE id = ${id}`
 
     await executeTool({
       toolName: "invoicing:documents_retry_pdf",
@@ -371,4 +461,28 @@ describe("Factur-X legal original at issue (real Postgres, sandbox, kernel rende
     expect(v.xsd.errors).toEqual([])
     expect(v.blocking.map((b) => `${b.schematron}:${b.id}`)).toEqual([])
   }, 240_000)
+
+  // Last in the file: it turns the org into a demo workspace.
+  it("in a demo workspace the stored invoice data carries the same specimen note as the copy inside the PDF", async () => {
+    await markOrgAsDemo(ORG, visitorMarker(1))
+    await invalidateDemoMarker(ORG)
+    const id = await issue()
+    const d = await doc(id)
+    expect(d.pdf_status).toBe("ready")
+    const [lo] = await sql<
+      Array<Record<string, unknown>>
+    >`SELECT * FROM app_invoicing.legal_originals WHERE document_id = ${id}`
+    const pdf = await getFileBytes(null, String(lo!.file_id))
+    const embedded = embeddedXml(await PDFDocument.load(pdf, { updateMetadata: false }))
+    const note = `<ram:IncludedNote><ram:Content>${specimenNoteText()}</ram:Content><ram:SubjectCode>AAI</ram:SubjectCode></ram:IncludedNote>`
+    expect(embedded.split(note).length - 1).toBe(1)
+    const [fx] = await sql<
+      Array<Record<string, unknown>>
+    >`SELECT * FROM app_invoicing.facturx_files WHERE document_id = ${id}`
+    const stored = new TextDecoder().decode(await getFileBytes(null, String(fx!.file_id)))
+    expect(stored).toBe(embedded)
+    const v = validateFacturxXml(stored)
+    expect(v.xsd.errors).toEqual([])
+    expect(v.blocking.map((b) => `${b.schematron}:${b.id}`)).toEqual([])
+  }, 120_000)
 })

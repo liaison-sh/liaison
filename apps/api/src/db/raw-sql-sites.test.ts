@@ -39,6 +39,21 @@ const APP_DDL =
  * fails until it has its own entry.
  */
 const REVIEWED: Record<string, Record<string, string>> = {
+  "apps/api/src/modules/portal/company-merge.ts#repointPortalForCompanyMerge": {
+    qualified: `a table of the module's literal COMPANY_STAMPS list, schemaRef and quoteIdent applied, checked by to_regclass first; ${IDENT_FROM_CODE}`,
+  },
+  "apps/api/src/modules/portal/admin-routes.ts#portalAdminRoutes.GET /preview/:userId": {
+    table: `a value of the module's literal PREVIEW_PART_TABLES map: schemaRef of app schemas plus fixed table names, aliases and one fixed join; ${IDENT_FROM_CODE}`,
+  },
+  "apps/api/src/modules/portal/tools.ts#agreementShareLabels": {
+    agreements: `schemaRef("app_agreements"), a literal app schema name, checked with to_regclass first; ${IDENT_FROM_CODE}`,
+  },
+  "apps/api/src/modules/client-actions/mint.ts#replacedSql": {
+    alias: `a table alias each caller passes as a literal ("g", "l", "a"); ${IDENT_FROM_CODE}`,
+  },
+  "apps/api/src/modules/client-actions/mint.ts#mailFailedSql": {
+    alias: `a table alias each caller passes as a literal ("g", "l", "a"); ${IDENT_FROM_CODE}`,
+  },
   "apps/api/src/apps/knowledge/collections.ts#liveSourcesOf": {
     folder:
       'a table alias of the calling query, typed as the literal union "up" | "c" | "tree"; no value from a request or a row',
@@ -170,6 +185,8 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/db/migrate.ts#runMigrations": {
     "requestLoginPasswordSql(opts.requestPassword)":
       "a SCRAM-SHA-256 verifier computed in migrate.ts, checked to be base64 and `$:` only before quoting; the password itself is never spliced",
+    "portalLoginPasswordSql(opts.requestPassword)":
+      "the same verifier rule as requestLoginPasswordSql, for the portal login; the password itself is never spliced",
   },
   "apps/api/src/db/migrate.ts#ensurePolicyRoles": {
     "policyRolesSql()":
@@ -212,6 +229,7 @@ const REVIEWED: Record<string, Record<string, string>> = {
     "tablePrivilegesFor(role)": "privilege list from a code constant per role",
     "generateSequenceDdl(schemaName, entityName)": APP_DDL,
     stmt: APP_DDL,
+    loosen: APP_DDL,
     "generateTableUniqueAddDdl(schemaName, entityName, cols)": APP_DDL,
     "generateDropIndexDdl(schemaName, indexname)":
       "index name read from pg_indexes; validateIdentifier + quoteIdent in the generator (ddl.ts)",
@@ -273,6 +291,30 @@ const REVIEWED: Record<string, Record<string, string>> = {
     "target.table": MANIFEST_IDENT,
     "target.joinOn": MANIFEST_IDENT,
   },
+  "apps/api/src/modules/contacts/service.ts#repointContactSoftReferences": {
+    deals: "quoteIdent(schemaRef()) over code constants (service.ts, repointContactSoftReferences)",
+  },
+  "apps/api/src/modules/contacts/companies.ts#repointAppCompanyLinks": {
+    qualified:
+      "quoteIdent(schemaRef()) and quoteIdent over the code constant APP_COMPANY_LINKS (companies.ts), checked with to_regclass first",
+  },
+  "apps/api/src/modules/contacts/companies.ts#liveSchedulesBilling": {
+    qualified:
+      "quoteIdent(schemaRef()) over code constants (companies.ts), checked with to_regclass first",
+  },
+  "apps/api/src/modules/contacts/companies.ts#unlinkAppCompanyRows": {
+    qualified:
+      "quoteIdent(schemaRef()) and quoteIdent over the code constant APP_COMPANY_LINKS (companies.ts), checked with to_regclass first",
+  },
+  "apps/api/src/modules/contacts/service.ts#liveSchedulesBillingContact": {
+    qualified:
+      "quoteIdent(schemaRef()) over code constants (service.ts), checked with to_regclass first",
+  },
+  "apps/api/src/modules/contacts/erasure.ts#clearContactSoftReferences": {
+    dealsTable: "rel() over code constants (erasure.ts:81)",
+    customersTable: "rel() over code constants (erasure.ts), checked with to_regclass first",
+    schedulesTable: "rel() over code constants (erasure.ts), checked with to_regclass first",
+  },
   "apps/api/src/modules/contacts/erasure.ts#release": {
     used: "OR-joined EXISTS predicates built in this function from the code reference table and the checked ids",
     orgId: "UUID-checked before splicing (erasure.ts:83-85)",
@@ -297,6 +339,25 @@ const REVIEWED: Record<string, Record<string, string>> = {
   },
   "apps/api/src/modules/org/purge/immutable-triggers.ts#ensureImmutableTriggersCurrent": {
     stmt: `${APP_DDL}; schema and table read from pg_catalog, the spec read back from the trigger body this generator wrote (immutableSpecFromTriggerBody: digits and identifiers only)`,
+  },
+  "apps/api/src/modules/export/org-archive/writer.ts#scopeWhere": {
+    "withheld.keep()":
+      "a predicate from the code constant WITHHELD_ROWS (withheld.ts): fixed SQL over alias t and schemaRef names, no value from a request or a row",
+  },
+  "apps/api/src/apps/projects/service/reconcile-sweep.ts#sweepClaims": {
+    docs: 'schemaRef("app_invoicing") plus the literal table name documents, checked with to_regclass first',
+  },
+  "apps/api/src/apps/projects/service/reconcile-sweep.ts#documentsForRef": {
+    docs: 'documentsTable(): schemaRef("app_invoicing") plus the literal table name documents, checked with to_regclass first; org id and ref bound as parameters',
+  },
+  "apps/api/src/apps/projects/service/reconcile.ts#readableProofRefs": {
+    rel: "schemaRef() and table name from the code constant OWNED_PROOFS, checked with to_regclass first",
+  },
+  "apps/api/src/apps/projects/service/time-settings.ts#selectedCalendars": {
+    rel: 'schemaRef("app_calendar") plus the literal table name calendars, checked with to_regclass first',
+  },
+  "apps/api/src/apps/projects/service/time-plan.ts#keep": {
+    col: 'a column name the calling code writes as a literal (keep("basis") and the like) to keep a plan or terms column unchanged in an upsert',
   },
   "apps/api/src/modules/export/org-archive/writer.ts#readBatch": {
     'pk.join(", ")': `${CATALOG_IDENT} (primary key columns), each quoteIdent'd`,
@@ -333,6 +394,9 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/modules/export/data-subject-export-tool.ts#buildDataSubjectBundle": {
     documentsTable: IDENT_FROM_CODE,
     identityTable: IDENT_FROM_CODE,
+    schedulesTable: IDENT_FROM_CODE,
+    customersTable: IDENT_FROM_CODE,
+    subscriptionsTable: IDENT_FROM_CODE,
   },
   "apps/api/src/modules/files/message-attachments.ts#messageIdOf": {
     filesAlias: IDENT_FROM_CODE,
@@ -426,6 +490,16 @@ const REVIEWED: Record<string, Record<string, string>> = {
     "this.statementTimeoutMs":
       "number from the gate's own options (DEFAULT_STATEMENT_TIMEOUT_MS or operator config)",
     cappedText: BY_DESIGN_SQL,
+  },
+  "apps/api/src/modules/portal/views.ts#viewIsCurrent": {
+    name: "a portal view name from the module's literal view list, checked against /^[a-z_][a-z0-9_]*$/ by ident()",
+    "def.select":
+      "the view's SELECT text from the module's literal view list; no value from a request or a row",
+  },
+  "apps/api/src/modules/portal/views.ts#writeView": {
+    name: "a portal view name from the module's literal view list, checked against /^[a-z_][a-z0-9_]*$/ by ident()",
+    create:
+      "CREATE OR REPLACE VIEW built from that checked name and the view's literal SELECT text in the module",
   },
 }
 

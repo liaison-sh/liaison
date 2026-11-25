@@ -1,0 +1,21 @@
+{
+  "entry": "tool:draft_from_reconcile",
+  "params": {
+    "reconciliationId": "7e000000-0000-4000-8000-0000000000a1",
+    "revision": 1
+  },
+  "recordedFrom": "the contract org on a local stack, record-invoicing-reconcile.recorder.test.ts",
+  "expectError": {
+    "reason": "the contract org has no projects app holding this reconciliation, so the billed lines cannot be read: pins that refusal (nothing made); the working path is proven by from-reconcile.test.ts"
+  },
+  "calls": [
+    {
+      "method": "executeTool",
+      "args": [
+        "projects:reconcile_lines_read",
+        "{\"reconciliationId\":\"7e000000-0000-4000-8000-0000000000a1\"}"
+      ],
+      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"not_found\",\"message\":\"No reconciliation 7e000000-0000-4000-8000-0000000000a1 you can read. Nothing was changed.\",\"retryable\":false}}"
+    }
+  ]
+}

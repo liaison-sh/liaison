@@ -1,0 +1,5 @@
+{
+  "reviewedOutsideRoutes": {
+    "apps/api/src/modules/agent/scopes/taint-approval-audience.ts#restrictedListsFor": "the lists behind a taint's restricted scopes: every caller passes the org of the turn, message or approval it judges (the same org loadOrgMemberGrants is given beside it); the security-definer function reads the record by id AND that org_id and returns only its list's user ids"
+  }
+}

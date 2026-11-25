@@ -474,7 +474,8 @@ describe("history is read with the edit right only", () => {
   })
 
   it("can_edit_document answers as the service's write check, over the access matrix", async () => {
-    const EXACT = "knowledge:test-exact-edit"
+    // An edit scope is one bare word (the form row security checks exactly).
+    const EXACT = "test-exact-edit"
     const docs: { id: string; grant: "viewer" | "editor" | null }[] = []
     const personal = await create(alice, { documentScope: "personal" })
     docs.push({ id: personal.id, grant: null })

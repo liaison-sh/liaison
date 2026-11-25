@@ -4,17 +4,60 @@
 
 import { asHandlerSummary } from "../approval-cards"
 import { type BuyerVatFacts, checkBuyerVat, consumerDeclaredAgainstEvidence } from "../buyer-vat"
-import type { DraftLine, DraftLineInput } from "../issue"
+import { operationCategory } from "../einvoicing/classify-operation"
+import type { DraftLine, DraftLineInput, IssueBatchOp } from "../issue"
+import { checkIssuerGuard, type GuardCtx } from "../issuer-guard"
+import { dueOn, paymentTermsOf } from "../payment-terms"
+import { recipientOf } from "../recipient"
+import {
+  type DiscardParked,
+  type DiscardResult,
+  discardRunDraft,
+  KEPT_AFTER_STOP,
+  LAST_INVOICE,
+  putBack,
+  SCHEDULE_ENDED,
+  SCHEDULE_PAUSED,
+} from "../recurring/end-schedule"
+import {
+  type Applies,
+  afterRunWrite,
+  checkUnchangedSince,
+  draftDiff,
+  type EditCtx,
+  issuedRefusal,
+  logRunEdit,
+  parkForPerson,
+  type RunDraft,
+  type RunRowResult,
+  refuse,
+  runDraftOf,
+  turnOf,
+} from "../recurring/restage"
+import { dayOf, type Row, draftLines as runDraftLines } from "../recurring/run-card"
+import { type RecordLanded, underApprovalProtocol } from "./approval-protocol"
+import { readMilestones } from "./billing-plan"
 import { assertNoLiveInvoiceForOrder } from "./credit-coverage"
 import {
   deleteDraftRow,
+  draftDeleteOps,
   findIssuerProfile,
   getDraft,
   insertDraftRow,
+  loadDraftLines,
   resolveIssuerProfileOrError,
   updateDraftRow,
 } from "./db-helpers"
+import { restageIssueApprovals } from "./issue-fingerprint"
+import {
+  billingDraftHeaderLockedError,
+  cardLinesLockedError,
+  deductionLinesLockedError,
+  markReconciliation,
+  withdrawIssueApprovals,
+} from "./issue-handover"
 import { liftMisplacedCountry, netLinesForIssuer, normaliseDraftLines } from "./lines"
+import { raiseHeldApproval } from "./prepaid-hold"
 import {
   type DocumentType,
   type DraftInsert,
@@ -63,6 +106,8 @@ type DraftEinvoiceInput = Pick<
 
 export interface DraftsCreateInput extends DraftEinvoiceInput {
   type: DocumentType
+  /** What this invoice bills when the customer also pays a live Stripe subscription (a person's statement). */
+  billsOtherThanStripe?: string | null
   counterparty_contact_id: string | null
   /** Counterparty snapshot fields shown in the editor's "Customer" section — persisted onto the
    *  draft `documents` row and carried through to the issued document. */
@@ -105,6 +150,13 @@ export interface DraftsCreateInput extends DraftEinvoiceInput {
    *  (buyer-vat.ts). Recorded on `external_refs.buyer_is_consumer`, read again at issue. */
   buyer_is_consumer?: boolean | null
   items: DraftLineInput[]
+  /** Add this invoice as a row of a month-end run (its issuer and period). */
+  run_id?: string | null
+  /** Add it even when the run already bills the same customer the same lines. */
+  allow_duplicate?: boolean | null
+  /** The client project this document bills. Kept on the issued document, so the project and
+   *  its company show the money; checked readable before anything is drafted. */
+  project_id?: string | null
 }
 
 /**
@@ -188,7 +240,104 @@ async function parkConsumerDeclaration(
     : { status: "pending_approval", approval_id: approval.approval_id }
 }
 
-type DraftCreated = { draft_id: string } & ReturnType<typeof serializeDraftRow>
+/**
+ * One customer, one issuer (issuer-guard.ts): an invoice draft for a customer a live Stripe
+ * subscription bills is refused, in the preflight and in the handler alike. An agent's statement
+ * of what else it bills waits for a person (the card shows it); a person's own call goes on.
+ */
+async function guardDraftIssuer(
+  ctx: MutationsCtx,
+  toolName: "invoicing:drafts_create" | "invoicing:drafts_update",
+  buyer: { contactId: string | null; email: string | null },
+  billsOther: string | null | undefined,
+  mode: DraftRunMode,
+  payload: unknown,
+): Promise<DraftParked | null> {
+  const guard = await checkIssuerGuard(ctx as GuardCtx, {
+    contactId: buyer.contactId,
+    emails: [buyer.email],
+    billsOtherThanStripe: billsOther,
+    stage: mode === "preflight" ? "preflight" : "handler",
+  })
+  if (guard.ok) return null
+  if (guard.needsPerson && mode === "tool") {
+    const approval = await ctx.requestApproval({
+      tool_name: toolName,
+      summary: `${toolName.endsWith("create") ? "Create" : "Change"} an invoice draft for a customer Stripe already bills`,
+      summary_detail: {
+        subtitle: "The agent says this bills something other than the Stripe subscription",
+        lines: [
+          `What it bills: ${String(billsOther ?? "").slice(0, 200)}`,
+          "Approve only if this is not what the Stripe subscription already invoices.",
+        ],
+      },
+      current_payload: payload,
+    })
+    return approval.auto_approved
+      ? null
+      : { status: "pending_approval", approval_id: approval.approval_id }
+  }
+  throw new Error(`${guard.error.error.code}: ${guard.error.error.message}`)
+}
+
+type DraftCreated = { draft_id: string } & ReturnType<typeof serializeDraftRow> & {
+    run_row?: RunRowResult
+    message?: string
+  }
+
+/** The run a new draft joins, checked before anything is written. */
+async function runToJoin(ctx: MutationsCtx, runId: string): Promise<Row> {
+  const run = (await ctx.db.findOne("recurring_runs", runId)) as Row | null
+  if (!run)
+    refuse(
+      "run_not_found",
+      `No month-end run ${runId}, so nothing was added. Read the runs with recurring_run_get.`,
+    )
+  if (run.status === "issued" || run.status === "nothing_to_issue") {
+    refuse(
+      "run_closed",
+      `Month-end run ${runId} is ${String(run.status)}, so nothing was added to it. Make a separate invoice instead.`,
+    )
+  }
+  return run
+}
+
+/** Whether a run already bills this customer: the same lines (a repeat) or other ones (a note). */
+async function sameCustomerInRun(
+  ctx: MutationsCtx,
+  runId: string,
+  customer: { contact: string | null; name: string | null },
+  lines: DraftLine[],
+): Promise<{ duplicateOf: string | null; alsoBilled: boolean }> {
+  const sig = (
+    ls: Array<{ description?: unknown; quantity?: unknown; unit_price_minor?: unknown }>,
+  ) =>
+    JSON.stringify(
+      ls.map((l) => [String(l.description ?? ""), Number(l.quantity), String(l.unit_price_minor)]),
+    )
+  const wanted = sig(lines)
+  let alsoBilled = false
+  const items = (await ctx.db.findMany("recurring_run_items", {
+    where: { run_id: runId },
+    limit: 500,
+  })) as Row[]
+  for (const item of items) {
+    if (item.state === "left_out") continue
+    const doc = (await ctx.db.findOne("documents", String(item.document_id))) as Row | null
+    if (!doc) continue
+    const same =
+      (customer.contact !== null && doc.counterparty_contact_id === customer.contact) ||
+      (customer.name !== null &&
+        String(doc.counterparty_name ?? "")
+          .trim()
+          .toLowerCase() === customer.name.trim().toLowerCase())
+    if (!same) continue
+    alsoBilled = true
+    if (sig(await runDraftLines(ctx, String(doc.id))) === wanted)
+      return { duplicateOf: String(doc.id), alsoBilled }
+  }
+  return { duplicateOf: null, alsoBilled }
+}
 
 /**
  * drafts_create as the tool runs it: a consumer declared against business evidence parks an
@@ -231,19 +380,136 @@ export async function draftsCreate(
   return r
 }
 
-async function createDraft(
+const blankText = (v: unknown): boolean => typeof v !== "string" || v.trim() === ""
+
+/**
+ * A draft that names its customer by contact takes the recipient from that contact, as the
+ * editor's contact picker does: its company or name, email, billing address and country, and the
+ * VAT number recorded for it. A value the caller passed is never overwritten. Nothing is read when
+ * every field is already given.
+ */
+async function withContactRecipient(
   ctx: MutationsCtx,
   input: DraftsCreateInput,
+): Promise<DraftsCreateInput> {
+  const contactId = input.counterparty_contact_id
+  if (!contactId) return input
+  const noAddress = blankText(input.counterparty_address) && blankText(input.billing_line1)
+  const noCountry = blankText(input.counterparty_country) && blankText(input.billing_country_code)
+  const wanted =
+    blankText(input.counterparty_name) ||
+    blankText(input.counterparty_email) ||
+    blankText(input.counterparty_vat_id) ||
+    noAddress ||
+    noCountry
+  if (!wanted) return input
+  const r = await recipientOf(ctx, { contactId, companyId: null })
+  return {
+    ...input,
+    counterparty_name: blankText(input.counterparty_name)
+      ? r.counterparty_name
+      : input.counterparty_name,
+    counterparty_email: blankText(input.counterparty_email)
+      ? r.counterparty_email
+      : input.counterparty_email,
+    counterparty_vat_id: blankText(input.counterparty_vat_id)
+      ? r.counterparty_vat_id
+      : input.counterparty_vat_id,
+    counterparty_address: noAddress ? r.counterparty_address : input.counterparty_address,
+    counterparty_country: noCountry ? r.counterparty_country : input.counterparty_country,
+    ...(noAddress
+      ? {
+          billing_line1: r.billing_line1,
+          billing_line2: r.billing_line2,
+          billing_postcode: r.billing_postcode,
+          billing_city: r.billing_city,
+        }
+      : {}),
+    ...(noCountry || (noAddress && blankText(input.billing_country_code))
+      ? { billing_country_code: r.billing_country_code }
+      : {}),
+  }
+}
+
+const PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * The project a draft bills, when the caller names one: a project the person can read through
+ * projects' own read, else a typed refusal before anything is drafted or an approval parked.
+ * A purchase order bills a supplier, never a client project.
+ */
+async function billedProjectOrRefuse(
+  ctx: MutationsCtx,
+  input: { type: DocumentType; project_id?: string | null },
+  outcome = "Nothing was drafted.",
+): Promise<string | null> {
+  const raw = input.project_id
+  if (raw === undefined || raw === null || raw === "") return null
+  if (input.type === "purchase_order")
+    refuse("invalid_project", `A purchase order bills a supplier, not a client project. ${outcome}`)
+  if (typeof raw !== "string" || !PROJECT_ID.test(raw))
+    refuse("invalid_project", `project_id ${String(raw)} is not a project id. ${outcome}`)
+  if (!(await readMilestones(ctx, raw, [])))
+    refuse(
+      "project_unreadable",
+      `Project ${raw} could not be read: check the id with the projects search. ${outcome}`,
+    )
+  return raw
+}
+
+/**
+ * The project a drafts_update names: checked as drafts_create checks it, against the draft's own
+ * type. A draft that bills a billing plan step (an advance or the final invoice) keeps its
+ * project: the plan belongs to it. The company follows at issue (the contact's, else the
+ * project's), as for a new draft.
+ */
+async function draftProjectOrRefuse(
+  ctx: MutationsCtx,
+  draftId: string,
+  projectId: string | null,
+): Promise<string | null> {
+  const existing = await getDraft(ctx.db, draftId)
+  if (!existing) throw new Error(`not_found: draft ${draftId}`)
+  const current = existing.source?.billing_project_id ?? null
+  const next = projectId === "" ? null : projectId
+  if (next === current) return current
+  const role = existing.source?.invoice_role
+  if (current && (role === "advance" || role === "final"))
+    refuse(
+      "invalid_project",
+      `Draft ${draftId} is the ${role} invoice of project ${current}'s billing plan, so its project cannot change. Nothing was changed. Discard it and draft from the other project's plan instead.`,
+    )
+  return billedProjectOrRefuse(
+    ctx,
+    { type: existing.type, project_id: next },
+    `Draft ${draftId} was not changed.`,
+  )
+}
+
+async function createDraft(
+  ctx: MutationsCtx,
+  given: DraftsCreateInput,
   mode: DraftRunMode,
 ): Promise<DraftCreated | DraftParked | PreflightPassed> {
-  if (!VALID_TYPES.includes(input.type)) {
-    throw new Error(`invalid_type: ${input.type}`)
+  if (!VALID_TYPES.includes(given.type)) {
+    throw new Error(`invalid_type: ${given.type}`)
   }
+  const input = await withContactRecipient(ctx, given)
+  const projectId = await billedProjectOrRefuse(ctx, input)
   // Resolve the issuer profile up front — `documents.issuer_profile_id` is NOT
   // NULL, so an absent id must be defaulted (single-issuer org) or turned into a
   // TYPED error BEFORE the insert, never let through as a raw 23502 the agent
   // reads only as "Tool execution failed".
-  const issuerResolution = await resolveIssuerProfileOrError(ctx.db, input.issuer_profile_id)
+  const joining = input.run_id ? await runToJoin(ctx, input.run_id) : null
+  if (joining && input.type !== "invoice")
+    refuse(
+      "invalid_type",
+      `A month-end run bills invoices, so a ${input.type} draft was not added.`,
+    )
+  const issuerResolution = await resolveIssuerProfileOrError(
+    ctx.db,
+    joining ? String(joining.issuer_profile_id) : input.issuer_profile_id,
+  )
   if (!issuerResolution.ok) {
     throw new Error(`${issuerResolution.error.error.code}: ${issuerResolution.error.error.message}`)
   }
@@ -302,7 +568,10 @@ async function createDraft(
   const counterpartyVatId = guarded.vat
   // Lines and notes are validated BEFORE any approval is parked: a person must never approve a
   // draft whose lines or notes the insert then refuses.
-  const normalisedItems = normaliseDraftLines(input.items ?? [])
+  // A month-end run bills services: a line added to it with no kind is one.
+  const normalisedItems = normaliseDraftLines(input.items ?? []).map((l) =>
+    joining && l.line_kind === undefined ? { ...l, line_kind: "service" as const } : l,
+  )
   const draftLines =
     input.type === "credit_note"
       ? normalisedItems
@@ -312,7 +581,42 @@ async function createDraft(
           has_vat_id: !!counterpartyVatId,
         })
   const notes = normaliseNotesOrThrow(input.notes) ?? null
+  // A row added to a run: the same customer with the same lines is refused, so a retry never bills twice.
+  const inRun = joining
+    ? await sameCustomerInRun(
+        ctx,
+        String(joining.id),
+        { contact: input.counterparty_contact_id ?? null, name: input.counterparty_name ?? null },
+        draftLines,
+      )
+    : null
+  if (joining && inRun?.duplicateOf && input.allow_duplicate !== true) {
+    refuse(
+      "already_in_run",
+      `Month-end run ${String(joining.id)} already bills this customer these lines (draft ${inRun.duplicateOf}), so nothing was added. Change that draft with drafts_update, or pass allow_duplicate if the customer is really billed twice.`,
+    )
+  }
+  if (input.type === "invoice" && !input.shopify_order_id) {
+    const held = await guardDraftIssuer(
+      ctx,
+      "invoicing:drafts_create",
+      { contactId: input.counterparty_contact_id ?? null, email: input.counterparty_email ?? null },
+      input.billsOtherThanStripe,
+      mode,
+      input,
+    )
+    if (held) return held
+  }
   if (mode === "preflight") return { preflight: "passed", buyer: guarded.facts }
+  if (joining && mode === "tool") {
+    const parkedRun = await parkForPerson(
+      ctx as EditCtx,
+      "invoicing:drafts_create",
+      `Add ${input.counterparty_name ?? "a customer"} to the month-end run`,
+      input,
+    )
+    if (parkedRun) return { status: "pending_approval", approval_id: parkedRun.approval_id }
+  }
   const parked =
     mode === "tool"
       ? await parkConsumerDeclaration(
@@ -371,6 +675,7 @@ async function createDraft(
     billing_city: input.billing_city ?? null,
     billing_country_code: input.billing_country_code ?? null,
     lines: draftLines,
+    billing_project_id: projectId,
   })
   // Kernel audit trail — a brand new draft entering the document lifecycle.
   await ctx.emit({
@@ -384,12 +689,112 @@ async function createDraft(
       status: "draft",
     },
   })
+  if (joining) return joinRun(ctx, joining, draft, inRun?.alsoBilled === true)
   // Return the persisted draft (lines included), not just an opaque id — mirroring drafts_update.
   // A one-shot drafts_create otherwise left the agent with NO tool-backed view of what it created,
   // so it narrated lines/HS-codes from memory and the judge had no evidence the export invoice
   // genuinely "carries" the per-line customs facts (incl. a lifted hs_code). draft_id is kept for
   // backward compatibility; the serialized body adds id/lines/customs facts the caller can read back.
   return { draft_id: draft.id, ...serializeDraftRow(draft) }
+}
+
+/** The due date and operation type of an added row whose caller gave none. */
+async function addedRowTerms(ctx: MutationsCtx, run: Row, draft: DraftRow): Promise<Row> {
+  const out: Row = {}
+  if (!draft.due_at) {
+    const issuer: { id: string; timezone?: string | null; default_payment_terms_days?: unknown } =
+      (await findIssuerProfile(ctx.db, draft.issuer_profile_id)) ?? {
+        id: draft.issuer_profile_id,
+      }
+    const terms = await paymentTermsOf(ctx.db, {
+      issuer,
+      contactId: draft.counterparty_contact_id,
+      externalRefs: draft.external_refs,
+    })
+    // Added after the issue day, it is due counted from today: it issues no earlier.
+    const zone = issuer.timezone || "UTC"
+    const today = (await ctx.time.civil({ timezone: zone })).date
+    const issueOn = dayOf(run.issue_on) as string
+    const countedFrom = today > issueOn ? today : issueOn
+    out.due_at = dueOn(countedFrom, terms.days)
+    out.external_refs = { ...(draft.external_refs ?? {}), due_counted_from: countedFrom }
+  }
+  if (!draft.operation_category) {
+    const { category } = operationCategory(draft.lines, { authoritative: false })
+    out.operation_category = category ?? "services"
+    out.operation_category_source = "explicit"
+  }
+  return out
+}
+
+/** Make a new draft a row of its run: an added row, keyed by its item, then the card follows. */
+async function joinRun(
+  ctx: MutationsCtx,
+  run: Row,
+  draft: DraftRow,
+  alsoBilled: boolean,
+): Promise<DraftCreated> {
+  const runId = String(run.id)
+  const items = (await ctx.db.findMany("recurring_run_items", {
+    where: { run_id: runId },
+    orderBy: { position: "asc" },
+    limit: 500,
+  })) as Row[]
+  const first = items[0]
+  const periodStart = first
+    ? dayOf(first.period_start)
+    : `${(dayOf(run.issue_on) as string).slice(0, 7)}-01`
+  const periodEnd = first ? dayOf(first.period_end) : dayOf(run.issue_on)
+  const position = items.reduce((m, i) => Math.max(m, Number(i.position ?? 0)), 0) + 1
+  const issueOn = dayOf(run.issue_on) as string
+  const inserted = (await ctx.db.insert("recurring_run_items", {
+    run_id: runId,
+    source: "added",
+    schedule_id: null,
+    schedule_version: null,
+    period_key: first ? String(first.period_key) : issueOn.slice(0, 7),
+    period_start: periodStart,
+    period_end: periodEnd,
+    document_id: draft.id,
+    position,
+    state: "ready",
+    note: ["Added", ...(alsoBilled ? ["Also billed in this run"] : [])].join(" · "),
+  })) as Row
+  const itemId = String(inserted.id)
+  const terms = await addedRowTerms(ctx, run, draft)
+  await ctx.db.update("documents", draft.id, {
+    external_ref: `recurring:added:${itemId}`,
+    // An added row bills the run's period, is due by its customer's terms from the run's issue day,
+    // and has the operation type its lines give: what the card shows is what issues.
+    ...terms,
+    service_period_start: periodStart,
+    service_period_end: periodEnd,
+    external_refs: {
+      ...((terms.external_refs as Row | undefined) ?? draft.external_refs ?? {}),
+      period_key: first ? String(first.period_key) : issueOn.slice(0, 7),
+      period_start: periodStart,
+      period_end: periodEnd,
+      recurring_run_item_id: itemId,
+      recurring_run_id: runId,
+    },
+  })
+  await logRunEdit(ctx as EditCtx, draft.id, {
+    kind: "added",
+    fields: [{ field: "row", from: null, to: "added" }],
+    applies: null,
+  })
+  const r = await afterRunWrite(ctx as EditCtx, itemId, {
+    extraNotes: alsoBilled
+      ? ["Also billed in this run: the customer already has another row in it."]
+      : [],
+  })
+  const fresh = await getDraft(ctx.db, draft.id)
+  return {
+    draft_id: draft.id,
+    ...serializeDraftRow(fresh ?? draft),
+    run_row: r,
+    message: `Added draft ${draft.id} to month-end run ${runId} as row ${itemId}; the row is ${r.item_state}. The run now approves ${r.approve_count} invoice${r.approve_count === 1 ? "" : "s"} for ${r.approve_total_minor} minor units.`,
+  }
 }
 
 /**
@@ -422,8 +827,8 @@ type DraftUpdated = ReturnType<typeof serializeDraftRow>
 /** drafts_update as the tool runs it (see draftsCreateTool). */
 export async function draftsUpdateTool(
   ctx: MutationsCtx,
-  input: Parameters<typeof draftsUpdate>[1],
-): Promise<DraftUpdated | DraftParked> {
+  input: DraftsUpdateInput,
+): Promise<DraftUpdated | DraftParked | RunParked> {
   const r = await updateDraft(ctx, input, "tool")
   if ("preflight" in r) throw new Error("drafts_update: a tool run returned a preflight result")
   return r
@@ -445,16 +850,24 @@ export async function draftsUpdatePreflight(
   }
 }
 
+/** drafts_update's input. `applies`, `put_back` and `if_unchanged_since` act on a month-end run's draft. */
+export interface DraftsUpdateInput {
+  draft_id: string
+  patch?: Partial<Omit<DraftInsert, "lines">> & {
+    lines?: DraftLineInput[]
+    buyer_is_consumer?: boolean | null
+  }
+  applies?: "this_month" | "from_now_on"
+  put_back?: boolean
+  if_unchanged_since?: string
+  /** What this invoice bills when the new buyer also pays a live Stripe subscription (a person's statement). */
+  billsOtherThanStripe?: string | null
+}
+
 /** Update a draft, for in-app callers that hold no approval to park (the tool runs draftsUpdateTool). */
 export async function draftsUpdate(
   ctx: MutationsCtx,
-  input: {
-    draft_id: string
-    patch: Partial<Omit<DraftInsert, "lines">> & {
-      lines?: DraftLineInput[]
-      buyer_is_consumer?: boolean | null
-    }
-  },
+  input: DraftsUpdateInput,
 ): Promise<DraftUpdated> {
   const r = await updateDraft(ctx, input, "direct")
   if ("status" in r)
@@ -463,7 +876,370 @@ export async function draftsUpdate(
   return r
 }
 
+type RunParked = { status: "pending_approval"; approval_id: string | null; message: string }
+type RunUpdated = DraftUpdated & { run_row: RunRowResult; message: string }
+
+/** The patch keys that change who is billed, what, or when: on a scheduled row they ask how far. */
+const TERMS_KEYS = [
+  "counterparty_contact_id",
+  "counterparty_name",
+  "counterparty_address",
+  "counterparty_country",
+  "counterparty_vat_id",
+  "counterparty_email",
+  "customer_kind",
+  "billing_line1",
+  "billing_line2",
+  "billing_postcode",
+  "billing_city",
+  "billing_country_code",
+  "due_at",
+  "currency",
+  "lines",
+]
+
+/** Every field a drafts_update patch changes. Anything else in a patch is refused by name. */
+export const PATCH_FIELDS: ReadonlySet<string> = new Set([
+  "type",
+  "lines",
+  ...TERMS_KEYS,
+  "buyer_is_consumer",
+  "counterparty_shipping_address",
+  "counterparty_shipping_name",
+  "tax_treatment",
+  "issuer_profile_id",
+  "incoterm",
+  "external_refs",
+  "notes",
+  "po_number",
+  "operation_category",
+  "project_id",
+  "billing_project_id",
+])
+
+/**
+ * A patch naming a field drafts_update does not change is refused before anything is read or
+ * written: a success would report a change that was never made. `items` is what drafts_create
+ * calls the lines.
+ */
+function refuseUnknownFields(draftId: string, patch: unknown): void {
+  const unknown = Object.keys((patch ?? {}) as object).filter((k) => !PATCH_FIELDS.has(k))
+  if (unknown.length === 0) return
+  const named = unknown.map((k) => `"${k}"`).join(", ")
+  refuse(
+    "unknown_field",
+    `The patch names ${named}, which drafts_update does not change, so draft ${draftId} was not changed at all.` +
+      (unknown.includes("items") ? ` The lines of a draft are patch.lines.` : "") +
+      ` A patch may hold: ${[...PATCH_FIELDS].join(", ")}.`,
+  )
+}
+
+const ADDRESS_KEYS = [
+  "counterparty_address",
+  "billing_line1",
+  "billing_postcode",
+  "billing_city",
+  "billing_country_code",
+]
+
+function blank(v: unknown): boolean {
+  return v === null || v === undefined || String(v).trim() === ""
+}
+
+/** The schedule's own form of a draft's terms, for "from now on". */
+async function schedulePatchFrom(ctx: MutationsCtx, rd: RunDraft, applies: Applies): Promise<Row> {
+  const draft = (await ctx.db.findOne("documents", String(rd.draft.id))) as Row
+  const lines = await runDraftLines(ctx, String(draft.id))
+  const label = String(rd.run.period_label ?? "")
+  const patch: Row = {
+    applies,
+    lines: lines.map((l) => ({
+      description: label
+        ? String(l.description ?? "")
+            .split(label)
+            .join("{period}")
+        : String(l.description ?? ""),
+      qty: Number(l.quantity),
+      unit_price_minor: Number(l.unit_price_minor),
+      vat_bp: l.tax_rate_bp === null || l.tax_rate_bp === undefined ? 0 : Number(l.tax_rate_bp),
+      line_kind: l.line_kind ?? "service",
+    })),
+  }
+  if (typeof draft.counterparty_contact_id === "string" && draft.counterparty_contact_id)
+    patch.contact_id = draft.counterparty_contact_id
+  const due = dayOf(draft.due_at)
+  const issueOn = dayOf(rd.run.issue_on)
+  if (due && issueOn) {
+    // A date-only ISO string parses as UTC midnight.
+    const days = Math.round((Date.parse(due) - Date.parse(issueOn)) / 86_400_000)
+    if (days === 0) patch.due_rule = "on_issue"
+    else if (days === 30) patch.due_rule = "days_30"
+    else if (days > 0) {
+      patch.due_rule = "days_n"
+      patch.due_days = days
+    }
+  }
+  return patch
+}
+
+/**
+ * A month-end row's draft: the one door through which a row changes. Every change is checked here,
+ * whoever makes it, and the answer names the row, the run's new totals and what to tell.
+ */
+async function updateRunDraft(
+  ctx: MutationsCtx,
+  input: DraftsUpdateInput,
+  mode: DraftRunMode,
+  rd: RunDraft,
+): Promise<RunUpdated | RunParked | DraftParked | PreflightPassed> {
+  const ectx = ctx as EditCtx
+  if (rd.item.state === "issued" || rd.draft.status !== "draft") issuedRefusal(rd)
+  await checkUnchangedSince(ctx, rd, input.if_unchanged_since)
+  const patch = input.patch ?? {}
+  const keys = Object.keys(patch)
+  const scheduled = rd.item.source !== "added" && rd.schedule !== null
+  const termsTouched = keys.some((k) => TERMS_KEYS.includes(k))
+  const draftId = String(rd.draft.id)
+  if (
+    scheduled &&
+    termsTouched &&
+    input.applies !== "this_month" &&
+    input.applies !== "from_now_on"
+  ) {
+    refuse(
+      "applies_required",
+      `Draft ${draftId} is a scheduled row of a month-end run, and this change touches its customer, lines or due date; nothing was changed. Ask: this month only, or from now on? Then pass applies this_month or from_now_on. A note or PO reference never asks.`,
+    )
+  }
+  if (input.applies === "from_now_on") {
+    if (!scheduled)
+      refuse(
+        "no_schedule",
+        `Draft ${draftId} was added to the run by hand and has no schedule, so "from now on" has nothing to change; nothing was changed. Save it for this month only.`,
+      )
+    if (typeof patch.currency === "string" && patch.currency !== rd.draft.currency) {
+      refuse(
+        "schedule_has_no_currency",
+        `A schedule bills in its issuer's currency, so a currency change cannot apply from now on; nothing was changed. Change the currency for this month only, or not at all.`,
+      )
+    }
+    const turn = await turnOf(ectx)
+    if (turn.agentId !== null && rd.schedule?.issue_mode === "auto") {
+      refuse(
+        "schedule_issues_by_itself",
+        `The schedule of draft ${draftId} issues by itself, so no later card would show a change from now on; nothing was changed. Change the schedule with recurring_schedule_update, which a person approves.`,
+      )
+    }
+  }
+  // An address an agent found for a row that has none is only a suggestion: a person uses it.
+  const turn = await turnOf(ectx)
+  const addressGiven = keys.some((k) => ADDRESS_KEYS.includes(k) && !blank((patch as Row)[k]))
+  const lacksAddress = blank(rd.draft.counterparty_address) && blank(rd.draft.billing_line1)
+  if (turn.agentId !== null && addressGiven && lacksAddress && !ctx.approval) {
+    if (mode === "preflight") return { preflight: "passed", buyer: null }
+    const suggestion: Row = { found_by_agent: turn.agentId, at: new Date().toISOString() }
+    for (const k of ADDRESS_KEYS) if (k in patch) suggestion[k] = (patch as Row)[k]
+    await ctx.db.update("recurring_run_items", String(rd.item.id), { fix_suggestion: suggestion })
+    const draft = await getDraft(ctx.db, draftId)
+    if (!draft) throw new Error(`not_found: draft ${draftId}`)
+    const r = await afterRunWrite(ectx, String(rd.item.id))
+    return {
+      ...serializeDraftRow(draft),
+      run_row: {
+        ...r,
+        notes: [
+          "The address you found is stored as a suggestion on the row; nothing else changed. A person uses it with Use it on the row.",
+        ],
+      },
+      message: `Draft ${draftId} is unchanged: the address is a suggestion until a person uses it.`,
+    }
+  }
+  if (mode === "preflight") {
+    if (keys.length > 0) await updatePlainDraft(ctx, { draft_id: draftId, patch }, "preflight")
+    return { preflight: "passed", buyer: null }
+  }
+  if (mode === "tool") {
+    const what = input.put_back
+      ? `Put ${String(rd.draft.counterparty_name ?? draftId)} back into the month-end run`
+      : `Change ${String(rd.draft.counterparty_name ?? draftId)}'s month-end draft`
+    const parked = await parkForPerson(ectx, "invoicing:drafts_update", what, input)
+    if (parked) return parked
+  }
+  const beforeLines = await runDraftLines(ctx, draftId)
+  const notes: string[] = []
+  if (input.put_back) {
+    const { restoredEndsOn } = await putBack(ectx, rd)
+    if (restoredEndsOn !== undefined)
+      notes.push(`The schedule's end is back to ${restoredEndsOn ?? "none"}.`)
+  }
+  if (keys.length > 0) {
+    const written = await updatePlainDraft(ctx, { draft_id: draftId, patch }, mode)
+    if ("status" in written) return written
+  }
+  // A person's address on a row: it goes on the schedule's contact as its billing address too.
+  // A schedule whose person was deleted has none to keep the address on.
+  const scheduleContact =
+    typeof rd.schedule?.contact_id === "string" && rd.schedule.contact_id !== ""
+      ? rd.schedule.contact_id
+      : null
+  if (turn.agentId === null && addressGiven && scheduleContact) {
+    notes.push(await billingAddressToContact(ctx, scheduleContact, patch as Row))
+  }
+  if (addressGiven)
+    await ctx.db.update("recurring_run_items", String(rd.item.id), { fix_suggestion: null })
+  // How far: "from now on" waits on the row until the run's approval writes it to the schedule.
+  if (scheduled && input.applies === "from_now_on") {
+    await ctx.db.update("recurring_run_items", String(rd.item.id), {
+      schedule_patch: await schedulePatchFrom(ctx, rd, "from_now_on"),
+    })
+    notes.push(
+      "From now on: the schedule takes this change when the run is approved, from its next period.",
+    )
+  } else if (scheduled && input.applies === "this_month") {
+    const pending = rd.item.schedule_patch as Row | null
+    if (pending && (typeof pending !== "object" || pending.written !== true)) {
+      await ctx.db.update("recurring_run_items", String(rd.item.id), { schedule_patch: null })
+    }
+  }
+  const after = (await ctx.db.findOne("documents", draftId)) as Row
+  const fields = draftDiff(rd.draft, beforeLines, after, await runDraftLines(ctx, draftId))
+  if (input.put_back) fields.push({ field: "state", from: rd.item.state, to: "back in the run" })
+  await logRunEdit(ectx, draftId, {
+    kind: input.put_back ? "put_back" : "edit",
+    fields,
+    applies: scheduled ? (input.applies ?? null) : null,
+  })
+  const r = await afterRunWrite(ectx, String(rd.item.id), {
+    putBack: input.put_back === true,
+    extraNotes: notes,
+    ...(input.put_back
+      ? {
+          noteRemove: [LAST_INVOICE, SCHEDULE_PAUSED, SCHEDULE_ENDED],
+          // Put back while its schedule is paused or ended: the row issues with the run anyway.
+          ...(rd.schedule?.status === "paused" || rd.schedule?.status === "ended"
+            ? { noteAdd: [KEPT_AFTER_STOP] }
+            : {}),
+        }
+      : {}),
+  })
+  const draft = await getDraft(ctx.db, draftId)
+  if (!draft) throw new Error(`not_found: draft ${draftId}`)
+  const changed = fields.map((f) => f.field).join(", ") || "nothing"
+  return {
+    ...serializeDraftRow(draft),
+    run_row: r,
+    message: `Draft ${draftId} saved (${changed}); the row is ${r.item_state}. The run now approves ${r.approve_count} invoice${r.approve_count === 1 ? "" : "s"} for ${r.approve_total_minor} minor units.`,
+  }
+}
+
+/** Write a person's billing address on the contact; says what happened, never throws. */
+async function billingAddressToContact(
+  ctx: MutationsCtx,
+  contactId: string,
+  patch: Row,
+): Promise<string> {
+  const street = (patch.billing_line1 ?? patch.counterparty_address) as string | undefined
+  try {
+    const env = await ctx.executeTool("kernel:contacts_address_upsert", {
+      contactId,
+      role: "billing",
+      ...(street ? { street1: String(street).slice(0, 200) } : {}),
+      ...(patch.billing_postcode ? { postalCode: String(patch.billing_postcode) } : {}),
+      ...(patch.billing_city ? { city: String(patch.billing_city) } : {}),
+      ...(typeof patch.billing_country_code === "string" &&
+      /^[A-Za-z]{2}$/.test(patch.billing_country_code)
+        ? { countryIso2: patch.billing_country_code }
+        : {}),
+    })
+    if (env.status === "completed") {
+      const res = env.result as { status?: string; approval_id?: string } | null
+      return res?.status === "pending_approval"
+        ? `The contact's billing address waits for approval ${res.approval_id ?? ""}; the draft has it already.`.replace(
+            "  ",
+            " ",
+          )
+        : "The address is also the contact's billing address now."
+    }
+    return `The draft has the address, but the contact's billing address was not saved: ${env.status === "error" ? env.error.message : "no answer"}.`
+  } catch (err) {
+    return `The draft has the address, but the contact's billing address was not saved: ${err instanceof Error ? err.message : String(err)}.`
+  }
+}
+
 async function updateDraft(
+  ctx: MutationsCtx,
+  input: DraftsUpdateInput,
+  mode: DraftRunMode,
+): Promise<DraftUpdated | DraftParked | PreflightPassed | RunUpdated | RunParked> {
+  refuseUnknownFields(input.draft_id, input.patch)
+  // A new buyer on an invoice draft meets the issuer guard, as a new draft does.
+  const p = input.patch ?? {}
+  if ("counterparty_contact_id" in p || "counterparty_email" in p) {
+    const current = await getDraft(ctx.db, input.draft_id)
+    if (
+      current &&
+      current.type === "invoice" &&
+      !current.shopify_order_id &&
+      !current.external_refs?.shopify_order_id
+    ) {
+      const held = await guardDraftIssuer(
+        ctx,
+        "invoicing:drafts_update",
+        {
+          contactId:
+            ("counterparty_contact_id" in p
+              ? p.counterparty_contact_id
+              : current.counterparty_contact_id) ?? null,
+          email:
+            ("counterparty_email" in p ? p.counterparty_email : current.counterparty_email) ?? null,
+        },
+        input.billsOtherThanStripe,
+        mode,
+        input,
+      )
+      if (held) return held
+    }
+  }
+  if ("lines" in p || "currency" in p || "type" in p || "external_refs" in p) {
+    const linked = (await ctx.db.findOne("documents", input.draft_id)) as Row | null
+    const keyed = linked
+      ? {
+          id: input.draft_id,
+          type: linked.type,
+          currency: linked.currency,
+          external_ref: (linked.external_ref as string | null) ?? null,
+          external_refs: (linked.external_refs as Record<string, unknown> | null) ?? null,
+        }
+      : null
+    const locked = keyed
+      ? (billingDraftHeaderLockedError(keyed, p as Row) ??
+        ("lines" in p ? cardLinesLockedError(keyed) : null) ??
+        ("lines" in p && Array.isArray(p.lines)
+          ? deductionLinesLockedError(
+              input.draft_id,
+              await loadDraftLines(ctx.db, input.draft_id),
+              p.lines,
+            )
+          : null))
+      : null
+    if (locked) throw new Error(`${locked.error.code}: ${locked.error.message}`)
+  }
+  const rd = await runDraftOf(ctx, input.draft_id)
+  if (rd) return updateRunDraft(ctx, input, mode, rd)
+  const out = await updatePlainDraft(
+    ctx,
+    { draft_id: input.draft_id, patch: input.patch ?? {} },
+    mode,
+  )
+  // The edit is in: an issue card still waiting on this draft is redrawn from it.
+  if (!("preflight" in out) && !("approval_id" in out)) {
+    const fresh = await getDraft(ctx.db, input.draft_id)
+    if (fresh) await restageIssueApprovals(ctx, fresh)
+  }
+  return out
+}
+
+async function updatePlainDraft(
   ctx: MutationsCtx,
   // `lines` is the forgiving WIRE shape (DraftLineInput — unit_price_minor: bigint|string|number),
   // NOT the strict normalised DraftLine: documents_get returns unit_price_minor as a STRING, so the
@@ -478,8 +1254,28 @@ async function updateDraft(
   },
   mode: DraftRunMode,
 ): Promise<DraftUpdated | DraftParked | PreflightPassed> {
-  const { lines, buyer_is_consumer: buyerIsConsumerPatch, ...header } = input.patch
+  const {
+    lines,
+    buyer_is_consumer: buyerIsConsumerPatch,
+    project_id: projectGiven,
+    // The column's own name is the same request as `project_id`: it gets the same check, never
+    // a raw write.
+    billing_project_id: columnGiven,
+    ...header
+  } = input.patch as typeof input.patch & { project_id?: string | null }
+  if (projectGiven !== undefined && columnGiven !== undefined && projectGiven !== columnGiven)
+    refuse(
+      "invalid_project",
+      `The patch names two different projects (project_id and billing_project_id). Draft ${input.draft_id} was not changed. Pass project_id alone.`,
+    )
+  const projectPatch = projectGiven !== undefined ? projectGiven : columnGiven
   let patch: Partial<DraftInsert> = header
+  if (projectPatch !== undefined) {
+    patch = {
+      ...patch,
+      billing_project_id: await draftProjectOrRefuse(ctx, input.draft_id, projectPatch),
+    }
+  }
   let buyerFacts: BuyerVatFacts | null = null
   // Validated before any approval is parked (see createDraft).
   if ("notes" in header) normaliseNotesOrThrow(header.notes)
@@ -601,13 +1397,90 @@ async function updateDraft(
     patch = { ...patch, lines: netLines }
   }
   if (mode === "preflight") return { preflight: "passed", buyer: buyerFacts }
-  return serializeDraftRow(await updateDraftRow(ctx.db, input.draft_id, patch))
+  const updated = await updateDraftRow(ctx.db, input.draft_id, patch)
+  // The PO reference has its own column, printed and searched: written with the rest.
+  if ("po_number" in header) {
+    const po =
+      typeof header.po_number === "string" && header.po_number.trim() !== ""
+        ? header.po_number.trim()
+        : null
+    await ctx.db.update("documents", input.draft_id, { po_number: po })
+    return serializeDraftRow({ ...updated, po_number: po })
+  }
+  return serializeDraftRow(updated)
 }
 
 export async function draftsDiscard(
   ctx: MutationsCtx,
-  input: { draft_id: string },
-): Promise<{ ok: true }> {
-  await deleteDraftRow(ctx.db, input.draft_id)
-  return { ok: true }
+  input: { draft_id: string; applies?: "this_month" | "end_schedule"; ends_on?: string },
+): Promise<DiscardResult | DiscardParked> {
+  // Its approved run commits on a session (ownsTransactions): the discard is one commit, recorded
+  // as soon as it lands, and a failure before it records that nothing changed.
+  return underApprovalProtocol(ctx, "invoicing:drafts_discard", (landed) =>
+    discardDraft(ctx, input, landed),
+  )
+}
+
+async function discardDraft(
+  ctx: MutationsCtx,
+  input: { draft_id: string; applies?: "this_month" | "end_schedule"; ends_on?: string },
+  landed: RecordLanded,
+): Promise<DiscardResult | DiscardParked> {
+  // A month-end run's draft is taken out through the run's own rules: how far, and what it leaves.
+  const rd = await runDraftOf(ctx, input.draft_id)
+  if (rd) return discardRunDraft(ctx as EditCtx, rd, input, landed)
+  const row = (await ctx.db.findOne("documents", input.draft_id)) as Row | null
+  if (!row) {
+    await deleteDraftRow(ctx.db, input.draft_id)
+    return { ok: true, itemState: null, notes: [] }
+  }
+  // The draft, its lines and the rows that hang off it go in ONE commit: all or nothing.
+  const ops = [
+    ...(String(row.status ?? "draft") === "draft" ? await dependentOps(ctx, row) : []),
+    ...(await draftDeleteOps(ctx.db, input.draft_id)),
+  ]
+  await ctx.db.batch({ ops })
+  await landed({ document_id: input.draft_id, discarded: true })
+  await withdrawIssueApprovals(
+    ctx,
+    { id: input.draft_id, external_ref: (row.external_ref as string | null) ?? null },
+    "discarded",
+  )
+  await raiseHeldApproval(ctx, { id: input.draft_id, billing_project_id: row.billing_project_id })
+  // A draft made from a planned vs done card gives its month back: projects moves the
+  // reconciliation to proposed and frees its claims (a lost call is healed by its sweep).
+  await markReconciliation(
+    ctx,
+    {
+      external_ref: (row.external_ref as string | null) ?? null,
+      external_refs: (row.external_refs as Record<string, unknown> | null) ?? null,
+    },
+    { to: "released" },
+  )
+  return { ok: true, itemState: null, notes: [] }
+}
+
+/**
+ * The rows that hang off a draft go with it: its activity report and annexes are deleted, an
+ * advance deduction it reserved is released, a billing step it drafted is planned again. They
+ * reference the draft with `restrict`, so they move before the draft's delete.
+ */
+async function dependentOps(ctx: MutationsCtx, row: Row): Promise<IssueBatchOp[]> {
+  const id = String(row.id)
+  const ops: IssueBatchOp[] = []
+  for (const table of ["activity_reports", "document_attachments"]) {
+    const rows = (await ctx.db.findMany(table, { where: { document_id: id }, limit: 500 })) as Row[]
+    for (const r of rows) ops.push({ delete: table, id: String(r.id) })
+  }
+  const deductions = (await ctx.db.findMany("advance_deductions", {
+    where: { final_document_id: id },
+    limit: 500,
+  })) as Row[]
+  for (const r of deductions) ops.push({ delete: "advance_deductions", id: String(r.id) })
+  ops.push({
+    updateMany: "billing_steps",
+    where: { document_id: id },
+    data: { document_id: null, state: "planned" },
+  })
+  return ops
 }

@@ -25,7 +25,7 @@ import type { PrivilegedDb } from "~/db"
 import { routines, skills, users } from "~/db/schema/kernel"
 import { getOrCreatePersonalAgentId } from "~/modules/agent/directory/personal-agent"
 import { applyDefaultReportThreads } from "~/modules/agent/routines/routine-report"
-import { isScopeCovered } from "~/modules/agent/scopes/scope-coverage"
+import { exactGrantNote, isScopeCovered } from "~/modules/agent/scopes/scope-coverage"
 import { upsertSkillIndexRow } from "~/modules/agent/skills/skill-index"
 import {
   hasRoutineDelegateAuthority,
@@ -122,7 +122,7 @@ async function importSkill(tx: PrivilegedDb, ctx: HostImportContext, raw: Record
   if (beyond.length > 0) {
     throw new AgentsImportRefusal(
       "scope_ceiling",
-      `the skill requires ${beyond.join(", ")}, which you do not hold`,
+      `the skill requires ${beyond.join(", ")}, which you do not hold${exactGrantNote(beyond)}`,
     )
   }
   const report: Record<string, unknown> = {}
@@ -264,7 +264,7 @@ async function importRoutine(
   if (beyond.length > 0) {
     throw new AgentsImportRefusal(
       "scope_ceiling",
-      `the routine needs ${beyond.join(", ")}, beyond what you and its owner both hold`,
+      `the routine needs ${beyond.join(", ")}, beyond what you and its owner both hold${exactGrantNote(beyond)}`,
     )
   }
   const taken = await tx

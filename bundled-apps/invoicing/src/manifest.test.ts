@@ -50,6 +50,41 @@ function findOpaqueParams(m: unknown): string[] {
 }
 
 describe("invoicing manifest", () => {
+  it("declares the heading over its attention items, in the words and catalog key Home shows", () => {
+    const attention = (manifest as { attention?: { groupLabel?: unknown } }).attention
+    expect(attention?.groupLabel).toEqual({
+      label: "Invoicing",
+      labelKey: "kernel.homeGroupInvoicing",
+    })
+  })
+
+  it("the draft tools say a draft with a source is a visible pending draft and invoice_issue issues it", () => {
+    const tools = (manifest as unknown as { tools: Record<string, { description: string }> }).tools
+    // red: put the "LEGACY, internal" opening back and the draft tools read as dead again.
+    for (const name of ["drafts_create", "drafts_update", "drafts_discard"]) {
+      const text = tools[name]!.description
+      expect(text).not.toMatch(/legacy|no user facing draft/i)
+      expect(text.toLowerCase()).toContain("unissued draft")
+    }
+    expect(tools.drafts_create!.description.toLowerCase()).toContain("a draft with a source")
+    expect(tools.drafts_create!.description).toContain("visible pending draft")
+    expect(tools.drafts_create!.description).toContain("invoice_issue {draft_id}")
+    expect(tools.drafts_update!.description).toContain("one from a source")
+    // Behaviour is unchanged: the agent's free invoice draft is still steered to the paid-order and
+    // conversion paths, and a quote to its own tool.
+    expect(tools.drafts_create!.description).toContain("quote_create_and_issue")
+  })
+
+  it("line_kind accepts service beside goods, software and shipping", () => {
+    const lineKind = (
+      manifest as unknown as {
+        schema: { document_lines: { fields: { line_kind: { enum: string[]; default: string } } } }
+      }
+    ).schema.document_lines.fields.line_kind
+    expect(lineKind.enum).toEqual(["goods", "software", "service", "shipping"])
+    expect(lineKind.default).toBe("goods")
+  })
+
   it("validates against packageManifestSchema", () => {
     const r = packageManifestSchema.safeParse(manifest)
     if (!r.success) {
@@ -224,7 +259,7 @@ describe("invoicing manifest", () => {
       ])
       expectProps(t + "_issue", ["draft_id"])
     }
-    expectProps("documents_send_to_customer", ["document_id", "to", "subject", "body"])
+    expectProps("documents_send_to_customer", ["document_id", "to", "subject", "body", "annex_set"])
     // Nullability: the editor legitimately sends null for these (mutation
     // input types are string | null) — a plain "string" schema rejects them.
     const dc = propsOf("drafts_create")
@@ -1283,13 +1318,19 @@ describe("invoicing manifest", () => {
     expect(patch.properties?.notes, "drafts_update.patch must expose notes").toBeDefined()
   })
 
-  it("documents_update's description lists notes among the fields editable after issue", () => {
-    const desc =
-      (
-        manifest as unknown as {
-          tools: Record<string, { description?: string }>
-        }
-      ).tools.documents_update?.description ?? ""
+  it("documents_update's description or its guide section lists notes among the fields editable after issue", () => {
+    // Past its first 600 characters the description reads from a guide section naming the tool,
+    // which renders whenever the tool is loaded.
+    const m = manifest as unknown as {
+      tools: Record<string, { description?: string }>
+      agentInstructions: { sections?: Array<{ tools?: string[]; text?: string }> }
+    }
+    const desc = [
+      m.tools.documents_update?.description ?? "",
+      ...(m.agentInstructions.sections ?? [])
+        .filter((x) => x.tools?.includes("documents_update"))
+        .map((x) => x.text ?? ""),
+    ].join("\n\n")
     expect(desc).toContain("po_number, notes) stays editable post-issue")
   })
 
@@ -1617,19 +1658,46 @@ describe("invoicing manifest", () => {
     //   states the total that issues.
     // 0.20.49: above both lines of work, which each changed it under the number before; no change of its own.
     // 0.20.50: a search for a number no document carries says so and names the numbers ending in the same digits.
-    // 0.20.52: the package carries the app SDK's manifest `secrets` field; no change of its own.
-    // 0.20.54: orders_invoiceability_check, the read the Shopify app asks before it stages a draft order
+    // 0.20.51: the shared settings types it builds against changed; no change of its own.
+    // 0.20.52: its attention heading is declared here, not in the web shell.
+    // 0.20.56: document search declares one search keyword fewer.
+    // 0.20.57: hidden tools name the visible one to use instead.
+    // 0.20.58: sentences shared by several tools, and the longest descriptions past 600 characters, read from guide sections.
+    // 0.20.59: its core tools load on a hard focus of its entity, the others by name.
+    // 0.20.52 (main): the package carries the app SDK's manifest `secrets` field; no change of its own.
+    // 0.20.60: both of the above, merged.
+    // 0.20.63: the company page's Money section.
+    // 0.20.54 (main): orders_invoiceability_check, the read the Shopify app asks before it stages a draft order
     //   create or complete; a quote made as a draft order carries the buyer VAT number to the order.
-    // 0.20.55: a re-driven order reads the buyer VAT number and billing company the live order
+    // 0.20.55 (main): a re-driven order reads the buyer VAT number and billing company the live order
     //   carries now; an untaxed order to another member state without a VAT number parks for review.
-    // 0.20.56: a quote made as a draft order links the contact's Shopify customer (the contact read
-    //   asked with the wrong argument and shape, so the link was never made).
-    // 0.20.57: quotes and invoices for a B2B company name the company, billed at its location with
-    //   its tax registration id; each draft's own taxesIncluded splits net and tax.
-    // 0.21.0: no transaction is held across a run: an issue commits its number, document, lines and
+    // 0.20.56 (main): a quote made as a draft order links the contact's Shopify customer.
+    // 0.20.64: above the 0.20.56 main took meanwhile, merged.
+    // 0.20.65: a consulting line is a service line; the draft tools say a draft from a source is a visible
+    //   pending draft that invoice_issue issues; the first issue on a profile with no time zone asks for one.
+    // 0.20.66: recurring schedules: three tables, four tools (save, change, pause, list) and an import kind.
+    // 0.20.67: the month-end run: draft, card, approve, issue and legal-date jobs, four run tools.
+    // 0.20.68: run rows issue atomically, refusals checked at staging, a held-by-the-day-limit
+    // notice, and the run card's approval route.
+    // 0.20.69: run drafts written whole by an internal tool, run rows issued only by their job
+    //   inside the issue window, and a convert that calls Shopify with no transaction open.
+    // 0.20.70: month-end rows edited through the draft tools (how far, put back, two writers, added rows)
+    // 0.20.71: a run row's due rule reads its dates without a time suffix
+    // 0.20.72: who issues what (card stream, Stripe's own emails) and the issuer guard
+    // 0.20.73: a parked draft discard names what it does (discard, this month only, end the schedule)
+    // 0.20.74: card payments on Stripe issue, pay and credit by their own handlers; settled and failed Stripe refunds reach the refund handler
+    // 0.20.75: both of the above, merged
+    // 0.20.76: the issuer guard reads a contact's identifiers only, so it does not mark the turn
+    // 0.20.57 (main): quotes and invoices for a B2B company name the company, billed at its location
+    //   with its tax registration id; each draft's own taxesIncluded splits net and tax.
+    // 0.20.79: above the 0.20.57 main took meanwhile, merged.
+    // 0.20.83: the source repository link names the repository where the code now lives.
+    // 0.20.84: the schedule page names its entity, so a turn sent from it knows the open schedule.
+    // 0.21.0 (main): no transaction is held across a run: an issue commits its number, document, lines and
     //   the writes that go with it (the draft it replaces, the invoice a credit note credits) in one
     //   batch; automatic credit notes carry a dedup key; the deferred-retry sweep resumes issues a
     //   dead run left unrendered.
+    // 0.21.1: above the 0.21.0 main took meanwhile, merged.
     // 0.21.1: the deferred-retry, payment reconcile, order-number backfill and shipment link jobs hold
     //   no transaction (each write commits on its own; the shipment link merges in the database);
     //   resume-interrupted-issues wakes only while a document waits for its PDF.
@@ -1638,8 +1706,108 @@ describe("invoicing manifest", () => {
     // 0.21.3: no tool holds a transaction across its run: credit notes and convert-to-invoice commit
     //   their writes with the document, and order_reissue_apply issues the credit note and its
     //   replacement in one commit (both or neither).
-    // 0.21.9: a unique-key race reads as one when a sandboxed call rejects with its text alone.
+    // 0.21.13: a document may name the project it bills (billing_project_id), and the projects app
+    //   reads a project's invoiced amount through project_invoiced_get.
+    // 0.21.14: project_invoiced_get pages on a unique order, counts only issued statuses in the
+    //   query, refuses past its cap and reads an issue date as a calendar day.
+    // 0.21.15: a unique-key race reads as one when a sandboxed call rejects with its text alone.
+    // 0.21.16: a month-end card drawn again shows what changed only once its rows are read.
+    // 0.21.17: the documents list names the period it is empty for; the footer opens settings.
+    // 0.21.18: a parked Stripe invoice is retried as Stripe answers for it now (stripe:invoice_payload).
+    // 0.21.19: a Stripe invoice born paid still triggers its collection report once.
+    // 0.21.20: a parked Stripe invoice voided or written off in Stripe is dropped, never numbered.
+    // 0.21.21: a document's payment is reported to the platform once, whoever marked it paid.
+    // 0.22.0: issuing a draft hands its source key, project, period and dependent rows to the
+    //   invoice; billing plan, advance, activity report and annex tables; an agent's invoice_issue
+    //   never auto-approves.
+    // 0.23.0: a planned vs done card previews its invoice and makes its draft with an activity
+    //   report; annexes are filed on a draft; issuing or discarding a draft withdraws its approval.
+    // 0.24.0: billing plans, milestone and advance invoices, the final's deductions, advance
+    //   refunds, type code 386 and the hourly sweep of done milestones with no invoice.
+    // 0.25.0: retainers: terms on a schedule, the month drafted from its planned vs done card
+    //   with fee and overage, rollover, prepaid finals, the daily timebox roll; the card's own
+    //   discard for Undo.
+    // 0.25.1: an issue fails when its draft went away after the checks; a final deducts what
+    //   remains of each advance; a billing draft keeps its currency, type, link and deductions;
+    //   annexes stop once the invoice is sent; the advance refund's approval card has a summary.
+    // 0.26.0: a billed line of an issued planned vs done invoice is corrected by a credit note
+    //   with a corrected activity report; a credit-note draft of a deducted advance is refused.
+    // 0.27.0: the send carries the activity report (a PDF template of its own) and the filed
+    //   annexes in one mail; approval cards name the latest issue date and a late draft; each
+    //   Factur-X line states the period it covers.
+    // 0.27.1: an advance outside a billing plan is refused on a project billed by the day or
+    //   the hour.
+    // 0.27.2: documents_get returns a draft's source key, approver and invoice role for its page.
+    // 0.28.0: retainer, milestone and advance drafts' issue approvals name their latest issue day
+    //   (late on the org's day) and carry it, so Home brings them up from four days before.
+    // 0.28.1: a prepaid retainer's advance pays for one month and only that month's final deducts
+    //   it; the send's approval lists every annex; a month on another card's draft is refused and
+    //   a month credited in full is drafted again; a retainer repeats every month.
+    // 0.29.0: a Pending Approval tab lists the waiting requests and opens each one's document;
+    //   a retainer card's preview says the month's hours above the retainer; a billing plan tab.
+    // 0.29.1: the 0.28.1 and 0.29.0 changes together; documents_get gives a draft the totals its
+    //   lines would charge, priced as preview_totals prices a card.
+    // 0.29.2: the billing plan tab names the project it opens, so a turn sent from it and the
+    //   agent's open tool both resolve its id.
+    // 0.29.3: a prepaid retainer's held issue approval is raised once the one it waited on is
+    //   turned down or runs out (the hourly draft job); a milestone line is held only by a draft
+    //   whose issue approval is pending.
+    // 0.29.4: the losing call of two issue ticks racing on one run item says it is already
+    //   issued, with the number the winner took.
+    // 0.30.0: issuing, discarding and correcting a card's draft run their approved execution on a
+    //   session (ownsTransactions); a card's preview names what the customer lacks; drafts store
+    //   their totals; settings choose the send-from mailbox; lines read excluding VAT; the
+    //   activity report is signed by the issuer and takes no lead name.
+    // 0.31.0: an e-invoice whose issuer profile lacks its SIREN or address is refused before a
+    //   number is taken; Settings > Invoicing takes the issuer's SIREN and structured address.
+    // 0.31.1: that refusal follows the gate mode (warn issues a plain PDF with a warning); a
+    //   French VAT number supplies a missing SIREN; an order or Stripe invoice waiting on the
+    //   issuer raises einvoicing:issuer_incomplete and is never dead-lettered.
+    // 0.31.2: an advance deduction (a milestone's or a prepaid retainer month's final) that fails
+    //   for any reason but the deduction's unique key reports that failure, not a race.
+    // 0.31.3: a person whose role cannot read issuer profiles changes or pauses a schedule their
+    //   scope allows, its dates in the issuer's zone; a retainer month's draft is made out to the
+    //   client's contact.
+    // 0.32.0: an issued document carries the client company it is made out to, stamped at issue.
+    // 0.33.0: a sent quote's outcome is set once (quote_set_outcome, and a client's answer on its
+    //   link); no outcome creates an invoice.
+    // 0.34.0: a quote is a client action target (accept), its link showing the issued PDF the
+    //   kernel fingerprints; an accepted change request adds one milestone (billing_step_add,
+    //   agreements' call only), and a plan's total takes the accepted amendments it lists.
+    // 0.34.1: the month-end draft job writes each draft and its lines in one commit itself, not
+    //   through a nested tool call per row, so a long run drafts in seconds.
+    // 0.34.2: timeline amounts group thousands (6,264.00 EUR).
+    // 0.35.0: a milestone moved to done drafts its step's invoice (and the hourly sweep drafts one
+    //   whose event was lost); the line of a step it cannot draft goes to who bills the project.
+    // 0.35.1: an annex kind already filed on a document is not filed again (a second Create on
+    //   a card adds no second timesheet).
+    // 0.35.2: projects and agreements are named as optional dependencies, so the milestone-done
+    //   and agreement-signed subscriptions are registered (they were skipped without them).
+    // 0.36.0: an advance invoice's page shows its own number, the deduction its final carries,
+    //   the final that took it, and money received first gives the person two choices.
+    // 0.37.0: a document rendered in a demo workspace draws the host's Specimen line on every
+    //   page, above the identity text; elsewhere nothing of the footer changes.
+    // 0.37.1: the issuer guard reads the Stripe app turned off for the org as absent, so it no
+    //   longer refuses schedules and drafts there; any other failed check still refuses.
+    // 0.37.2: drafts_create takes the project a draft bills (checked readable), the issued
+    //   invoice keeps it and is stamped with the contact's company, else the project's; the
+    //   Documents list has a Drafts entry.
+    // 0.37.3: an unused import of the reads module removed (lint only).
+    // 0.37.4: three drafts_create parameter descriptions said more briefly; a services document
+    //   shows no incoterm or ship-to, and the Documents list draws no order or channel column,
+    //   and offers no shop filter, when no document came from a shop.
+    // 0.37.5: billing_plan_get says what is invoiced in all, and that an advance is deducted at
+    //   the final rather than added to the steps.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
+    const subscribes = (manifest as unknown as { events: { subscribes: Record<string, string> } })
+      .events.subscribes
+    expect(subscribes["projects/task:status_changed"]).toBe("onMilestoneTaskDoneHandler")
+    const milestoneLine = (
+      manifest as unknown as {
+        attention: { translations: Array<{ event: string; recipients: { scope?: string } }> }
+      }
+    ).attention.translations.find((t) => t.event === "billing_step:milestone_no_invoice")
+    expect(milestoneLine?.recipients.scope).toBe("projects:money:write")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"
     ]
@@ -1888,6 +2056,36 @@ describe("issuing tool budgets", () => {
       "order_reissue_apply",
     ]) {
       expect({ name, timeoutMs: tools[name]?.timeoutMs ?? 0 }).toEqual({ name, timeoutMs: 60_000 })
+    }
+  })
+})
+
+describe("tools that hold a transaction", () => {
+  const tools = (
+    manifest as unknown as {
+      tools: Record<string, { atomic?: boolean; trustBoundary?: string; agentVisible?: boolean }>
+    }
+  ).tools
+  it("no tool holds one; the convert's local half and the run steps are internal", () => {
+    expect(
+      Object.entries(tools)
+        .filter(([, t]) => t.atomic === true)
+        .map(([n]) => n),
+    ).toEqual([])
+    for (const name of [
+      "documents_convert_local",
+      "recurring_draft_write",
+      "recurring_item_issue",
+    ]) {
+      expect({
+        name,
+        boundary: tools[name]?.trustBoundary,
+        agent: tools[name]?.agentVisible,
+      }).toEqual({
+        name,
+        boundary: "internal",
+        agent: false,
+      })
     }
   })
 })

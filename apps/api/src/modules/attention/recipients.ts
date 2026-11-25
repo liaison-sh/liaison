@@ -1,10 +1,21 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-export type RecipientSpec =
+import { rootLogger } from "~/lib/logger"
+
+/** A recipient kind that names people directly, never a whole audience by scope. */
+export type NamedRecipientSpec =
   | { kind: "field"; path: string }
   | { kind: "participants"; path: string }
   | { kind: "mentions"; path: string }
   | { kind: "actor" }
+
+export type RecipientSpec =
+  | NamedRecipientSpec
   | { kind: "scope_holders"; scope: string; dimensionFilter?: Record<string, unknown> }
+  /**
+   * The account manager of the company at `path`. No manager (or no reader of one) is nobody,
+   * logged: then only `fallback` is asked, and it names people, never every scope holder.
+   */
+  | { kind: "account_manager"; path: string; fallback?: NamedRecipientSpec }
 
 export interface RecipientContext {
   orgId: string
@@ -20,6 +31,21 @@ export interface RecipientContext {
    * translator builds this closure from the event's `(source, kind, axes)`.
    */
   applySubscriptionFilter?: (userId: string) => Promise<boolean>
+  /**
+   * These ids without the clients' portal accounts. Every resolved list goes
+   * through it, so an id an event names (a field, a mention, an actor) never
+   * reaches a client. Absent: no narrowing (unit callers).
+   */
+  keepMembers?: (orgId: string, ids: string[]) => Promise<string[]>
+  /**
+   * The company's account manager, or null when it has none; with `standIn`, also the
+   * colleague next in line while the manager is away. Absent: no company carries one.
+   */
+  loadAccountManager?: (
+    orgId: string,
+    companyId: string,
+    opts?: { standIn?: boolean },
+  ) => Promise<string | string[] | null>
 }
 
 interface EventLike {
@@ -99,9 +125,32 @@ export async function resolveRecipients(
       initial = dedupe(ids)
       break
     }
+    case "account_manager": {
+      const companyId = readPath(event, spec.path)
+      // A record closed to the organization reaches its list only: no stand-in is added.
+      const restricted = Array.isArray(readPath(event, "data.visibleTo"))
+      const manager =
+        typeof companyId === "string" && ctx.loadAccountManager
+          ? await ctx.loadAccountManager(ctx.orgId, companyId, { standIn: !restricted })
+          : null
+      const managers = manager === null ? [] : Array.isArray(manager) ? manager : [manager]
+      if (managers.length > 0) {
+        initial = dedupe(managers)
+        break
+      }
+      rootLogger.info(
+        { orgId: ctx.orgId, companyId: typeof companyId === "string" ? companyId : null },
+        spec.fallback
+          ? "no account manager for this company; notifying the fallback recipients"
+          : "no account manager for this company; nobody notified",
+      )
+      if (!spec.fallback) return []
+      return resolveRecipients(spec.fallback, event, ctx)
+    }
     default:
       return []
   }
+  if (ctx.keepMembers && initial.length > 0) initial = await ctx.keepMembers(ctx.orgId, initial)
   if (!ctx.applySubscriptionFilter || initial.length === 0) return initial
   const allowed: string[] = []
   for (const id of initial) {

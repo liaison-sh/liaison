@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { createPartFromUri, GoogleGenAI, ThinkingLevel } from "@google/genai"
-import { eq, sql } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import { fileTypeFromBuffer } from "file-type"
 import type { PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -102,7 +102,7 @@ async function defaultResolveAnyOrgUser(orgId: string): Promise<string | null> {
     tx
       .select({ id: kernelUsers.id })
       .from(kernelUsers)
-      .where(eq(kernelUsers.orgId, orgId))
+      .where(and(eq(kernelUsers.orgId, orgId), eq(kernelUsers.userType, "member")))
       .limit(1),
   )
   return u?.id ?? null

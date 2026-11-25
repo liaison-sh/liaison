@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { PERSONAL_AGENT_DISPLAY_NAME } from "@liaison/shared"
-import { tNow } from "~/modules/i18n/i18n-context"
+import { type Translate, tNow } from "~/modules/i18n/i18n-context"
 
 /**
  * An agent's name as the viewer reads it. A personal agent nobody renamed is
@@ -19,10 +19,15 @@ export function agentStateLabel(state: string | null | undefined): string {
 }
 
 export function localizeAgentName(name: string): string {
-  if (name === PERSONAL_AGENT_DISPLAY_NAME) return tNow("kernel.agents.kindPersonal")
+  return localizeAgentNameWith(name, tNow)
+}
+
+/** `localizeAgentName` with the caller's own translate function. */
+export function localizeAgentNameWith(name: string, t: Translate): string {
+  if (name === PERSONAL_AGENT_DISPLAY_NAME) return t("kernel.agents.kindPersonal")
   // A personal agent's post is signed "{Owner}'s agent" by the server, in English.
   const owner = OWNERS_AGENT.exec(name)?.[1]
-  return owner ? tNow("kernel.agents.ownersAgent", { name: owner }) : name
+  return owner ? t("kernel.agents.ownersAgent", { name: owner }) : name
 }
 
 const OWNERS_AGENT = /^(.+)'s agent$/

@@ -243,6 +243,10 @@ describe("db import enforcement", () => {
     // hold a given scope (role grants + direct grants) org-wide, with no
     // per-request RLS context; system-db read.
     "modules/permissions/scope-holders.ts",
+    // the finance refusal names who can read margins: the asker cannot see who
+    // holds what, so the active members holding the scope exactly are read
+    // privileged, names only, members only, at most five.
+    "apps/projects/service/margin.ts",
     // auto-approve policy load — reads instance/org-wide auto-approve policy
     // rows via withSystemDb (system-wide config, outside any per-request RLS).
     "modules/approvals/auto-approve.ts",
@@ -634,11 +638,6 @@ describe("db import enforcement", () => {
     // upserts the caller as a participant under a privileged, org-scoped tx so a
     // non-creator caller is visible under threads_select before posting.
     "modules/threads/contact-primary.ts",
-    // A contact's discussion drops its enrolled people when the contact's
-    // sharing changes (they re-enrol by opening it, which proves visibility),
-    // and is deleted with the contact: removing other people's participant rows
-    // and messages needs the privileged, org-scoped tx.
-    "modules/contacts/discussion.ts",
     // Knowledge content-cache downgrade invalidates cache entries under a
     // privileged, org-scoped tx (the curator role lacks knowledge:cache:manage).
     "apps/knowledge/sources.ts",
@@ -997,11 +996,13 @@ describe("db import enforcement", () => {
     "seed/factories/people/people.ts",
     // Bare rows for tests (an org, a user, a role, an audit entry; a connected
     // account, an MCP connection, a pending event; an org's billing state and
-    // credit rows) written over the system connection as the provisioning and
-    // billing paths write them, each bound to the org the test names.
+    // credit rows; a thread, a participant, a message with a known stamp)
+    // written over the system connection as the provisioning, billing and
+    // thread paths write them, each bound to the org the test names.
     "seed/factories/org/rows.ts",
     "seed/factories/org/platform-rows.ts",
     "seed/factories/billing/billing.ts",
+    "seed/factories/threads/rows.ts",
     // A kernel.files row with no object behind it, written as the upload and mail import
     // paths write it (privileged), for tests that fake the storage read.
     "seed/factories/files/file-row.ts",
@@ -1518,7 +1519,7 @@ describe("db import enforcement", () => {
     "index.ts", // Server startup (RLS role check)
     "lib/shutdown-phases.ts", // graceful shutdown closes the pool (sql.end())
     "tests/route-test-setup.ts", // Test infrastructure (TRUNCATE)
-    "tests/helpers/app-schema-lock.ts", // Test infrastructure (sql.reserve for advisory locks)
+    "tests/helpers/app-schema-lock.ts", // Test infrastructure (advisory lock holder reads)
     // Test infrastructure, the same category as its app_schema-lock sibling: it
     // renames an app schema aside so a fixture can own the name, then renames it
     // back. `ALTER SCHEMA ... RENAME TO` and `CREATE SCHEMA` are DDL on the

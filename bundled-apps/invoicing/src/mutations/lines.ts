@@ -9,6 +9,7 @@ import {
   type DraftLine,
   type DraftLineInput,
   type IssuerProfile,
+  type SourceColumns,
   storedTaxCountry,
 } from "../issue"
 import type { IssueDateParts } from "../issue-date"
@@ -299,6 +300,8 @@ export function buildIssueInputFromDraft(
     external_refs: Record<string, unknown>
     notes: string | null
     lines: DraftLine[]
+    source: SourceColumns
+    company_id: string | null
   }
 } {
   return {
@@ -321,6 +324,11 @@ export function buildIssueInputFromDraft(
       // exactly the note the customer is meant to read on the issued PDF.
       notes: draft.notes ?? null,
       lines: draft.lines,
+      // What the invoice bills (project, plan role, service period, approval, last issue day):
+      // the issued document keeps it, so margin and claims still find their project.
+      source: draft.source ?? {},
+      // The client company the draft was made for (its schedule's, its plan's, its project's).
+      company_id: draft.company_id ?? null,
     },
   }
 }

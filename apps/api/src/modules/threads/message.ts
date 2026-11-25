@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { agentSpeakerName, PERSONAL_AGENT_DISPLAY_NAME } from "@liaison/shared"
+import { agentSpeakerName, maskWithNote, PERSONAL_AGENT_DISPLAY_NAME } from "@liaison/shared"
 import { and, sql as drizzleSql, eq, inArray, isNull } from "drizzle-orm"
 import { alias } from "drizzle-orm/pg-core"
 import { HTTPException } from "hono/http-exception"
@@ -25,6 +25,7 @@ import { projectMessageMetadataForViewer } from "~/modules/agent/scopes/withheld
 import { applyScopeCeiling } from "~/modules/auth/session-ceiling"
 import { deleteMessageAttachments } from "~/modules/files/message-attachments"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { isRestrictedScope } from "~/modules/permissions/restricted-scope"
 import { deleteMessageAndWindowDocuments } from "~/modules/search/message-indexer"
 import { seatMentionedMembers } from "~/modules/threads/participant"
 import { threadAnchorIds } from "~/modules/threads/thread-anchor"
@@ -512,7 +513,7 @@ export async function sendMessage(db: RlsClient, params: SendMessageParams) {
     orgId,
     userId,
     threadId,
-    content,
+    content: givenContent,
     authorType = "user",
     agentAuthorLabel,
     correlationId,
@@ -526,6 +527,10 @@ export async function sendMessage(db: RlsClient, params: SendMessageParams) {
   } = params
 
   assertExplicitRequiredScopes(givenRequiredScopes)
+  // Card numbers and payment keys are masked HERE, before the row, the event,
+  // the search index, the live fan-out and the next model request read the
+  // text: every one of them reads `content` from this point on.
+  const content = maskWithNote(givenContent).text
   // A grant wildcard is never a data scope (scope-taint.ts, rule 10b): whatever a caller hands
   // in (a requester's own grant set, an effective scope), the row is stamped with the read
   // scopes it covers, never with `*`, which only the grant `*` covers.
@@ -625,19 +630,26 @@ export async function sendMessage(db: RlsClient, params: SendMessageParams) {
     const rootList = root.disclosureList
     const outside = disclosureList.filter((u) => !rootList.includes(u))
     if (outside.length > 0) {
-      const { holdsEveryScope, loadOrgMemberGrants } = await import(
+      const { holdsEveryScope, loadOrgMemberGrants, restrictedListsFor } = await import(
         "~/modules/agent/scopes/taint-approval-audience"
       )
       const rootScopes = expandWildcardStamp(root.requiredScopes ?? [], orgId)
       const members = await loadOrgMemberGrants(orgId, { userIds: outside })
+      const lists = await restrictedListsFor(orgId, rootScopes)
       rootReaders = new Set(
-        members.filter((m) => holdsEveryScope(m.scopes, rootScopes)).map((m) => m.id),
+        members
+          .filter((m) => holdsEveryScope(m.scopes, rootScopes, { userId: m.id, lists }))
+          .map((m) => m.id),
       )
     }
   }
-  const visibility = root
+  const stamped = root
     ? inheritVisibility({ requiredScopes, disclosureList }, root, rootReaders)
     : { requiredScopes: [...new Set(requiredScopes)], disclosureList }
+  // A stamp holding a restricted record's scope is read only through the disclosure list
+  // (messages_select, 0331): this writer fills it with the people on every such record's list,
+  // and keeps a disclosure already given only for those people.
+  const visibility = await withRestrictedDisclosure(orgId, stamped)
   const hiddenFromChannel = replyRootId !== null && !alsoInChannel
 
   const mentionsList = parseMentions(content)
@@ -879,7 +891,9 @@ export async function sendMessage(db: RlsClient, params: SendMessageParams) {
 }
 
 export async function editMessage(db: RlsClient, params: EditMessageParams) {
-  const { orgId, userId, threadId, messageId, content, isAdmin = false } = params
+  const { orgId, userId, threadId, messageId, isAdmin = false } = params
+  // Masked before the update and its event, as on a new message.
+  const content = maskWithNote(params.content).text
 
   // Verify user is still a participant — removed participants cannot edit old messages
   const [participant] = await db
@@ -1243,7 +1257,7 @@ export async function listMessages(db: RlsClient, params: ListMessagesParams) {
           .from(threads)
           .where(and(eq(threads.id, threadId), eq(threads.orgId, orgId)))
           .limit(1)
-        if (!thread || thread.type !== "subrun") return false
+        if (thread?.type !== "subrun") return false
 
         const [run] = await ptx
           .select({ rootRunId: agentRuns.rootRunId })
@@ -1979,7 +1993,7 @@ export async function postThreadSystemMessage(
     replyRootId?: string | null
   },
 ) {
-  const content = params.content
+  const content = maskWithNote(params.content).text
   const metadata = params.metadata ?? null
   const replyRootId = params.replyRootId ?? null
   let requiredScopes: string[] = []
@@ -2103,5 +2117,31 @@ async function markArtefactsStaleForDeletedMessage(params: {
       { err, orgId, threadId, messageId },
       "Could not mark checkpoints and episodes stale for a deleted message",
     )
+  }
+}
+
+/**
+ * The disclosure list of a stamp that holds restricted records' scopes: the people on every one
+ * of those records' lists (`kernel.restricted_readers`), narrowed to a disclosure list already
+ * given when there is one. A record no longer restricted asks nothing. No restricted scope, the
+ * stamp unchanged.
+ */
+export async function withRestrictedDisclosure(
+  orgId: string,
+  visibility: { requiredScopes: string[]; disclosureList: string[] | null },
+): Promise<{ requiredScopes: string[]; disclosureList: string[] | null }> {
+  if (!visibility.requiredScopes.some(isRestrictedScope)) return visibility
+  const { restrictedListsFor } = await import("~/modules/agent/scopes/taint-approval-audience")
+  const lists = await restrictedListsFor(orgId, visibility.requiredScopes)
+  let people: Set<string> | null = visibility.disclosureList
+    ? new Set(visibility.disclosureList)
+    : null
+  for (const list of lists.values()) {
+    if (list === null) continue
+    people = new Set([...(people ?? list)].filter((u) => list.has(u)))
+  }
+  return {
+    requiredScopes: visibility.requiredScopes,
+    disclosureList: people ? [...people] : visibility.disclosureList,
   }
 }

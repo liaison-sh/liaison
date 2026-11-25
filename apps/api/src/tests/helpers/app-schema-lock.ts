@@ -46,7 +46,30 @@
  * destructive DDL completes.
  */
 
+import postgres from "postgres"
 import { sql } from "~/db"
+import { env } from "~/lib/env"
+
+/**
+ * A session of its own for an advisory lock, closed with the hold, never a
+ * connection reserved from the main pool: postgres.js drops a `reserve()` asked
+ * for while the pool's idle connections are closing on their idle timeout (the
+ * promise never settles), and a session lock must not be lost to the pool's
+ * idle timeout or connection lifetime either.
+ */
+function openLockSession(): LockSession {
+  return postgres(env.DATABASE_URL, {
+    max: 1,
+    idle_timeout: 0,
+    max_lifetime: null,
+    connect_timeout: 10,
+    onnotice: () => {},
+  })
+}
+
+async function closeLockSession(session: LockSession): Promise<void> {
+  await session.end({ timeout: 1 }).catch(() => {})
+}
 
 /**
  * FNV-1a 32-bit hash — must match `runtime.ts:fnv1a32` so the test holds the
@@ -62,7 +85,7 @@ function fnv1a32(str: string): number {
   return hash >>> 1
 }
 
-type Reserved = Awaited<ReturnType<typeof sql.reserve>>
+type LockSession = ReturnType<typeof postgres>
 
 interface Holder {
   promise: Promise<void>
@@ -97,7 +120,7 @@ export function leaseWaitTimeoutMs(): number {
  * resolving its promise, which is the only thing that lets a waiter in.
  */
 const _queueBySchema = new Map<string, Holder[]>()
-const _dbLockBySchema = new Map<string, Reserved>()
+const _dbLockBySchema = new Map<string, LockSession>()
 
 /**
  * Proof that a caller holds the in-process mutex for a schema. Opaque: its only
@@ -194,12 +217,12 @@ function releaseJsMutex(schemaName: string, holder: Holder): void {
 
 async function acquirePgLock(schemaName: string): Promise<void> {
   const lockId = fnv1a32(`app-ddl:${schemaName}`)
-  const reserved = await sql.reserve()
+  const reserved = openLockSession()
   try {
     await reserved`SELECT pg_advisory_lock(${lockId})`
     _dbLockBySchema.set(schemaName, reserved)
   } catch (err) {
-    reserved.release()
+    await closeLockSession(reserved)
     throw err
   }
 }
@@ -211,7 +234,7 @@ async function releasePgLock(schemaName: string): Promise<void> {
   try {
     await reserved`SELECT pg_advisory_unlock(${lockId})`
   } finally {
-    reserved.release()
+    await closeLockSession(reserved)
     _dbLockBySchema.delete(schemaName)
   }
 }
@@ -276,7 +299,7 @@ export async function acquireAppSchemaFixtureLock(
   timeoutMs: number,
 ): Promise<AppSchemaFixtureLock> {
   const lockId = fixtureLockId(schemaName)
-  const reserved = await sql.reserve()
+  const reserved = openLockSession()
   let backendPid = 0
   try {
     const [self] = (await reserved`SELECT pg_backend_pid() AS pid`) as unknown as Array<{
@@ -300,7 +323,7 @@ export async function acquireAppSchemaFixtureLock(
       await Bun.sleep(50)
     }
   } catch (err) {
-    reserved.release()
+    await closeLockSession(reserved)
     throw err
   }
   if (backendPid) _ownFixtureLockPids.add(backendPid)
@@ -314,7 +337,7 @@ export async function acquireAppSchemaFixtureLock(
       try {
         await reserved`SELECT pg_advisory_unlock(${lockId})`
       } finally {
-        reserved.release()
+        await closeLockSession(reserved)
       }
     },
   }

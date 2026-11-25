@@ -1,0 +1,1 @@
+table total: exact sum in minor units with the currency's decimals; a non-whole value refuses; a missing value is a blank -> apps/api/src/modules/documents/rich-text.ts (totalRun, formatMinorUnits)

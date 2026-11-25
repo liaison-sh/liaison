@@ -1,0 +1,1 @@
+A closed agreement reaches the archive by number and status only -> apps/api/src/modules/export/org-archive/withheld.ts (PARTIAL_ROWS, WITHHELD_ROWS) ; apps/api/src/modules/export/org-archive/writer.ts (planTable)

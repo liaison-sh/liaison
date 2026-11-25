@@ -1,0 +1,17 @@
+{
+  "entry": "tool:billing_plan_get",
+  "params": {
+    "projectId": "7a000000-0000-4000-8000-00000000b1a1"
+  },
+  "recordedFrom": "the contract org on a local stack, record-invoicing-billing-plan.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "billing_steps",
+        "{\"where\":{\"billing_project_id\":\"7a000000-0000-4000-8000-00000000b1a1\"},\"limit\":500}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

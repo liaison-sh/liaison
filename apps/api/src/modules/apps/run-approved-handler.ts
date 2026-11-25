@@ -355,6 +355,7 @@ export async function runApprovedToolHandler(args: RunApprovedToolHandlerArgs): 
     originalError,
     args.deciderId,
     tool.approvalImpact,
+    tool.ownsTransactions === true,
   )
   // The external effect landed and the handler was cut off (or failed) after it,
   // in its post-effect work. The row is now `succeeded` with the provider's ref as
@@ -394,8 +395,12 @@ export async function runApprovedToolHandler(args: RunApprovedToolHandlerArgs): 
   // from the fetched site, a record not found) is what the call returned. It is
   // recorded as the execution's result and handed to the agent, which can try
   // something else; nothing is reverted, so nothing is left to approve again.
+  //
+  // A `final` refusal is not that answer on a read either: it says the call cannot
+  // pass (a feature switched off while it waited), so the read closes like a write
+  // and never reads as a tool that ran and returned an error.
   const softError = softErrorOf(result)
-  if (softError && !readsOnly) {
+  if (softError && (!readsOnly || softError.final === true)) {
     const code = typeof softError.code === "string" ? softError.code : "tool_error"
     const message =
       typeof softError.message === "string" ? softError.message : "handler returned an error"
@@ -526,6 +531,7 @@ async function throwPersistedHandlerOutcome(
   originalError: unknown,
   deciderId: string,
   approvalImpact?: "external" | "internal",
+  ownsTransactions = false,
 ): Promise<Record<string, unknown> | undefined> {
   const row = await readHandlerExecution(orgId, approvalRequestId, toolName)
 
@@ -632,7 +638,13 @@ async function throwPersistedHandlerOutcome(
   // A no-effect classification is safe AND strictly better here: decide reverts
   // the row to pending, surfaces the real cause on the card, and the operator can
   // fix the input and re-approve.
-  if (!row && approvalImpact !== "external") {
+  //
+  // A tool that owns its transactions (`ownsTransactions`) is the exception: it
+  // runs on a session, one commit per write, so a throw after its first commit
+  // left that commit behind whatever its impact. Like an external tool, it says
+  // what happened through the protocol (`started`, then `failed_no_effect` when
+  // nothing committed, or the landed effect); with no row, the outcome is unknown.
+  if (!row && approvalImpact !== "external" && !ownsTransactions) {
     // Record the outcome durably first, so the row is recoverable by the reaper
     // even if this process dies before decide reverts it. Mirrors the
     // soft-error UPSERT above (no row exists yet, so a bare UPDATE would no-op).

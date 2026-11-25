@@ -765,6 +765,33 @@ describe("counterparty_identity_get", () => {
   })
 })
 
+describe("a customer's payment terms", () => {
+  const set = (s: ReturnType<typeof setup>, payment_terms_days: unknown) =>
+    counterpartyIdentitySet(s.ctx, {
+      contact_id: CONTACT,
+      source: "manual",
+      payment_terms_days: payment_terms_days as never,
+    }) as Promise<Record<string, unknown>>
+
+  test("are recorded on the contact, changed, and cleared back to the issuer's", async () => {
+    const s = setup({})
+    expect((await set(s, 45)).status).toBe("ok")
+    expect(s.identities()[0]?.payment_terms_days).toBe(45)
+    expect((await set(s, 0)).status).toBe("ok")
+    expect(s.identities()[0]?.payment_terms_days).toBe(0)
+    expect((await set(s, null)).status).toBe("ok")
+    expect(s.identities()[0]?.payment_terms_days).toBeNull()
+    expect(s.identities()).toHaveLength(1)
+  })
+
+  test("are refused when they are not a number of days, and nothing is recorded", async () => {
+    const s = setup({})
+    for (const bad of [-1, 1.5, "soon", 1000])
+      expect(JSON.stringify(await set(s, bad))).toContain("invalid_input")
+    expect(s.identities()).toHaveLength(0)
+  })
+})
+
 describe("counterparty_territory_set / einvoicing_settings_set", () => {
   test("territory treatment is recorded with its reason and bumps changed_at", async () => {
     const s = setup()

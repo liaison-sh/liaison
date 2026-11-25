@@ -1,0 +1,1 @@
+After a read of a closed record, a write others could read waits for the person who asked -> apps/api/src/modules/agent/scopes/taint-approval-audience.ts (taintApprovalAudienceGapDetail) ; apps/api/src/modules/agent/scopes/taint-read-scopes.ts (projectTaintScopes) ; apps/api/src/modules/agent/tools/chat-tools.ts (holdsEveryScope)

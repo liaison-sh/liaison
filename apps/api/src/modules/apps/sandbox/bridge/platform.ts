@@ -157,9 +157,106 @@ export function createPlatformMethods(ctx: BridgeContext): Record<string, any> {
     schemaName,
     stampDeclaredEmit,
     txDb,
+    userId,
     orgScopedAppChannel,
   } = ctx
   const enqueueFromApp = createAppJobEnqueuer(ctx)
+
+  /**
+   * The zone a row of this app's own table holds (`time.civil`'s `timezoneOf`): the `timezone`
+   * column only, of a table the manifest declares with that column, in this org. Privileged, so
+   * it answers a caller whose role cannot read the row; it hands back the zone and nothing else.
+   * `UTC` (the column default) answers as "not set", like a `timezone` the app passes.
+   */
+  const zoneOfRow = async (ref: unknown): Promise<string> => {
+    const r = (ref ?? {}) as { table?: unknown; id?: unknown }
+    const table = typeof r.table === "string" ? r.table : ""
+    const id = typeof r.id === "string" ? r.id : ""
+    if (!table || !manifest.schema?.[table]?.fields?.timezone) {
+      throw Object.assign(
+        new Error(`timezoneOf: ${appName} declares no table ${table || "(none)"} with a timezone`),
+        { status: 422, code: "invalid_params" },
+      )
+    }
+    const missing = Object.assign(new Error(`timezoneOf: no ${table} row ${id || "(none)"}`), {
+      status: 404,
+      code: "not_found",
+    })
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw missing
+    const { extractRows } = await import("~/db")
+    const { withPrivilegedDb } = await import("~/db/privileged")
+    const rows = await withPrivilegedDb(orgId, "time-civil-row-zone", (tx) =>
+      tx.execute(
+        drizzleSql`SELECT timezone FROM ${appTable(schemaName, table)} WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid LIMIT 1`,
+      ),
+    )
+    const found = extractRows<{ timezone: string | null }>(rows)[0]
+    if (!found) throw missing
+    return found.timezone || "UTC"
+  }
+
+  /** A declared discussion entity of this app named by a bridge call, or the refusal to return. */
+  const discussionRef = async (
+    paramsJson: string,
+    verb: "deleted" | "pruned",
+  ): Promise<{ app: string; entityType: string; entityId: string } | { error: string }> => {
+    const p = JSON.parse(paramsJson || "{}") as { entityType?: unknown; entityId?: unknown }
+    if (typeof p.entityType !== "string" || typeof p.entityId !== "string" || !p.entityId) {
+      return {
+        error: errorEnvelope(
+          Object.assign(
+            new Error(
+              `Give entityType and entityId of the ${verb === "deleted" ? "deleted" : "narrowed"} record.`,
+            ),
+            {
+              code: "invalid_params",
+            },
+          ),
+        ),
+      }
+    }
+    const ref = { app: appName, entityType: p.entityType, entityId: p.entityId }
+    const { isDiscussionEntity } = await import("~/modules/threads/entity-discussion")
+    if (appName === "projects" || !isDiscussionEntity(orgId, ref)) {
+      return {
+        error: errorEnvelope(
+          Object.assign(
+            new Error(
+              `${appName}:${p.entityType} declares no discussion (entities.${p.entityType}.discussion): nothing was ${verb}.`,
+            ),
+            { code: "discussion_not_declared" },
+          ),
+        ),
+      }
+    }
+    return ref
+  }
+
+  /**
+   * Whether the record exists at all, past the caller's row security. On a login that can step
+   * into liaison_admin the read runs on the handler's own transaction, so a delete it just made
+   * counts. Otherwise the privileged read sees only what was committed, where a record the caller
+   * deleted in this call still reads: it counts as gone when the caller could see it there.
+   */
+  const existsForSomeone = async (ref: {
+    app: string
+    entityType: string
+    entityId: string
+  }): Promise<boolean> => {
+    const { actorContextOf, privilegedFrom, transactionRole } = await import("~/db/privileged")
+    const { withRlsContext } = await import("~/db/rls")
+    const { canReadThreadAnchorEntity } = await import("~/modules/threads/thread-anchor")
+    const { role, canElevate } = await transactionRole(txDb)
+    const present = await privilegedFrom(txDb, orgId, "entity-discussion-exists", (ptx) =>
+      canReadThreadAnchorEntity(ptx as never, orgId, ref),
+    )
+    if (!present) return false
+    if (role === "liaison_admin" || canElevate) return true
+    const actor = await actorContextOf(txDb)
+    if (actor.actorType !== "user") return true
+    const sawIt = await withRlsContext(actor, (tx) => canReadThreadAnchorEntity(tx, orgId, ref))
+    return !sawIt
+  }
 
   /**
    * The file parent of a rendered PDF: one of the calling app's OWN registered fileParents. With
@@ -205,7 +302,18 @@ export function createPlatformMethods(ctx: BridgeContext): Record<string, any> {
   return {
     // --- Events ---
     emit: async (eventJson: string) => {
-      await txDb.queueEvent(stampDeclaredEmit(JSON.parse(eventJson)))
+      const event = stampDeclaredEmit(JSON.parse(eventJson))
+      // An access change of a restricted record moves the kernel's copies of its list in this
+      // same transaction; the requests it cancelled ride on the event for the announcement.
+      const { followRestrictedAccessInTx } = await import(
+        "~/modules/client-actions/restricted-follow"
+      )
+      const followed = await followRestrictedAccessInTx(txDb as never, { ...event, orgId })
+      await txDb.queueEvent(
+        followed
+          ? { ...event, data: { ...(event.data ?? {}), withdrawn_request_ids: followed.withdrawn } }
+          : event,
+      )
     },
 
     // --- Realtime pub/sub (capability: realtime.publish) ---
@@ -220,6 +328,73 @@ export function createPlatformMethods(ctx: BridgeContext): Record<string, any> {
       const { REDIS_PREFIX, publishRedis } = await import("~/lib/redis")
       await publishRedis(`${REDIS_PREFIX}${scoped}`, payloadJson)
       return JSON.stringify({ ok: true })
+    },
+
+    // --- Discussions ---
+    //
+    // The app deleted a record of its own that holds a discussion: the thread
+    // goes with it (an empty shell where an approval was asked in it), as a
+    // contact's does. Only for this app's declared discussion entities, and
+    // only once the record is gone: not while it reads in the handler's own
+    // transaction, and not while it exists for anyone else (a record hidden
+    // from this caller is not a deleted one).
+    threads_deleteEntityDiscussion: async (paramsJson: string): Promise<string> => {
+      const ref = await discussionRef(paramsJson, "deleted")
+      if ("error" in ref) return ref.error
+      const { canReadThreadAnchorEntity } = await import("~/modules/threads/thread-anchor")
+      const stillThere = (detail: string) =>
+        errorEnvelope(
+          Object.assign(
+            new Error(
+              `${appName}:${ref.entityType} ${ref.entityId} still exists${detail}: delete the record first, then its discussion. Nothing was deleted.`,
+            ),
+            { code: "entity_still_exists" },
+          ),
+        )
+      if (await canReadThreadAnchorEntity(txDb as never, orgId, ref)) return stillThere("")
+      if (await existsForSomeone(ref))
+        return stillThere(" for people this caller cannot see it for")
+      const { deleteEntityDiscussions } = await import("~/modules/threads/entity-discussion")
+      const removed = await deleteEntityDiscussions({
+        orgId,
+        app: appName,
+        entityType: ref.entityType,
+        entityIds: [ref.entityId],
+      })
+      return JSON.stringify({
+        ok: true,
+        deleted: removed.length,
+        result:
+          removed.length > 0
+            ? `The discussion of ${appName}:${ref.entityType} ${ref.entityId} was deleted.`
+            : `${appName}:${ref.entityType} ${ref.entityId} had no discussion: nothing to delete.`,
+      })
+    },
+
+    // The sharing of a record of this app's that holds a discussion narrowed (an
+    // audience, a dimension, an owner changed): everyone seated is dropped but the
+    // caller, while the caller still sees the record. Whoever still sees it is
+    // seated again the next time they open it, so nobody keeps reading a
+    // discussion about a record they lost sight of.
+    threads_pruneEntityDiscussion: async (paramsJson: string): Promise<string> => {
+      const ref = await discussionRef(paramsJson, "pruned")
+      if ("error" in ref) return ref.error
+      const { canReadThreadAnchorEntity } = await import("~/modules/threads/thread-anchor")
+      const keep =
+        auditActorType === "user" && (await canReadThreadAnchorEntity(txDb as never, orgId, ref))
+          ? userId
+          : null
+      const { pruneEntityDiscussion } = await import("~/modules/threads/entity-discussion")
+      const dropped = await pruneEntityDiscussion({ orgId, ref, keepUserId: keep })
+      const what = `${appName}:${ref.entityType} ${ref.entityId}`
+      return JSON.stringify({
+        ok: true,
+        dropped: dropped ?? 0,
+        result:
+          dropped === null
+            ? `${what} has no discussion yet: nobody was seated, nothing to prune.`
+            : `${dropped} ${dropped === 1 ? "person was" : "people were"} taken out of the discussion of ${what}${keep ? " (the caller stays)" : ""}. Whoever still sees the record is seated again when they open it.`,
+      })
     },
 
     // --- Jobs ---
@@ -313,10 +488,23 @@ export function createPlatformMethods(ctx: BridgeContext): Record<string, any> {
     // `ctx.time.civil({timezone, at?})`: the wall clock of an instant in a zone. No capability: it
     // reads nothing of the org's beyond its zone. `UTC` is the default of the issuer and org
     // columns and so means "not set": the org's own zone answers. `Etc/UTC` is UTC, exactly.
+    // `timezoneOf: { table, id }` instead of `timezone` answers in the zone a row of the app's own
+    // table holds in its `timezone` column, read whatever the caller may see of that row: a
+    // person who may change a record dated in its issuer's zone gets the dates right, and learns
+    // the zone and nothing else of the row.
     time_civil: async (paramsJson: string): Promise<string> => {
-      const params = JSON.parse(paramsJson || "{}") as { timezone?: unknown; at?: unknown }
+      const params = JSON.parse(paramsJson || "{}") as {
+        timezone?: unknown
+        timezoneOf?: unknown
+        at?: unknown
+      }
       const at = instantOf(params.at)
-      let zone = typeof params.timezone === "string" ? params.timezone : ""
+      let zone =
+        params.timezoneOf !== undefined
+          ? await zoneOfRow(params.timezoneOf)
+          : typeof params.timezone === "string"
+            ? params.timezone
+            : ""
       if (zone === "UTC") {
         // Privileged: kernel.organizations is closed to the handler's RLS role, and a denied read
         // comes back empty, which would silently mean UTC.

@@ -157,6 +157,49 @@ describe("a refused call the run got past", () => {
     ).toContain("kernel__skill_read")
   })
 
+  it("a tool that broke on the server, never got past with that tool, fails the run naming it", () => {
+    const broke = {
+      toolName: "projects__client_report_sources_get",
+      status: "completed",
+      result: {
+        error:
+          "Tool projects:client_report_sources_get failed (HTTP 500 tool_output_invalid): Tool output failed validation",
+      },
+    }
+    const outcome = judgeTickOutcome({
+      toolCalls: [broke, broke],
+      finalText: "There was nothing to report this week.",
+      isWriteTool: writes,
+    })
+    expect(outcome.failure).toContain("projects__client_report_sources_get")
+    expect(outcome.failure).toContain("Tool output failed validation")
+    // The same tool answering later is a run that got past it; a refusal (4xx) is the model's to fix.
+    expect(
+      judgeTickOutcome({
+        toolCalls: [broke, ok("projects__client_report_sources_get")],
+        finalText: "Saved one draft.",
+        isWriteTool: writes,
+      }).failure,
+    ).toBeNull()
+    expect(
+      judgeTickOutcome({
+        toolCalls: [
+          {
+            toolName: "projects__client_report_save_draft",
+            status: "completed",
+            result: {
+              error:
+                "Tool projects:client_report_save_draft failed (HTTP 422 invalid_params): A report needs at least one section.",
+            },
+          },
+          ok("projects__client_report_save_draft"),
+        ],
+        finalText: "Saved.",
+        isWriteTool: writes,
+      }).failure,
+    ).toBeNull()
+  })
+
   it("a run that got past a refusal but declares itself blocked still fails", () => {
     expect(
       judgeTickOutcome({

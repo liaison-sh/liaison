@@ -57,7 +57,8 @@ const ROUTE_TEST_LOCK_WAIT_MS = (() => {
 
 let _lock: Promise<void> = Promise.resolve()
 let _resolve: (() => void) | null = null
-let _dbLockConnection: Awaited<ReturnType<typeof sql.reserve>> | null = null
+type LockConnection = ReturnType<typeof postgres>
+let _dbLockConnection: LockConnection | null = null
 
 async function acquireMutex(): Promise<void> {
   // Wait for the previous holder to finish
@@ -117,7 +118,7 @@ export function testFileFromStack(stack: string | undefined): string | null {
  * silent one.
  */
 export async function acquireAdvisoryLock(
-  conn: Awaited<ReturnType<typeof sql.reserve>>,
+  conn: typeof sql,
   lockId: number,
   timeoutMs: number,
 ): Promise<void> {
@@ -138,24 +139,50 @@ export async function acquireAdvisoryLock(
   }
 }
 
+/**
+ * The lock's own connection: a client of one connection, opened for the hold
+ * and closed with it, never a connection reserved from the main pool. postgres.js
+ * drops a `reserve()` asked for while the pool's idle connections are closing
+ * on their idle timeout: the promise never settles. A test file that ran
+ * longer than that timeout without touching the pool (the live-install cell
+ * scenario: its work runs in child processes) left the next file's beforeAll
+ * waiting, silent, until its hook cap. A dedicated connection has no pool to
+ * wait on and no idle timeout or lifetime to lose the session lock to.
+ */
+function openLockConnection(): LockConnection {
+  return postgres(env.DATABASE_URL, {
+    max: 1,
+    idle_timeout: 0,
+    max_lifetime: null,
+    connect_timeout: 10,
+    onnotice: () => {},
+  })
+}
+
 async function acquireDbLock(): Promise<void> {
-  const conn = await sql.reserve()
-  await acquireAdvisoryLock(
-    conn,
-    ROUTE_TEST_LOCK_ID,
-    Math.max(env.DB_ACQUIRE_TIMEOUT_MS, ROUTE_TEST_LOCK_WAIT_MS),
-  )
+  const conn = openLockConnection()
+  try {
+    await acquireAdvisoryLock(
+      conn,
+      ROUTE_TEST_LOCK_ID,
+      Math.max(env.DB_ACQUIRE_TIMEOUT_MS, ROUTE_TEST_LOCK_WAIT_MS),
+    )
+  } catch (error) {
+    // Closing the session also drops a lock granted after the wait gave up.
+    await conn.end({ timeout: 0 }).catch(() => {})
+    throw error
+  }
   _dbLockConnection = conn
 }
 
 async function releaseDbLock(): Promise<void> {
-  if (!_dbLockConnection) return
-
+  const conn = _dbLockConnection
+  if (!conn) return
+  _dbLockConnection = null
   try {
-    await _dbLockConnection`SELECT pg_advisory_unlock(${ROUTE_TEST_LOCK_ID})`
+    await conn`SELECT pg_advisory_unlock(${ROUTE_TEST_LOCK_ID})`
   } finally {
-    _dbLockConnection.release()
-    _dbLockConnection = null
+    await conn.end({ timeout: 1 }).catch(() => {})
   }
 }
 
@@ -438,9 +465,13 @@ async function acquireTestLockAs(caller: string | null): Promise<void> {
   // Ensure Postgres/Redis/Meilisearch/SeaweedFS are up before any test setup runs.
   // Idempotent + cached per process, so this is effectively free after first call.
   await ensureTestInfra()
-  if (_resolve && _holderFile && caller && _holderFile !== caller) {
+  // Held while a file asks: its holder has finished (files run one after
+  // another), whether or not its file name could be read from its stack. A
+  // holder named null (no `.test.ts` frame in its stack) used to be waited on
+  // forever: the next file's beforeAll hung silently to its hook cap.
+  if (_resolve) {
     log.error(
-      { holder: _holderFile, next: caller },
+      { holder: _holderFile ?? "unknown", next: caller ?? "unknown" },
       "route test lock: a finished test file never released the lock (its afterAll threw " +
         "before releaseTestLock); the next file takes it over",
     )
@@ -500,6 +531,8 @@ export const releaseTestLockKeepRows = (() => releaseTestLockImpl(false)) as () 
 
 /** Test seam: acquire as if called from `file` (the stale-holder takeover). */
 export const RouteTestLockTestAccess = {
-  acquireAs: (file: string) => acquireTestLockAs(file),
+  acquireAs: (file: string | null) => acquireTestLockAs(file),
   holder: () => _holderFile,
+  lockSession: () => acquireDbLock(),
+  unlockSession: () => releaseDbLock(),
 }

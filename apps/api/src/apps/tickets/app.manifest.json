@@ -2757,8 +2757,7 @@
             "type": "string"
           },
           "textBody": {
-            "type": "string",
-            "description": "The reply text, plain text. Required unless attachments are sent."
+            "type": "string"
           },
           "htmlBody": {
             "type": "string"
@@ -2832,8 +2831,7 @@
             "type": "string"
           },
           "textBody": {
-            "type": "string",
-            "description": "The nudge text, plain text. Required."
+            "type": "string"
           },
           "htmlBody": {
             "type": "string"

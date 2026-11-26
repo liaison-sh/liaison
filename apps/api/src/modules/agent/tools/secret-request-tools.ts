@@ -324,7 +324,7 @@ export function registerSecretRequestTool(orgId: string): void {
       "token",
     ],
     description:
-      '"Connect my Gmail": kind oauth_connect, app mail, connection gmail, mode personal; any member, no admin needed. A card in this conversation asks the person for a secret (a model provider key, an app\'s login or OAuth client, the Google client, API connector credentials, a new Liaison API key, a secret an app keeps such as a webhook signing secret: kind app_secret) or connects an OAuth account (Gmail, Google Calendar, Shopify: kind oauth_connect, they sign in at the provider; mode personal for their own account, mode org for one the organization shares). You never see the secret or the tokens: you get a line saying it was saved or connected, with a short hint.',
+      '"Connect my Gmail": kind oauth_connect, app mail, connection gmail, mode personal; any member, no admin needed. A card in this conversation asks the person for a secret (a model provider key, an app\'s login or OAuth client, the Google client, API connector credentials, a new Liaison API key) or connects an OAuth account (Gmail, Google Calendar, Shopify: kind oauth_connect, they sign in at the provider; mode personal for their own account, mode org for one the organization shares). You never see the secret or the tokens: you get a line saying it was saved or connected, with a short hint.',
     // The baseline every member and agent holds: who may SUBMIT the card is
     // decided by the target route's own scope, checked when the card saves.
     requiredScopes: ["kernel:threads:read"],

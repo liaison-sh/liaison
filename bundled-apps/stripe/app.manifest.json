@@ -254,7 +254,7 @@
       "searchKeywords": [
         "webhook",
         "whsec",
-        "signature"
+        "terminaison"
       ],
       "requiredScopes": [
         "stripe:admin:connection"

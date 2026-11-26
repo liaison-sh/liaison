@@ -6,6 +6,9 @@
  * button only appear once the script has run.
  */
 
+/** The share card of a page without its own screenshot (served by the website next to the docs). */
+export const SHARE_IMAGE = "https://liaison.sh/assets/og/en/docs.jpg"
+
 export interface TemplateLink {
   title: string
   href: string
@@ -119,7 +122,7 @@ export function renderLayout(p: TemplatePage): string {
     ["og:title", p.title],
     ["og:description", p.description],
     ["og:url", p.canonical],
-    ...(p.screenshot ? [["og:image", p.screenshot.abs]] : []),
+    ["og:image", p.screenshot ? p.screenshot.abs : SHARE_IMAGE],
   ]
     .map(([k, v]) => `<meta property="${k}" content="${escapeAttr(v ?? "")}">`)
     .join("\n")
@@ -171,7 +174,7 @@ export function renderLayout(p: TemplatePage): string {
 <meta name="description" content="${escapeAttr(p.description)}">
 <link rel="canonical" href="${escapeAttr(p.canonical)}">
 ${og}
-<meta name="twitter:card" content="${p.screenshot ? "summary_large_image" : "summary"}">
+<meta name="twitter:card" content="summary_large_image">
 ${p.stub ? '<meta name="robots" content="noindex">\n' : ""}<meta name="color-scheme" content="light dark">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="${escapeAttr(p.root)}docs.css">
@@ -186,7 +189,8 @@ ${structuredData(p)}
 ${searchBox("hd-search")}
 <nav class="hd-links" aria-label="Site"><a href="https://demo.liaison.sh" rel="noopener">Demo</a><a href="/customers/">Customers</a><a href="https://github.com/liaison-sh/liaison" rel="noopener">GitHub</a></nav>
 <button class="menu-btn" type="button" aria-controls="side" aria-expanded="false">Menu</button>
-<a class="btn" href="https://demo.liaison.sh" rel="noopener">Try the demo</a>
+<a class="hd-login" href="/login/">Log in</a>
+<a class="btn" href="/signup/">Register</a>
 </header>
 <div class="body">
 ${sidebar(p)}

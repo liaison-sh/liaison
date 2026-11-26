@@ -98,6 +98,11 @@ describe("docs build", () => {
     expect(html).toContain("<title>Do the first thing · Liaison docs</title>")
     expect(html).toContain('<link rel="canonical" href="https://liaison.sh/docs/guides/one/">')
     expect(html).toContain('<meta name="description" content="How to do the first thing.">')
+    // A page without a screenshot still shares a card, and the header leads to an account.
+    expect(html).toContain('<meta property="og:image" content="https://liaison.sh/assets/og/en/docs.jpg">')
+    expect(html).toContain('<meta name="twitter:card" content="summary_large_image">')
+    expect(html).toContain('<a class="hd-login" href="/login/">Log in</a>')
+    expect(html).toContain('<a class="btn" href="/signup/">Register</a>')
     const ld = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(
       (m) => JSON.parse(m[1] ?? "") as { "@type": string; itemListElement?: unknown[] },
     )

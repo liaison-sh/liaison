@@ -105,6 +105,8 @@ code, pre, kbd { font-family: var(--mono); font-size: 0.86em; }
 .hd-links { margin-left: auto; display: flex; gap: 2px; }
 .hd-links a { text-decoration: none; color: var(--text-2); font-size: 0.875rem; padding: 6px 9px; border-radius: 6px; }
 .hd-links a:hover { background: var(--surface); color: var(--text); }
+.hd-login { text-decoration: none; color: var(--text-2); font-size: 0.875rem; padding: 6px 9px; border-radius: 6px; white-space: nowrap; }
+.hd-login:hover { background: var(--surface); color: var(--text); }
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 8px; background: var(--accent); color: var(--accent-fg); text-decoration: none; font-size: 0.875rem; font-weight: 500; white-space: nowrap; }
 .btn:hover { background: var(--accent-hover); }
 .menu-btn { display: none; margin-left: auto; font: inherit; font-size: 0.85rem; padding: 6px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--elevated); color: var(--text-2); cursor: pointer; }
@@ -226,6 +228,7 @@ ol.steps > li::before { content: counter(s); position: absolute; left: 0; top: 1
   .hd-links, .hd-search { display: none !important; }
   .menu-btn { display: block; }
   .hd .btn { padding: 6px 10px; font-size: 0.8rem; }
+  .hd-login { padding: 6px 4px; font-size: 0.8rem; }
   .side { position: static; max-height: none; overflow: visible; border-right: 0; padding: 14px 12px 20px; }
   html.js .side { display: none; border-bottom: 1px solid var(--border); }
   html.js .side.open { display: block; }

@@ -802,14 +802,17 @@ const BillingSettings: Component = () => {
                   <div class="flex flex-wrap items-center justify-between gap-3 text-sm text-text">
                     <span>
                       <Show when={s().card} fallback={t("cloud-billing.card.none")}>
-                        {(c) =>
-                          t("cloud-billing.card.onFile", {
-                            brand: cardBrandName(c().brand),
-                            last4: c().last4,
-                            month: String(c().expMonth).padStart(2, "0"),
-                            year: String(c().expYear),
-                          })
-                        }
+                        {/* An expression, not a string built once: a new card shows after the re-read. */}
+                        {(c) => (
+                          <>
+                            {t("cloud-billing.card.onFile", {
+                              brand: cardBrandName(c().brand),
+                              last4: c().last4,
+                              month: String(c().expMonth).padStart(2, "0"),
+                              year: String(c().expYear),
+                            })}
+                          </>
+                        )}
                       </Show>
                     </span>
                     <Button

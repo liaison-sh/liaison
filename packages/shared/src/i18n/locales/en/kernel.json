@@ -345,6 +345,8 @@
     "nextRun": "Next run {{when}}",
     "appTemplates": "App templates",
     "builtInTemplate": "Built in",
+    "templateKindRecurring": "Recurring",
+    "templateKindEvent": "On an event",
     "enabled": "Enabled",
     "enable": "Enable",
     "status": {

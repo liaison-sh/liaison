@@ -345,6 +345,8 @@
     "nextRun": "Prochaine exécution {{when}}",
     "appTemplates": "Modèles d'applications",
     "builtInTemplate": "Intégré",
+    "templateKindRecurring": "Récurrente",
+    "templateKindEvent": "Sur un événement",
     "enabled": "Activé",
     "enable": "Activer",
     "status": {

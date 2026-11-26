@@ -278,6 +278,15 @@ export function isMailSenderFilterEvent(
 }
 
 /**
+ * Whether a `mail:message:create` event is mail the org SENT (a member's send, or a routine's
+ * approved reply or change request) rather than mail that arrived. A mail routine reacts to mail
+ * that arrives: the org's own outgoing mail never starts one, filtered or not.
+ */
+export function isOutboundMailEvent(evt: GateEvent): boolean {
+  return isMailSenderFilterEvent(evt) && (dataOf(evt).direction ?? "inbound") !== "inbound"
+}
+
+/**
  * The sender a filter is matched against: `data.from.email` of an INBOUND
  * `mail:message:create`, lowercased. Null for outbound mail and for events
  * without a usable sender address.

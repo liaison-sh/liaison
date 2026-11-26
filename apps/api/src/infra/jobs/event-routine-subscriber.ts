@@ -17,6 +17,7 @@ import {
   eventHopOf,
   isMailSenderFilterActive,
   isMailSenderFilterEvent,
+  isOutboundMailEvent,
   isOwnerScopedEvent,
   isProjectTaskFilter,
   isProjectTaskFilterEvent,
@@ -251,6 +252,10 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
   const stagedBy = (evt.metadata as { stagedByRoutineId?: string } | null | undefined)
     ?.stagedByRoutineId
   if (stagedBy === sub.routineId) return
+  // The org's own OUTGOING mail never starts a mail routine (`mail:message:create` is "a mail
+  // arrived"): another routine's approved send (a change request, a reply) fired a sales routine
+  // on new mail, which spent a turn and found nothing to do (demo walk 2026-11-26).
+  if (isOutboundMailEvent(evt)) return
   // CHAIN GUARD (0303): routines triggering one another (a routine's write firing another
   // routine, whose write fires a third...) stop at depth 5. queue-event stamps `metadata.hop`
   // (the firing run's hop + 1) on every event a routine run queues. The owner hears of it once an

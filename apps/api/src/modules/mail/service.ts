@@ -1376,6 +1376,7 @@ export async function sendReply(
         conversationId: params.conversationId,
         accountId: conversation.account_id,
         sentByUserId: params.userId,
+        direction: "outbound",
       },
     })
     await queueMailEvent(tx, {
@@ -1599,6 +1600,7 @@ export async function sendCompose(
           conversationId: conversation.id,
           accountId: params.accountId,
           sentByUserId: params.userId,
+          direction: "outbound",
         },
       })
 

@@ -33,7 +33,8 @@ export function studioProposalRoutinePrompt(): string {
     "@ref:<id>:id. A firm ALREADY there: make no call; its id is the id the search returned.\n" +
     `4. Deal. Call projects__create with projectName "${STUDIO_PIPELINE_NAME}" exactly (the ` +
     "pipeline's full name), the title the firm's name and what they ask for, companyId the id " +
-    "token from step 3, whole.\n" +
+    "token from step 3, whole. Pass NO contactId: that field is for a person, and the " +
+    "company's token never goes there.\n" +
     "5. Proposal. Call agreements__agreement_create with kind sow, the statement of work " +
     "template's id from step 1, the " +
     "title of what they ask for, company_id the id token from step 3, whole, and the scope " +

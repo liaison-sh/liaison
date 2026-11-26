@@ -794,9 +794,56 @@ async function assertVisibleContact(tx: SqlClient, orgId: string, contactId: str
     throw new ProjectsServiceError(
       404,
       "contact_not_found",
-      "No contact you can see has this id. Nothing was changed.",
+      "No contact you can see has this id. contactId is a person (a contact id); a company goes in companyId. Leave contactId out when the person is not known. Nothing was changed.",
     )
   }
+}
+
+/** Whether `id` names a company the caller can read. */
+async function isVisibleCompanyId(tx: SqlClient, orgId: string, id: string): Promise<boolean> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return false
+  const rows = extractRows<{ id: string }>(
+    await tx.execute(drizzleSql`
+      SELECT id::text AS id FROM ${kernelRel("companies")}
+      WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid LIMIT 1
+    `),
+  )
+  return rows.length > 0
+}
+
+/**
+ * A company's id passed as the deal's contact is the deal's company, not a person: models that
+ * cite the one id they hold (the company a step before created) put it in both fields. Read it
+ * as the company with no contact when it is (or can be) the deal's company; a company other than
+ * the deal's own is refused, since which one was meant cannot be told.
+ */
+export async function resolveCompanyGivenAsContact(
+  tx: SqlClient,
+  orgId: string,
+  taskId: string,
+  input: DealFieldsInput,
+): Promise<DealFieldsInput> {
+  const contactId = input.contactId
+  if (!contactId || !(await isVisibleCompanyId(tx, orgId, contactId))) return input
+  // The deal's company: the one this write sets, else the one it already has.
+  const company =
+    input.companyId !== undefined
+      ? input.companyId
+      : (extractRows<{ company_id: string | null }>(
+          await tx.execute(drizzleSql`
+            SELECT company_id::text AS company_id FROM ${projectsRel("deals")}
+            WHERE task_id = ${taskId}::uuid AND org_id = ${orgId}::uuid LIMIT 1
+          `),
+        )[0]?.company_id ?? null)
+  if (company && company.toLowerCase() !== contactId.toLowerCase()) {
+    throw new ProjectsServiceError(
+      400,
+      "contact_is_a_company",
+      "contactId names a company, not a person, and the deal's company (companyId) is another one. Pass the deal's company in companyId only, and a contact id (a person) in contactId, or leave it out. Nothing was changed.",
+    )
+  }
+  const { contactId: _company, ...rest } = input
+  return { ...rest, companyId: contactId }
 }
 
 /**
@@ -810,8 +857,9 @@ export async function writeDealFields(
   orgId: string,
   scopes: readonly string[],
   taskId: string,
-  input: DealFieldsInput,
+  given: DealFieldsInput,
 ): Promise<void> {
+  const input = await resolveCompanyGivenAsContact(tx, orgId, taskId, given)
   if (input.companyId) await assertVisibleCompany(tx, orgId, input.companyId)
   if (input.contactId) await assertVisibleContact(tx, orgId, input.contactId)
   const sets: SQL[] = []

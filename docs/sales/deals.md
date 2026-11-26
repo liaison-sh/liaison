@@ -45,6 +45,6 @@ For work that is not a deal, open **Edit project** and pick the company in **Cli
 | `deals_rollup` | Counts and sums per stage, owner or month (see [Forecast](forecast.md)) | No |
 | `deals_followup_candidates` | Open deals quiet for a number of days, with the reason not to write to each | No |
 
-Create a deal with the Projects tools, as a task in the pipeline. See the [agent tool reference](../reference/agent-tools.md).
+Create a deal with the Projects tools, as a task in the pipeline. A deal's contact is a person: a company's id given as its contact is read as the deal's company, with no contact, and a company other than the deal's own is refused (`contact_is_a_company`). See the [agent tool reference](../reference/agent-tools.md).
 
 Related: [Quiet deals](quiet-deals.md), [Follow-ups](follow-ups.md), [Companies](companies.md).

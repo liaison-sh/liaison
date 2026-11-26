@@ -737,14 +737,18 @@ export function normalizeRunningDocTitle(title: string): string {
 const DOC_FILE_EXT_RE = /\.(md|markdown|txt|rst|adoc|mdx|html?|pdf|docx?)$/i
 
 /**
- * User-facing title for a knowledge document. The stored `title` is often the
- * raw import filename (e.g. "11-presets.md"), which leaks as data in the
- * "Recently touched" list. Prefer, in order: the document's own leading H1
- * heading (the real title an author wrote), then the stored title with a known
- * document extension stripped and separators humanized, then the stored title
- * verbatim. Pure; exported for tests.
+ * User-facing title for a knowledge document. A title someone gave the page is
+ * the title: a page called "Team wiki" whose text opens with "# Big heading" is
+ * still "Team wiki", as in the page header and the tree. Only a stored title
+ * that is a raw import filename (e.g. "11-presets.md", which would leak as data
+ * in "Recently touched") or blank gives way, in order to: the document's own
+ * leading H1 heading, then the filename with its extension stripped and
+ * separators humanized. Pure; exported for tests.
  */
 export function knowledgeDisplayTitle(title: string, body?: string | null): string {
+  const trimmed = title.trim()
+  // 0. A title that is not a filename is the page's own title.
+  if (trimmed !== "" && !DOC_FILE_EXT_RE.test(trimmed)) return trimmed
   // 1. A leading markdown H1 is the author's real title.
   if (body) {
     for (const rawLine of body.split("\n", 20)) {
@@ -758,7 +762,6 @@ export function knowledgeDisplayTitle(title: string, body?: string | null): stri
   }
   // 2. The stored title looks like a filename -> strip the extension and
   //    humanize kebab/snake separators.
-  const trimmed = title.trim()
   if (DOC_FILE_EXT_RE.test(trimmed)) {
     const base = trimmed.replace(DOC_FILE_EXT_RE, "")
     const humanized = base.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim()

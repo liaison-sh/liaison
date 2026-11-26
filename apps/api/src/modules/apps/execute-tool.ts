@@ -254,6 +254,7 @@ import {
 import {
   resolveToolApprovalAuthority,
   taintDisclosureAuthority,
+  taintMayDecideAlone,
 } from "~/modules/approvals/authority"
 import { buildApprovalSummary, proposingTurnScopesUnionSql } from "~/modules/approvals/event-data"
 import { maskApprovalPayload } from "~/modules/approvals/payload-mask"
@@ -5731,9 +5732,11 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // parked for every admin, and she could not decide her own card). Anything else that gates the
   // call keeps the tool's own deciding scope: a gated tool, a host or per-param gate, the
   // outside-content hold, an org approval policy, a sequenced @ref step, a routine's request.
+  // A `conditionalGate` tool keeps it too: its handler parks some calls itself and runs them on
+  // any approval of the call, so a card decided by the taint's read scopes would issue them.
   const taintDisclosureOnly =
     taintForcedApprovalScopes !== null &&
-    tool.gated !== true &&
+    taintMayDecideAlone(tool) &&
     !hostGated &&
     !paramGated &&
     !taintEscalated &&

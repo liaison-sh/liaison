@@ -201,7 +201,9 @@
 //         dimension constraint; the notified audience is narrowed to holders of all of them, and
 //         decide and edit re-check all of them. The requester holds the taint (6c), so they may
 //         decide it, and the feed folds it out of other approvers' default view as peer noise. A
-//         gated write keeps its own deciding scope plus 8c.
+//         gated write keeps its own deciding scope plus 8c, and so does a `conditionalGate` write
+//         (its handler parks some calls itself and runs them on any approval of the call: a
+//         credit note decided by a contacts read scope was issued by a reader, 2026-11).
 //
 // A WEB READ NEVER PARKS; GUARDRAILS BOUND WHAT IT CARRIES (2026-10-29, owner ruling: "web search
 // is a SEARCH, so it's 100% a read"). Rule 6i held web_fetch and web_search once the turn read org

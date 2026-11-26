@@ -81,7 +81,7 @@ import {
   IDENTITY_THREAD_ID,
   renderBaselineSurface,
 } from "./baseline-render"
-import { CONNECT_PROMPT } from "./DesktopConnect"
+import { CLOUD_PROMPT } from "./DesktopCloudConnect"
 import { installFakeBridge, uninstallFakeBridge } from "./fake-bridge"
 import { PERMISSION_MODE_CONTROL_LABEL } from "./PermissionModeMenu"
 
@@ -164,7 +164,8 @@ const EXPECTED_BY_SURFACE: Record<string, string[]> = {
  * browser render carries the email step and not the connect prompt, and the
  * card around both is the same card.
  */
-const CONNECT_MARKER = JSON.stringify(englishT(CONNECT_PROMPT))
+// The connect step a first launch shows is the Liaison Cloud screen (DesktopServerStep).
+const CONNECT_MARKER = JSON.stringify(englishT(CLOUD_PROMPT))
 const EMAIL_STEP_MARKER = 'type="email"'
 
 function indentOf(line: string): number {

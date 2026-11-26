@@ -30,6 +30,10 @@ import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
 import { connectionConfigRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { apiConnFor } from "~/modules/apps/connections/api/declarations"
 import { getAdapterRow, listAdapterRows } from "~/modules/apps/connections/api/store"
+import {
+  appWebhookAddresses,
+  settableAppSecretFields,
+} from "~/modules/apps/connections/app-secrets"
 import { connectionTurnedOff } from "~/modules/apps/connections/oauth-client-config"
 import { isAppUnavailableFor, primeOrgApps } from "~/modules/apps/org-apps"
 import { resolveGoogleClients } from "~/modules/connection-guides/google"
@@ -262,7 +266,7 @@ export async function handleRequestSecret(
     kind: checked.target.kind,
     target: targetFields(checked.target),
     card,
-    note: requestSecretNote(checked.target.kind, card) + asksFor(ctx.orgId, checked.target),
+    note: requestSecretNote(checked.target.kind, card) + (await asksFor(ctx.orgId, checked.target)),
   }
 }
 
@@ -270,7 +274,18 @@ export async function handleRequestSecret(
  * The fields a credentials card asks for, by their labels ("Restricted key"), so what the agent
  * tells the person matches the card and never names a kind of key the app refuses.
  */
-function asksFor(orgId: string, target: SecretTarget): string {
+async function asksFor(orgId: string, target: SecretTarget): Promise<string> {
+  if (target.kind === "app_secret") {
+    const config = connectionConfigRegistry.get([orgId, target.app, target.connection])
+    const label = settableAppSecretFields(config).find((f) => f.key === target.field)?.label
+    const webhooks = await appWebhookAddresses(orgId, target.app)
+    return (
+      (label ? ` The card asks for: ${label}.` : "") +
+      (webhooks.length > 0
+        ? ` The webhook address (the card shows it too): ${webhooks.map((w) => w.url).join(", ")}.`
+        : "")
+    )
+  }
   if (target.kind !== "connection_credentials") return ""
   const fields =
     connectionConfigRegistry.get([orgId, target.app, target.connection])?.credentialFields ?? []
@@ -309,7 +324,7 @@ export function registerSecretRequestTool(orgId: string): void {
       "token",
     ],
     description:
-      '"Connect my Gmail": kind oauth_connect, app mail, connection gmail, mode personal; any member, no admin needed. A card in this conversation asks the person for a secret (a model provider key, an app\'s login or OAuth client, the Google client, API connector credentials, a new Liaison API key) or connects an OAuth account (Gmail, Google Calendar, Shopify: kind oauth_connect, they sign in at the provider; mode personal for their own account, mode org for one the organization shares). You never see the secret or the tokens: you get a line saying it was saved or connected, with a short hint.',
+      '"Connect my Gmail": kind oauth_connect, app mail, connection gmail, mode personal; any member, no admin needed. A card in this conversation asks the person for a secret (a model provider key, an app\'s login or OAuth client, the Google client, API connector credentials, a new Liaison API key, a secret an app keeps such as a webhook signing secret: kind app_secret) or connects an OAuth account (Gmail, Google Calendar, Shopify: kind oauth_connect, they sign in at the provider; mode personal for their own account, mode org for one the organization shares). You never see the secret or the tokens: you get a line saying it was saved or connected, with a short hint.',
     // The baseline every member and agent holds: who may SUBMIT the card is
     // decided by the target route's own scope, checked when the card saves.
     requiredScopes: ["kernel:threads:read"],

@@ -19,16 +19,28 @@
  * report to stdout. NEVER print, log, or include a secret value anywhere in
  * the report or a log line, only the probe's non-secret `identity`.
  *
+ * App-held secrets a person gives (a webhook signing secret): for each app whose
+ * connection declares settable ones, one line per secret, `set` or `not set`
+ * (never the value), and the address(es) its webhooks are reached at. A secret
+ * not set is a warning, not a FAIL: the app still works on its catch-up.
+ *
  * `resolveOrgId` / `probe` are injectable so the unit suite exercises
  * PASS/FAIL/SKIPPED without a live database or network call.
  */
 
 import { eq } from "drizzle-orm"
+import { ConfigError } from "~/cli/config/parse"
 import type { ProvisioningConfig } from "~/cli/config/schema"
+import { resolveAppSecretsConnection } from "~/cli/provisioners/app-secrets"
 import { appVerifyProbe, type VerifyProbe } from "~/cli/provisioners/verify-probes"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { organizations } from "~/db/schema/kernel"
 import { canonicalJson, readAppConfig } from "~/modules/apps/app-config"
+import {
+  type AppSecretStatus,
+  appSecretStatus,
+  appWebhookAddresses,
+} from "~/modules/apps/connections/app-secrets"
 
 export type VerifyStatus = "PASS" | "FAIL" | "SKIPPED"
 
@@ -67,6 +79,30 @@ export interface VerifyProvisionResult {
   identity?: string
 }
 
+/** One app-held secret: whether it is set (never the value). NOT_SET is a warning. */
+export interface VerifyAppSecretResult {
+  app: string
+  connection: string
+  key: string
+  status: "SET" | "NOT_SET"
+  /** A replaced value still verifying until then (ISO). */
+  previousUntil?: string
+}
+
+/** Where one of an app's webhook endpoints is reached. */
+export interface VerifyWebhookAddress {
+  app: string
+  endpoint: string
+  url: string
+}
+
+/** What the app-secret check found for one app; null: no settable secret. */
+export interface AppSecretCheckResult {
+  connection: string
+  secrets: AppSecretStatus[]
+  webhooks: Array<{ endpoint: string; url: string }>
+}
+
 export interface VerifyReport {
   ok: boolean
   results: VerifyAppResult[]
@@ -74,6 +110,10 @@ export interface VerifyReport {
   config?: VerifyConfigResult[]
   /** Present when the config declares any `apps[].provision`. */
   provision?: VerifyProvisionResult[]
+  /** Present when an app's connection declares secrets a person sets. */
+  appSecrets?: VerifyAppSecretResult[]
+  /** The webhook addresses of those apps. */
+  webhooks?: VerifyWebhookAddress[]
 }
 
 export interface RunConfigVerifyOptions {
@@ -96,6 +136,36 @@ export interface RunConfigVerifyOptions {
     appName: string,
     provision: Record<string, unknown>,
   ) => Promise<VerifyProvisionResult>
+  /** Read one app's settable secrets (set or not) and webhook addresses.
+   *  Injectable for tests; defaults to the kernel's app-secret status. */
+  appSecretCheck?: (
+    orgId: string,
+    appName: string,
+    connection: string | undefined,
+  ) => Promise<AppSecretCheckResult | null>
+}
+
+/** The kernel's status of the app's settable secrets; null when it has none. */
+async function defaultAppSecretCheck(
+  orgId: string,
+  appName: string,
+  connection: string | undefined,
+): Promise<AppSecretCheckResult | null> {
+  let resolved: ReturnType<typeof resolveAppSecretsConnection>
+  try {
+    resolved = resolveAppSecretsConnection(orgId, appName, connection)
+  } catch (err) {
+    if (err instanceof ConfigError) return null
+    throw err
+  }
+  if (!resolved) return null
+  const secrets = await appSecretStatus(orgId, appName, resolved.connectionName)
+  if (secrets.length === 0) return null
+  return {
+    connection: resolved.connectionName,
+    secrets,
+    webhooks: await appWebhookAddresses(orgId, appName),
+  }
 }
 
 /** The app's provisioning handler, dry, then its verify handler when declared. */
@@ -201,6 +271,14 @@ export async function runConfigVerify(
       (opts.appFilter === undefined || a.name === opts.appFilter),
   )
   const provisionCheck = opts.provisionCheck ?? defaultProvisionCheck
+  // Apps whose connection may declare secrets a person sets.
+  const secretApps = (opts.config.apps ?? []).filter(
+    (a) =>
+      a.enable &&
+      (a.connection !== undefined || a.appSecrets !== undefined) &&
+      (opts.appFilter === undefined || a.name === opts.appFilter),
+  )
+  const declaresSecrets = secretApps.some((a) => a.appSecrets !== undefined)
 
   const connectorApps = (opts.config.apps ?? []).filter(
     (a) =>
@@ -211,12 +289,18 @@ export async function runConfigVerify(
     opts.appFilter !== undefined &&
     connectorApps.length === 0 &&
     configApps.length === 0 &&
-    provisionApps.length === 0
+    provisionApps.length === 0 &&
+    !declaresSecrets
   ) {
     log(`config verify: app '${opts.appFilter}' has no connection or config declared in config`)
     return { exitCode: 2, report: { ok: false, results: [] } }
   }
-  if (connectorApps.length === 0 && configApps.length === 0 && provisionApps.length === 0) {
+  if (
+    connectorApps.length === 0 &&
+    configApps.length === 0 &&
+    provisionApps.length === 0 &&
+    !declaresSecrets
+  ) {
     log("config verify: no connector apps with a connection declared in config")
     return { exitCode: 0, report: { ok: true, results: [] } }
   }
@@ -266,6 +350,40 @@ export async function runConfigVerify(
     }
   }
 
+  // The default connection probe registers the org's apps; an app declaring
+  // `appSecrets` without one needs them registered here.
+  if (!opts.appSecretCheck && declaresSecrets) {
+    const { ensureAppsForOrg } = await import("~/modules/apps/init")
+    await ensureAppsForOrg(orgId)
+  }
+  const secretCheck = opts.appSecretCheck ?? defaultAppSecretCheck
+  const appSecrets: VerifyAppSecretResult[] = []
+  const webhooks: VerifyWebhookAddress[] = []
+  for (const app of secretApps) {
+    const checked = await secretCheck(orgId, app.name, app.connection?.name)
+    if (!checked) continue
+    for (const s of checked.secrets) {
+      const status = s.set ? "SET" : "NOT_SET"
+      const previous = s.previousUntil ? `, previous still verifies until ${s.previousUntil}` : ""
+      log(
+        s.set
+          ? `app '${app.name}': secret '${s.key}' set${previous}`
+          : `app '${app.name}': secret '${s.key}' not set (warning: set it on the app's settings page or with apps[].appSecrets; until then the app relies on its catch-up)${previous}`,
+      )
+      appSecrets.push({
+        app: app.name,
+        connection: checked.connection,
+        key: s.key,
+        status,
+        ...(s.previousUntil ? { previousUntil: s.previousUntil } : {}),
+      })
+    }
+    for (const w of checked.webhooks) {
+      log(`app '${app.name}': webhook '${w.endpoint}' address ${w.url}`)
+      webhooks.push({ app: app.name, ...w })
+    }
+  }
+
   const config =
     configApps.length > 0 ? await verifyAppConfig(orgId, configApps, readConfig, log) : undefined
   const provision: VerifyProvisionResult[] = []
@@ -298,6 +416,8 @@ export async function runConfigVerify(
       results,
       ...(config ? { config } : {}),
       ...(provisionApps.length > 0 ? { provision } : {}),
+      ...(appSecrets.length > 0 ? { appSecrets } : {}),
+      ...(webhooks.length > 0 ? { webhooks } : {}),
     },
   }
 }

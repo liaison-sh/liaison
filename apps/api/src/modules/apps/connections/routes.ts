@@ -14,6 +14,12 @@ import { requireScope } from "~/middleware/require-scope"
 import { connectionConfigRegistry, manifestRegistry } from "~/modules/apps/app-registries"
 import { appVisibilityFor } from "~/modules/apps/app-visibility"
 import { connectionAdminScope } from "~/modules/apps/connections/admin-scope"
+import {
+  AppSecretError,
+  appSecretStatus,
+  appWebhookAddresses,
+  setAppSecret,
+} from "~/modules/apps/connections/app-secrets"
 import { runBeforeDisconnect } from "~/modules/apps/connections/before-disconnect"
 import { claimConnectLink, peekConnectLink } from "~/modules/apps/connections/connect-links"
 import {
@@ -80,6 +86,14 @@ function requireOrgConnectScope(
   if (!hasScope(connectionAdminScope(c.get("orgId"), appName, connectionName), scopes)) {
     throw new HTTPException(403, { message: "Admin scope required for org-level connections" })
   }
+}
+
+/** An app-secret refusal as the HTTP error it is (its message never holds a value). */
+function appSecretHttpError(err: unknown): unknown {
+  if (err instanceof AppSecretError) {
+    return new HTTPException(err.status, { message: err.message, cause: { code: err.code } })
+  }
+  return err
 }
 
 function ownerTypeFromMode(mode: ConnectMode): "user" | "org" {
@@ -281,6 +295,46 @@ export const connectionRoutes = new Hono<AppEnv>()
       clientId,
     )
     return c.json({ data: { configured: true, created, clientId, reconnectToMove } })
+  })
+  // App-held secrets a person gives Liaison (connections/app-secrets.ts): which are set (never
+  // a value) with the app's webhook addresses, and the write the settings page and the secret
+  // request card post to. The connection's admin scope, like an org-level connect.
+  .get("/:appName/:connectionName/app-secrets", async (c) => {
+    const orgId = c.get("orgId")
+    const { appName, connectionName } = c.req.param()
+    requireOrgConnectScope(c, appName, connectionName, "org")
+    await ensureAppsForOrg(orgId)
+    try {
+      const secrets = await appSecretStatus(orgId, appName, connectionName)
+      const webhooks = await appWebhookAddresses(orgId, appName)
+      return c.json({ data: { secrets, webhooks } })
+    } catch (err) {
+      throw appSecretHttpError(err)
+    }
+  })
+  .put("/:appName/:connectionName/app-secrets/:key", async (c) => {
+    const orgId = c.get("orgId")
+    const { appName, connectionName, key } = c.req.param()
+    requireOrgConnectScope(c, appName, connectionName, "org")
+    await ensureAppsForOrg(orgId)
+    const body = ((await c.req.json().catch(() => null)) ?? {}) as { value?: unknown }
+    try {
+      const saved = await setAppSecret({ orgId, appName, connectionName, key, value: body.value })
+      log.info(
+        {
+          orgId,
+          appName,
+          connectionName,
+          key: saved.key,
+          rolled: saved.rolled,
+          userId: c.get("userId"),
+        },
+        "app-held secret set by a person",
+      )
+      return c.json({ data: { key: saved.key, set: true, rolled: saved.rolled } })
+    } catch (err) {
+      throw appSecretHttpError(err)
+    }
   })
   // Re-drive an app connection's post-connect initialization, keyed by
   // app + connection name (the identity the Settings UI already holds). Org-owned

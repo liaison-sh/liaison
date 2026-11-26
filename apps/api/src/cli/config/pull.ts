@@ -5,7 +5,8 @@
  * file. Reads the server's current value of every drift-tracked path the file
  * sets (`drift.ts`) and rewrites just those values, keeping the file's layout,
  * its comments (YAML) and every `${VAR}` reference as written. Secrets are
- * never tracked, so pull never writes one into the file.
+ * never tracked, so pull never writes one into the file: an `apps[].appSecrets`
+ * key is only reported as set or not set on the server, and left as written.
  *
  * Read only on the server: pull changes no row and no last-applied record. A
  * `config apply` of the pulled file then reports every pulled path unchanged.
@@ -25,6 +26,7 @@ import {
 } from "~/cli/config/drift"
 import { readServerConfig } from "~/cli/config/drift-state"
 import { interpolateEnvLenient } from "~/cli/config/parse"
+import { appSecretsSetOnServer } from "~/cli/provisioners/app-secrets"
 import {
   buildProvisionContext,
   type ProvisionDbSeams,
@@ -181,6 +183,21 @@ export async function runConfigPull(opts: RunConfigPullOptions): Promise<RunConf
       }
     }
     updated.push(field.path)
+  }
+  // App-held secrets: whether each is set on the server, never its value.
+  const fileApps = isRecord(resolved) && Array.isArray(resolved.apps) ? resolved.apps : []
+  for (const app of fileApps) {
+    if (!isRecord(app) || typeof app.name !== "string" || !isRecord(app.appSecrets)) continue
+    const keys = Object.keys(app.appSecrets).filter((k) =>
+      inScope(`apps.${app.name}.appSecrets.${k}`, only),
+    )
+    if (keys.length === 0) continue
+    const set = await appSecretsSetOnServer(ctx, orgId, app.name, keys)
+    for (const key of keys) {
+      log(
+        `config pull: apps.${app.name}.appSecrets.${key}: ${set[key] ? "set" : "not set"} on the server (a secret: left as written)`,
+      )
+    }
   }
   for (const path of updated) log(`pulled ${path}`)
   if (updated.length === 0) log("config pull: the file already matches the server")

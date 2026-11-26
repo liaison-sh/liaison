@@ -112,3 +112,12 @@ config verify runs the app's provisioning.verify, the CLI reads no credential ->
 config apply health is the same check -> apps/api/src/cli/provisioners/connector.ts:332 ; apps/api/src/cli/config/apply.ts:220
 knowledge links-backfill removes stored link titles, --org, --dry-run counts -> apps/api/src/cli/knowledge-links-backfill.ts
 links-backfill touches only documents holding a link; titles are gone after a rollback -> apps/api/src/apps/knowledge/links.ts (needsBackfill)
+apps[].appSecrets: secrets by key, strings, needs enable: true, empty = not provided yet -> apps/api/src/cli/config/schema.ts:318-322 ; apps/api/src/cli/config/schema.ts:350-353
+appSecrets connection: connection.name, else the only connection taking secrets; several or none refused -> apps/api/src/cli/provisioners/app-secrets.ts:58-79
+appSecrets key and shape checked like the settings page, usage error before any write, value never quoted -> apps/api/src/cli/provisioners/app-secrets.ts:81-97 ; apps/api/src/modules/apps/connections/app-secrets.ts:57-85
+appSecrets plan lines set / roll / unchanged / skipped, never the value -> apps/api/src/cli/provisioners/app-secrets.ts:101-160
+appSecrets apply compares the decrypted stored value: equal is unchanged, no roll; empty skipped and pending -> apps/api/src/cli/provisioners/app-secrets.ts:118 ; apps/api/src/cli/provisioners/app-secrets.ts:194-219
+A replaced signing secret keeps verifying for a while (the previous key) -> apps/api/src/modules/apps/connections/service.ts:197-198 ; apps/api/src/modules/apps/connections/service.ts:243-251
+The agent's config tool path refuses appSecrets -> apps/api/src/cli/provisioners/apps.ts:217 ; apps/api/src/cli/provisioners/apps.ts:307-334
+config pull reports appSecrets set / not set on the server, never writes one -> apps/api/src/cli/config/pull.ts:186-201
+config verify: one line per settable secret set / not set (warning, not FAIL), previous-until, webhook addresses -> apps/api/src/cli/config/verify.ts:352-388 ; apps/api/src/modules/apps/connections/app-secrets.ts:131-200

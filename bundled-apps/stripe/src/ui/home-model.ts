@@ -273,7 +273,7 @@ export function stateCard(
         ),
         steps: [
           tr("In Stripe, open Developers, Webhooks, and add the Liaison endpoint."),
-          tr("Give the signing secret to the agent in its form."),
+          tr("Paste its signing secret in Settings, Apps, Stripe, Webhook."),
         ],
         note: null,
         actions: [
@@ -374,7 +374,7 @@ export function stateCard(
             "In Stripe, open Developers, Webhooks, then the Liaison endpoint. If it is disabled, enable it.",
           ),
           tr(
-            "If it shows failures, the signing secret may have changed. Give the agent the new one.",
+            "If it shows failures, the signing secret may have changed. Save the new one in Settings, Apps, Stripe, Webhook.",
           ),
           tr(
             "Stripe resends missed updates for up to 72 hours, so fix this before then and nothing is lost.",

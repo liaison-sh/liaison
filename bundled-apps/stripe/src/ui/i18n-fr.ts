@@ -31,8 +31,8 @@ export const FR: Record<string, string> = {
     "La clé fonctionne. L'import démarre dès que Stripe envoie sa première mise à jour à cet espace.",
   "In Stripe, open Developers, Webhooks, and add the Liaison endpoint.":
     "Dans Stripe, ouvrez Développeurs, Webhooks, et ajoutez le point de terminaison de Liaison.",
-  "Give the signing secret to the agent in its form.":
-    "Donnez le secret de signature à l'agent dans son formulaire.",
+  "Paste its signing secret in Settings, Apps, Stripe, Webhook.":
+    "Collez son secret de signature dans Paramètres, Apps, Stripe, Webhook.",
   "Open webhooks in Stripe": "Ouvrir les webhooks dans Stripe",
   "Check again": "Vérifier à nouveau",
   "First import is running": "Le premier import est en cours",
@@ -75,8 +75,8 @@ export const FR: Record<string, string> = {
     "Liaison reçoit d'habitude une mise à jour toutes les quelques minutes.",
   "In Stripe, open Developers, Webhooks, then the Liaison endpoint. If it is disabled, enable it.":
     "Dans Stripe, ouvrez Développeurs, Webhooks, puis le point de terminaison de Liaison. S'il est désactivé, activez-le.",
-  "If it shows failures, the signing secret may have changed. Give the agent the new one.":
-    "S'il affiche des échecs, le secret de signature a peut-être changé. Donnez le nouveau à l'agent.",
+  "If it shows failures, the signing secret may have changed. Save the new one in Settings, Apps, Stripe, Webhook.":
+    "S'il affiche des échecs, le secret de signature a peut-être changé. Enregistrez le nouveau dans Paramètres, Apps, Stripe, Webhook.",
   "Stripe resends missed updates for up to 72 hours, so fix this before then and nothing is lost.":
     "Stripe renvoie les mises à jour manquées pendant 72 heures : corrigez avant et rien n'est perdu.",
   "Until then Liaison checks Stripe itself every 15 minutes.":
@@ -306,4 +306,30 @@ export const FR: Record<string, string> = {
   Connected: "Connecté",
   "Setting up": "Mise en place",
   "Needs a look": "À vérifier",
+  // Settings > Apps > Stripe > Webhook (WebhookSettings.tsx, webhook-settings-model.ts)
+  "Saved. The previous secret keeps working for 24 hours.":
+    "Enregistré. L'ancien secret reste valable 24 heures.",
+  "Saved. Stripe deliveries are now verified.":
+    "Enregistré. Les envois de Stripe sont maintenant vérifiés.",
+  "Could not save the secret.": "Impossible d'enregistrer le secret.",
+  "Could not read the webhook settings.": "Impossible de lire les réglages du webhook.",
+  "Endpoint URL": "URL du point de terminaison",
+  "This server names no address yet.": "Ce serveur n'indique pas encore d'adresse.",
+  Copy: "Copier",
+  Copied: "Copié",
+  "In Stripe: Developers, Webhooks, Add endpoint. Paste this address.":
+    "Dans Stripe : Développeurs, Webhooks, Ajouter un point de terminaison. Collez cette adresse.",
+  "Events to select ({{count}})": "Événements à sélectionner ({{count}})",
+  "Webhook signing secret": "Secret de signature du webhook",
+  "Set.": "Enregistré.",
+  "Not set yet.": "Pas encore enregistré.",
+  "The previous secret keeps working until {{until}}.":
+    "L'ancien secret reste valable jusqu'au {{until}}.",
+  Replace: "Remplacer",
+  Save: "Enregistrer",
+  "On the endpoint in Stripe, reveal its Signing secret and paste it here. It is never shown again, here or to the agent.":
+    "Sur le point de terminaison dans Stripe, affichez son secret de signature et collez-le ici. Il n'est plus jamais affiché, ni ici ni à l'agent.",
+  "Paste the signing secret first.": "Collez d'abord le secret de signature.",
+  "A webhook signing secret starts with whsec_ followed by letters and digits.":
+    "Un secret de signature de webhook commence par whsec_ suivi de lettres et de chiffres.",
 }

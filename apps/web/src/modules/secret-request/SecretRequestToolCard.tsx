@@ -142,6 +142,17 @@ async function storeSecret(
           )
         )?.reconnectToMove ?? 0
       )
+    case "app_secret": {
+      const app = encodeURIComponent(text(t.app))
+      const connection = encodeURIComponent(text(t.connection))
+      const key = encodeURIComponent(text(t.field))
+      await api.put(
+        `/connections/${app}/${connection}/app-secrets/${key}`,
+        { value: values.value ?? "" },
+        QUIET,
+      )
+      return 0
+    }
     case "api_key":
     case "oauth_connect":
       return 0
@@ -323,7 +334,8 @@ const SecretRequestToolCard: Component<{ requestId: string }> = (props) => {
     const sameName =
       (r.kind === "connection_credentials" ||
         r.kind === "oauth_client" ||
-        r.kind === "oauth_connect") &&
+        r.kind === "oauth_connect" ||
+        r.kind === "app_secret") &&
       text(t.app) !== "" &&
       text(t.connection) === text(t.app)
     return i18n.t(

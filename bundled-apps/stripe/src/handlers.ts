@@ -51,6 +51,7 @@ export {
   subscriptionCancelPreflight,
   subscriptionsSearch,
 } from "./tools/subscriptions"
+export { provisionStripe, verifyStripe, webhookStatus } from "./tools/webhook-status"
 
 /** The kernel's verifier entry: the org's own secret, checked host-side (verify.ts). */
 export async function stripeWebhookVerifier(

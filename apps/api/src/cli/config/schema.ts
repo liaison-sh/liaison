@@ -315,6 +315,11 @@ const appSchema = z
     // same allowlist as `PUT /api/apps/:app/config/:key`: each key must be
     // declared in the app manifest's `configKeys`. A null value clears the key.
     config: z.record(z.string().min(1), z.unknown()).optional(),
+    // App-held secrets a person gives (a webhook signing secret the provider shows once),
+    // by key, of the entry's `connection.name` (else the app's only connection declaring
+    // `appSecretFields`). Written like the app's settings page; normally `${VAR}` refs.
+    // An empty string (an unset `${VAR:-}`) is "not provided yet": skipped, never stored.
+    appSecrets: z.record(z.string().min(1), z.string()).optional(),
     // Org settings of the app's settings page (`organizations.settings.<app>`), by
     // field path, written like `PATCH /api/apps/:app/settings/org`: each path must be
     // an org field the manifest declares, and the value must pass its type.
@@ -341,6 +346,10 @@ const appSchema = z
   .refine((a) => a.config === undefined || a.enable, {
     message: "config requires enable: true (a disabled app entry is skipped)",
     path: ["config"],
+  })
+  .refine((a) => a.appSecrets === undefined || a.enable, {
+    message: "appSecrets requires enable: true (a disabled app entry is skipped)",
+    path: ["appSecrets"],
   })
   .refine((a) => a.features === undefined || a.enable, {
     message: "features requires enable: true (a disabled app entry is skipped)",

@@ -23,6 +23,9 @@
  *    same checks as the settings page's own write.
  *  - `features` → switches inside the app (`app-features.ts`), the same checks as
  *    Settings > Apps > <app> > Features.
+ *  - `appSecrets` → app-held secrets a person gives (`app-secrets.ts`), the same
+ *    checks as the app's settings page; an equal stored value is unchanged (no
+ *    roll), an empty one skipped and pending. CLI only: the tool path refuses it.
  *
  * Handles: `installCatalogApp` + `enableApp` (own withSystemDb); the connector
  * uses `ctx.rls` / `ctx.priv` internally.
@@ -38,6 +41,7 @@ import {
   assertProvisionValid,
   planAppProvision,
 } from "~/cli/provisioners/app-provision"
+import { applyAppSecrets, planAppSecrets } from "~/cli/provisioners/app-secrets"
 import {
   applyAppSettings,
   appSettingsKnown,
@@ -119,7 +123,7 @@ export const appsProvisioner: Provisioner<ProvisioningConfig> = {
     const catalogNames = new Set((await listCatalogWithState()).map((c) => c.name))
     // An existing org's credentials connections are diffed against the stored
     // ones, so a dry run shows a drifted setting before apply replaces it.
-    const planOrgId = list.some((a) => a.connection?.credentials)
+    const planOrgId = list.some((a) => a.connection?.credentials || a.appSecrets)
       ? await resolvePlanOrgId(ctx, config.org.slug, "cli-plan-apps-org")
       : ""
     const actions: string[] = []
@@ -142,6 +146,19 @@ export const appsProvisioner: Provisioner<ProvisioningConfig> = {
           assertAppConfigAllowed(ctx.orgId, app.name, app.config)
         }
         actions.push(`set app '${app.name}' config: ${Object.keys(app.config).join(", ")}`)
+      }
+      if (app.appSecrets) {
+        // Checked and compared with the stored value when the app is registered;
+        // one this run installs is checked in apply, before its first write.
+        actions.push(
+          ...(await planAppSecrets(
+            ctx,
+            ctx.orgId || planOrgId,
+            app.name,
+            app.connection?.name,
+            app.appSecrets,
+          )),
+        )
       }
       if (app.settings) {
         // Checked here when the app is registered; one this run installs, in apply.
@@ -197,6 +214,7 @@ async function planAppsAgainstStore(
   const actions: string[] = []
   let changes = 0
   for (const app of list) {
+    if (app.appSecrets) throw toolPathSecretError(app.name)
     if (app.enable === false) {
       actions.push(`app '${app.name}': enable:false skipped (no disable path)`)
       continue
@@ -285,6 +303,13 @@ async function planAppsAgainstStore(
   return { actions, changes }
 }
 
+/** A secret never travels through an agent tool: it would land in the transcript. */
+function toolPathSecretError(appName: string): ConfigError {
+  return new ConfigError(
+    `apps.${appName}.appSecrets: a secret is given on the app's settings page or with liaison config apply, never through an agent tool`,
+  )
+}
+
 async function applyApps(
   ctx: Parameters<Provisioner<ProvisioningConfig>["apply"]>[0],
   list: NonNullable<ProvisioningConfig["apps"]>,
@@ -303,6 +328,10 @@ async function applyApps(
   // instance-operator rule); an org that may not install keeps the installed
   // version instead of upgrading it.
   const canInstall = !ctx.toolPath || (await canManageInstanceApps(ctx.orgId))
+
+  // Before the first write: an agent tool never carries a secret.
+  const withSecret = ctx.toolPath ? list.find((a) => a.appSecrets) : undefined
+  if (withSecret) throw toolPathSecretError(withSecret.name)
 
   for (const app of list) {
     if (app.enable === false) {
@@ -420,6 +449,13 @@ async function applyApps(
       const r = await applyAppFeatures(ctx, app.name, app.features)
       changed.push(...r.changed)
       unchanged.push(...r.unchanged)
+    }
+
+    if (app.appSecrets) {
+      const r = await applyAppSecrets(ctx, app.name, app.connection?.name, app.appSecrets)
+      changed.push(...r.changed)
+      unchanged.push(...r.unchanged)
+      pending.push(...r.pending)
     }
 
     if (!app.connection) {

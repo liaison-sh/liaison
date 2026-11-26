@@ -744,6 +744,42 @@ app derives from its own data (`time_budgets` on `projects`, turned on per
 project), is a usage error before anything is written. The actor needs
 `kernel:apps:admin`; the agent's `config_apps` tool takes the same `features`.
 
+An app entry also takes `appSecrets`: secrets a person gives Liaison because the
+provider shows them only once in its own dashboard, such as a webhook endpoint's
+signing secret. Each key must be a secret the app's connection lets a person
+set (the same check as the app's settings page), and the value must have its
+shape. Give the value through an environment variable:
+
+```yaml
+apps:
+  - name: stripe
+    enable: true
+    connection: { name: stripe, credentials: { apiKey: "${STRIPE_API_KEY}" } }
+    appSecrets:
+      webhookSigningSecret: ${STRIPE_WEBHOOK_SECRET}
+```
+
+The secrets belong to the entry's `connection.name`, or, without one, to the
+app's only connection that takes them. `--dry-run` says per key `set` (none
+stored yet), `roll` (another one is stored: it keeps verifying for a while
+after the new one is saved) or `unchanged`, never the value. A key the
+connection does not take and a value of the wrong shape are a usage error (exit
+`2`) before anything is written. `config apply` compares the file's value with
+the stored one and reports an equal one `unchanged` (`apps.stripe.appSecrets.webhookSigningSecret`)
+without saving it again, so re-running apply does not roll the secret. An empty
+value (`${STRIPE_WEBHOOK_SECRET:-}` with the variable unset) means "not
+provided yet": the key is skipped and listed as pending, and a stored secret is
+kept. The agent's `config_apps` tool refuses `appSecrets`: a secret never goes
+through an agent.
+
+`config pull` never writes a secret into the file: for each `appSecrets` key it
+only says whether one is set on the server and leaves the line as written.
+`config verify` (also with `--app stripe`) prints, for each app whose
+connection takes secrets, one line per secret, `set` or `not set` (and until
+when a replaced one still verifies), and the address of each of the app's
+webhook endpoints, to paste into the provider's dashboard. A secret not set is
+a warning, not a failure: the app still works, it catches up without webhooks.
+
 The `database` app sets up who may run each catalog domain's curated reads
 (see [Restrict reports by domain](database-connector.md#restrict-reports-by-domain))
 through its `provision` block. Roles are named, people are given by email:

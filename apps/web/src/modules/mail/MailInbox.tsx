@@ -659,56 +659,65 @@ export const MailInbox: Component<MailInboxProps> = (props) => {
                                   />
                                 </Show>
                               </Show>
-                              <div class="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                                <button
-                                  type="button"
-                                  data-testid="conversation-row-mark-read"
-                                  class="rounded p-1 text-text-tertiary hover:bg-surface-hover hover:text-text"
-                                  onClick={() => void toggleRead(api, id)}
-                                  title={
-                                    conv().isRead
-                                      ? i18n.t("mail.markUnread")
-                                      : i18n.t("mail.markRead")
-                                  }
+                              {/* The row actions and the timestamp share one slot of a fixed
+                                  size, so the Claim button lines up down the list whatever the
+                                  timestamp's width, and does not move when a row is hovered. */}
+                              <div class="relative flex shrink-0 items-center justify-end">
+                                <div class="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                                  <button
+                                    type="button"
+                                    data-testid="conversation-row-mark-read"
+                                    class="rounded p-1 text-text-tertiary hover:bg-surface-hover hover:text-text"
+                                    onClick={() => void toggleRead(api, id)}
+                                    title={
+                                      conv().isRead
+                                        ? i18n.t("mail.markUnread")
+                                        : i18n.t("mail.markRead")
+                                    }
+                                  >
+                                    {conv().isRead ? (
+                                      <MailOpen size={14} />
+                                    ) : (
+                                      <MailCheck size={14} />
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    data-testid="conversation-row-archive"
+                                    class="rounded p-1 text-text-tertiary hover:bg-surface-hover hover:text-text"
+                                    onClick={() => void archiveConversation(api, id)}
+                                    title={i18n.t("mail.archive")}
+                                  >
+                                    <Archive size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    data-testid="conversation-row-star"
+                                    class={cn(
+                                      "rounded p-1 transition-colors",
+                                      conv().isStarred
+                                        ? "text-yellow-500"
+                                        : "text-text-tertiary hover:bg-surface-hover hover:text-yellow-500",
+                                    )}
+                                    onClick={() => void toggleStar(api, id)}
+                                    title={
+                                      conv().isStarred ? i18n.t("mail.unstar") : i18n.t("mail.star")
+                                    }
+                                  >
+                                    <Star
+                                      size={14}
+                                      fill={conv().isStarred ? "currentColor" : "none"}
+                                    />
+                                  </button>
+                                </div>
+                                <div
+                                  data-testid="conversation-row-timestamp"
+                                  class="pointer-events-none absolute inset-y-0 right-0 flex items-center whitespace-nowrap text-xs tabular-nums text-text-tertiary group-hover:hidden group-focus-within:hidden"
                                 >
-                                  {conv().isRead ? <MailOpen size={14} /> : <MailCheck size={14} />}
-                                </button>
-                                <button
-                                  type="button"
-                                  data-testid="conversation-row-archive"
-                                  class="rounded p-1 text-text-tertiary hover:bg-surface-hover hover:text-text"
-                                  onClick={() => void archiveConversation(api, id)}
-                                  title={i18n.t("mail.archive")}
-                                >
-                                  <Archive size={14} />
-                                </button>
-                                <button
-                                  type="button"
-                                  data-testid="conversation-row-star"
-                                  class={cn(
-                                    "rounded p-1 transition-colors",
-                                    conv().isStarred
-                                      ? "text-yellow-500"
-                                      : "text-text-tertiary hover:bg-surface-hover hover:text-yellow-500",
-                                  )}
-                                  onClick={() => void toggleStar(api, id)}
-                                  title={
-                                    conv().isStarred ? i18n.t("mail.unstar") : i18n.t("mail.star")
-                                  }
-                                >
-                                  <Star
-                                    size={14}
-                                    fill={conv().isStarred ? "currentColor" : "none"}
-                                  />
-                                </button>
-                              </div>
-                              <div
-                                data-testid="conversation-row-timestamp"
-                                class="shrink-0 text-xs text-text-tertiary group-hover:hidden group-focus-within:hidden"
-                              >
-                                <span class="text-xs text-text-tertiary">
-                                  {formatRelativeTime(conv().lastMessageAt, i18n.locale())}
-                                </span>
+                                  <span class="text-xs text-text-tertiary">
+                                    {formatRelativeTime(conv().lastMessageAt, i18n.locale())}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           </Show>

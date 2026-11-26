@@ -21,6 +21,7 @@ import type { RlsClient } from "~/db"
 import { messages } from "~/db/schema/kernel"
 import { broadcastEphemeral } from "~/infra/events/event-bus"
 import { rootLogger } from "~/lib/logger"
+import { pgSafe } from "~/lib/pg-safe-text"
 import { sendMessage, withRestrictedDisclosure } from "~/modules/threads/message"
 import { messageVisibilityFacts } from "~/services/security/visibility"
 
@@ -66,9 +67,20 @@ export interface PersistAgentTurnParams {
 }
 
 /** Null when the write path refused the row (the caller may not post there). */
-export async function persistAgentTurn(
-  params: PersistAgentTurnParams,
-): Promise<SentMessage | null> {
+export async function persistAgentTurn(input: PersistAgentTurnParams): Promise<SentMessage | null> {
+  // The text and metadata come from a model: a character Postgres refuses
+  // (U+0000, a lone surrogate) would fail the whole write (`pg-safe-text.ts`).
+  const params: PersistAgentTurnParams = {
+    ...input,
+    content: pgSafe(input.content),
+    metadata: pgSafe(input.metadata),
+    ...(input.broadcastContent !== undefined
+      ? { broadcastContent: pgSafe(input.broadcastContent) }
+      : {}),
+    ...(input.broadcastMetadata !== undefined
+      ? { broadcastMetadata: pgSafe(input.broadcastMetadata) }
+      : {}),
+  }
   // The label `sendMessage` stored rides on the metadata, and the update below
   // replaces the column: it is carried over rather than lost.
   const metadata = params.agentAuthorLabel

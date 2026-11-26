@@ -341,6 +341,12 @@ const STEP_LIMIT = 40
  * (routine-run-resume.ts), and the report waits for the real end.
  */
 /** A runner that lost its turn just before writing the reply (S10): nothing is written. */
+/** The turn's error code when its reply could not be written (`endTurnAfterFailedReply`). */
+const REPLY_PERSIST_FAILED = "reply_persist_failed"
+/** The line posted in place of a reply that could not be written. */
+const REPLY_PERSIST_FAILED_TEXT =
+  "⚠️ This response could not be saved, so the turn ended here. Please try again."
+
 class TurnFencedAtPersist extends Error {
   constructor() {
     super("turn fenced at persist")
@@ -4865,6 +4871,107 @@ async function runAgentChatTurn(
     }
   }
 
+  // A REPLY THAT COULD NOT BE WRITTEN STILL ENDS THE TURN. The reply and the
+  // turn's end commit in one transaction, so a write Postgres refused (or any
+  // other throw on the way) rolled the end back too, and the turn stayed
+  // `running` under a live runner: no sweep ends it, its routine run never
+  // ends, and the thread shows the agent working for good. Here the turn is
+  // recorded `failed` (its own failure) and a short failure line is posted in
+  // its place. The line carries none of the turn's text: the scopes that text
+  // would need were never computed, so it is not shown. A turn that had
+  // already ended (the failure came after the reply's commit) or that another
+  // runner owns rethrows as before.
+  const endTurnAfterFailedReply = async (
+    usageIn: { promptTokens: number; completionTokens: number },
+    err: unknown,
+  ): Promise<Awaited<ReturnType<RunAgentChatResult["finalize"]>>> => {
+    const root = err instanceof Error && err.cause instanceof Error ? err.cause : err
+    const detail = (root instanceof Error ? root.message : String(root)).slice(0, 300)
+    log.error(
+      { err, threadId, turnId: turnRecord.turnId, detail },
+      "Agent reply could not be saved: ending the turn failed",
+    )
+    const failure = {
+      orgId,
+      turnId: turnRecord.turnId,
+      runner: turnRecord.runner,
+      state: "failed" as const,
+      failureReason: "turn" as const,
+      errorCode: REPLY_PERSIST_FAILED,
+    }
+    const metadata = {
+      turnId: userMsgId,
+      askId,
+      modelId: creditCheck.model.modelId,
+      ...(runFrame.routineRunId ? { routineRunId: runFrame.routineRunId } : {}),
+      finishReason: "error",
+      error: detail,
+      errorCode: REPLY_PERSIST_FAILED,
+    }
+    let messageId: string | null = null
+    if (persistReply) {
+      let fenced = false
+      const row = await persistAgentTurn({
+        write: (fn) =>
+          withPrivilegedDb(orgId, "agent-reply-persist-failed", async (tx) => {
+            if ((await finishTurn(failure, tx)) === "fenced") throw new TurnFencedAtPersist()
+            const sent = await fn(tx as unknown as RlsClient)
+            const id = (sent as { id?: unknown } | null)?.id
+            if (typeof id === "string") await setTurnReply(tx, orgId, turnRecord.turnId, id)
+            return sent
+          }),
+        orgId,
+        userId: actor.userId,
+        threadId,
+        content: REPLY_PERSIST_FAILED_TEXT,
+        agentId: runFrame.agentId,
+        requiredScopes: [],
+        parentMessageId: params.coordination?.parentMessageId ?? null,
+        replyRootId,
+        ...(params.unprompted ? { unprompted: true } : {}),
+        endsTurn: !params.coordination?.callerAgentId,
+        metadata,
+      }).catch(async (writeErr: unknown) => {
+        if (writeErr instanceof TurnFencedAtPersist) {
+          fenced = true
+          return null
+        }
+        // Even the failure line could not be written: end the record alone.
+        log.error({ err: writeErr, threadId }, "Could not post the failed-reply line")
+        if ((await finishTurn(failure)) === "fenced") fenced = true
+        return null
+      })
+      if (fenced) throw err
+      messageId = row?.id ?? null
+    } else if ((await finishTurn(failure)) === "fenced") {
+      throw err
+    }
+    // The reply's own transaction rolled back before its usage was metered:
+    // the model was still used, so it is metered here.
+    const creditCost = await finalizeUsage(orgId, {
+      model: creditCheck.model,
+      inputTokens: usageIn.promptTokens,
+      outputTokens: usageIn.completionTokens,
+      keySource: creditCheck.keySource,
+      userId: actor.userId,
+      ...(creditCheck.demo ? { demo: creditCheck.demo } : {}),
+    })
+      .then((r) => r.creditCost)
+      .catch((usageErr: unknown) => {
+        log.error({ err: usageErr, threadId }, "Could not meter a turn whose reply failed")
+        return "0"
+      })
+    return {
+      messageId,
+      creditCost,
+      finishReason: "error",
+      ...(persistReply
+        ? {}
+        : { reply: { content: REPLY_PERSIST_FAILED_TEXT, requiredScopes: [], metadata } }),
+      withheldCapabilities: [],
+    }
+  }
+
   // THE TURN'S END, as its record sees it (S10). A fenced runner writes
   // nothing (the process that owns the turn now writes the reply). A turn
   // handed off by a draining process is left `handoff` for a resume. Any
@@ -4911,13 +5018,17 @@ async function runAgentChatTurn(
           withheldCapabilities: [],
         }
       }
-      const ownOutput = retractedAttempt(finalParams, {
-        first: falseApprovalRetraction,
-        second: secondRetraction,
-      })
-      return await finalizeReply(
-        withPriorSteps(ownOutput, await withToolCardFieldsOnSteps(orgId, priorViews)),
-      )
+      try {
+        const ownOutput = retractedAttempt(finalParams, {
+          first: falseApprovalRetraction,
+          second: secondRetraction,
+        })
+        return await finalizeReply(
+          withPriorSteps(ownOutput, await withToolCardFieldsOnSteps(orgId, priorViews)),
+        )
+      } catch (err) {
+        return await endTurnAfterFailedReply(finalParams.usage, err)
+      }
     } finally {
       unregisterTurn()
     }
@@ -5545,6 +5656,13 @@ async function runThreadTurn(
       // caller (the routine supervisor, an agents_ask wait) sees the stop
       // rather than the last step's "tool-calls".
       if (done?.finishReason === "hard_token_limit") hardTokenLimitStopped = true
+      // The reply could not be written and the turn ended failed in its place
+      // (endTurnAfterFailedReply): the live view and the caller (the routine
+      // supervisor) see the failure, not the stream's own finish.
+      if (done?.finishReason === "error" && params.finishReason !== "error") {
+        finishReason = "error"
+        emitStreamEvent("error", { message: "The response could not be saved." })
+      }
     } catch (finalizeErr) {
       log.error({ err: finalizeErr, threadId, messageId }, "Agent finalize failed")
     }
@@ -5762,7 +5880,7 @@ async function runThreadTurn(
           text,
           steps,
         })
-        emitStreamEvent("done", { finishReason })
+        if (finishReason !== "error") emitStreamEvent("done", { finishReason })
       }
     }
   } catch (err) {

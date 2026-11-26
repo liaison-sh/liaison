@@ -1086,6 +1086,7 @@ export const FR: Record<string, string> = {
   "My computer": "Mon ordinateur",
   "My computer, else the cloud": "Mon ordinateur, sinon le cloud",
   "Built in": "Intégré",
+  "On an event": "Sur un événement",
   "Who approves its drafts": "Qui approuve ses brouillons",
   "Whoever may approve them": "Toute personne habilitée à les approuver",
   "Only me, the routine's owner": "Moi seul, propriétaire de la routine",

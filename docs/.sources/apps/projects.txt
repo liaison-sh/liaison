@@ -284,3 +284,5 @@ A project refuses lookup and formula fields too; the fields editor offers neithe
 time_plan_set refuses a request that sets nothing, before any approval -> apps/api/src/apps/projects/service/time-plan.ts:673 ; apps/api/src/apps/projects/app.manifest.json:4453
 An omitted basis on a fixed-price project becomes fixed; a basis contradicting the terms is refused -> apps/api/src/apps/projects/service/time-plan.ts:699 ; apps/api/src/apps/projects/service/time-plan.ts:707
 A project created with its tasks takes each task's timebox and milestone flag when it turns time and budgets on -> apps/api/src/apps/projects/service/create-project.ts:623 ; apps/api/src/modules/apps/sandbox/bridge/projects.ts:669
+issue approval of a planned-vs-done draft decided by invoicing:approve, not documents:write -> bundled-apps/invoicing/src/mutations/from-reconcile.ts:409
+credit correction from a card decided by invoicing:approve -> bundled-apps/invoicing/src/mutations/credit-from-reconcile.ts:371

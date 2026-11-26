@@ -128,8 +128,9 @@ describe("a milestone's invoice", () => {
       expect(h.approvals).toHaveLength(1)
       expect(h.approvals[0]).toMatchObject({
         tool_name: "invoicing:invoice_issue",
-        approve_scope: "invoicing:documents:write",
       })
+      // Decided by the issue tool's own deciders (invoicing:approve), never by the drafts' writers.
+      expect(h.approvals[0]?.approve_scope).toBeUndefined()
       amounts.push(
         linesOf(h.db, d.id).map((l) => [
           String(l.quantity),

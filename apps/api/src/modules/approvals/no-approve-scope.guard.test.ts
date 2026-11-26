@@ -24,6 +24,19 @@ const MONEY_ROOTS = ["bundled-apps/invoicing/src", "apps/api/src/apps/projects"]
  */
 const ALLOWED = new Set(["bundled-apps/invoicing/src/reads.ts"])
 
+/** A card naming its deciding scope: `approve_scope: "..."` or `approve_scope: x` (not a type). */
+const NAMES_APPROVE_SCOPE = /\bapprove_scope:\s*[^\s]/
+
+/**
+ * Money cards that issue nothing and name their deciders, by their reviewed design: the daily
+ * e-invoice send card (decided by whoever may send the documents) and the renewal of a stream's
+ * standing e-invoice authorization (decided by the e-invoicing settings' deciders).
+ */
+const OWN_SCOPE_CARDS = new Set([
+  "bundled-apps/invoicing/src/einvoicing/send-batch.ts",
+  "bundled-apps/invoicing/src/einvoicing/standing.ts",
+])
+
 const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".turbo", "coverage", "e2e", "tests"])
 
 function isTest(path: string): boolean {
@@ -68,6 +81,20 @@ describe("no code asks a person for an approve scope", () => {
       .map((path) => relative(REPO, path))
       .filter((path) => !ALLOWED.has(path))
     expect(found).toEqual([])
+  })
+
+  it("the money code's cards are decided by their tool's own deciders: none names approve_scope", () => {
+    // A card of an issuing tool decided by the tool's own required scope (documents:write) let a
+    // person who may edit drafts, and nothing more, approve an invoice a job or an agent staged.
+    // Omitting `approve_scope` keeps the tool's deciding scope. The exceptions are cards that
+    // issue nothing, each decided as its reviewed design says.
+    const found = MONEY_ROOTS.flatMap((root) => sourceFiles(join(REPO, root)))
+      .filter((path) => NAMES_APPROVE_SCOPE.test(readFileSync(path, "utf8")))
+      .map((path) => relative(REPO, path))
+      .filter((path) => !OWN_SCOPE_CARDS.has(path))
+    expect(found).toEqual([])
+    expect(NAMES_APPROVE_SCOPE.test(`approve_scope: "invoicing:documents:write",`)).toBe(true)
+    expect(NAMES_APPROVE_SCOPE.test(`approve_scope?: string`)).toBe(false)
   })
 
   it("the scan reads the money code and would see a check", () => {

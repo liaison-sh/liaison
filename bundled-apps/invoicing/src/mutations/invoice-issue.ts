@@ -290,12 +290,10 @@ async function issueDraftInvoice(
   const ask = async (again = false) =>
     ctx.requestApproval({
       tool_name: "invoicing:invoice_issue",
-      // Asked again for a draft made from a project: whoever could decide the first card can.
+      // Asked again for a draft made from a project: the first card's deadline. Both are decided
+      // by the tool's own deciders.
       ...(again && draft.source?.billing_project_id
-        ? {
-            approve_scope: "invoicing:documents:write",
-            expiry_hours: ISSUE_APPROVAL_EXPIRY_HOURS,
-          }
+        ? { expiry_hours: ISSUE_APPROVAL_EXPIRY_HOURS }
         : {}),
       ...asHandlerSummary(
         issueCard({

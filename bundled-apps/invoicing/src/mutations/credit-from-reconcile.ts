@@ -9,7 +9,7 @@
 // - It never raises a billed figure (`use_new_line`) and never credits past what remains of the
 //   invoice (`over_credit`, the credit note path's own cap).
 // - It always waits for a person: an agent's or a coding agent's call parks an approval of this
-//   tool, decided by a holder of `invoicing:documents:write`; a person's own click runs at once on
+//   tool, decided by a holder of the invoicing approve right; a person's own click runs at once on
 //   their scope. Every check runs again when the approval is decided, inside the run that issues,
 //   so two corrections of one line parked side by side cannot both credit it: the second finds the
 //   line already corrected. The note's key `credit:<reconciliation>:<line>:<n>` and the report's
@@ -369,7 +369,6 @@ async function creditFromReconcileRun(
         }),
       ),
       current_payload: payload,
-      approve_scope: "invoicing:documents:write",
     })
     if (!approval.auto_approved)
       return {

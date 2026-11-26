@@ -1101,7 +1101,8 @@
             "description": "Pipeline: deal company."
           },
           "contactId": {
-            "type": "string"
+            "type": "string",
+            "description": "Pipeline: the deal's person, a contact id (never the company's id). Leave out if unknown."
           },
           "amountMinor": {
             "type": "integer",

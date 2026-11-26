@@ -20,6 +20,7 @@ import {
 import {
   inboundSenderEmail,
   isMailSenderFilterActive,
+  isOutboundMailEvent,
   type MailSenderFilter,
   mailSenderFilterMatches,
 } from "~/infra/jobs/event-routine-gate"
@@ -142,6 +143,7 @@ async function fire(evt: {
   action: string
   entityId: string
   data?: Record<string, unknown>
+  metadata?: Record<string, unknown>
 }) {
   await _publishEventInternal({ ...evt, orgId: ORG })
   await flushEventHandlers()
@@ -488,5 +490,21 @@ describe("mail sender filter (S26)", () => {
     await subscribe("mail:message:create", { fromContactIds: [CONTACT_ORG] })
     await fire(msgEvent(MSG_OWNER_OUT, "client@acme.test", "outbound"))
     expect(ticks().length).toBe(0)
+  })
+
+  test("with no filter, the org's own outgoing mail never starts a mail routine; mail that arrives does", async () => {
+    await subscribe("mail:message:create")
+    expect(
+      isOutboundMailEvent({ ...msgEvent(MSG_OWNER_OUT, "x@y.z", "outbound"), orgId: ORG }),
+    ).toBe(true)
+    expect(isOutboundMailEvent({ ...msgEvent(MSG_OWNER, "x@y.z"), orgId: ORG })).toBe(false)
+    // Another routine's approved send (a change request mail) is outgoing: no tick.
+    await fire({
+      ...msgEvent(MSG_OWNER_OUT, "owner@gate.test", "outbound"),
+      metadata: { stagedByRoutineId: "00000000-0000-0000-0000-00000000beef" },
+    })
+    expect(ticks().length).toBe(0)
+    await fire(msgEvent(MSG_OWNER, "client@acme.test"))
+    expect(ticks().length).toBe(1)
   })
 })

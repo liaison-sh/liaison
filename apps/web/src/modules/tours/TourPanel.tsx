@@ -234,6 +234,9 @@ function standsBy(step: TourStep): boolean {
  */
 export function watchOnly(beat: EffectiveBeat): boolean {
   if (beat.kind !== "do") return false
+  // The person's own act (`actor: "user"`, a price only they set): no agent or routine does it,
+  // so the card waits on them, never says their agent is working on it (demo walk 2026-11-26).
+  if (beat.event?.actor === "user") return false
   const steps = beat.autoplay ?? []
   return steps.length > 0 && steps.every(standsBy)
 }

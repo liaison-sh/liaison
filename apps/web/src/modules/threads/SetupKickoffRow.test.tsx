@@ -8,13 +8,19 @@ vi.mock("~/modules/secret-request/SecretRequestToolCard", () => ({
   ),
 }))
 
-const { sendMock } = vi.hoisted(() => ({ sendMock: vi.fn() }))
+const { sendMock, getMock } = vi.hoisted(() => ({
+  sendMock: vi.fn(),
+  // No live read by default: the card shows the row's snapshot.
+  getMock: vi.fn(() => Promise.reject(new Error("offline"))),
+}))
 vi.mock("~/modules/threads/thread-send", () => ({
   sendThreadMessage: sendMock,
   releaseHeldScopes: () => {},
   sendFailureToast: () => ({ message: "failed", type: "error" }),
 }))
-vi.mock("~/modules/shell/ApiContext", () => ({ useApi: () => ({ post: vi.fn() }) }))
+vi.mock("~/modules/shell/ApiContext", () => ({
+  useApi: () => ({ post: vi.fn(), get: getMock }),
+}))
 vi.mock("~/modules/auth/auth-store", () => ({
   userFromToken: () => ({ userId: "u-1", name: "Ada" }),
 }))
@@ -155,5 +161,69 @@ describe("SetupKickoffRow on Cloud", () => {
     const row = screen.getByTestId("setup-kickoff-row")
     expect(row.textContent).toContain(SELF_HOSTED_INTRO)
     expect(screen.queryByTestId("setup-goal-support")).toBeNull()
+  })
+})
+
+describe("SetupKickoffRow reads the checklist live", () => {
+  const SNAPSHOT = {
+    ...META,
+    secretRequestId: undefined,
+    managed: true,
+    state: {
+      items: [
+        { key: "apps", done: true, optional: false },
+        { key: "team", done: false, optional: false },
+        { key: "knowledge", done: false, optional: false },
+      ],
+      next: "team",
+      asOf: "2026-11-26T10:00:00.000Z",
+    },
+  }
+  const NOW = {
+    items: [
+      { key: "apps", done: true, optional: false },
+      { key: "team", done: true, optional: false },
+      { key: "knowledge", done: true, optional: false },
+    ],
+    next: null,
+    asOf: "2026-11-26T10:20:00.000Z",
+  }
+
+  it("a step done since the card was posted shows as done, the count follows (EN and FR)", async () => {
+    getMock.mockReset()
+    getMock.mockResolvedValue(NOW as never)
+    const view = setupKickoffOf(SNAPSHOT)
+    if (!view) throw new Error("not read")
+    render(() => <SetupKickoffRow messageId="m-8" threadId="t-8" view={view} />)
+    // The row's snapshot first.
+    expect(screen.getByTestId("setup-checklist-progress").textContent).toBe("1 of 3 done")
+    await waitFor(() =>
+      expect(screen.getByTestId("setup-checklist-progress").textContent).toBe("3 of 3 done"),
+    )
+    expect(getMock).toHaveBeenCalledWith("/first-run/checklist")
+    expect(screen.getByTestId("setup-item-team").getAttribute("data-done")).toBe("true")
+    expect(screen.queryByTestId("setup-item-start-knowledge")).toBeNull()
+  })
+
+  it("reads again when the tab comes back into view; a failed read keeps the card", async () => {
+    getMock.mockReset()
+    getMock.mockRejectedValueOnce(new Error("offline"))
+    const view = setupKickoffOf(SNAPSHOT)
+    if (!view) throw new Error("not read")
+    render(() => (
+      <I18nProvider initialLocale="fr">
+        <SetupKickoffRow messageId="m-9" threadId="t-9" view={view} />
+      </I18nProvider>
+    ))
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(1))
+    const progress = screen.getByTestId("setup-checklist-progress")
+    const before = progress.textContent
+    expect(screen.getByTestId("setup-item-team").getAttribute("data-done")).toBe("false")
+    getMock.mockResolvedValue(NOW as never)
+    document.dispatchEvent(new Event("visibilitychange"))
+    await waitFor(() =>
+      expect(screen.getByTestId("setup-item-team").getAttribute("data-done")).toBe("true"),
+    )
+    expect(screen.getByTestId("setup-checklist-progress").textContent).not.toBe(before)
   })
 })

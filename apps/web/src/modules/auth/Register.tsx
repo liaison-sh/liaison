@@ -6,6 +6,7 @@ import { ApiError, anonApiClient } from "~/lib/api-client"
 import { authApiPath } from "~/lib/env"
 import { setTokens } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { markFirstOpen } from "~/modules/threads/personal-dm-store"
 import { Button } from "~/ui/Button"
 import { Input } from "~/ui/Input"
 
@@ -76,6 +77,9 @@ const Register: Component = () => {
 
       const result = await api.post<RegisterResponse>(authApiPath("/register"), body)
       setTokens(result.accessToken, result.refreshToken)
+      // A new account's first open, a teammate's from an invitation as the
+      // workspace owner's: their own agent conversation, not an empty Home.
+      markFirstOpen()
       navigate("/")
     } catch (err) {
       if (err instanceof ApiError) {

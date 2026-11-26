@@ -775,7 +775,7 @@ export async function raiseIssueApproval(
         ? { lines: [...shown, latest], latest_on: String(latestIssueOn).slice(0, 10) }
         : { lines: shown },
       current_payload: await issuePayloadFor(ctx, draftId),
-      approve_scope: "invoicing:documents:write",
+      // Decided by the tool's own deciders (invoicing:approve), never by the drafts' writers.
       expiry_hours: ISSUE_APPROVAL_EXPIRY_HOURS,
     })
     return typeof parked?.approval_id === "string" ? parked.approval_id : null

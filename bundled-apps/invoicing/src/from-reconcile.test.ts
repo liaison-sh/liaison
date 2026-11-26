@@ -198,9 +198,10 @@ describe("a draft from planned vs done", () => {
     expect(h.approvals[0]).toMatchObject({
       tool_name: "invoicing:invoice_issue",
       current_payload: { draft_id: d.id },
-      approve_scope: "invoicing:documents:write",
       expiry_hours: 720,
     })
+    // Decided by the issue tool's own deciders (invoicing:approve), never by the drafts' writers.
+    expect(h.approvals[0]?.approve_scope).toBeUndefined()
     // Whoever decides reads who is invoiced and how much, before the latest issue day.
     const cardLines =
       (h.approvals[0]?.summary_detail as { lines: string[] } | undefined)?.lines ?? []
@@ -230,7 +231,7 @@ describe("a draft from planned vs done", () => {
     if (res.status !== "completed") throw new Error(JSON.stringify(res))
     expect(res.approved).toBe(false)
     expect((docs(h.db)[0] as Row).approved_by ?? null).toBeNull()
-    expect(h.approvals[0]?.approve_scope).toBe("invoicing:documents:write")
+    expect(h.approvals[0]?.approve_scope).toBeUndefined()
     expect(res.message).toContain("waiting for someone who can issue invoices")
   })
 

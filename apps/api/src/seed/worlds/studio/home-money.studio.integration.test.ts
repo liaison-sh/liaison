@@ -122,7 +122,6 @@ async function drafted(key: string, month: string, latestOn: string, ref?: strin
       summary: `Issue the ${key} draft for ${month}`,
       summary_detail: { lines: ["Line 1", "Line 2", "Line 3"], latest_on: latestOn },
       current_payload: { draft_id: doc.id },
-      approve_scope: "invoicing:documents:write",
       expiry_hours: 720,
     },
   })
@@ -246,9 +245,10 @@ describe("money on Home on the services world", () => {
          WHERE a.org_id = ${orgId}::uuid AND a.tool_name = 'invoicing:invoice_issue'`),
     )
     const reached = rows.map((r) => r.email.split("@")[0]).sort()
-    // Finance, the two sales people, the project lead, the co-founder and the owner's seat:
-    // the holders of the issue's scope. No developer, designer, data engineer or QA.
-    expect(reached).toEqual(["anais", "bastien", "lea", "owner", "romain", "sarah"])
+    // Finance, the project lead, the co-founder and the owner's seat: the holders of the issue
+    // tool's deciding scope (invoicing:approve). The sales people edit drafts but never decide an
+    // issue; no developer, designer, data engineer or QA either.
+    expect(reached).toEqual(["anais", "bastien", "lea", "owner"])
     // A developer's Home holds no issue approval.
     const people = await withPrivilegedDb(orgId, "studio-money:delivery", async (tx) =>
       rowsOf<{ id: string }>(

@@ -39,6 +39,8 @@ const BILLER_SCOPES = [
   "projects:reconcile:write",
   "invoicing:documents:read",
   "invoicing:documents:write",
+  // Decides the issue cards: the issue tool's own deciding scope, which documents:write is not.
+  "invoicing:approve",
 ]
 const ISSUE_SCOPES = ["invoicing:documents:read", "invoicing:documents:write"]
 
@@ -159,7 +161,6 @@ async function waitingDraft(input: {
         latest_on: input.latestOn,
       },
       current_payload: { draft_id: doc.id },
-      approve_scope: "invoicing:documents:write",
       expiry_hours: 720,
     },
   })
@@ -372,7 +373,6 @@ describe("a draft waiting on its latest issue day", () => {
         tool_name: "invoicing:invoice_issue",
         summary: "Issue an invoice with no latest day",
         current_payload: { draft_id: crypto.randomUUID() },
-        approve_scope: "invoicing:documents:write",
         expiry_hours: 720,
       },
     })

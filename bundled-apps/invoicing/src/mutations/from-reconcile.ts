@@ -8,7 +8,7 @@
 // - It reads the billed lines through projects' own read (wording, billed minutes, unit, proof
 //   labels, the rate frozen at Create): never real time, a note, an estimate or a person.
 // - It takes no number. Issuing is a separate act: the draft gets an issue approval, decided by a
-//   holder of `invoicing:documents:write`. The approval always parks (a cross-app hop runs as the
+//   holder of the invoicing approve right (the issue tool's own deciders). The approval always parks (a cross-app hop runs as the
 //   in-app agent), with a hidden anchor thread when the card has none. If it cannot park (too few
 //   people can decide it), the draft stays and is issued from the pending list.
 // - The client activity report is stored with it, version 1.
@@ -406,7 +406,7 @@ export async function draftFromReconcile(
         latest_on: monthEnd(read.period.to),
       },
       current_payload: await issuePayloadFor(ctx, draftId),
-      approve_scope: "invoicing:documents:write",
+      // Decided by the tool's own deciders (invoicing:approve), never by the drafts' writers.
       expiry_hours: ISSUE_APPROVAL_EXPIRY_HOURS,
     })
     approvalId = typeof parked?.approval_id === "string" ? parked.approval_id : null

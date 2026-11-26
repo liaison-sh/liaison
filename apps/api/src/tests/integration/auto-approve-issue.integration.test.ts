@@ -250,7 +250,6 @@ describe("an auto-approve policy on invoicing", () => {
         tool_name: "invoicing:invoice_issue",
         summary: "Issue the invoice draft from planned vs done",
         current_payload: { draft_id: draftId },
-        approve_scope: "invoicing:documents:write",
         expiry_hours: 720,
       },
     })
@@ -356,7 +355,6 @@ describe("an auto-approve policy on invoicing", () => {
         lineId: randomUUID(),
         correctedQuantity: "2.5",
       },
-      approve_scope: "invoicing:documents:write",
     }
     for (const origin of ["in-app-agent", "mcp"] as const) {
       const parked = await createHandlerApprovalRequest({

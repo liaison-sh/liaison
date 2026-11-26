@@ -24,7 +24,18 @@ export const DEFAULT_CLOUD_DOMAIN = "liaison.sh"
 // Undeclared at runtime anywhere else, which `typeof` tolerates.
 declare const __LIAISON_CLOUD_DOMAIN__: string | null | undefined
 
-const DOMAIN_SHAPE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/
+
+/** One DNS label: what a workspace name can be. */
+const SLUG_SHAPE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+
+/** `s` without its trailing dots (and leading ones too), in one pass: no regex to backtrack. */
+function trimDots(s: string, leading: boolean): string {
+  let start = 0
+  let end = s.length
+  while (end > 0 && s.charCodeAt(end - 1) === 46) end--
+  if (leading) while (start < end && s.charCodeAt(start) === 46) start++
+  return s.slice(start, end)
+}
 
 /**
  * The cloud domain a build value means: null or undefined is the default, an
@@ -33,9 +44,11 @@ const DOMAIN_SHAPE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*
  */
 export function resolveCloudDomain(raw: string | null | undefined): string | null {
   if (raw === undefined || raw === null) return DEFAULT_CLOUD_DOMAIN
-  const domain = raw.trim().toLowerCase().replace(/^\.+/, "").replace(/\.+$/, "")
+  const domain = trimDots(raw.trim().toLowerCase(), true)
   if (domain === "") return null
-  return DOMAIN_SHAPE.test(domain) ? domain : null
+  // Two or more DNS labels, each checked on its own (bounded, so no backtracking).
+  const labels = domain.split(".")
+  return labels.length >= 2 && labels.every((label) => SLUG_SHAPE.test(label)) ? domain : null
 }
 
 /** This build's cloud domain, or null when the Cloud screen is off. */
@@ -45,8 +58,6 @@ export function buildCloudDomain(): string | null {
   )
 }
 
-/** One DNS label: what a workspace name can be. */
-const SLUG_SHAPE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
 
 /** Whether `slug` is a workspace name as the Cloud screen takes it. */
 export function isValidWorkspaceSlug(slug: string): boolean {
@@ -63,7 +74,7 @@ export function workspaceSlugFromInput(input: string, domain: string): string | 
   value = value.replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
   const end = value.search(/[/?#]/)
   if (end >= 0) value = value.slice(0, end)
-  value = value.replace(/\.+$/, "")
+  value = trimDots(value, false)
   const suffix = `.${domain}`
   if (value.endsWith(suffix)) value = value.slice(0, -suffix.length)
   return isValidWorkspaceSlug(value) ? value : null

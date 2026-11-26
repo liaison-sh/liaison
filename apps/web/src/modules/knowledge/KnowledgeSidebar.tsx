@@ -22,6 +22,7 @@ import { evictTabByEntity, openTab, tabStore } from "~/modules/shell/tab-store"
 import { addToast } from "~/modules/shell/toast-store"
 import { Dialog } from "~/ui/Dialog"
 import { ScrollFade } from "~/ui/ScrollFade"
+import { highlighted } from "./highlight"
 import KnowledgeCollectionTree, {
   type MoveDocArgs,
   type MoveRequest,
@@ -90,15 +91,18 @@ const KnowledgeSidebar: Component = () => {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
   // Partition the tree into Personal (nodes owned by me: real folders or the
-  // Personal notes bucket) and Shared (everything else: shared folders and
-  // the Unfiled bucket). The server tags each node with its owner.
+  // Personal notes bucket, and the Shared with me bucket) and Shared (everything
+  // else: shared folders and the Unfiled bucket). The server tags each node with its owner.
   const me = createMemo(() => userFromToken()?.userId ?? null)
   const partitionedTree = createMemo(() => {
     const personal: CollectionTreeNode[] = []
     const shared: CollectionTreeNode[] = []
     const myId = me()
     for (const node of knowledgeStore.collectionsTree) {
-      if (myId && node.ownerUserId === myId) personal.push(node)
+      // Pages someone shared with this person, not with the organization: their own
+      // group in this person's section, never under Shared with org.
+      if (node.kind === "shared_with_me") personal.push(node)
+      else if (myId && node.ownerUserId === myId) personal.push(node)
       else shared.push(node)
     }
     return { personal, shared }
@@ -551,12 +555,15 @@ const KnowledgeSidebar: Component = () => {
                   >
                     <div class="min-w-0 flex-1">
                       <span class="truncate text-[13px] font-medium text-text">{hit.title}</span>
-                      <span
-                        data-testid={`knowledge-search-result-source-${hit.source}`}
-                        class="ml-1.5 rounded bg-surface px-1.5 text-[11px] text-text-tertiary"
-                      >
-                        {hit.source}
-                      </span>
+                      {/* Pages of this workspace need no tag; another source says its name. */}
+                      <Show when={hit.source !== "knowledge" && hit.source !== "local"}>
+                        <span
+                          data-testid={`knowledge-search-result-source-${hit.source}`}
+                          class="ml-1.5 rounded bg-surface px-1.5 text-[11px] text-text-tertiary"
+                        >
+                          {hit.source}
+                        </span>
+                      </Show>
                       <Show when={hit.syncedSourceApp}>
                         {(app) => (
                           <span
@@ -567,6 +574,26 @@ const KnowledgeSidebar: Component = () => {
                             <span aria-hidden>☁</span>
                             {app()}
                           </span>
+                        )}
+                      </Show>
+                      <Show when={hit.snippet}>
+                        {(snippet) => (
+                          <p
+                            data-testid={`knowledge-search-result-snippet-${hit.sourceEntityId}`}
+                            class="mt-0.5 line-clamp-2 text-[12px] leading-snug text-text-tertiary"
+                          >
+                            <For each={highlighted(snippet(), searchQuery())}>
+                              {(part) =>
+                                part.match ? (
+                                  <mark class="rounded-sm bg-accent/15 px-0.5 text-text">
+                                    {part.text}
+                                  </mark>
+                                ) : (
+                                  part.text
+                                )
+                              }
+                            </For>
+                          </p>
                         )}
                       </Show>
                     </div>

@@ -29,7 +29,7 @@ import type { RichEditorHandle } from "~/modules/editor"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi, useOptionalApi } from "~/modules/shell/ApiContext"
 import { shellTier } from "~/modules/shell/shell-tier"
-import { evictTabByEntity } from "~/modules/shell/tab-store"
+import { evictTabByEntity, makeTabId, updateTabLabel } from "~/modules/shell/tab-store"
 import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
 import {
@@ -494,13 +494,19 @@ const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFo
     onCleanup(noteKnowledgePageOpen(id, api))
   })
 
-  // A page that is not found closes its tab, unless this view holds text that is
-  // not saved yet: that text stays on screen until the person has it (edge 3).
+  // A page that is not found (gone, or not shared with this reader: the server does
+  // not say which) keeps its tab and says so calmly, unless this view holds text that
+  // is not saved yet: that text stays on screen until the person has it (edge 3). The
+  // tab's label becomes a neutral one, so a title from a link never stays on screen.
   createEffect(() => {
     if (doc() === "not-found" && !(saver?.hasUnsaved() ?? false)) {
       // A folder's page that went away leaves the folder open: it asks again.
       if (props.folder) props.folder.onGone()
-      else evictTabByEntity("knowledge:document", props.entityId)
+      else
+        updateTabLabel(
+          makeTabId("knowledge:document", props.entityId),
+          i18n.t("knowledge.noAccess.tabLabel"),
+        )
     }
   })
 
@@ -754,9 +760,22 @@ const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFo
       fallback={
         <div
           data-testid="knowledge-doc-not-found"
-          class="flex h-full items-center justify-center p-4"
+          class="flex h-full items-start justify-center p-4 pt-16"
         >
-          <p class="text-sm text-text-secondary">{i18n.t("knowledge.knowledgeItemNotFound")}</p>
+          <div class="flex w-full max-w-md flex-col gap-2 rounded-md border border-border-subtle bg-surface px-4 py-3">
+            <p class="text-[13px] font-medium text-text">{i18n.t("knowledge.noAccess.title")}</p>
+            <p class="text-[13px] text-text-secondary">{i18n.t("knowledge.noAccess.body")}</p>
+            <div>
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid="knowledge-doc-not-found-close"
+                onClick={() => evictTabByEntity("knowledge:document", props.entityId)}
+              >
+                {i18n.t("knowledge.noAccess.close")}
+              </Button>
+            </div>
+          </div>
         </div>
       }
     >

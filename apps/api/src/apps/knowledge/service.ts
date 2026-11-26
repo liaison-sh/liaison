@@ -980,11 +980,14 @@ export async function listKnowledgeDocuments(
   const limit = Math.max(1, Math.min(200, opts.limit ?? 50))
   const includeArchived = opts.includeArchived ?? false
   // Unfiled is per reader: in no live folder they can see (their own private
-  // pages and personal documents are the Personal section's).
+  // pages and personal documents are the Personal section's, and someone else's
+  // page the organization cannot read is Shared with me, collections.ts).
   const unfiledClause = opts.unfiled
     ? drizzleSql`AND d.document_scope = 'organization'
         AND ${inNoVisibleFolder()}
         AND NOT ${onlyMine(actor)}
+        AND NOT (d.org_access = 'none'
+                 AND COALESCE(d.owner_user_id, d.created_by) IS DISTINCT FROM ${actor.userId}::uuid)
         AND NOT EXISTS (
           SELECT 1 FROM ${knowledgeRel("collections")} c
            WHERE c.org_id = d.org_id AND c.index_document_id = d.id AND c.archived_at IS NULL)`

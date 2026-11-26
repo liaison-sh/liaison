@@ -443,7 +443,7 @@ describe("KnowledgeDocumentView: around the text", () => {
     )
   })
 
-  it("personal note isolation: 404 renders not-found and evicts the tab (MF-3, T23)", async () => {
+  it("personal note isolation: 404 says the page cannot be opened, under a neutral tab label (MF-3, T23)", async () => {
     const { openTab, tabStore } = await import("~/modules/shell/tab-store")
     openTab({ type: "knowledge:document", entityId: "alices-id", label: "Denied doc" })
     const api = makeApi()
@@ -452,7 +452,12 @@ describe("KnowledgeDocumentView: around the text", () => {
     })
     renderView(api, "alices-id")
     expect(await screen.findByTestId("knowledge-doc-not-found")).toBeInTheDocument()
-    expect(tabStore.tabs.some((t) => t.entityId === "alices-id")).toBe(false)
+    // A calm state, in the tab that was opened: the link's title is not kept on it.
+    expect(screen.getByText("You can't open this page")).toBeInTheDocument()
+    const tab = () => tabStore.tabs.find((t) => t.entityId === "alices-id")
+    expect(tab()?.label).toBe("Page you cannot open")
+    fireEvent.click(screen.getByTestId("knowledge-doc-not-found-close"))
+    expect(tab()).toBeUndefined()
   })
 
   it("hides the review chip on personal pages", async () => {

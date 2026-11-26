@@ -580,7 +580,7 @@ describe("no page ends in no place", () => {
     expect(await inUnfiled(ben, doc)).toEqual({ tree: true, list: true })
   })
 
-  it("my page in no folder, shared with one person, is Unfiled for both, not a personal note", async () => {
+  it("my page in no folder, shared with one person, is Unfiled for me and Shared with me for them", async () => {
     const doc = await page(ana, "Ana's, for Ben", { access: "none" })
     expect(has(await node(ana, "__personal_notes__"), doc)).toBe(true)
     await as(ana, (tx, a) =>
@@ -592,9 +592,9 @@ describe("no page ends in no place", () => {
       ),
     )
     expect(has(await node(ana, "__personal_notes__"), doc)).toBe(false)
-    for (const reader of [ana, ben]) {
-      expect(await inUnfiled(reader, doc)).toEqual({ tree: true, list: true })
-    }
+    expect(await inUnfiled(ana, doc)).toEqual({ tree: true, list: true })
+    expect(await inUnfiled(ben, doc)).toEqual({ tree: false, list: false })
+    expect(has(await node(ben, "__shared_with_me__"), doc)).toBe(true)
   })
 
   it("the tree and Unfiled stay fast on 2,000 pages whose statistics are missing", async () => {
@@ -667,6 +667,39 @@ describe("no page ends in no place", () => {
       await su.unsafe(`ANALYZE ${K}.documents, ${K}.collections, ${K}.collection_memberships`)
       await su.end()
     }
+  })
+
+  it("a page shared with one person sits in their Shared with me, not in Unfiled", async () => {
+    const doc = await page(ana, "Just for Ben", { access: "none" })
+    await privileged(
+      sql`INSERT INTO kernel.resource_grants (org_id, resource_type, resource_id, grantee_kind, grantee, role, created_by)
+          VALUES (${orgId}::uuid, 'knowledge.document', ${doc}::uuid, 'user', ${ben}, 'editor', ${ana}::uuid)`,
+    )
+    const bens = await tree(ben)
+    const withMe = bens.find((n) => n.id === "__shared_with_me__")
+    expect(withMe?.kind).toBe("shared_with_me")
+    expect(withMe?.ownerUserId).toBeNull()
+    expect(withMe?.documents.map((d) => d.id)).toContain(doc)
+    expect(
+      has(
+        bens.find((n) => n.id === "__unfiled__"),
+        doc,
+      ),
+    ).toBe(false)
+    // Its owner, whose page other people read, finds it in Unfiled.
+    const anas = await tree(ana)
+    expect(
+      has(
+        anas.find((n) => n.id === "__shared_with_me__"),
+        doc,
+      ),
+    ).toBe(false)
+    expect(
+      has(
+        anas.find((n) => n.id === "__unfiled__"),
+        doc,
+      ),
+    ).toBe(true)
   })
 
   it("the tree names its virtual nodes by kind and lists pages by title", async () => {

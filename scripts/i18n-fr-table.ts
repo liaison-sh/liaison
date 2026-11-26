@@ -867,7 +867,7 @@ export const FR: Record<string, string> = {
   "This mailbox's domain is not allowed in this workspace.":
     "Le domaine de cette boîte mail n'est pas autorisé dans cet espace.",
   "This app is turned off for the workspace.": "Cette application est désactivée pour l'espace.",
-  "Your organisation's Google Workspace has not allowed this app yet. A super admin marks it Trusted (Admin console, Security, API controls); the agent has the steps. Then try again.":
+  "Your organization's Google Workspace has not allowed this app yet. A super admin marks it Trusted (Admin console, Security, API controls); the agent has the steps. Then try again.":
     "Le Google Workspace de votre organisation n'autorise pas encore cette application. Un super administrateur doit la marquer comme Fiable (console d'administration > Sécurité > Commandes des API) ; l'agent connaît la marche à suivre. Réessayez ensuite.",
   "The connection did not complete.": "La connexion n'a pas abouti.",
   "The account is connected. This window closes by itself; the conversation shows the result.":
@@ -3254,16 +3254,16 @@ export const FR: Record<string, string> = {
   "Claude account": "Compte Claude",
   "Not signed in to Claude": "Non connecté à Claude",
   "Delete my account": "Supprimer mon compte",
-  "Erase your account in this organisation. This cannot be undone.":
+  "Erase your account in this organization. This cannot be undone.":
     "Effacez votre compte dans cette organisation. Cette action est irréversible.",
   "Delete your account": "Supprimer votre compte",
   "What is deleted": "Ce qui est supprimé",
   "Your profile, your private data (your personal agent, its memory, your preferences and your connected accounts) and your registered devices. You are signed out everywhere.":
     "Votre profil, vos données privées (votre agent personnel, sa mémoire, vos préférences et vos comptes connectés) et vos appareils enregistrés. Vous êtes déconnecté partout.",
   "What stays": "Ce qui reste",
-  "What you shared with your team, such as messages, tickets and documents, stays in the organisation without your name.":
+  "What you shared with your team, such as messages, tickets and documents, stays in the organization without your name.":
     "Ce que vous avez partagé avec votre équipe, comme les messages, les tickets et les documents, reste dans l'organisation sans votre nom.",
-  "Your accounts in other organisations are not affected.":
+  "Your accounts in other organizations are not affected.":
     "Vos comptes dans d'autres organisations ne sont pas concernés.",
   "To confirm, we email you a 6-digit code. A password is not enough.":
     "Pour confirmer, nous vous envoyons un code à 6 chiffres par mail. Un mot de passe ne suffit pas.",
@@ -3274,7 +3274,7 @@ export const FR: Record<string, string> = {
   "Delete my account for good": "Supprimer définitivement mon compte",
   "Send a new code": "Envoyer un nouveau code",
   "Keep my account": "Garder mon compte",
-  "You are the only admin of this organisation, so your account cannot be deleted yet. Make another member an admin in Settings, then delete your account.":
+  "You are the only admin of this organization, so your account cannot be deleted yet. Make another member an admin in Settings, then delete your account.":
     "Vous êtes le seul administrateur de cette organisation, votre compte ne peut donc pas encore être supprimé. Nommez un autre membre administrateur dans les Paramètres, puis supprimez votre compte.",
   "That code is wrong or has expired. Check it, or ask for a new code.":
     "Ce code est incorrect ou a expiré. Vérifiez-le, ou demandez un nouveau code.",
@@ -3297,7 +3297,7 @@ export const FR: Record<string, string> = {
     "Effacer n'annule rien. Si quelqu'un a pu lire cette boîte, effacer l'avertissement n'y change rien. Ne l'effacez que si vous en comprenez la cause, par exemple si vous venez de réinitialiser votre boîte.",
   "Your browser checks the mailbox again right after. Anything that is still wrong brings the warning back.":
     "Votre navigateur vérifie de nouveau la boîte juste après. Tout ce qui pose encore problème fait revenir l'avertissement.",
-  "The clear is recorded in your organisation's audit log, with the findings listed above.":
+  "The clear is recorded in your organization's audit log, with the findings listed above.":
     "L'effacement est inscrit au journal d'audit de votre organisation, avec les constats listés ci-dessus.",
   "Mailbox password": "Mot de passe de la boîte",
   "Type your mailbox password to confirm. It is not your Liaison login password.":
@@ -3323,7 +3323,7 @@ export const FR: Record<string, string> = {
     "Ce que vos administrateurs et Liaison voient encore",
   "How you unlock this mailbox": "Comment vous déverrouillez cette boîte",
   "The assistant and your mail": "L'assistant et votre courrier",
-  "{{email}} is a shared mailbox for your organisation, so it is not encrypted this way. Everyone with access to it can read it, which is the point of a shared mailbox.":
+  "{{email}} is a shared mailbox for your organization, so it is not encrypted this way. Everyone with access to it can read it, which is the point of a shared mailbox.":
     "{{email}} est une boîte partagée de votre organisation, elle n'est donc pas chiffrée de cette façon. Toute personne qui y a accès peut la lire, c'est le principe d'une boîte partagée.",
   "{{email}} is your personal mailbox: only you can read it.":
     "{{email}} est votre boîte personnelle : vous seul pouvez la lire.",
@@ -3458,7 +3458,7 @@ export const FR: Record<string, string> = {
   "This mailbox uses the mailbox password you already chose. Nothing new to do here.":
     "Cette boîte utilise le mot de passe de boîte que vous avez déjà choisi. Rien de nouveau à faire ici.",
   "Unlock methods on file: {{methods}}": "Moyens de déverrouillage enregistrés : {{methods}}",
-  "Mail from your personal mailbox is private in Liaison: only you can read it. Not Liaison, not your organisation's admins. You set a mailbox password now: it is what opens your mail on other devices.":
+  "Mail from your personal mailbox is private in Liaison: only you can read it. Not Liaison, not your organization's admins. You set a mailbox password now: it is what opens your mail on other devices.":
     "Le courrier de votre boîte personnelle est privé dans Liaison : vous seul pouvez le lire. Ni Liaison, ni les administrateurs de votre organisation. Vous choisissez maintenant un mot de passe pour la boîte : c'est lui qui ouvre votre courrier sur vos autres appareils.",
   "Make it long and use it nowhere else. If you forget it, you can reset the mailbox: your mail downloads again from Gmail, but drafts written in Liaison are deleted.":
     "Choisissez-le long et ne l'utilisez nulle part ailleurs. Si vous l'oubliez, vous pouvez réinitialiser la boîte : votre courrier est téléchargé à nouveau depuis Gmail, mais les brouillons écrits dans Liaison sont supprimés.",
@@ -3487,9 +3487,9 @@ export const FR: Record<string, string> = {
     "La configuration a été interrompue. Saisissez à nouveau votre mot de passe.",
   "The two passwords do not match. Type the same mailbox password twice.":
     "Les deux mots de passe ne correspondent pas. Saisissez deux fois le même mot de passe de la boîte.",
-  "Your personal mailbox is stored with zero-access encryption. Liaison's servers and your organisation's admins cannot decrypt it. Mail arriving from the public internet is encrypted the moment it reaches us. It is not end to end encrypted between you and the sender, because standard email is not. Encryption protects the contents from being read. It does not prove who put a message in your mailbox, and it does not hide who you correspond with or when.":
+  "Your personal mailbox is stored with zero-access encryption. Liaison's servers and your organization's admins cannot decrypt it. Mail arriving from the public internet is encrypted the moment it reaches us. It is not end to end encrypted between you and the sender, because standard email is not. Encryption protects the contents from being read. It does not prove who put a message in your mailbox, and it does not hide who you correspond with or when.":
     "Votre boîte mail personnelle est stockée avec un chiffrement à accès zéro. Les serveurs de Liaison et les administrateurs de votre organisation ne peuvent pas la déchiffrer. Le courrier qui arrive d'internet est chiffré dès qu'il nous parvient. Il n'est pas chiffré de bout en bout entre vous et l'expéditeur, car le mail standard ne l'est pas. Le chiffrement empêche de lire le contenu. Il ne prouve pas qui a déposé un message dans votre boîte, et il ne cache pas avec qui vous échangez ni quand.",
-  "This mailbox is not set up yet, and nothing has been downloaded into it. Once you choose its password, it is stored with zero-access encryption: Liaison's servers and your organisation's admins cannot decrypt it.":
+  "This mailbox is not set up yet, and nothing has been downloaded into it. Once you choose its password, it is stored with zero-access encryption: Liaison's servers and your organization's admins cannot decrypt it.":
     "Cette boîte n'est pas encore configurée et rien n'y a été téléchargé. Dès que vous choisissez son mot de passe, elle est stockée avec un chiffrement à accès zéro : ni les serveurs de Liaison ni les administrateurs de votre organisation ne peuvent la déchiffrer.",
   "that this mailbox exists": "que cette boîte existe",
   "who you correspond with": "avec qui vous échangez",
@@ -4795,7 +4795,7 @@ export const FR: Record<string, string> = {
   Alignment: "Alignement",
   "Width (points)": "Largeur (points)",
   "Insert field…": "Insérer un champ…",
-  "The documents your organisation prints from its records: letters, declarations, certificates, labels.":
+  "The documents your organization prints from its records: letters, declarations, certificates, labels.":
     "Les documents que votre organisation imprime à partir de ses données : lettres, déclarations, certificats, étiquettes.",
   Kind: "Type",
   "PDF form": "Formulaire PDF",
@@ -5211,8 +5211,8 @@ export const FR_BY_KEY: Record<string, string> = {
   "contacts.sharing.orgEditHint": "L'ajoute aux contacts de l'organisation",
   "contacts.sharing.mailboxMembers": "Toutes les personnes ayant accès à {{name}}",
   "contacts.sharing.sharedMailboxMembers": "Toutes les personnes ayant accès à une boîte partagée",
-  "contacts.sharing.visibility.organisation": "Organisation",
-  "contacts.sharing.visibility.organisationHint":
+  "contacts.sharing.visibility.organization": "Organisation",
+  "contacts.sharing.visibility.organizationHint":
     "Dans les contacts de l'organisation : tous les membres le voient",
   "contacts.sharing.visibility.privateHint":
     "Vous seul voyez ce contact tant que vous ne le partagez pas",

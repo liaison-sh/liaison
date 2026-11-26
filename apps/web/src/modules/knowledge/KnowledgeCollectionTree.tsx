@@ -206,7 +206,9 @@ const CollectionRow: Component<CollectionRowProps> = (props) => {
       ? i18n.t("knowledge.personalNotes")
       : node().kind === "unfiled" || node().id === "__unfiled__"
         ? i18n.t("knowledge.unfiled")
-        : node().name
+        : node().kind === "shared_with_me"
+          ? i18n.t("knowledge.sharedWithMe")
+          : node().name
   const isPersonalBucket = () =>
     node().kind === "personal_notes" || node().id === "__personal_notes__"
   const manage = () => props.tree.canManageFolders !== false

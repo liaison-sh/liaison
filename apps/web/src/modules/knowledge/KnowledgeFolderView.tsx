@@ -252,14 +252,15 @@ const KnowledgeFolderView: Component<{ entityId: string }> = (props) => {
   }
 
   const path = () => ancestorsOf(knowledgeStore.collectionsTree, props.entityId)
-  const pad = () => (phone() ? "w-full px-4" : "mx-auto w-full max-w-2xl px-8")
 
   const breadcrumb = () => (
     <Show when={path().length > 0}>
       <nav
         data-testid="knowledge-folder-breadcrumb"
         aria-label={i18n.t("knowledge.folderPage.path")}
-        class={`flex shrink-0 flex-wrap items-center gap-1 pt-2 text-[12px] text-text-tertiary ${pad()}`}
+        // Aligned with the header below it (px-4; each crumb has its own px-1), not
+        // with the centered text column.
+        class="flex shrink-0 flex-wrap items-center gap-1 px-3 pt-2 text-[12px] text-text-tertiary"
       >
         <For each={path()}>
           {(node, i) => (

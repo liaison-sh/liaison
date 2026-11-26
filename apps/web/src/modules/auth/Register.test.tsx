@@ -100,6 +100,47 @@ describe("Register", () => {
     })
   })
 
+  it("a teammate accepting an invitation lands in their own agent: the first open is marked", async () => {
+    sessionStorage.removeItem("liaison:first-open")
+    const jwt = [
+      btoa(JSON.stringify({ alg: "HS256" })),
+      btoa(
+        JSON.stringify({
+          userId: "u2",
+          orgId: "o1",
+          name: "Tom",
+          roles: [],
+          scopes: [],
+          dimensionGrants: {},
+          exp: Math.floor(Date.now() / 1000) + 3600,
+        }),
+      ),
+      "sig",
+    ].join(".")
+    window.history.pushState(null, "", "/register?token=inv-1")
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes("/invites/inv-1/validate"))
+        return Promise.resolve(jsonResponse({ data: {} }))
+      if (url.includes("/register"))
+        return Promise.resolve(jsonResponse({ data: { accessToken: jwt } }))
+      return Promise.resolve(jsonResponse({ data: {} }))
+    })
+    render(() => (
+      <Router>
+        <Route path="/" component={() => <div>Home</div>} />
+        <Route path="*" component={Register} />
+      </Router>
+    ))
+    const nameInput = await screen.findByPlaceholderText("Your name")
+    const submit = screen.getByRole("button", { name: /create account/i })
+    await waitFor(() => expect(submit).not.toBeDisabled())
+    fireEvent.input(nameInput, { target: { value: "Tom" } })
+    fireEvent.click(submit)
+    await waitFor(() => expect(screen.getByText("Home")).toBeInTheDocument())
+    expect(sessionStorage.getItem("liaison:first-open")).toBe("personal-agent")
+  })
+
   it("displays an error when registration is rejected", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ data: { bootstrapped: false } }))
     fetchMock.mockResolvedValueOnce(jsonResponse({ error: { message: "Invalid" } }, 400))

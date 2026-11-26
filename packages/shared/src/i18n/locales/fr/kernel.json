@@ -376,7 +376,7 @@
     "modelUnavailable": "{{model}} (indisponible dans cet espace de travail)",
     "runsOnLiaisonAndNode": "S'exécute sur : Liaison, et votre ordinateur {{node}}"
   },
-  "allClear": "RIEN À SIGNALER",
+  "allClear": "Rien à signaler",
   "anEmailTheMoment": "un mail dès que",
   "app": {
     "name": "Liaison"
@@ -1989,11 +1989,11 @@
   },
   "homeStatusAreaMany": "DOMAINES",
   "homeStatusAreaOne": "DOMAINE",
-  "homeStatusNeedYouNowMany": "REQUIÈRENT VOTRE ATTENTION",
-  "homeStatusNeedYouNowOne": "REQUIERT VOTRE ATTENTION",
-  "homeStatusNothingUrgent": "RIEN NE VOUS ATTEND",
+  "homeStatusNeedYouNowMany": "requièrent votre attention",
+  "homeStatusNeedYouNowOne": "requiert votre attention",
+  "homeStatusNothingUrgent": "Rien ne vous attend",
   "homeStatusQueuedIn": "EN ATTENTE DANS",
-  "homeStatusUpdated": "MIS À JOUR",
+  "homeStatusUpdated": "mis à jour",
   "homeTimeJustNow": "à l'instant",
   "in": "dans",
   "integrations": "Intégrations",
@@ -4171,7 +4171,9 @@
       "wrongCodes": "{{name}} a saisi trois fois de suite un code erroné pour votre demande",
       "sendFailed": "{{title}} : le lien pour {{name}} n'a pas été envoyé",
       "staffTurn": "{{title}} : ouvrez-le dans Liaison pour le lire et le signer"
-    }
+    },
+    "mailboxBlocked": "La boîte mail {{email}} ne se synchronise plus : ses clés de chiffrement sont inutilisables. Ouvrez Paramètres > Mail pour les réinitialiser.",
+    "mailboxNotSyncing": "La boîte mail {{email}} ne se synchronise pas encore : configurez son chiffrement dans Paramètres > Mail pour commencer à recevoir des mails."
   },
   "approvalDecisionLine": {
     "withdrawn": "Retirée par le demandeur.",
@@ -6941,7 +6943,7 @@
     "retry": "Réessayer",
     "loading": "Ouverture de la discussion…"
   },
-  "homeStatusOtherWork": "DANS VOS AUTRES TÂCHES",
+  "homeStatusOtherWork": "dans vos autres tâches",
   "homeDecisions": {
     "notNow": "Plus tard",
     "setAside": "Mis de côté jusqu'à lundi. Il reviendra alors.",

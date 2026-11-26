@@ -5,6 +5,8 @@ description: "Ask your agent for a small app of your own (a tracker, a log, a li
 
 Your agent can build a small app for your organisation: a returns tracker, a visit log, a list of open requests. The app keeps its data in the organisation's data store, adds its own tools for the agent, and can show a page. Only your organisation sees it.
 
+To have Claude Code or Codex build it from your computer instead, see [Build an app for your organization with Claude Code or Codex](../developers/org-app-with-an-assistant.md).
+
 Building needs the `kernel:apps:build` scope; publishing is decided by a person holding `kernel:apps:admin`. Both are admin scopes by default.
 
 ## Turn it on (self-hosted)
@@ -16,7 +18,7 @@ The app builder, and installing an organisation's own app by URL, are off on a s
 Tell your agent what the app should do, for example "a returns tracker: log a return with its order number, reason and status, and list the open ones". The agent:
 
 1. starts a draft from a working template: `store-crud` (one stored list, with a tool to list and a tool to add) or `read-only` (one read tool);
-2. changes its files: the manifest, the handlers and, if you want a page, the interface;
+2. changes its files: the manifest, the handlers and, if you want a page, the interface (a page shows once the manifest names its component under `views`);
 3. checks it: the server builds it and type-checks it, and the agent fixes every error it reports;
 4. tries each tool as you, without installing anything;
 5. asks to publish it.

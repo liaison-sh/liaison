@@ -1,0 +1,1 @@
+A page shows once the manifest names its component under views.tabTypes -> apps/web/src/modules/app-builder/builder-client.ts (uiComponents) ; apps/web/src/framework/manifest-exports.ts (collectDeclaredComponentNames)

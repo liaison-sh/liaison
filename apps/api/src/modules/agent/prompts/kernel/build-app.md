@@ -11,7 +11,7 @@ An app is a draft of up to four files, built and checked on the server, tried as
 
 Always in this order:
 
-1. **Create** from a template: `kernel__apps_build_create({ base_name, title, template })`. `store-crud` gives one stored collection `items` with a list tool and an add tool; `read-only` gives one read tool. Both work as they are. The result names the app (`appName`, e.g. `returns-o1a2b3c4`): every scope and store read scope starts with it.
+1. **Create** from a template: `kernel__apps_build_create({ base_name, title, template })`. `store-crud` gives one stored collection `items` with a list tool and an add tool; `read-only` gives one read tool. Both work as they are. The result names the app (`appName`, e.g. `returns-o1a2b3c4d`): every scope and store read scope starts with it.
 2. **Change** it: `kernel__apps_build_update({ draftId, files, message })`, whole files only. Rename the collection, add fields, add tools.
 3. **Check**: `kernel__apps_build_check({ draftId })` builds it and type-checks it against the app SDK. Fix every error (each has its file and line) and check again until `ok`.
 4. **Preview** each tool: `kernel__apps_build_preview({ draftId, entry: { kind: "tool", name }, params })`. It runs as you and changes nothing real. `ctx.store` works on a scratch space of this draft, kept for the next preview of the same version: preview the write, then preview the read and it sees the write. It is emptied when you preview another version, or when you pass `freshStore: true`. One preview of a draft runs at a time: on `preview_busy`, wait and retry. Before the first publish `ctx.db` and `ctx.fetch` are not available; after it, only the hosts the published version was granted. Read the result and `logs`.
@@ -24,7 +24,7 @@ To change a published app: update, check, preview, publish again (the next patch
 
 - `app.manifest.json` (required): the app's declaration (below).
 - `handlers.ts` (required): one exported `async function` per handler, `(params, ctx)`, and `export default defineHandlers({ ... })`. Imports only from `@liaison/app-sdk`.
-- `ui.tsx` (optional): a Solid component as the default export; it runs framed, with no session.
+- `ui.tsx` (optional): the page, Solid components as named exports. A page shows only when `views.tabTypes.<type>.component` in the manifest names one of them (a default export alone shows nothing); `views.activityBar` puts it in the activity bar. It calls the app's own tools with `app.invokeTool(name, params)` from `@liaison/host`, runs framed, with no session.
 - `README.md` (optional).
 
 At most 512 KiB together. The server sets `name` and `version`: what you write there is replaced.
@@ -32,9 +32,10 @@ At most 512 KiB together. The server sets `name` and `version`: what you write t
 ### Manifest fields
 
 - `packageFormat: 1`, `host: "^1"`, `license`, `displayName`, `description`.
-- `scopes`: the app's own scopes, `<appName>:<resource>:<action>` (`returns-o1a2b3c4:returns:read`).
+- `scopes`: the app's own scopes, `<appName>:<resource>:<action>` (`returns-o1a2b3c4d:returns:read`).
 - `tools.<name>`: `description`, `handler` (the export name), `requiredScopes` (from `scopes`), `params` (a JSON Schema object: `type`, `properties`, `required`), `readOnly: true` for a read.
 - `store.collections.<name>`: `{ readScope, agentReadable?, searchable?: { labelField, fields } }`. Collection names are lowercase letters, digits and `_`. `readScope` is one of the app's scopes; `agentReadable: true` lets the agent's data tools and dashboards read it.
+- `views.tabTypes.<type>`: `{ component, label, singleton? }`; `views.activityBar`: `{ icon, label, tabAction: { type, entityId, label } }`. `iconName` (an icon of Liaison's set, e.g. `clipboard-list`) is the app's icon.
 - `jobs.<name>`: `{ schedule: "<cron>", handler }`. `webhooks.<name>`: `{ handler, verify }`.
 - `network.allowedDomains`: the hosts `ctx.fetch` may reach (a person approves them at publish).
 - `secrets.<configKey>`: `{ hosts: [...], in: "header:<Name>" | "query:<param>" | "body:<jsonPath>" }`: where a secret may be sent. App code never reads a secret.

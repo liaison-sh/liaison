@@ -162,9 +162,9 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/src/modules/org/transfer/**", pages: ["runbooks/org-transfer"] },
   // The app data store (ctx.store for apps, the agent's data tools) and dashboards (agent tools, the dashboard tab).
   // The in-product app builder: drafts, the sandboxed build, custom app logs.
-  { glob: "apps/api/src/modules/app-builder/**", pages: ["app-development", "agents/build-an-app"] },
+  { glob: "apps/api/src/modules/app-builder/**", pages: ["app-development", "agents/build-an-app", "developers/org-app-with-an-assistant"] },
   { glob: "apps/web/src/modules/app-builder/**", pages: ["agents/build-an-app"] },
-  { glob: "apps/api/src/modules/agent/prompts/kernel/build-app.md", pages: ["agents/build-an-app"] },
+  { glob: "apps/api/src/modules/agent/prompts/kernel/build-app.md", pages: ["agents/build-an-app", "developers/org-app-with-an-assistant"] },
   { glob: "apps/api/src/modules/data-store/**", pages: ["agents/tools", "app-sandbox"] },
   { glob: "apps/api/src/modules/dashboards/**", pages: ["agents/tools", "agents/dashboards"] },
   // Dashboard tables: the rows, their sharing, history, tools, routines trigger and link picking.
@@ -209,6 +209,8 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "packages/shared/src/demo/**", pages: ["getting-started/demo"] },
   { glob: "packages/shared/src/tours/**", pages: ["getting-started/demo", "sales/research-prospects"] },
   { glob: ".claude/skills/setup-liaison/**", pages: ["getting-started/install"] },
+  { glob: ".claude/skills/building-an-org-app/**", pages: ["developers/org-app-with-an-assistant"] },
+  { glob: ".claude/skills/creating-an-app/**", pages: ["app-development"] },
 
   // Self-hosting
   { glob: "apps/api/src/modules/healthz/**", pages: ["self-hosting/docker"] },

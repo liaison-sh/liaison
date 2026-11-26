@@ -99,6 +99,15 @@ export async function fetchLoaderUsage(
   return out
 }
 
+/** Postgres 23503, on the error or the driver error it wraps. */
+function isForeignKeyViolation(err: unknown): boolean {
+  for (let e = err as { code?: unknown; cause?: unknown } | undefined, i = 0; e && i < 3; i++) {
+    if (e.code === "23503") return true
+    e = e.cause as typeof e
+  }
+  return false
+}
+
 /** Store one day's pulled CPU: per row in the table, per org in the CPU counter. */
 export async function storeLoaderUsage(day: string, rows: LoaderUsageRow[]): Promise<void> {
   if (rows.length === 0) return
@@ -137,7 +146,13 @@ export async function storeLoaderUsage(day: string, rows: LoaderUsageRow[]): Pro
           }),
       )
     } catch (err) {
-      log.warn({ err, orgId, day }, "loader usage: could not store an org's CPU; skipped")
+      // No organizations row (another server's org, or one deleted here): the
+      // expected refusal above, not a fault, so it is not a warning.
+      if (isForeignKeyViolation(err)) {
+        log.debug({ orgId, day }, "loader usage: org not on this server; skipped")
+      } else {
+        log.warn({ err, orgId, day }, "loader usage: could not store an org's CPU; skipped")
+      }
       continue
     }
     const total = orgRows.reduce((n, r) => n + r.cpuMs, 0)

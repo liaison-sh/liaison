@@ -630,8 +630,31 @@ describe("on Cloud, the first session starts from one goal", () => {
     expect(row!.content).toContain("Where do you want to start?")
     expect(row!.content).not.toContain("your mailbox, Google sign-in")
     expect(systemEventLine({ content: row!.content, metadata: meta })).toContain(
-      "ask which one goal they want to start with",
+      "already asked them which one goal to start with",
     )
+  }, 60_000)
+
+  // The card asks "where do you want to start?": an agent turn right after it
+  // asked the same thing again, two messages for one question. With a key the
+  // conversation now waits for the person's pick; a second run posts nothing.
+  it("managed, without a goal, with a key: the card is the one question, no agent turn follows, and a rerun posts nothing", async () => {
+    const { orgId, adminId } = await freshOrg()
+    giveModelKey()
+    await registerKernelAgentTools(orgId)
+    _setEdition("managed")
+    try {
+      const first = await runSetupKickoff({ orgId, userId: adminId })
+      expect(first).toMatchObject({ posted: true, turnStarted: false })
+      expect(await runSetupKickoff({ orgId, userId: adminId })).toEqual({ posted: false })
+    } finally {
+      _setEdition(null)
+    }
+    expect(modelInputs).toHaveLength(0)
+    const rows = await kickoffRows(orgId)
+    expect(rows).toHaveLength(1)
+    const agentRows = await sql<Array<{ id: string }>>`
+      SELECT id FROM kernel.messages WHERE org_id = ${orgId} AND author_type = 'agent'`
+    expect(agentRows).toHaveLength(1)
   }, 60_000)
 
   it("managed, with a goal: the card and the line the agent's turn reads start there", async () => {

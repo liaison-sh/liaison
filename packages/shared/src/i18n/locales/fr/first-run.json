@@ -24,20 +24,24 @@
     "demoLink": "Ouvrir la démo"
   },
   "checklist": {
-    "title": "Configuration",
     "asOf": "Au {{time}}",
     "optional": "facultatif",
     "done": "Fait",
-    "notDone": "Pas encore",
-    "item": {
-      "aiKey": "Clé de modèle d'IA",
-      "apps": "Applications",
-      "mail": "Mail",
-      "team": "Équipe",
-      "knowledge": "Connaissances de l'entreprise",
-      "import": "Import depuis un autre outil",
-      "roles": "Rôles",
-      "connector": "Connexion API"
+    "heading": "Prochaines étapes pour configurer {{workspace}}",
+    "headingNoName": "Prochaines étapes pour configurer votre espace",
+    "progress": "{{done}} sur {{total}} faites",
+    "start": "Commencer",
+    "startLabel": "Commencer : {{step}}",
+    "startMessage": "Faisons cette étape maintenant : {{step}}.",
+    "action": {
+      "aiKey": "Ajouter une clé de modèle d'IA",
+      "apps": "Activer les applications utiles",
+      "mail": "Connecter votre boîte mail",
+      "team": "Inviter votre équipe",
+      "knowledge": "Ajouter les connaissances de l'entreprise",
+      "import": "Importer depuis un autre outil",
+      "roles": "Configurer les rôles",
+      "connector": "Connecter une API"
     }
   }
 }

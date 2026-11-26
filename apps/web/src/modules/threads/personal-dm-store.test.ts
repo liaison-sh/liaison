@@ -51,7 +51,9 @@ import {
   discussWithPersonalAgent,
   dmWithAgent,
   ensurePersonalAgentDm,
+  markFirstOpen,
   openDmWithAgent,
+  openPersonalAgentOnFirstOpen,
   personalAgentDmId,
   resetPersonalDmStore,
   togglePersonalAgentChat,
@@ -148,6 +150,40 @@ describe("personal DM store (P4c-T03)", () => {
 
     await ensurePersonalAgentDm(api)
     expect(api.post).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe("a new workspace's first open lands in the personal agent conversation", () => {
+  beforeEach(() => {
+    resetPersonalDmStore()
+    resetAgentDirectory()
+    sessionStorage.clear()
+    mocks.openTab.mockClear()
+    mocks.openConversation.mockClear()
+    mocks.dockAvailable = true
+    mocks.tabStore.tabs = [{ id: "kernel:home:home", type: "kernel:home", entityId: "home" }]
+    mocks.tabStore.activeTabId = "kernel:home:home"
+  })
+
+  it("after the handoff mark, the shell opens the personal agent DM as the main tab, once", async () => {
+    const api = fakeApi()
+    markFirstOpen()
+    expect(await openPersonalAgentOnFirstOpen(api)).toBe(true)
+    expect(mocks.openTab).toHaveBeenCalledTimes(1)
+    expect(mocks.openTab.mock.calls[0]![0]).toMatchObject({
+      type: "thread",
+      entityId: "thread-dm-1",
+    })
+    // A reload, a reconnect or the next session keeps its own tabs.
+    expect(await openPersonalAgentOnFirstOpen(api)).toBe(false)
+    expect(mocks.openTab).toHaveBeenCalledTimes(1)
+  })
+
+  it("without the mark (any later session) nothing opens and nothing is fetched", async () => {
+    const api = fakeApi()
+    expect(await openPersonalAgentOnFirstOpen(api)).toBe(false)
+    expect(api.post).not.toHaveBeenCalled()
+    expect(mocks.openTab).not.toHaveBeenCalled()
   })
 })
 

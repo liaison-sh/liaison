@@ -66,6 +66,30 @@ describe("MagicLinkVerify", () => {
     })
   })
 
+  it("a handoff's Continue marks the first open (personal agent); an emailed link does not", async () => {
+    sessionStorage.clear()
+    postMock.mockResolvedValueOnce({ accessToken: "at-emailed" })
+    const emailed = renderPage()
+    await waitFor(() => expect(accessToken()).toBe("at-emailed"), { timeout: 15000 })
+    expect(sessionStorage.getItem("liaison:first-open")).toBeNull()
+    emailed.unmount()
+
+    clearAuth()
+    window.history.replaceState({}, "", "/login/magic?challengeId=c1&token=t1")
+    postMock.mockResolvedValueOnce({
+      confirmRequired: true,
+      workspace: { name: "Acme Tools", slug: "acme-tools" },
+      account: { email: "owner@acme.test", name: "Olive Owner" },
+    })
+    const page = renderPage()
+    await page.findByTestId("magic-link-confirm", {}, { timeout: 15000 })
+    postMock.mockResolvedValueOnce({ accessToken: "at-handoff" })
+    fireEvent.click(page.getByTestId("magic-link-continue"))
+    await waitFor(() => expect(accessToken()).toBe("at-handoff"), { timeout: 15000 })
+    expect(sessionStorage.getItem("liaison:first-open")).toBe("personal-agent")
+    sessionStorage.clear()
+  })
+
   it("a refused Continue shows the invalid-link message and no session", async () => {
     postMock.mockResolvedValueOnce({
       confirmRequired: true,

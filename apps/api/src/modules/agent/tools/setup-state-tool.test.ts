@@ -240,7 +240,7 @@ describe("kernel__setup_state on Cloud: the goal first, mail last", () => {
 
   test("managed without a goal: ask for one goal first, unless the conversation already says it", () => {
     const action = setupNextAction(state, { goal: null })
-    expect(action).toContain("ask which one goal they want to start with")
+    expect(action).toContain("the setup card already asked which one goal to start with")
     expect(action).toContain("knowledge, support or projects")
     expect(action).not.toContain("First ask which features")
   })

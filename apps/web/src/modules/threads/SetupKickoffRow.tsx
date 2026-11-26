@@ -102,25 +102,31 @@ export const SetupKickoffRow: Component<{
   const askGoal = () =>
     props.view.managed && !props.view.goal && !chosen() && !personWrote(props.threadId)
 
-  const choose = async (goal: KickoffGoal): Promise<void> => {
+  /** Post one line as the person in this conversation: a message, never a dialog. */
+  const say = async (text: string): Promise<boolean> => {
     const user = userFromToken()
-    if (!user || sending()) return
+    if (!user || sending()) return false
     setSending(true)
     try {
       await sendThreadMessage(
         api,
         props.threadId,
-        i18n.t(`first-run.kickoff.goalMessage.${goal}`),
+        text,
         { id: user.userId, name: user.name },
         {},
         heldTurnScopes,
       )
-      setChosen(true)
+      return true
     } catch (err) {
       addToast(sendFailureToast(err, i18n.t))
+      return false
     } finally {
       setSending(false)
     }
+  }
+
+  const choose = async (goal: KickoffGoal): Promise<void> => {
+    if (await say(i18n.t(`first-run.kickoff.goalMessage.${goal}`))) setChosen(true)
   }
 
   return (
@@ -150,7 +156,11 @@ export const SetupKickoffRow: Component<{
           </For>
         </div>
       </Show>
-      <SetupChecklistCard state={props.view.state} />
+      <SetupChecklistCard
+        state={props.view.state}
+        starting={sending()}
+        onStart={(step) => void say(i18n.t("first-run.checklist.startMessage", { step }))}
+      />
       <Show when={props.view.secretRequestId}>
         {(id) => (
           <>

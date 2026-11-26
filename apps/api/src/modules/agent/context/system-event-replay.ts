@@ -47,7 +47,7 @@ export const REPLAYED_SYSTEM_EVENT_TYPES: ReadonlySet<string> = new Set([
  * stale the moment a step is done.
  */
 export const SETUP_KICKOFF_LINE =
-  "[Event: this workspace is new. Help the person set it up: call kernel__setup_state, then follow the setup-guide skill. The demo link was already offered.]"
+  "[Event: this workspace is new. Help the person set it up: call kernel__setup_state, then follow the setup-guide skill. The demo link was already offered. Speak to the person; never narrate your tool calls.]"
 
 /**
  * The same card on Cloud (the managed edition): one goal first, mail last.
@@ -63,9 +63,9 @@ export function setupKickoffLine(card: {
   if (!card.managed) return SETUP_KICKOFF_LINE
   const start = card.goal
     ? `This is a Cloud workspace and their goal: ${card.goal}; start there.`
-    : "This is a Cloud workspace: ask which one goal they want to start with (knowledge, support or projects) and start there."
+    : "This is a Cloud workspace and the card above already asked them which one goal to start with (knowledge, support or projects): never ask it again; start with the one their message names."
   const demo = card.demoOffered ? " The demo link was already offered." : ""
-  return `[Event: this workspace is new. Help the person set it up: call kernel__setup_state, then follow the setup-guide skill. ${start} Then invite the team; offer mail connection last.${demo}]`
+  return `[Event: this workspace is new. Help the person set it up: call kernel__setup_state, then follow the setup-guide skill. ${start} Then invite the team; offer mail connection last.${demo} Speak to the person; never narrate your tool calls.]`
 }
 
 import { isKickoffGoal, type KickoffGoal } from "@liaison/shared"

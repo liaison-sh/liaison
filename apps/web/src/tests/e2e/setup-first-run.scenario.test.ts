@@ -75,6 +75,13 @@ async function expectCard(page: Page): Promise<void> {
   await expect(card).toContainText("Set up your space")
   await expect(page.getByTestId("setup-item-aiKey")).toHaveAttribute("data-done", "false")
   await expect(page.getByTestId("setup-item-import")).toContainText("optional")
+  // A to-do list, not a form: a heading with the count, numbered actions with
+  // a Start arrow, and nothing a person would try to tick.
+  await expect(card.getByTestId("setup-checklist-heading")).toContainText("Next steps to set up")
+  await expect(card.getByTestId("setup-checklist-progress")).toContainText(/\d+ of \d+ done/)
+  await expect(card.getByTestId("setup-item-number-aiKey")).toHaveText("1.")
+  await expect(card.getByTestId("setup-item-start-aiKey")).toBeVisible()
+  await expect(card.getByRole("checkbox")).toHaveCount(0)
   // No model key on this lane: the key card is part of the card.
   await expect(card.getByTestId("secret-request-form")).toBeVisible()
   const demo = page.getByTestId("setup-demo-link")

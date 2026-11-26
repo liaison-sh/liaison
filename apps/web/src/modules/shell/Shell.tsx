@@ -143,7 +143,10 @@ import {
   openNewChannelDialog,
   openNewMessageDialog,
 } from "~/modules/threads/new-conversation-store"
-import { togglePersonalAgentChat } from "~/modules/threads/personal-dm-store"
+import {
+  openPersonalAgentOnFirstOpen,
+  togglePersonalAgentChat,
+} from "~/modules/threads/personal-dm-store"
 import { TourHost } from "~/modules/tours/TourHost"
 import { createWebSocket, notificationDeviceId } from "~/primitives/createWebSocket"
 import { keyboardOpen } from "~/primitives/keyboardInset"
@@ -160,6 +163,10 @@ const AttentionLifecycle: Component = () => {
     // LIF-18: a notification click (desktop, browser, service worker, phone)
     // opens its item from here on, the ones that arrived before the shell too.
     onCleanup(installNotificationRoutes(api))
+    // A new workspace's first open: its own agent conversation, not Home.
+    void openPersonalAgentOnFirstOpen(api).catch(() => {
+      /* no personal agent yet: Home stays */
+    })
   })
   onCleanup(() => {
     attentionStore.stop()

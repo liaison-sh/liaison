@@ -623,6 +623,65 @@ describe("mailbox answers forwarded to the minting instance", () => {
       hostname: `no-such-host-${crypto.randomUUID()}.invalid`,
     })
     expect(fallback).toEqual({ advertise: "127.0.0.1", bind: "127.0.0.1" })
+    // A hostname that resolves onto the sandbox network (a process on both the
+    // internal and the sandbox network): the listener takes the address on the
+    // other network and advertises it, so peers never call the sandbox one.
+    const twoNetworks = {
+      lo: [
+        {
+          address: "127.0.0.1",
+          netmask: "255.0.0.0",
+          family: "IPv4" as const,
+          mac: "00:00:00:00:00:00",
+          internal: true,
+          cidr: "127.0.0.1/8",
+        },
+      ],
+      eth0: [
+        {
+          address: "10.73.250.2",
+          netmask: "255.255.255.0",
+          family: "IPv4" as const,
+          mac: "02:42:0a:49:fa:02",
+          internal: false,
+          cidr: "10.73.250.2/24",
+        },
+      ],
+      eth1: [
+        {
+          address: "172.18.0.9",
+          netmask: "255.255.0.0",
+          family: "IPv4" as const,
+          mac: "02:42:ac:12:00:09",
+          internal: false,
+          cidr: "172.18.0.9/16",
+        },
+      ],
+    }
+    // localhost resolves to 127.0.0.1 here: call loopback the sandbox network.
+    expect(
+      await internalAddresses({
+        hostname: "localhost",
+        sandboxSubnet: "127.0.0.0/8",
+        interfaces: twoNetworks,
+      }),
+    ).toEqual({ advertise: "10.73.250.2", bind: "10.73.250.2" })
+    // An explicit host is the operator's choice and stays as set.
+    expect(
+      await internalAddresses({
+        host: "localhost",
+        sandboxSubnet: "127.0.0.0/8",
+        interfaces: twoNetworks,
+      }),
+    ).toEqual({ advertise: "localhost", bind: "127.0.0.1" })
+    // Outside the sandbox network, nothing changes.
+    expect(
+      await internalAddresses({
+        hostname: "localhost",
+        sandboxSubnet: "10.73.250.0/24",
+        interfaces: twoNetworks,
+      }),
+    ).toEqual({ advertise: "localhost", bind: "127.0.0.1" })
     const listener = await startInternalListener({
       instanceId: crypto.randomUUID(),
       port: 0,

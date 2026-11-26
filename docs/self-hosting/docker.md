@@ -381,12 +381,14 @@ The call goes to an internal listener that every process starts, separate from `
 | `LIAISON_INTERNAL_PORT` | `0` | The port of the internal listener. `0` takes any free port. |
 | `LIAISON_INTERNAL_HOST` | the hostname | The name other processes reach this one by. Unset, it is the container's hostname. If that name does not resolve, `127.0.0.1` is used. |
 | `LIAISON_INTERNAL_BIND` | the address of `LIAISON_INTERNAL_HOST` | The address the listener binds. Unset, it is the address the advertised name resolves to on this machine, never every interface. |
+| `LIAISON_SANDBOX_SUBNET` | `10.73.250.0/24` in the compose file | The sandbox network. When the hostname resolves to an address in it, the listener binds and advertises the container's address on its other network instead. |
 
 The listener reads at most 2 MiB per mailbox answer and 8 MiB plus 64 KiB per app call, and checks the signature before it reads the content. An app call is forwarded only with a valid run token, and each process forwards at most 2,000 app calls per client address every 10 seconds.
 
 Every app container must reach every other app container on its internal port:
 
 - In one compose network, nothing to do: the containers reach each other by hostname, and each listener binds only its address on that network.
+- The app processes are also on the sandbox network. Inside a container the hostname can resolve to its sandbox address, which the other processes cannot reach. The listener never binds there: it takes the container's address on the `internal` network and advertises that address. The compose file passes `LIAISON_SANDBOX_SUBNET` for this, from the same setting that builds the sandbox network.
 - On separate hosts, set `LIAISON_INTERNAL_PORT` to a fixed port, set `LIAISON_INTERNAL_HOST` to an address on the private network, and open that port on the private network only. Never publish it.
 - If that address is not on the container itself (a port mapped through Docker on each host), the listener cannot bind it and the process stops at start. Set `LIAISON_INTERNAL_BIND=0.0.0.0` and firewall the port so only the other app hosts reach it.
 

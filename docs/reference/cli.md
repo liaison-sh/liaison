@@ -687,6 +687,19 @@ liaison files purge-deleted-message-attachments [--org <uuid>] [--dry-run]
 | `--org <uuid>` | no | Only this org. |
 | `--dry-run` | no | Only count. |
 
+## knowledge links-backfill
+
+Remove the linked page's title from Knowledge page links stored before links held only the page id (bodies, summaries, page history) and record each page's links, as the daily job does. Only link tokens change: no new revision, no event, review status kept. Every org, or only `--org`; idempotent.
+
+```
+liaison knowledge links-backfill [--org <uuid>] [--dry-run]
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--org <uuid>` | no | Only this org. |
+| `--dry-run` | no | Only count. |
+
 ## routines reconcile
 
 Run the event routine reconciler once, over a window of your choosing: fire event routines again for the events they never handled. The scheduled job looks back 14 days; this is the one-shot backfill after an outage. A dry run unless `--execute`.

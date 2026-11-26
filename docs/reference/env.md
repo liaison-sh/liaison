@@ -205,6 +205,7 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_INTERNAL_PORT` | `number` | `0` | no | The internal listener every process starts, separate from PORT and never published: another process forwards a mailbox answer here when this one minted the request. 0 (default) takes any free port. It must be reachable from the other processes of the deployment (same host or compose network). |
 | `LIAISON_INTERNAL_HOST` | `string` |  | no | The name the other processes reach this one by on that port. Unset: the hostname (inside compose, the container's, which the network resolves); a hostname that does not resolve locally falls back to 127.0.0.1. |
 | `LIAISON_INTERNAL_BIND` | `string` |  | no | The address the internal listener binds. Unset: the address LIAISON_INTERNAL_HOST (or the hostname) resolves to here, so the listener is never on every interface by default. Set 0.0.0.0 only when the advertised address is not on this machine (NAT), with the port firewalled. |
+| `LIAISON_SANDBOX_SUBNET` | `string` |  | no | The sandbox network (IPv4 CIDR, the compose file passes the same LIAISON_SANDBOX_SUBNET it builds that network from). When neither LIAISON_INTERNAL_HOST nor LIAISON_INTERNAL_BIND is set and the hostname resolves inside it, the internal listener uses this process's address on another network, so it is never reachable from the sandbox network. |
 | `AGENT_TURN_STREAM_TTL_S` | `number` | `600` | no | How long a finished agent turn's live event stream stays readable in Redis (seconds), so a view that reconnects late still sees how the turn ended. |
 | `AGENT_MAX_CONCURRENT_STREAMS` | `number` |  | no | Concurrent agent chat streams one user may run across all API processes. Unset: 2, or effectively unlimited under NODE_ENV=test or the load-test flag. |
 | `AGENT_HISTORY_BUDGET_TOKENS` | `number` | `256000` | no | How much raw conversation history (tokens) an agent replays before it summarizes the older part into a checkpoint: the instance default, which an org's own setting (Settings &gt; AI models) overrides. Clamped to what a model's window can hold beside the prompt and the answer. Higher keeps more word for word and resets the prompt cache less often; each call carries more tokens (mostly cached). |
@@ -298,7 +299,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `CLAUDE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:23`, `apps/desktop/sidecar/session-import.ts:14` |
 | `CLAUDE_SECURESTORAGE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:17`, `apps/desktop/sidecar/config-isolation.ts:22` |
 | `CONTEXT_PROVIDERS_DISABLED` | `apps/api/src/modules/agent/context/context-providers.ts:271` |
-| `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:58`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5722` |
+| `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:59`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5722` |
 | `GS_BIN` | `apps/api/src/modules/pdf/render.ts:388` |
 | `INBOUND_TRUSTED_AUTHSERV_IDS` | `apps/api/src/lib/email/sender-auth.ts:44` |
 | `LIAISON_ALLOW_OLDER_IMAGE` | `apps/api/src/db/schema-guard.ts:32` |
@@ -315,7 +316,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/modules/apps/connections/sql/credentials.ts:145`, `apps/api/src/modules/apps/connections/sql/credentials.ts:165` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/modules/apps/connections/sql/credentials.ts:154` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:157` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1864` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1877` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:522`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |

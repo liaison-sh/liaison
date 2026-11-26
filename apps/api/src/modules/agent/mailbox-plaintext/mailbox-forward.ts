@@ -34,6 +34,7 @@ import { z } from "zod"
 import { INSTANCE_ID } from "~/infra/instance-id"
 import { readInstance } from "~/infra/instance-registry"
 import { env } from "~/lib/env"
+import { firstAddressOutside, ipv4InCidr } from "~/lib/internal-address"
 import { rootLogger } from "~/lib/logger"
 import { MAILBOX_ANSWER_BODY_MAX_BYTES } from "~/modules/agent/mailbox-plaintext/answer-limits"
 import {
@@ -373,6 +374,10 @@ export interface InternalAddressOptions {
   bind?: string
   /** For tests: the machine's hostname. */
   hostname?: string
+  /** The sandbox network the listener never takes. Default `LIAISON_SANDBOX_SUBNET`. */
+  sandboxSubnet?: string
+  /** For tests: this machine's interfaces (`os.networkInterfaces()`). */
+  interfaces?: ReturnType<typeof os.networkInterfaces>
 }
 
 /**
@@ -388,11 +393,19 @@ export interface InternalAddressOptions {
  * never every interface by default. When the advertised address is not on this
  * machine (a port mapped through NAT, say), the bind fails at start and names
  * LIAISON_INTERNAL_BIND.
+ *
+ * Sandbox network: a process on both the internal and the sandbox network may
+ * see its own hostname resolve to its sandbox address, while its peers resolve
+ * the same name to its internal one. When neither the host nor the bind is set
+ * and the hostname resolves inside `LIAISON_SANDBOX_SUBNET`, the listener
+ * binds and advertises this machine's first address outside that network
+ * instead (loopback when it has none), so it is never on the sandbox network.
  */
 export async function internalAddresses(
   opts: InternalAddressOptions = {},
 ): Promise<{ advertise: string; bind: string }> {
-  let advertise = opts.host ?? env.LIAISON_INTERNAL_HOST
+  const explicitHost = opts.host ?? env.LIAISON_INTERNAL_HOST
+  let advertise = explicitHost
   if (!advertise) {
     const host = opts.hostname ?? os.hostname()
     try {
@@ -410,6 +423,22 @@ export async function internalAddresses(
   if (explicitBind) return { advertise, bind: explicitBind }
   // IPv4 first: a peer resolving the same name picks IPv4 first too.
   const resolved = await lookup(advertise, { family: 4 }).catch(() => lookup(advertise))
+  const sandboxSubnet = opts.sandboxSubnet ?? env.LIAISON_SANDBOX_SUBNET
+  if (!explicitHost && sandboxSubnet && ipv4InCidr(resolved.address, sandboxSubnet)) {
+    const other = firstAddressOutside(opts.interfaces ?? os.networkInterfaces(), sandboxSubnet)
+    if (!other) {
+      log.warn(
+        { host: advertise, address: resolved.address, sandboxSubnet },
+        "this process has no address outside the sandbox network; the internal listener binds loopback (set LIAISON_INTERNAL_HOST)",
+      )
+      return { advertise: "127.0.0.1", bind: "127.0.0.1" }
+    }
+    log.info(
+      { host: advertise, sandboxAddress: resolved.address, address: other },
+      "the hostname resolves onto the sandbox network; the internal listener uses this process's other address",
+    )
+    return { advertise: other, bind: other }
+  }
   return { advertise, bind: resolved.address }
 }
 

@@ -654,7 +654,7 @@ Your team's shared documents, policies and curated source links.
 | --- | --- | --- | --- |
 | `add_folder_source` | Bulk-ingest an external FOLDER-shaped source into Knowledge in one bounded call: a Google Drive folder, a GitLab repo path, or the connected database's KB. |  | `knowledge:sources:manage` |
 | `add_to_collection` | Add a Knowledge document to a collection. |  | `knowledge:collections:manage` |
-| `archive` | Archive (retire) a Knowledge document — a reversible soft-archive that removes it from the active KB and from search. |  | `knowledge:documents:archive` |
+| `archive` | Move a Knowledge document to Trash (retire it): it leaves the active KB and search at once, and is DELETED FOR GOOD after 30 days unless someone restores it. |  | `knowledge:documents:archive` |
 | `collection_create` | Create a Knowledge collection (folder). |  | `knowledge:collections:manage` |
 | `collection_delete` | Delete a Knowledge collection (folder). |  | `knowledge:collections:manage` |
 | `collection_update` | Update a Knowledge collection's name, description, or parent. |  | `knowledge:collections:manage` |
@@ -662,14 +662,14 @@ Your team's shared documents, policies and curated source links.
 | `find_by_title` | Look up a Knowledge document by its EXACT title — DB-backed, never rides the search index, so a document created moments ago resolves immediately (unlike `search`, which is Meilisearch-backed and can lag behind a fresh write under load). |  | `knowledge:documents:read` |
 | `get` | Fetch the full content of a Knowledge document OR a remote connected-source item. |  | `knowledge:documents:read` |
 | `remove_from_collection` | Remove a Knowledge document from a collection. |  | `knowledge:collections:manage` |
-| `restore` | Restore a previously-archived Knowledge document back into the active KB. |  | `knowledge:documents:archive` |
+| `restore` | Restore a Knowledge document from Trash back into the active KB, back in its folders (Unfiled when none is left). |  | `knowledge:documents:archive` |
 | `review_queue` | List Knowledge items that need attention — documents or source links that are flagged needs_review/stale, are missing an owner, or are past their review-due date. |  | `knowledge:documents:read` |
 | `search` | Federated search across Knowledge and enabled remote sources |  | `knowledge:documents:read` |
 | `source_link_create` | Register a LIVING source_link in Knowledge that POINTS at a single remote document (e.g. |  | `knowledge:links:create` |
 | `synced_sources.archive` | Stop syncing a source from the Knowledge settings page (its documents stay). |  | `knowledge:documents:read` |
 | `synced_sources.list` | The synced sources the caller sees (their own and the organization's), for the Knowledge settings page. |  | `knowledge:documents:read` |
 | `synced_sources.run_now` | Sync a source now from the Knowledge settings page. |  | `knowledge:documents:read` |
-| `update` | Update a local Knowledge document with revision check The result includes a `mentionTag` (@[Title](knowledge:document:&lt;id&gt;)) — paste it verbatim in your confirmation so the updated doc is one click away. |  | `knowledge:documents:update` |
+| `update` | Update a local Knowledge document with revision check. |  | `knowledge:documents:update` |
 | `verify` | Mark a Knowledge document (or a linked source item) as verified — confirming its content is current. |  | `knowledge:documents:update` |
 
 ## mail

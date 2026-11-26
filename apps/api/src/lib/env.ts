@@ -5,6 +5,7 @@ import { Encrypter } from "age-encryption"
 import { z } from "zod"
 import { DEFAULT_APP_ORIGINS } from "~/lib/app-origins"
 import { envBoolean, parseEnvBoolean } from "~/lib/env-boolean"
+import { isIpv4Cidr } from "~/lib/internal-address"
 import { SHOPIFY_FAKE_ADMIN_ENV, shopifyFakeAdminGate } from "~/lib/shopify-fake-admin-gate"
 import { SHUTDOWN_BUDGET_DEFAULTS } from "~/lib/shutdown-budget"
 import {
@@ -1458,6 +1459,18 @@ export const envSchema = z
     // is never on every interface by default. Set 0.0.0.0 only when the
     // advertised address is not on this machine (NAT), with the port firewalled.
     LIAISON_INTERNAL_BIND: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+    // The sandbox network (IPv4 CIDR, the compose file passes the same
+    // LIAISON_SANDBOX_SUBNET it builds that network from). When neither
+    // LIAISON_INTERNAL_HOST nor LIAISON_INTERNAL_BIND is set and the hostname
+    // resolves inside it, the internal listener uses this process's address on
+    // another network, so it is never reachable from the sandbox network.
+    LIAISON_SANDBOX_SUBNET: z.preprocess(
+      (v) => (v === "" ? undefined : v),
+      z
+        .string()
+        .refine(isIpv4Cidr, "must be an IPv4 network in CIDR form, e.g. 10.73.250.0/24")
+        .optional(),
+    ),
     // How long a finished agent turn's live event stream stays readable in Redis
     // (seconds), so a view that reconnects late still sees how the turn ended.
     AGENT_TURN_STREAM_TTL_S: z.coerce.number().int().positive().default(600),

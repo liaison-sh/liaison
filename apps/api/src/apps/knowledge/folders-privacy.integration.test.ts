@@ -671,9 +671,13 @@ describe("no page ends in no place", () => {
 
   it("a page shared with one person sits in their Shared with me, not in Unfiled", async () => {
     const doc = await page(ana, "Just for Ben", { access: "none" })
-    await privileged(
-      sql`INSERT INTO kernel.resource_grants (org_id, resource_type, resource_id, grantee_kind, grantee, role, created_by)
-          VALUES (${orgId}::uuid, 'knowledge.document', ${doc}::uuid, 'user', ${ben}, 'editor', ${ana}::uuid)`,
+    await as(ana, (tx, a) =>
+      setDocumentSharing(
+        tx,
+        doc,
+        { orgAccess: "none", editScope: null, shares: [{ userId: ben, role: "editor" }] },
+        a,
+      ),
     )
     const bens = await tree(ben)
     const withMe = bens.find((n) => n.id === "__shared_with_me__")

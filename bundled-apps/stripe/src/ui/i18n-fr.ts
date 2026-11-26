@@ -31,8 +31,8 @@ export const FR: Record<string, string> = {
     "La clé fonctionne. L'import démarre dès que Stripe envoie sa première mise à jour à cet espace.",
   "In Stripe, open Developers, Webhooks, and add the Liaison endpoint.":
     "Dans Stripe, ouvrez Développeurs, Webhooks, et ajoutez le point de terminaison de Liaison.",
-  "Give the signing secret to the agent in its form.":
-    "Donnez le secret de signature à l'agent dans son formulaire.",
+  "Paste its signing secret in Settings, Apps, Stripe, Webhook.":
+    "Collez son secret de signature dans Paramètres, Apps, Stripe, Webhook.",
   "Open webhooks in Stripe": "Ouvrir les webhooks dans Stripe",
   "Check again": "Vérifier à nouveau",
   "First import is running": "Le premier import est en cours",
@@ -75,8 +75,8 @@ export const FR: Record<string, string> = {
     "Liaison reçoit d'habitude une mise à jour toutes les quelques minutes.",
   "In Stripe, open Developers, Webhooks, then the Liaison endpoint. If it is disabled, enable it.":
     "Dans Stripe, ouvrez Développeurs, Webhooks, puis le point de terminaison de Liaison. S'il est désactivé, activez-le.",
-  "If it shows failures, the signing secret may have changed. Give the agent the new one.":
-    "S'il affiche des échecs, le secret de signature a peut-être changé. Donnez le nouveau à l'agent.",
+  "If it shows failures, the signing secret may have changed. Save the new one in Settings, Apps, Stripe, Webhook.":
+    "S'il affiche des échecs, le secret de signature a peut-être changé. Enregistrez le nouveau dans Paramètres, Apps, Stripe, Webhook.",
   "Stripe resends missed updates for up to 72 hours, so fix this before then and nothing is lost.":
     "Stripe renvoie les mises à jour manquées pendant 72 heures : corrigez avant et rien n'est perdu.",
   "Until then Liaison checks Stripe itself every 15 minutes.":
@@ -306,4 +306,8 @@ export const FR: Record<string, string> = {
   Connected: "Connecté",
   "Setting up": "Mise en place",
   "Needs a look": "À vérifier",
+  // Settings > Apps > Stripe > Webhook (WebhookSettings.tsx)
+  "In Stripe: Developers, Webhooks, Add endpoint. Paste the endpoint URL, select the events below, then reveal the endpoint's Signing secret and save it here.":
+    "Dans Stripe : Développeurs, Webhooks, Ajouter un point de terminaison. Collez l'URL du point de terminaison, sélectionnez les événements ci-dessous, puis affichez son secret de signature et enregistrez-le ici.",
+  "Events to select ({{count}})": "Événements à sélectionner ({{count}})",
 }

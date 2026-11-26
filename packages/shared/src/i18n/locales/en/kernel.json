@@ -3304,6 +3304,24 @@
     "newOutboundDomains": "New hosts this version can reach (granted by upgrading)"
   },
   "settingsPage": {
+    "appSecrets": {
+      "webhookAddress": "Endpoint URL",
+      "webhookAddressHint": "Paste this address at the provider when you add the webhook endpoint.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "set": "Set.",
+      "notSet": "Not set yet.",
+      "previousUntil": "The previous one keeps working until {{until}}.",
+      "save": "Save",
+      "replace": "Replace",
+      "saved": "Saved.",
+      "savedRolled": "Saved. The previous one keeps working for 24 hours.",
+      "unchanged": "That is the one already saved: nothing changed.",
+      "empty": "Paste it first.",
+      "failed": "Could not save it.",
+      "loadFailed": "Could not read these settings.",
+      "neverShown": "It is never shown again, here or to the agent."
+    },
     "unsupported": "This setting needs a newer version of Liaison. Update Liaison to change it.",
     "justYou": "Just you",
     "justYouHint": "Only affects you",

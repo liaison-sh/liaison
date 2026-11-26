@@ -1980,6 +1980,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // A stand-in install (the demo's): its links, its hidden dashboard, its unset-able mark.
             "src/standin.test.ts",
             "src/send-state.test.ts",
+            // The webhook's setup: the events to select, the secret's shape, status, settings page.
+            "src/webhook-setup.test.ts",
             // Every tool answer is masked: no address, tax id, card number or metadata (pure).
             "src/results.test.ts",
             // The MRR rules against a real Stripe sandbox: skips without its keys, and fails

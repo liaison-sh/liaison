@@ -4025,5 +4025,13 @@
     "say": "the client accepted quote Q-0007 by phone, record it",
     "typed": ["quote won by phone", "mark quote outcome"],
     "any": ["invoicing__quote_set_outcome"]
+  },
+  {
+    "id": "C159",
+    "set": "seed",
+    "lang": "fr",
+    "say": "aide-moi à configurer le webhook Stripe",
+    "typed": ["webhook stripe", "configurer webhook", "signing secret whsec"],
+    "any": ["stripe__webhook_status"]
   }
 ]

@@ -33,6 +33,9 @@ const CLI = "CLI: registers every org itself (initAppsForOrg) before reading"
 const READERS: Record<string, string> = {
   "modules/apps/approval-record-names.ts": AGENT,
   "modules/apps/connections/api/authoring-tools.ts": AGENT,
+  // App-held secrets a person sets: the app-secret routes, the secret request card and
+  // `config apply` each await ensureAppsForOrg before reading; the request tool is an agent turn.
+  "modules/apps/connections/app-secrets.ts": REQUEST,
   // The connection's declared limits: read on a call of an API connection, whose
   // callers (the app's tools in a request or an agent turn, an import job, the
   // CLI) each set the org up first.

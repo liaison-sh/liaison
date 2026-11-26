@@ -211,6 +211,8 @@ function cases(db: MemDb): Record<string, Case | string> {
     connection_precheck: "no customer data: one verdict about a key (connection.test.ts)",
     settings_load:
       "no customer data: the connection's state and webhook address (connection.test.ts)",
+    webhook_status:
+      "no customer data: the endpoint path, the events, set or not, the state (webhook-setup.test.ts)",
   }
 }
 

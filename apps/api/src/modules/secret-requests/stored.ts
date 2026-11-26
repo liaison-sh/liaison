@@ -12,6 +12,7 @@
 //   google_integration_client  sha256 of integrations.google.oauthClient's encrypted secret
 //   connection_credentials,    sha256 of (account id, credentials ciphertext) of each
 //   api_key                    sha256 of each live key id with the request's label
+//   app_secret                 sha256 of the app config key's ciphertext (kernel.apps.config)
 //   oauth_connect              sha256 of each active OAuth account of the connection
 //                              held by the request's owner (the person who asked,
 //                              for a personal connect; the org, for a shared one)
@@ -34,7 +35,7 @@ import { ticketsRel } from "~/apps/tickets/schema-refs"
 import type { PrivilegedDb } from "~/db"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { connectedAccounts, oauthProviders, organizations } from "~/db/schema/kernel"
+import { apps, connectedAccounts, oauthProviders, organizations } from "~/db/schema/kernel"
 import { oauthClientKey } from "~/modules/apps/connections/oauth-client"
 import { oauthClientIdHint } from "~/modules/apps/connections/oauth-client-provisioning"
 import type { SecretTarget } from "~/modules/secret-requests/targets"
@@ -203,6 +204,18 @@ async function readState(
           ORDER BY created_at DESC`),
       )
       for (const row of rows) add(sha256(`api-key:${row.id}`), row.key_prefix)
+      break
+    }
+    case "app_secret": {
+      const rows = await tx
+        .select({ config: apps.config })
+        .from(apps)
+        .where(and(eq(apps.orgId, orgId), eq(apps.name, target.app)))
+        .limit(1)
+      const raw = rows[0]?.config
+      const config = record(typeof raw === "string" ? (JSON.parse(raw) as unknown) : raw)
+      const encrypted = text(config?.[target.field])
+      if (encrypted) add(sha256(`app-secret:${target.field}:${encrypted}`), null)
       break
     }
   }

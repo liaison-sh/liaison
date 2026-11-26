@@ -14,6 +14,7 @@ export const SECRET_REQUEST_KINDS = [
   "oauth_connect",
   "api_connector_credentials",
   "api_key",
+  "app_secret",
 ] as const
 export type SecretRequestKind = (typeof SECRET_REQUEST_KINDS)[number]
 
@@ -63,7 +64,7 @@ export const secretRequests = kernel.table(
   (t) => [
     check(
       "secret_requests_kind_chk",
-      sql`${t.kind} IN ('byok','connection_credentials','oauth_client','google_integration_client','oauth_connect','api_connector_credentials','api_key')`,
+      sql`${t.kind} IN ('byok','connection_credentials','oauth_client','google_integration_client','oauth_connect','api_connector_credentials','api_key','app_secret')`,
     ),
     check(
       "secret_requests_status_chk",

@@ -6,6 +6,7 @@
 import type {
   AppKind,
   AppSettingsSchema,
+  SettingsAppSecretsBlock,
   SettingsBlock,
   SettingsConnectionsBlock,
   SettingsCustomBlock,
@@ -19,6 +20,7 @@ import type { Component } from "solid-js"
 
 export type {
   AppSettingsSchema,
+  SettingsAppSecretsBlock,
   SettingsBlock,
   SettingsConnectionsBlock,
   SettingsCustomBlock,

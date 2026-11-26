@@ -216,6 +216,10 @@ const LISTED = new Map<string, string>([
     `one discount the org created, with its own products, collections and markets by name, never a customer: ${NONE}`,
   ],
   ["shopify:settings_load", `connection and sync settings: ${NONE}`],
+  [
+    "stripe:webhook_status",
+    `the webhook's endpoint path, the events to select, whether its secret is set and the connection's state: ${NONE}`,
+  ],
   ["boxtal:packages_list", `the org's own shipping profiles, packs and products: ${NONE}`],
   [
     "boxtal:to_ship_by_product",

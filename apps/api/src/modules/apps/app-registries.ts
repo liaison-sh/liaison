@@ -1486,6 +1486,19 @@ export const manifestRegistry = createTypedRegistry<
   }
 >()
 
+/** An app-held secret a person gives Liaison (manifest `connections.<c>.appSecretFields`). */
+export interface AppSecretField {
+  /** One of the connection's `appSecretConfigKeys`. */
+  key: string
+  label: string
+  labelKey?: string
+  help?: string
+  /** The shape a value must have (a regular expression). */
+  pattern?: string
+  /** What a refused value should look like; never holds the value. */
+  patternMessage?: string
+}
+
 /**
  * Stores connection config (from app manifests) keyed by [orgId, appName, connectionName].
  * Used by startOAuthFlow and credential validation to look up connection declarations.
@@ -1545,6 +1558,8 @@ export const connectionConfigRegistry = createTypedRegistry<
     clientSecretConfigKey?: string
     webhookSecretConfigKey?: string
     appSecretConfigKeys?: string[]
+    /** App-held secrets a person sets (connections/app-secrets.ts). */
+    appSecretFields?: AppSecretField[]
     setupGuide?: { summary?: string; steps?: SetupStepInput[]; docsUrl?: string }
     /** Credentials only: the org holds several accounts of this connection, one per
      *  admin-chosen slug identifier (connections/service.ts, MULTI_INSTANCE_IDENTIFIER_RE). */

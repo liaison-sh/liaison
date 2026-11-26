@@ -30,6 +30,10 @@ import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
 import { connectionConfigRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { apiConnFor } from "~/modules/apps/connections/api/declarations"
 import { getAdapterRow, listAdapterRows } from "~/modules/apps/connections/api/store"
+import {
+  appWebhookAddresses,
+  settableAppSecretFields,
+} from "~/modules/apps/connections/app-secrets"
 import { connectionTurnedOff } from "~/modules/apps/connections/oauth-client-config"
 import { isAppUnavailableFor, primeOrgApps } from "~/modules/apps/org-apps"
 import { resolveGoogleClients } from "~/modules/connection-guides/google"
@@ -262,7 +266,7 @@ export async function handleRequestSecret(
     kind: checked.target.kind,
     target: targetFields(checked.target),
     card,
-    note: requestSecretNote(checked.target.kind, card) + asksFor(ctx.orgId, checked.target),
+    note: requestSecretNote(checked.target.kind, card) + (await asksFor(ctx.orgId, checked.target)),
   }
 }
 
@@ -270,7 +274,18 @@ export async function handleRequestSecret(
  * The fields a credentials card asks for, by their labels ("Restricted key"), so what the agent
  * tells the person matches the card and never names a kind of key the app refuses.
  */
-function asksFor(orgId: string, target: SecretTarget): string {
+async function asksFor(orgId: string, target: SecretTarget): Promise<string> {
+  if (target.kind === "app_secret") {
+    const config = connectionConfigRegistry.get([orgId, target.app, target.connection])
+    const label = settableAppSecretFields(config).find((f) => f.key === target.field)?.label
+    const webhooks = await appWebhookAddresses(orgId, target.app)
+    return (
+      (label ? ` The card asks for: ${label}.` : "") +
+      (webhooks.length > 0
+        ? ` The webhook address (the card shows it too): ${webhooks.map((w) => w.url).join(", ")}.`
+        : "")
+    )
+  }
   if (target.kind !== "connection_credentials") return ""
   const fields =
     connectionConfigRegistry.get([orgId, target.app, target.connection])?.credentialFields ?? []

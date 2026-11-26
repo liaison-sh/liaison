@@ -742,7 +742,7 @@
     },
     "invoicing__counterparty_identity_set": {
       "desc": 962,
-      "schema": 202
+      "schema": 201
     },
     "invoicing__counterparty_territory_set": {
       "desc": 228,
@@ -2557,7 +2557,7 @@
       "schema": 18
     },
     "social__connections_status": {
-      "desc": 191,
+      "desc": 188,
       "schema": 9
     },
     "social__correct_triage": {
@@ -2633,8 +2633,8 @@
       "schema": 15
     },
     "social__webhooks_setup": {
-      "desc": 773,
-      "schema": 56
+      "desc": 768,
+      "schema": 54
     },
     "tickets__addNote": {
       "desc": 1184,
@@ -2940,7 +2940,7 @@
     "C04|away": "15tl",
     "C04|holiday": "15tl",
     "C04|next in line": "15tl",
-    "C04|out of office": "15t",
+    "C04|out of office": "15tl",
     "C04|set away": "15tl",
     "C05|absence": "15tl",
     "C05|absent": "15tl",
@@ -3123,6 +3123,9 @@
     "C157|envoi compte rendu client": "15tl",
     "C158|mark quote outcome": "15t",
     "C158|quote won by phone": "",
+    "C159|configurer webhook": "5t",
+    "C159|signing secret whsec": "5t",
+    "C159|webhook stripe": "15tl",
     "C16|failed payment": "15tl",
     "C16|overdue invoices": "15tl",
     "C16|past due": "15t",
@@ -3142,7 +3145,7 @@
     "C20|nouvelle opportunité": "5t",
     "C21|close deal": "5t",
     "C21|deal won": "15tl",
-    "C21|mark won": "5t",
+    "C21|mark won": "15t",
     "C22|deals by stage": "5t",
     "C22|pipeline": "5t",
     "C22|sales forecast": "15t",
@@ -3160,7 +3163,7 @@
     "C31|days off": "15tl",
     "C31|jours fériés": "15t",
     "C31|office closed": "",
-    "C31|public holidays": "5t",
+    "C31|public holidays": "15t",
     "C32|capacity": "15tl",
     "C32|charge équipe": "",
     "C32|disponibilité": "15tl",

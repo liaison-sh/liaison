@@ -14,6 +14,8 @@
 //   (legacy) api_connector_credentials: read as connection_credentials of the
 //                              org's API connection (connections/api/declarations.ts)
 //   api_key                    tickets:apiKeys.create, run by the person
+//   app_secret                 PUT   /api/connections/:app/:conn/app-secrets/:key (a secret
+//                              the provider shows once, e.g. a webhook signing secret)
 //   oauth_connect              no secret typed: the card starts the provider's
 //                              consent (POST /api/secret-requests/:id/authorize)
 //                              and the callback stores the account
@@ -26,6 +28,7 @@ import { z } from "zod"
 import { connectionConfigRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { connectionAdminScope } from "~/modules/apps/connections/admin-scope"
 import { apiConnectionsOf, apiConnFor } from "~/modules/apps/connections/api/declarations"
+import { settableAppSecretFields } from "~/modules/apps/connections/app-secrets"
 import { MULTI_INSTANCE_IDENTIFIER_RE } from "~/modules/apps/connections/service"
 import { hasScope } from "~/modules/permissions/permissions"
 import { BYOK_PROVIDER_NAMES, BYOK_PROVIDERS, type ByokProvider } from "~/modules/settings/byok"
@@ -43,6 +46,7 @@ export const SECRET_REQUEST_KIND_VALUES = [
    */
   "api_connector_credentials",
   "api_key",
+  "app_secret",
 ] as const
 
 export type SecretTarget =
@@ -66,6 +70,7 @@ export type SecretTarget =
       identifier?: string
     }
   | { kind: "api_key"; label: string; allowedOrigins?: string[] }
+  | { kind: "app_secret"; app: string; connection: string; field: string }
 
 export type SecretKind = SecretTarget["kind"]
 type RequestKind = (typeof SECRET_REQUEST_KIND_VALUES)[number]
@@ -112,18 +117,18 @@ export const requestSecretParams = z
     kind: z
       .enum(SECRET_REQUEST_KIND_VALUES)
       .describe(
-        "byok: a model provider key. connection_credentials: an app connection's login (an API connection's too: its app, connection and the adapter's identifier). oauth_client: an app connection's OAuth client. google_integration_client: the Google OAuth client Gmail and Google Calendar connect with. oauth_connect: the person signs in at the provider (Google, Shopify) to connect an OAuth connection. api_connector_credentials: the old name of connection_credentials for an API connection (identifier only). api_key: a new Liaison API key the person creates and copies.",
+        "byok: a model provider key. connection_credentials: an app connection's login (an API connection's too: its app, connection and the adapter's identifier). oauth_client: an app connection's OAuth client. google_integration_client: the Google OAuth client Gmail and Google Calendar connect with. oauth_connect: the person signs in at the provider (Google, Shopify) to connect an OAuth connection. api_connector_credentials: the old name of connection_credentials for an API connection (identifier only). api_key: a new Liaison API key the person creates and copies. app_secret: a secret an app keeps that the person copies from the provider's dashboard (e.g. a webhook signing secret): its app, connection and field.",
       ),
     target: z
       .object({
         provider: z.enum(BYOK_PROVIDERS).optional().describe("byok: the model provider."),
         app: name
           .optional()
-          .describe("connection_credentials, oauth_client, oauth_connect: the app."),
+          .describe("connection_credentials, oauth_client, oauth_connect, app_secret: the app."),
         connection: name
           .optional()
           .describe(
-            "connection_credentials, oauth_client, oauth_connect: the connection of that app.",
+            "connection_credentials, oauth_client, oauth_connect, app_secret: the connection of that app.",
           ),
         mode: z
           .enum(CONNECT_MODES)
@@ -171,6 +176,14 @@ export const requestSecretParams = z
           .max(20)
           .optional()
           .describe("api_key: the browser origins allowed to use the key."),
+        field: z
+          .string()
+          .trim()
+          .regex(/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/, "a field name: letters, digits and _")
+          .optional()
+          .describe(
+            "app_secret: which of the connection's secrets, as the app names it (e.g. webhookSigningSecret).",
+          ),
       })
       .strict()
       .default({}),
@@ -188,6 +201,7 @@ const KIND_FIELDS: Record<RequestKind, { required: string[]; optional: string[] 
   oauth_connect: { required: ["app", "connection", "mode"], optional: ["identifier"] },
   api_connector_credentials: { required: ["identifier"], optional: [] },
   api_key: { required: ["label"], optional: ["allowedOrigins"] },
+  app_secret: { required: ["app", "connection", "field"], optional: [] },
 }
 
 export type ParsedTarget = { ok: true; target: SecretTarget } | { ok: false; error: string }
@@ -370,6 +384,16 @@ export function parseSecretTarget(params: RequestSecretParams, orgId?: string): 
             : {}),
         },
       }
+    case "app_secret":
+      return {
+        ok: true,
+        target: {
+          kind: "app_secret",
+          app: t.app as string,
+          connection: t.connection as string,
+          field: t.field as string,
+        },
+      }
   }
 }
 
@@ -437,6 +461,8 @@ export function targetScope(orgId: string, target: SecretTarget): string {
         : connectionAdminScope(orgId, target.app, target.connection)
     case "api_key":
       return API_KEY_ADMIN_SCOPE
+    case "app_secret":
+      return connectionAdminScope(orgId, target.app, target.connection)
   }
 }
 
@@ -487,6 +513,8 @@ export function describeTarget(
       return `${target.app} ${target.connection} connection (${target.mode === "org" ? "shared with the organization" : "personal"})`
     case "api_key":
       return `API key ${fence(target.label)}`
+    case "app_secret":
+      return `${target.app} ${target.connection} ${target.field}`
   }
 }
 
@@ -591,5 +619,18 @@ export function checkTargetRegistered(
       return toolRegistry.get([orgId, API_KEY_MINT_TOOL.app, API_KEY_MINT_TOOL.name])
         ? null
         : "API keys are created in the tickets app, which is not installed."
+    case "app_secret": {
+      const config = connectionConfigRegistry.get([orgId, target.app, target.connection])
+      if (!config) {
+        return `The app "${target.app}" declares no connection "${target.connection}" (is the app installed?).`
+      }
+      const keys = settableAppSecretFields(config).map((f) => f.key)
+      if (!keys.includes(target.field)) {
+        return keys.length > 0
+          ? `"${target.field}" is not a secret a person gives the "${target.connection}" connection of "${target.app}"; ask for one of: ${keys.join(", ")}.`
+          : `The "${target.connection}" connection of "${target.app}" takes no secret from a person.`
+      }
+      return null
+    }
   }
 }

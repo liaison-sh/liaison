@@ -515,6 +515,27 @@ const connectionSchema = {
       type: "array",
       items: { type: "string", pattern: "^[a-zA-Z][a-zA-Z0-9_]{0,63}$" },
     },
+    // The app-held secrets a PERSON gives Liaison (a signing secret the provider shows once in
+    // its dashboard): each names one of `appSecretConfigKeys`, and is set through the kernel's
+    // app-secret route, a secret request card or `config apply` (`appSecrets`), never through a
+    // chat message. `pattern` is the shape a value must have; `patternMessage` says what a
+    // refused value should look like (it never holds the value).
+    appSecretFields: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          key: { type: "string", pattern: "^[a-zA-Z][a-zA-Z0-9_]{0,63}$" },
+          label: { type: "string", minLength: 1 },
+          labelKey: { type: "string", minLength: 1 },
+          help: { type: "string", minLength: 1 },
+          pattern: { type: "string", minLength: 1 },
+          patternMessage: { type: "string", minLength: 1 },
+        },
+        required: ["key", "label"],
+        additionalProperties: false,
+      },
+    },
     // OAuth2: the key the connection's client is stored and resolved under
     // (oauth-client.ts), when it is not `<app>:<connection>`: two connections of
     // one app share a client by naming the same key. Always in the app's own

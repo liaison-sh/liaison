@@ -7,7 +7,7 @@ The Stripe connector links your Stripe account to Liaison. Liaison keeps a read 
 
 Stripe is an app with its own page: **Stripe** in the activity bar opens **Home**, and **Customers** and a link to the Stripe dashboard sit in its sidebar. Its connection settings are on **Settings › Apps › Stripe**.
 
-This page grows as the app does. Today it stores its connection, checks its key, keeps its mirror current from Stripe's webhook events, and shows the Stripe Home.
+This page grows as the app does. Today it stores its connection, checks its key, takes the webhook's signing secret, keeps its mirror current from Stripe's webhook events, and shows the Stripe Home.
 
 ## Install Stripe
 
@@ -67,7 +67,45 @@ Stripe does not let a restricted key show the account name, so the check does no
 
 ## Receive Stripe's events
 
-Stripe tells Liaison about changes through a webhook. In **Developers → Webhooks**, add an endpoint at the address Liaison shows, select the Customer, Invoice and Charge events, and give Liaison the endpoint's signing secret (it starts with `whsec_`).
+Stripe tells Liaison about changes through a webhook. Until its signing secret is saved, no delivery can be checked, so Liaison reads Stripe's event log every 15 minutes instead and the connection stays at **key stored**.
+
+1. Open **Settings › Apps › Stripe › Webhook** (needs `stripe:admin:connection`). It shows the **Endpoint URL** with a **Copy** button, the events to select, and whether a signing secret is set.
+2. In Stripe, open **Developers → Webhooks → Add endpoint**, paste the **Endpoint URL**, and select exactly these events:
+
+- `charge.dispute.closed`
+- `charge.dispute.created`
+- `charge.dispute.funds_reinstated`
+- `charge.dispute.funds_withdrawn`
+- `charge.dispute.updated`
+- `charge.failed`
+- `charge.refund.updated`
+- `charge.refunded`
+- `charge.succeeded`
+- `charge.updated`
+- `customer.created`
+- `customer.deleted`
+- `customer.subscription.created`
+- `customer.subscription.deleted`
+- `customer.subscription.paused`
+- `customer.subscription.resumed`
+- `customer.subscription.trial_will_end`
+- `customer.subscription.updated`
+- `customer.updated`
+- `invoice.finalization_failed`
+- `invoice.finalized`
+- `invoice.marked_uncollectible`
+- `invoice.paid`
+- `invoice.payment_failed`
+- `invoice.updated`
+- `invoice.voided`
+
+3. On the endpoint, reveal its **Signing secret** (it starts with `whsec_`) and paste it into **Webhook signing secret** on the same page, then **Save**.
+
+The secret is never shown again: the page says only **Set** or **Not set yet**. A value that does not start with `whsec_` is refused before it is kept. To replace it (after you roll it in Stripe), paste the new one and choose **Replace**: the previous one keeps working for 24 hours, and the page says until when. Saving the one already saved changes nothing.
+
+**With the agent.** Ask the agent to set up the Stripe webhook. Its `webhook_status` tool (admins) gives the endpoint path, the events to select, whether a secret is set and the connection's state. The agent then posts a card (`request_secret`, kind `app_secret`) that shows the endpoint address and a field for the secret: you paste it there, never in a message, and the agent only learns that it was saved.
+
+**From the command line.** `liaison config apply` takes the secret from the environment: `apps: [{ name: stripe, enable: true, appSecrets: { webhookSigningSecret: ${STRIPE_WEBHOOK_SECRET} } }]`. `--dry-run` says whether it would be set or replace the stored one, never the value; the same value again changes nothing. `liaison config verify --app stripe` checks the key and says whether the secret is set, with the endpoint address. See [the provisioning CLI](../provisioning-cli.md).
 
 - **Signed deliveries only.** Each delivery's signature is checked against your workspace's own signing secret, on the server. A delivery signed with another secret, with no secret saved yet, or signed more than 5 minutes before or after it arrives, is refused.
 - **Rolling the secret.** While you roll the secret in Stripe, the previous one keeps working for at most 24 hours.

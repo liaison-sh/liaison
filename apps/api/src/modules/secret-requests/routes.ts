@@ -33,6 +33,10 @@ import { zValidator } from "~/lib/validate"
 import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import { type ApiConn, apiConnFor } from "~/modules/apps/connections/api/declarations"
 import { getAdapterRow } from "~/modules/apps/connections/api/store"
+import {
+  appWebhookAddresses,
+  settableAppSecretFields,
+} from "~/modules/apps/connections/app-secrets"
 import { ConnectionTurnedOffError } from "~/modules/apps/connections/oauth-client-config"
 import {
   CONNECT_BINDING_COOKIE,
@@ -281,6 +285,24 @@ async function formFor(
           { name: "mode", value: target.mode },
         ],
         connect: { provider: connectProviderOf(config?.authorizationUrl) },
+      }
+    }
+    case "app_secret": {
+      await ensureAppsForOrg(orgId)
+      const config = connectionConfigRegistry.get([orgId, target.app, target.connection])
+      const field = settableAppSecretFields(config).find((f) => f.key === target.field)
+      // The address the provider sends to, so the person pastes the secret of the right endpoint.
+      const webhooks = await appWebhookAddresses(orgId, target.app)
+      return {
+        fields: [
+          { name: "value", label: field?.label ?? target.field, secret: true, required: true },
+        ],
+        destination: [
+          { name: "app", value: target.app },
+          { name: "connection", value: target.connection },
+          { name: "field", value: target.field },
+          ...webhooks.map((w) => ({ name: "webhookUrl", value: w.url })),
+        ],
       }
     }
     case "api_key":

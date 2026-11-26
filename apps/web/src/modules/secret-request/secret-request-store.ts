@@ -23,6 +23,7 @@ export type SecretRequestKind =
   | "google_integration_client"
   | "oauth_connect"
   | "api_key"
+  | "app_secret"
 
 export type SecretRequestStatus = "pending" | "saved" | "cancelled" | "expired"
 

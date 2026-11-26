@@ -18,6 +18,7 @@ export const SUPPORTED_SETTINGS_BLOCKS: readonly string[] = [
   "list",
   "tree",
   "custom",
+  "appSecrets",
 ]
 
 const FIELD_TYPES: readonly string[] = SETTINGS_FIELD_TYPES

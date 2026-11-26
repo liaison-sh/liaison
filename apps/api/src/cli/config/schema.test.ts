@@ -719,3 +719,46 @@ describe("the Drive shared drives moved into the google-drive app's provisioning
     expect(res.ok).toBe(true)
   })
 })
+
+describe("apps[].appSecrets (app-held secrets a person gives)", () => {
+  test("accepted as strings by key, an empty one included (not provided yet)", () => {
+    const res = validateConfig({
+      org: { slug: "o", name: "O" },
+      apps: [
+        {
+          name: "stripe",
+          enable: true,
+          appSecrets: { webhookSigningSecret: "whsec_abcdefghijklmnop", other: "" },
+        },
+      ],
+    })
+    expect(res.ok).toBe(true)
+    if (!res.ok) throw new Error(res.message)
+    expect(res.config.apps?.[0]?.appSecrets).toEqual({
+      webhookSigningSecret: "whsec_abcdefghijklmnop",
+      other: "",
+    })
+  })
+
+  test("a non-string value -> code 2", () => {
+    const res = validateConfig({
+      org: { slug: "o", name: "O" },
+      apps: [{ name: "stripe", enable: true, appSecrets: { webhookSigningSecret: 42 } }],
+    })
+    expect(res.ok).toBe(false)
+    if (res.ok) throw new Error("expected failure")
+    expect(res.code).toBe(2)
+    expect(res.message).toContain("apps.0.appSecrets.webhookSigningSecret")
+  })
+
+  test("on a disabled entry -> code 2", () => {
+    const res = validateConfig({
+      org: { slug: "o", name: "O" },
+      apps: [{ name: "stripe", enable: false, appSecrets: { webhookSigningSecret: "x" } }],
+    })
+    expect(res.ok).toBe(false)
+    if (res.ok) throw new Error("expected failure")
+    expect(res.code).toBe(2)
+    expect(res.message).toContain("appSecrets requires enable: true")
+  })
+})

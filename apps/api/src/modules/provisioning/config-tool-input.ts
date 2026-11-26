@@ -124,6 +124,9 @@ export function findRefusals(section: ConfigToolSection, raw: unknown): string[]
         if (isRecord(a.connection) && has(a.connection.oauthClient, "clientSecret")) {
           out.push(secretMessage(`apps[${i}].connection.oauthClient.clientSecret`))
         }
+        if (a.appSecrets !== undefined) {
+          out.push(`${secretMessage(`apps[${i}].appSecrets`)} (kind app_secret)`)
+        }
       }
       break
     case "knowledge":

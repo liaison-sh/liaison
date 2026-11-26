@@ -101,6 +101,11 @@ describe("secret fields are refused with a message naming request_secret", () =>
         ],
         path: "apps[0].connection.oauthClient.clientSecret",
       },
+      {
+        section: "apps",
+        data: [{ name: "stripe", enable: true, appSecrets: { webhookSigningSecret: "whsec_x" } }],
+        path: "apps[0].appSecrets",
+      },
     ]
   for (const row of rows) {
     test(row.path, () => {

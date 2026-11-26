@@ -639,6 +639,22 @@ Instead:
   `webhookSecretConfigKey` may be revealed, never by a custom app; any other
   marker fails with `secret_reveal_refused`.
 
+- Keep a secret the provider shows a person once (a webhook endpoint's signing
+  secret copied from its dashboard): list its key in the connection's
+  `"appSecretConfigKeys"` (kept encrypted, read back by your verifier) and in
+  `"appSecretFields"` with a `label`, and optionally a `pattern` the value must
+  match and a `patternMessage`. A person then sets it on your settings page
+  through an `appSecrets` block (`{ "block": "appSecrets", "connection":
+  "<name>" }`): the kernel draws it, with your webhook addresses and whether
+  each secret is set, and writes it with
+  `PUT /api/connections/<app>/<connection>/app-secrets/<key>` (the connection's
+  admin scope). Your UI bundle may read `GET` on that path (never a value) but
+  cannot write it. A person can also set it on an agent's card (`request_secret`, kind
+  `app_secret`) or with `liaison config apply` (`apps[].appSecrets`). A new
+  `webhookSigningSecret` rolls the old one into `webhookSigningSecretPrevious`
+  for 24 hours. A secret your handler receives from the provider's API is
+  stored with `ctx.config.setSecret(key, value)` instead.
+
 ```ts
 import { readConnectionSettings } from "@liaison/app-sdk/connection-credentials"
 

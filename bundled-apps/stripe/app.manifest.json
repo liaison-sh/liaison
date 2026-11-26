@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.38",
+  "version": "0.1.39",
   "kind": "app",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -93,6 +93,15 @@
         "webhookSigningSecret",
         "webhookSigningSecretPrevious"
       ],
+      "appSecretFields": [
+        {
+          "key": "webhookSigningSecret",
+          "label": "Webhook signing secret",
+          "help": "The signing secret of the Stripe webhook endpoint that sends to Liaison. In Stripe: Developers, Webhooks, the endpoint, Signing secret, Reveal. It starts with whsec_.",
+          "pattern": "^whsec_[A-Za-z0-9]{16,}$",
+          "patternMessage": "A webhook signing secret starts with whsec_ followed by letters and digits. Copy it from the endpoint's Signing secret in Stripe (Developers, Webhooks)."
+        }
+      ],
       "setupGuide": {
         "summary": "Stripe connects with a restricted key that reads customers, subscriptions, invoices, charges, disputes, payment methods, products, prices and events, and writes refunds, plus a webhook to this workspace.",
         "steps": [
@@ -111,8 +120,14 @@
           {
             "who": "human",
             "minutes": 3,
-            "text": "In **Developers → Webhooks**, add an endpoint at the webhook address Liaison shows, selecting the Customer, Invoice and Charge events, then give Liaison its signing secret.",
+            "text": "In **Developers → Webhooks**, add an endpoint at the webhook address Liaison shows on **Settings → Apps → Stripe → Webhook**, and select exactly these events: `charge.dispute.closed`, `charge.dispute.created`, `charge.dispute.funds_reinstated`, `charge.dispute.funds_withdrawn`, `charge.dispute.updated`, `charge.failed`, `charge.refund.updated`, `charge.refunded`, `charge.succeeded`, `charge.updated`, `customer.created`, `customer.deleted`, `customer.subscription.created`, `customer.subscription.deleted`, `customer.subscription.paused`, `customer.subscription.resumed`, `customer.subscription.trial_will_end`, `customer.subscription.updated`, `customer.updated`, `invoice.finalization_failed`, `invoice.finalized`, `invoice.marked_uncollectible`, `invoice.paid`, `invoice.payment_failed`, `invoice.updated`, `invoice.voided`.",
             "url": "https://dashboard.stripe.com/webhooks"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "On the endpoint, reveal its **Signing secret** (it starts with `whsec_`) and paste it into **Webhook signing secret** on **Settings → Apps → Stripe → Webhook**. Saving a new one later replaces it: the old one keeps working for 24 hours.",
+            "place": "liaison"
           }
         ]
       }
@@ -127,6 +142,21 @@
         "scope": "org",
         "adminScope": "stripe:admin:connection",
         "blocks": [{ "block": "connections", "names": ["stripe"] }]
+      },
+      {
+        "id": "webhook",
+        "title": "Webhook",
+        "description": "Where Stripe sends its events, which events to select, and the endpoint's signing secret.",
+        "scope": "org",
+        "adminScope": "stripe:admin:connection",
+        "blocks": [
+          { "block": "appSecrets", "connection": "stripe" },
+          {
+            "block": "custom",
+            "component": "StripeWebhookSettings",
+            "reason": "The steps in Stripe and the exact events to select, read from the event handler's own list."
+          }
+        ]
       }
     ]
   },
@@ -136,6 +166,15 @@
       "verify": "stripeWebhookVerifier",
       "bodyLimitBytes": 5242880
     }
+  },
+  "provisioning": {
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "handler": "provisionStripe",
+    "verify": "verifyStripe"
   },
   "webhookHealth": {
     "probe": "probe-webhook-upstream"
@@ -202,6 +241,27 @@
       "trustBoundary": "user",
       "handler": "connectionPrecheck",
       "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "webhook_status": {
+      "deferLoading": true,
+      "readOnly": true,
+      "description": "Set up or check the Stripe webhook: the endpoint path (on this Liaison's address), the exact events to select in Stripe, whether its signing secret is saved (yes or no, never the secret), whether a replaced one still verifies, and the connection's state. The secret is saved by an admin on a card (kernel__request_secret kind app_secret, app stripe, connection stripe, field webhookSigningSecret) or on Settings > Apps > Stripe, never in a message.",
+      "searchKeywords": [
+        "webhook",
+        "whsec",
+        "terminaison"
+      ],
+      "requiredScopes": [
+        "stripe:admin:connection"
+      ],
+      "trustBoundary": "user",
+      "handler": "webhookStatus",
+      "readsFromTable": "app_stripe.install_metadata",
       "params": {
         "type": "object",
         "properties": {},

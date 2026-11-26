@@ -63,6 +63,6 @@ Response echo submitter: unverified on a fresh create only -> apps/api/src/modul
 Idempotent replay answers ticketId, ticketHandle, idempotent -> apps/api/src/modules/webhooks/tickets-public.ts:966-971
 liaison-cli admitted whenever the device flow is on; default kernel:apps:build + kernel:apps:logs; reads and opt-in admin scopes; others refused -> apps/api/src/modules/auth/cli-client.ts ; apps/api/src/modules/auth/device-flow-routes.ts (initiate)
 Device sign-in publish answers 202 pending_approval with approvalId and summary -> apps/api/src/modules/app-builder/routes.ts (POST /drafts/:id/publish)
-Install routes refuse device sign-ins (403) -> apps/api/src/modules/apps/install-routes.ts (refuseRestrictedInstall)
+Install, rollback, outbound grant and uninstall routes refuse device sign-ins (403) -> apps/api/src/modules/apps/install-routes.ts (refuseRestrictedInstall)
 ui-approval from a device sign-in needs confirm = app name -> apps/api/src/modules/apps/install-routes.ts (POST /:name/ui-approval)
 Drafts REST create / files / status with kernel:apps:build -> apps/api/src/modules/app-builder/routes.ts

@@ -7,8 +7,8 @@
 //     is refused; kernel:apps:admin only when asked for (modules/auth/cli-client.ts);
 //   - REST create / update / status of a draft; a preview checks the tool's arguments;
 //   - a CLI token never installs by itself: the REST publish parks the same
-//     approval card as MCP (a person decides it), and the install routes refuse
-//     it, admin scope or not;
+//     approval card as MCP (a person decides it), and the install, rollback,
+//     uninstall and outbound-grant routes refuse it, admin scope or not;
 //   - the interface consent from the CLI needs the person's explicit
 //     confirmation (the app's name) and kernel:apps:admin in the token.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
@@ -52,6 +52,21 @@ function req(method: string, token: string, body?: unknown): RequestInit {
   }
 }
 
+/** A response's envelope, typed as the test reads it. */
+async function envelope<T>(
+  res: Response,
+): Promise<{ data: T; error: { message: string; code?: string } }> {
+  return (await res.json()) as { data: T; error: { message: string; code?: string } }
+}
+
+interface DraftStatus {
+  draftId: string
+  appName: string
+  latestVersion: number
+  installed: { version: string; draftVersion: number | null } | null
+  publishes: Array<{ version: string; draftId: string; n: number }>
+}
+
 async function initiate(scopes?: string[]) {
   return app.request("/api/auth/device-flow/initiate", {
     method: "POST",
@@ -68,7 +83,8 @@ async function initiate(scopes?: string[]) {
 async function cliLogin(scopes?: string[]): Promise<string> {
   const res = await initiate(scopes)
   expect(res.status).toBe(200)
-  const { userCode, deviceCode } = ((await res.json()) as any).data
+  const { userCode, deviceCode } = (await envelope<{ userCode: string; deviceCode: string }>(res))
+    .data
   const approved = await app.request(
     `/api/auth/device-flow/approve/${userCode}`,
     req("POST", fullToken, {}),
@@ -76,7 +92,7 @@ async function cliLogin(scopes?: string[]): Promise<string> {
   expect(approved.status).toBe(200)
   await redis.del(`device-poll:${deviceCode}`)
   const polled = await app.request(`/api/auth/device-flow/poll/${deviceCode}?client_id=${CLI}`)
-  const data = ((await polled.json()) as any).data
+  const data = (await envelope<{ status: string; accessToken: string }>(polled)).data
   expect(data.status).toBe("approved")
   return data.accessToken as string
 }
@@ -128,7 +144,7 @@ describe("what a liaison-cli sign-in carries", () => {
   it("a write scope outside the opt-in list is refused at initiate; read scopes and kernel:apps:admin when asked for", async () => {
     const refused = await initiate(["kernel:apps:build", "tickets:reply"])
     expect(refused.status).toBe(400)
-    expect(((await refused.json()) as any).error.message).toContain("tickets:reply")
+    expect((await envelope<unknown>(refused)).error.message).toContain("tickets:reply")
 
     const token = await cliLogin(["kernel:apps:build", "kernel:apps:admin", "kernel:skills:read"])
     const claims = await verifyAccessToken(token, env.JWT_SECRET)
@@ -152,7 +168,9 @@ describe("a CLI token builds, but never installs by itself", () => {
       req("POST", token, { base_name: "cli-notes", title: "CLI notes", template: "store-crud" }),
     )
     expect(created.status).toBe(201)
-    const c = ((await created.json()) as any).data
+    const c = (
+      await envelope<{ draftId: string; appName: string; files: Record<string, string> }>(created)
+    ).data
     draftId = c.draftId
     appName = c.appName
     expect(appName.startsWith("cli-notes-o")).toBe(true)
@@ -164,14 +182,14 @@ describe("a CLI token builds, but never installs by itself", () => {
       req("PUT", token, { files: { "README.md": readme }, message: "readme" }),
     )
     expect(pushed.status).toBe(200)
-    expect(((await pushed.json()) as any).data.n).toBe(2)
+    expect((await envelope<{ n: number }>(pushed)).data.n).toBe(2)
 
     const status = await app.request(
       `/api/apps/builder/drafts/${draftId}/status`,
       req("GET", token),
     )
     expect(status.status).toBe(200)
-    const s = ((await status.json()) as any).data
+    const s = (await envelope<DraftStatus>(status)).data
     expect(s).toMatchObject({ draftId, appName, latestVersion: 2, installed: null, publishes: [] })
   })
 
@@ -183,12 +201,12 @@ describe("a CLI token builds, but never installs by itself", () => {
         req("POST", token, { entry: { kind: "tool", name: "items_add" }, params }),
       )
       expect(res.status).toBe(200)
-      return ((await res.json()) as any).data
+      return (await envelope<{ ok: boolean; error?: { code: string; message: string } }>(res)).data
     }
     const missing = await preview({})
     expect(missing.ok).toBe(false)
-    expect(missing.error.code).toBe("invalid_params")
-    expect(missing.error.message).toContain("title")
+    expect(missing.error?.code).toBe("invalid_params")
+    expect(missing.error?.message).toContain("title")
     const unknownField = await preview({ title: "a", colour: "red" })
     expect(unknownField.error?.code).toBe("invalid_params")
     expect((await preview({ title: "milk" })).ok).toBe(true)
@@ -200,10 +218,12 @@ describe("a CLI token builds, but never installs by itself", () => {
       `/api/apps/builder/drafts/${draftId}/publish`,
       req("POST", adminCli, {}),
     )
-    const body = ((await res.json()) as any).data
+    const body = (
+      await envelope<{ status: string; approvalId: string; summary: { lines: string[] } }>(res)
+    ).data
     expect(res.status).toBe(202)
     expect(body.status).toBe("pending_approval")
-    const approvalId = body.approvalId as string
+    const approvalId = body.approvalId
     expect(body.summary.lines.join("\n")).toContain(`Installs ${appName} 0.1.0`)
     expect(await activeCustomApp(orgId, appName)).toBeNull()
     const [row] = await sql<{ status: string; tool_name: string }[]>`
@@ -214,7 +234,7 @@ describe("a CLI token builds, but never installs by itself", () => {
     // The CLI follows the card with its own token.
     const followed = await app.request(`/api/approvals/${approvalId}/result`, req("GET", adminCli))
     expect(followed.status).toBe(200)
-    expect(((await followed.json()) as any).data.status).toBe("pending")
+    expect((await envelope<{ status: string }>(followed)).data.status).toBe("pending")
 
     // The CLI cannot decide it: deciding is a person's act in their own session.
     const selfDecide = await app.request(
@@ -237,7 +257,7 @@ describe("a CLI token builds, but never installs by itself", () => {
       `/api/apps/builder/drafts/${draftId}/status`,
       req("GET", adminCli),
     )
-    const s = ((await status.json()) as any).data
+    const s = (await envelope<DraftStatus>(status)).data
     expect(s.installed).toMatchObject({ version: "0.1.0", draftVersion: 2 })
     expect(s.publishes[0]).toMatchObject({ version: "0.1.0", draftId, n: 2 })
   }, 120_000)
@@ -251,15 +271,20 @@ describe("a CLI token builds, but never installs by itself", () => {
     expect(res.status).toBe(202)
   }, 120_000)
 
-  it("the install routes refuse a CLI token, admin scope or not", async () => {
-    for (const path of ["/api/apps/custom/install", "/api/apps/install"]) {
-      const res = await app.request(
-        path,
-        req("POST", adminCli, { url: "https://example.com/x.liaisonapp" }),
-      )
-      expect(res.status).toBe(403)
-      expect(((await res.json()) as any).error.message).toContain("cannot install apps")
+  it("the install routes refuse a CLI token, admin scope or not, and so do rollback, uninstall and outbound grants", async () => {
+    const calls: Array<[string, string, unknown]> = [
+      ["POST", "/api/apps/custom/install", { url: "https://example.com/x.liaisonapp" }],
+      ["POST", "/api/apps/install", { url: "https://example.com/x.liaisonapp" }],
+      ["POST", `/api/apps/${appName}/rollback`, {}],
+      ["POST", `/api/apps/${appName}/outbound`, { grantedDomains: ["example.com"] }],
+      ["DELETE", `/api/apps/${appName}`, undefined],
+    ]
+    for (const [method, path, body] of calls) {
+      const res = await app.request(path, req(method, adminCli, body))
+      expect({ path, status: res.status }).toEqual({ path, status: 403 })
+      expect((await envelope<unknown>(res)).error.message).toContain("cannot install or change")
     }
+    expect((await activeCustomApp(orgId, appName))?.version).toBe("0.1.0")
   })
 
   it("the interface consent from the CLI needs the person's typed confirmation and kernel:apps:admin", async () => {

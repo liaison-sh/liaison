@@ -395,11 +395,7 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
             <Switch>
               <Match when={homeState().kind === "connect"}>
                 <p class="text-sm text-text-secondary">{i18n.t("calendar.noCalendarsYet")}</p>
-                <Button
-                  fullWidth
-                  data-testid="calendar-empty-connect"
-                  onClick={openCalendarSettings}
-                >
+                <Button data-testid="calendar-empty-connect" onClick={openCalendarSettings}>
                   {i18n.t("calendar.connectCta")}
                 </Button>
               </Match>

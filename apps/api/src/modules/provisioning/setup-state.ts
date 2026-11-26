@@ -63,6 +63,20 @@ export const SETUP_ITEM_KEYS = [
   "connector",
 ] as const
 /**
+ * The checklist on the managed edition (Liaison Cloud): no model-key step (it runs on the
+ * server's own key), and the mailbox after the team and the company knowledge, as the setup
+ * card's intro and the setup-guide skill say ("connecting your mailbox comes last").
+ */
+export const MANAGED_ITEM_KEYS = [
+  "apps",
+  "team",
+  "knowledge",
+  "mail",
+  "import",
+  "roles",
+  "connector",
+] as const satisfies ReadonlyArray<(typeof SETUP_ITEM_KEYS)[number]>
+/**
  * The Liaison team opt-ins (register, forward bug reports): an optional item
  * after the others, listed only where the question may be asked (sharing is
  * available and the asking org is the instance operator's), so a demo
@@ -415,10 +429,7 @@ export async function computeSetupState(orgId: string): Promise<SetupState> {
     },
   }
 
-  // The managed edition runs models on the server's own key: nothing to set up.
-  const itemKeys = isManagedEdition()
-    ? SETUP_ITEM_KEYS.filter((k) => k !== "aiKey")
-    : SETUP_ITEM_KEYS
+  const itemKeys = isManagedEdition() ? MANAGED_ITEM_KEYS : SETUP_ITEM_KEYS
   const items: SetupItem[] = itemKeys.map((key) => ({
     key,
     done: itemFacts[key].done,

@@ -201,3 +201,17 @@ export function withAppDimensionAliases(actor: ActorContext, appName: string): A
 export function appSelfScopes(appName: string, declared: readonly string[] | undefined): string[] {
   return [...new Set([`${appName}:*`, ...(declared ?? [])])]
 }
+
+/** The heading an app declares over its items on Home (manifest `attention.groupLabel`),
+ *  for the shell: without it Home falls back to the app's raw name, untranslated. */
+export function attentionGroupLabelOf(
+  desc: object,
+): { groupLabel: { label: string; labelKey?: string } } | undefined {
+  const attention = "attention" in desc ? desc.attention : undefined
+  if (!attention || typeof attention !== "object" || !("groupLabel" in attention)) return undefined
+  const g = attention.groupLabel
+  if (!g || typeof g !== "object" || !("label" in g) || typeof g.label !== "string")
+    return undefined
+  const labelKey = "labelKey" in g && typeof g.labelKey === "string" ? g.labelKey : undefined
+  return { groupLabel: labelKey ? { label: g.label, labelKey } : { label: g.label } }
+}

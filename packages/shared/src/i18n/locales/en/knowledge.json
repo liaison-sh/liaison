@@ -189,6 +189,7 @@
   "refusalFolderCycle": "A folder cannot go inside itself or one of its own folders.",
   "refusalNameRequired": "Give it a name.",
   "refusalPageNotInFolder": "This page is no longer in that folder. Reload the list and try again.",
+  "pageTextPlaceholder": "Write, or type / for blocks",
   "autosave": {
     "saved": "Saved",
     "notSaved": "Not saved: {{reason}}",

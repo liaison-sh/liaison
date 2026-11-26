@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { fireEvent, render, screen } from "@solidjs/testing-library"
+import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { describe, expect, it, vi } from "vitest"
 
 vi.mock("~/modules/secret-request/SecretRequestToolCard", () => ({
@@ -102,8 +102,22 @@ describe("SetupKickoffRow on Cloud", () => {
     expect(threadId).toBe("t-4")
     expect(content).toBe("I want to start with projects.")
     expect(document.querySelector("[role=dialog]")).toBeNull()
-    await Promise.resolve()
-    expect(screen.queryByTestId("setup-goal-knowledge")).toBeNull()
+    await waitFor(() => expect(screen.queryByTestId("setup-goal-knowledge")).toBeNull())
+  })
+
+  it("an open step's Start arrow posts that step in the conversation as the person", async () => {
+    sendMock.mockReset()
+    sendMock.mockResolvedValue(undefined)
+    const view = setupKickoffOf({ ...META, secretRequestId: undefined, managed: true })
+    if (!view) throw new Error("not read")
+    render(() => <SetupKickoffRow messageId="m-6" threadId="t-6" view={view} />)
+    const open = view.state.items.find((i) => !i.done)
+    if (!open) throw new Error("no open step in the fixture")
+    fireEvent.click(screen.getByTestId(`setup-item-start-${open.key}`))
+    expect(sendMock).toHaveBeenCalledTimes(1)
+    const [, threadId, content] = sendMock.mock.calls[0]!
+    expect(threadId).toBe("t-6")
+    expect(content).toMatch(/^Let's do this step now: .+\.$/)
   })
 
   it("managed with a goal: the intro starts there, no buttons", () => {

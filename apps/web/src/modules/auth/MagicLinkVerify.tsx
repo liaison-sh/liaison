@@ -7,6 +7,7 @@ import { anonApiClient } from "~/lib/api-client"
 import { authApiPath } from "~/lib/env"
 import { setChallengeToken, setTokens } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { markFirstOpen } from "~/modules/threads/personal-dm-store"
 import { Button } from "~/ui/Button"
 
 interface AuthResponse {
@@ -86,13 +87,15 @@ const MagicLinkVerify: Component = () => {
     if (!link || submitting()) return
     setSubmitting(true)
     try {
-      finish(
-        await anonApiClient.post<AuthResponse>(authApiPath("/magic-link/verify"), {
-          ...link,
-          confirm: true,
-          ...(goal ? { goal } : {}),
-        }),
-      )
+      const result = await anonApiClient.post<AuthResponse>(authApiPath("/magic-link/verify"), {
+        ...link,
+        confirm: true,
+        ...(goal ? { goal } : {}),
+      })
+      // A handoff is a new workspace's first sign-in: it opens on the
+      // person's own agent conversation, where the setup starts.
+      if (result.accessToken) markFirstOpen()
+      finish(result)
     } catch {
       setFailed(true)
     } finally {

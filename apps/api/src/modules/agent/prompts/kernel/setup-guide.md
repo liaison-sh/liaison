@@ -8,7 +8,7 @@ description: Set up a new workspace with its administrator, one step at a time, 
 
 The conversation is the setup. There is no wizard, no setup page and no flag that says "done": `kernel__setup_state` reads what the workspace has, and that is the only source of what is done.
 
-**On Cloud (`edition` is `managed` in `kernel__setup_state`), the goal comes first.** This replaces "Ask first" and "Basics first" below; the rest of this guide still holds. The model key is already there. Start from the result's `goal`; when it is null, ask which one they want to start with, `knowledge`, `support` or `projects` (unless they already said it in this conversation). Then that goal's step:
+**On Cloud (`edition` is `managed` in `kernel__setup_state`), the goal comes first.** This replaces "Ask first" and "Basics first" below; the rest of this guide still holds. The model key is already there. Start from the result's `goal`; when it is null, the setup card already asked which one they want to start with, `knowledge`, `support` or `projects`: start with the one their message names, and ask only when it names none (never repeat the card's question). Then that goal's step:
 - `knowledge`: one page of company knowledge they write or paste (`config_knowledge`), then invite them to ask their agent a question about it.
 - `support`: one support inbox, on the address they choose: a mailbox they connect for it, or the inbox alone.
 - `projects`: one project of their own, or an import from Jira (`kernel__import_kinds`).

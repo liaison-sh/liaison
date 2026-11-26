@@ -227,7 +227,7 @@ describe("the setup card on Cloud carries the person's goal", () => {
 
   it("without a goal it asks for one; an unknown goal reads as none", () => {
     const none = systemEventLine({ ...base, metadata: { ...base.metadata, managed: true } })
-    expect(none).toContain("ask which one goal they want to start with")
+    expect(none).toContain("already asked them which one goal to start with")
     expect(none).toContain("offer mail connection last")
     expect(
       systemEventLine({

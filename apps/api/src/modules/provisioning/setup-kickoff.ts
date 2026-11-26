@@ -330,6 +330,13 @@ export async function runSetupKickoff(payload: SetupKickoffPayload): Promise<Set
   if (!posted) return { posted: false }
   log.info({ orgId, threadId: posted.threadId }, "setup kickoff posted")
   if (!canAnswer) return { posted: true, ...posted, turnStarted: false }
+  // The card already asks the question: on Cloud without a goal it is "where
+  // do you want to start?" with one button per goal. An agent turn here would
+  // ask the very same thing a second later, so the conversation waits for the
+  // person's pick or their own words, and that message starts the turn.
+  if (managed && !goal) {
+    return { posted: true, ...posted, turnStarted: false }
+  }
 
   const { invokeAgentForThread } = await import("~/modules/agent/runtime/agent-service")
   await invokeAgentForThread(

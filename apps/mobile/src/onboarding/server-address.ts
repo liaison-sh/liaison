@@ -16,15 +16,14 @@
 
 // The address rule is shared with the web app's "Add a server" form, so the
 // first launch and the settings take the same input (packages/shared).
-import { isValidServerAddress, normalizeServerAddress } from "@liaison/shared/src/server-address"
 import {
-  DEEP_LINK_CONFIRM_PROMPT,
-  FIRST_LAUNCH_CONNECT_ACTION,
-  FIRST_LAUNCH_HELPER,
-  FIRST_LAUNCH_INVALID_ADDRESS,
-  FIRST_LAUNCH_PROMPT,
-  FIRST_LAUNCH_UNREACHABLE,
-} from "./mobile-copy"
+  cloudPageUrl,
+  workspaceAddress,
+  workspaceSlugFromAddress,
+  workspaceSlugFromInput,
+} from "@liaison/shared/src/cloud-workspace"
+import { isValidServerAddress, normalizeServerAddress } from "@liaison/shared/src/server-address"
+import { type FirstLaunchCopy, firstLaunchCopy } from "./mobile-copy"
 
 export interface RuntimeBranding {
   orgName: string
@@ -142,6 +141,17 @@ export interface FirstLaunchDependencies {
   storage: AddressStorage
   document: Document
   fetchImpl?: typeof fetch
+  /**
+   * The cloud whose workspaces the first screen asks for (`acme` becomes
+   * `https://acme.<domain>`), or null for no Cloud screen: the address field
+   * is then the first screen, as it was. boot-entry.ts passes the build's
+   * value (packages/shared/src/cloud-workspace.ts).
+   */
+  cloudDomain?: string | null
+  /** The language the screen speaks. Defaults to the webview's own. */
+  language?: string
+  /** Opens a page of the cloud in the system browser. */
+  openUrl?: (url: string) => void
 }
 
 export interface FirstLaunch {
@@ -177,15 +187,63 @@ export interface FirstLaunch {
 export const FIRST_LAUNCH_ID = "liaison-first-launch"
 const INPUT_ID = "liaison-mobile-server-address"
 
+/** The Cloud screen's field. Exported for the tests. */
+export const CLOUD_INPUT_ID = "liaison-mobile-cloud-workspace"
+
+type PromptMode = "cloud" | "address"
+
+const LINK_STYLE =
+  "font:inherit;font-size:13px;min-height:44px;padding:0 4px;border:0;background:transparent;" +
+  "color:#3f4a63;text-decoration:underline;cursor:pointer"
+
 export function createFirstLaunch(deps: FirstLaunchDependencies): FirstLaunch {
   const doc = deps.document
+  const cloudDomain = deps.cloudDomain ?? null
+  const language = deps.language ?? doc.defaultView?.navigator?.language ?? "en"
+  const copy: FirstLaunchCopy = firstLaunchCopy(language)
+  const openUrl =
+    deps.openUrl ??
+    ((url: string) => {
+      // A target=_blank open leaves the app: the native shell hands it to the
+      // system browser rather than navigating this webview away.
+      doc.defaultView?.open(url, "_blank", "noopener")
+    })
+  let mode: PromptMode = cloudDomain ? "cloud" : "address"
   let prefill: ((serverAddress: string) => void) | null = null
   let offered: string | null = null
+  /** The prompt on screen, so a deep link or a switch can redraw it. */
+  let showing: { section: HTMLElement; resolve: (address: string) => void } | null = null
+
+  const modeFor = (serverAddress: string): PromptMode =>
+    cloudDomain && workspaceSlugFromAddress(serverAddress, cloudDomain) ? "cloud" : "address"
+
+  const switchTo = (next: PromptMode): void => {
+    if (!showing) return
+    const { section, resolve } = showing
+    section.remove()
+    showing = null
+    mode = next
+    renderPrompt(resolve)
+  }
+
+  const linkButton = (text: string, testId: string, onClick: () => void): HTMLButtonElement => {
+    const link = doc.createElement("button")
+    link.setAttribute("type", "button")
+    link.setAttribute("data-testid", testId)
+    link.textContent = text
+    link.style.cssText = LINK_STYLE
+    link.addEventListener("click", onClick)
+    return link
+  }
 
   const renderPrompt = (resolve: (address: string) => void, notice?: string): void => {
     const section = doc.createElement("section")
     section.id = FIRST_LAUNCH_ID
     section.setAttribute("role", "dialog")
+    section.setAttribute(
+      "data-testid",
+      mode === "cloud" ? "first-launch-cloud" : "first-launch-address",
+    )
     // A TOP LAYER overlay on documentElement, not a block appended to body.
     // The wrapped app mounts into body milliseconds after this script runs and
     // owns the viewport: measured on a booted simulator, a plain section here
@@ -209,21 +267,28 @@ export function createFirstLaunch(deps: FirstLaunchDependencies): FirstLaunch {
       "font:15px/1.45 -apple-system,BlinkMacSystemFont,system-ui,sans-serif",
     ].join(";")
 
+    const cloud = mode === "cloud" && cloudDomain !== null
+    const inputId = cloud ? CLOUD_INPUT_ID : INPUT_ID
+
     const label = doc.createElement("label")
-    label.setAttribute("for", INPUT_ID)
-    label.textContent = FIRST_LAUNCH_PROMPT
+    label.setAttribute("for", inputId)
+    label.textContent = cloud ? copy.cloudWorkspaceLabel : copy.addressPrompt
 
     const input = doc.createElement("input")
-    input.id = INPUT_ID
-    input.setAttribute("type", "url")
-    input.setAttribute("inputmode", "url")
+    input.id = inputId
+    input.setAttribute(
+      "data-testid",
+      cloud ? "first-launch-workspace" : "first-launch-address-input",
+    )
+    input.setAttribute("type", cloud ? "text" : "url")
+    input.setAttribute("inputmode", cloud ? "text" : "url")
     input.setAttribute("autocapitalize", "none")
     input.setAttribute("autocorrect", "off")
     input.setAttribute("spellcheck", "false")
-    input.setAttribute("placeholder", "liaison.example.com")
+    input.setAttribute("placeholder", cloud ? copy.cloudPlaceholder : "liaison.example.com")
 
     const helper = doc.createElement("p")
-    helper.textContent = FIRST_LAUNCH_HELPER
+    helper.textContent = cloud ? copy.cloudPrompt : copy.addressHelper
 
     const alert = doc.createElement("p")
     alert.setAttribute("role", "alert")
@@ -231,21 +296,34 @@ export function createFirstLaunch(deps: FirstLaunchDependencies): FirstLaunch {
     if (notice !== undefined) alert.textContent = notice
 
     const confirm = doc.createElement("p")
-    confirm.textContent = DEEP_LINK_CONFIRM_PROMPT
+    confirm.textContent = cloud ? copy.cloudDeepLinkConfirm : copy.deepLinkConfirm
     confirm.hidden = true
 
     const button = doc.createElement("button")
     button.setAttribute("type", "button")
-    button.textContent = FIRST_LAUNCH_CONNECT_ACTION
+    button.setAttribute("data-testid", "first-launch-submit")
+    button.textContent = cloud ? copy.cloudAction : copy.connectAction
     button.addEventListener("click", () => {
-      const candidate = normalizeServerAddress(input.value)
-      if (!isValidServerAddress(candidate)) {
-        alert.textContent = FIRST_LAUNCH_INVALID_ADDRESS
-        alert.hidden = false
-        return
+      let candidate: string
+      if (cloud) {
+        const slug = workspaceSlugFromInput(input.value, cloudDomain)
+        if (slug === null) {
+          alert.textContent = copy.cloudInvalid
+          alert.hidden = false
+          return
+        }
+        candidate = workspaceAddress(slug, cloudDomain)
+      } else {
+        candidate = normalizeServerAddress(input.value)
+        if (!isValidServerAddress(candidate)) {
+          alert.textContent = copy.addressInvalid
+          alert.hidden = false
+          return
+        }
       }
       alert.hidden = true
       section.remove()
+      showing = null
       resolve(candidate)
     })
 
@@ -274,23 +352,53 @@ export function createFirstLaunch(deps: FirstLaunchDependencies): FirstLaunch {
     // moment a zoom begins (WebViewDelegationHandler), so the zoom can never be
     // undone and every screen after sign-in stayed ~7% too large, cut off on
     // the right and at the tab bar.
-    input.style.cssText =
+    const fieldStyle =
       "font:inherit;font-size:16px;padding:12px;border:1px solid #d1d5db;border-radius:8px;background:#ffffff;color:#111827"
+    input.style.cssText = fieldStyle
     // 44 points is the smallest control a thumb reliably hits.
     button.style.cssText =
       "font:inherit;font-weight:600;min-height:44px;padding:12px;border:0;border-radius:8px;" +
       "background:#3f4a63;color:#ffffff"
 
-    card.append(brand, label, input, helper, confirm, alert, button)
+    if (cloud) {
+      // The name, then the fixed domain it lives under, in one bordered field.
+      const row = doc.createElement("div")
+      row.style.cssText =
+        "display:flex;align-items:center;border:1px solid #d1d5db;border-radius:8px;background:#ffffff;overflow:hidden"
+      input.style.cssText =
+        "font:inherit;font-size:16px;padding:12px;border:0;background:transparent;color:#111827;flex:1;min-width:0;outline:none"
+      const suffix = doc.createElement("span")
+      suffix.setAttribute("data-testid", "first-launch-workspace-suffix")
+      suffix.textContent = `.${cloudDomain}`
+      suffix.style.cssText = "font-size:16px;color:#6b7280;padding:0 12px 0 0;white-space:nowrap"
+      row.append(input, suffix)
+      const links = doc.createElement("div")
+      links.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:0"
+      links.append(
+        linkButton(copy.cloudForgot, "first-launch-forgot", () =>
+          openUrl(cloudPageUrl(cloudDomain, "login", language)),
+        ),
+        linkButton(copy.cloudSelfHosted, "first-launch-self-hosted", () => switchTo("address")),
+      )
+      card.append(brand, helper, label, row, confirm, alert, button, links)
+    } else {
+      card.append(brand, label, input, helper, confirm, alert, button)
+      if (cloudDomain !== null) {
+        card.append(linkButton(copy.useCloud, "first-launch-use-cloud", () => switchTo("cloud")))
+      }
+    }
     section.append(card)
     doc.documentElement.appendChild(section)
+    showing = { section, resolve }
 
     prefill = (serverAddress: string) => {
       // Shown and waiting for the click. The link decides nothing.
-      input.value = serverAddress
+      input.value = cloud
+        ? (workspaceSlugFromAddress(serverAddress, cloudDomain) ?? serverAddress)
+        : serverAddress
       confirm.hidden = false
     }
-    if (offered !== null) prefill(offered)
+    if (offered !== null && modeFor(offered) === mode) prefill(offered)
   }
 
   return {
@@ -301,6 +409,12 @@ export function createFirstLaunch(deps: FirstLaunchDependencies): FirstLaunch {
     offerAddress(serverAddress: string): void {
       if (!isValidServerAddress(serverAddress)) return
       offered = serverAddress
+      const wanted = modeFor(serverAddress)
+      if (showing && wanted !== mode) {
+        switchTo(wanted)
+        return
+      }
+      mode = wanted
       prefill?.(serverAddress)
     },
     async start(): Promise<string> {
@@ -320,7 +434,7 @@ export function createFirstLaunch(deps: FirstLaunchDependencies): FirstLaunch {
         try {
           branding = await fetchRuntimeBranding(candidate, deps.fetchImpl)
         } catch {
-          notice = FIRST_LAUNCH_UNREACHABLE
+          notice = mode === "cloud" ? copy.cloudNotFound : copy.addressUnreachable
           candidate = null
           continue
         }

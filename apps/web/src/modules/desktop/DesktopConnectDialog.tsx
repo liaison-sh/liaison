@@ -19,7 +19,7 @@ import { type Component, Show } from "solid-js"
 import { accessToken } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { Dialog } from "~/ui/Dialog"
-import DesktopConnect from "./DesktopConnect"
+import DesktopServerStep from "./DesktopServerStep"
 import { desktopState, dismissConnect, isDesktop } from "./desktop-store"
 
 /** NORMATIVE. No dash punctuation (A7). */
@@ -50,7 +50,7 @@ const DesktopConnectDialog: Component = () => {
         <Dialog.Content class="max-w-sm">
           <Dialog.Title class="text-center">{i18n.t(CONNECT_DIALOG_TITLE)}</Dialog.Title>
           <div class="mt-5">
-            <DesktopConnect onCancel={dismissConnect} />
+            <DesktopServerStep onCancel={dismissConnect} />
           </div>
         </Dialog.Content>
       </Dialog>

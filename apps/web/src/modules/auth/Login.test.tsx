@@ -274,10 +274,11 @@ describe("Login", () => {
   describe("desktop steps", () => {
     afterEach(() => uninstallFakeBridge())
 
-    it("login asks for a server address first on the desktop", () => {
+    it("login asks for a Liaison Cloud workspace first on the desktop", () => {
       installFakeBridge({}, { serverAddress: null })
       renderWithRouter()
-      expect(screen.getByLabelText("Liaison org URL")).toBeInTheDocument()
+      expect(screen.getByLabelText("Your workspace")).toBeInTheDocument()
+      expect(screen.getByTestId("desktop-cloud-self-hosted")).toBeInTheDocument()
       expect(screen.queryByPlaceholderText("you@company.com")).not.toBeInTheDocument()
       expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument()
     })
@@ -290,6 +291,7 @@ describe("Login", () => {
       renderWithRouter()
       expect(screen.getByTestId("device-approval-code")).toBeInTheDocument()
       expect(screen.queryByLabelText("Liaison org URL")).not.toBeInTheDocument()
+      expect(screen.queryByLabelText("Your workspace")).not.toBeInTheDocument()
     })
 
     it("a desktop already bound to a server gets the ordinary login", () => {

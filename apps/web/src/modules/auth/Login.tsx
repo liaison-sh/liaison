@@ -38,8 +38,8 @@ import {
 } from "~/modules/auth/desktop-oauth"
 import LoginServerChoice from "~/modules/auth/LoginServerChoice"
 import { DemoEntry } from "~/modules/demo/DemoEntry"
-import DesktopConnect from "~/modules/desktop/DesktopConnect"
 import DesktopDeviceApproval from "~/modules/desktop/DesktopDeviceApproval"
+import DesktopServerStep from "~/modules/desktop/DesktopServerStep"
 import {
   canSignInWithSystemBrowser,
   desktopState,
@@ -632,7 +632,7 @@ const Login: Component = () => {
             <DesktopDeviceApproval onUseDifferentServer={() => setRebinding(true)} />
           </Show>
           <Show when={showConnectField()}>
-            <DesktopConnect
+            <DesktopServerStep
               onCancel={
                 connectRequested() && serverAddress() !== null && !rebinding()
                   ? dismissConnect

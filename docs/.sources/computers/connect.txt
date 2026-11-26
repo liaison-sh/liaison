@@ -74,3 +74,8 @@ updater.log beside sidecar.log -> apps/desktop/README.md:93
 Log file locations -> apps/desktop/README.md:114
 Windows bash notice -> packages/shared/src/i18n/locales/en/kernel.json:3424
 Messages to update the app or the server -> packages/shared/src/i18n/locales/en/kernel.json:4673
+First launch opens on Liaison Cloud workspace screen -> apps/web/src/modules/desktop/DesktopServerStep.tsx:35
+Your workspace label -> packages/shared/src/i18n/locales/en/kernel.json:4477
+Continue action -> packages/shared/src/i18n/locales/en/kernel.json:4479
+Name becomes https://<name>.liaison.sh, pasted address accepted -> packages/shared/src/cloud-workspace.ts:61
+Use a self-hosted server -> packages/shared/src/i18n/locales/en/kernel.json:4485

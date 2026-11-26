@@ -4469,7 +4469,21 @@
       "deepLinkConfirm": "Connect to this Liaison org?",
       "serverAddress": "Liaison org URL",
       "windowsShellNotice": "Local tools that run shell commands expect bash. On Windows, install Git Bash or enable WSL, then start the session again.",
-      "windowsShellNoticeDismiss": "Do not show again"
+      "windowsShellNoticeDismiss": "Do not show again",
+      "useCloud": "Use Liaison Cloud"
+    },
+    "cloud": {
+      "prompt": "Sign in to your Liaison Cloud workspace.",
+      "workspace": "Your workspace",
+      "placeholder": "yourcompany",
+      "action": "Continue",
+      "invalidWorkspace": "That is not a valid workspace name.",
+      "notFound": "That workspace was not found. Check the name and try again.",
+      "unreachable": "Cannot reach that workspace. Check the name and your connection, then try again.",
+      "deepLinkConfirm": "Connect to this Liaison Cloud workspace?",
+      "forgot": "Forgot it? Email me my workspaces",
+      "selfHosted": "Use a self-hosted server",
+      "createWorkspace": "Create a workspace"
     },
     "device": {
       "loginPrompt": "Sign in to finish connecting",

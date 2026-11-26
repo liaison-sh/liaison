@@ -75,6 +75,17 @@ export {
   roleScopeKey,
   scopeDisplayLabel,
 } from "./capability-display"
+export {
+  buildCloudDomain,
+  type CloudPage,
+  cloudPageUrl,
+  DEFAULT_CLOUD_DOMAIN,
+  isValidWorkspaceSlug,
+  resolveCloudDomain,
+  workspaceAddress,
+  workspaceSlugFromAddress,
+  workspaceSlugFromInput,
+} from "./cloud-workspace"
 export * from "./connect-failures"
 export { csvCell } from "./csv"
 export * from "./demo/needs"

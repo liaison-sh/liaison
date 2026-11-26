@@ -79,3 +79,14 @@ desktop icon badge counts unread direct messages and mentions -> apps/web/src/mo
 desktop icon badge set by the shell -> apps/desktop/src-tauri/src/dock_badge.rs:114
 direct messages and mentions play the system sound -> apps/desktop/src-tauri/src/desktop_notifications.rs:546
 Task comment push titled with the task, tap opens the task on the comment -> apps/mobile/src/push-client.ts:213
+First launch opens on Liaison Cloud workspace screen -> apps/web/src/modules/desktop/DesktopServerStep.tsx:35
+Your workspace label -> packages/shared/src/i18n/locales/en/kernel.json:4477
+Continue action -> packages/shared/src/i18n/locales/en/kernel.json:4479
+Name becomes https://<name>.liaison.sh, pasted address accepted -> packages/shared/src/cloud-workspace.ts:61
+Use a self-hosted server -> packages/shared/src/i18n/locales/en/kernel.json:4485
+Use Liaison Cloud -> packages/shared/src/i18n/locales/en/kernel.json:4473
+Forgot link opens cloud login page in browser -> apps/web/src/modules/desktop/DesktopCloudConnect.tsx:172
+Create a workspace opens signup page -> apps/web/src/modules/desktop/DesktopCloudConnect.tsx:180
+Workspace not found copy -> packages/shared/src/i18n/locales/en/kernel.json:4481
+Cloud deep link confirm -> packages/shared/src/i18n/locales/en/kernel.json:4483
+Phone app Cloud screen, self-hosted link, forgot link -> apps/mobile/src/onboarding/server-address.ts:381

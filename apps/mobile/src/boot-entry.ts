@@ -8,6 +8,7 @@
 // test it: the app renders into the test's DOM and calls the network, and the
 // failure lands in whichever unrelated test file happened to run next.
 
+import { buildCloudDomain } from "@liaison/shared/src/cloud-workspace"
 import { attachRefreshBridge, LOGOUT_PATH } from "./auth/refresh-bridge"
 import { createBootRestart } from "./boot/boot-restart"
 import { publishMirroredServerAddress } from "./boot/server-global"
@@ -62,7 +63,12 @@ if (typeof document !== "undefined") {
     queue: deepLinkQueue,
     addUrlListener: capacitorUrlListener,
     whenAppReady: domReady,
-    firstLaunch: createFirstLaunch({ storage: preferencesStorage, document }),
+    firstLaunch: createFirstLaunch({
+      storage: preferencesStorage,
+      document,
+      // Liaison Cloud first, unless this build turned it off (LIAISON_CLOUD_DOMAIN="").
+      cloudDomain: buildCloudDomain(),
+    }),
     attachBridge: () =>
       attachRefreshBridge(globalThis as never, {
         // The CONFIRMED origin, not the published one: the global may still

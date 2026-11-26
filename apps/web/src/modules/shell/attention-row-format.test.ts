@@ -237,6 +237,22 @@ describe("attention row format — a routed request waiting a day", () => {
     )
   })
 
+  test("a personal mailbox that cannot sync reads in French, keeping its address", () => {
+    const line = {
+      app: "kernel",
+      kind: "admin_action",
+      summary:
+        "Mailbox lucas@example.test is not syncing yet: set up mailbox encryption in Settings > Mail to start receiving mail.",
+      metadata: { mailAccountId: "m1", encryptionState: "pending_enrollment" },
+    }
+    expect(kernelAttentionTitle(line, flat("en"))).toBe(line.summary)
+    expect(kernelAttentionTitle(line, flat("fr"))).toBe(
+      "La boîte mail lucas@example.test ne se synchronise pas encore : configurez son chiffrement dans Paramètres > Mail pour commencer à recevoir des mails.",
+    )
+    const blocked = { ...line, metadata: { mailAccountId: "m1", encryptionState: "blocked" } }
+    expect(kernelAttentionTitle(blocked, flat("fr"))).toMatch(/ne se synchronise plus/)
+  })
+
   test("reads in English as written and in French from the catalog", () => {
     expect(kernelAttentionTitle(reminder, flat("en"))).toBe(reminder.summary)
     expect(kernelAttentionTitle(reminder, flat("fr"))).toBe(

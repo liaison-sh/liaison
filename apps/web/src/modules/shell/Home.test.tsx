@@ -522,8 +522,9 @@ describe("home.cards", () => {
     // 24 alerts cost ONE row, so they never need the scroll cap at all here.
     expect(alerts.querySelector('[data-testid="alert-cluster-tickets::sla_risk"]')).toBeTruthy()
     expect(alerts.getAttribute("data-scrollable")).toBeNull()
-    // The card counts ITEMS, so 24 clustered alerts still read as 24.
-    expect(screen.getByTestId("home-card-count-messages").textContent).toContain("24")
+    // The card counts ROWS, like the sidebar's Alerts row and the Home badge: one cluster is 1,
+    // and the cluster's row says it holds 24.
+    expect(screen.getByTestId("home-card-count-messages").textContent).toBe("1")
   })
 
   it("caps a section even when it renders few rows — expanding a cluster must not escape it", () => {

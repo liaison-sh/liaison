@@ -376,7 +376,7 @@
     "modelUnavailable": "{{model}} (not available in this workspace)",
     "runsOnLiaisonAndNode": "Runs on: Liaison, and your computer {{node}}"
   },
-  "allClear": "ALL CLEAR",
+  "allClear": "All clear",
   "anEmailTheMoment": "an email the moment",
   "app": {
     "name": "Liaison"
@@ -1992,11 +1992,11 @@
   },
   "homeStatusAreaMany": "AREAS",
   "homeStatusAreaOne": "AREA",
-  "homeStatusNeedYouNowMany": "NEED YOU NOW",
-  "homeStatusNeedYouNowOne": "NEEDS YOU NOW",
-  "homeStatusNothingUrgent": "NOTHING NEEDS YOU NOW",
+  "homeStatusNeedYouNowMany": "need you now",
+  "homeStatusNeedYouNowOne": "needs you now",
+  "homeStatusNothingUrgent": "Nothing needs you now",
   "homeStatusQueuedIn": "QUEUED IN",
-  "homeStatusUpdated": "UPDATED",
+  "homeStatusUpdated": "updated",
   "homeTimeJustNow": "just now",
   "in": "in",
   "integrations": "Integrations",
@@ -4359,7 +4359,9 @@
       "wrongCodes": "{{name}} entered a wrong code on your request three times in a row",
       "sendFailed": "{{title}}: the link to {{name}} did not send",
       "staffTurn": "{{title}}: open it in Liaison to read and sign"
-    }
+    },
+    "mailboxBlocked": "Mailbox {{email}} stopped syncing: its encryption keys cannot be used. Open Settings > Mail to reset them.",
+    "mailboxNotSyncing": "Mailbox {{email}} is not syncing yet: set up mailbox encryption in Settings > Mail to start receiving mail."
   },
   "approvalDecisionLine": {
     "withdrawn": "Withdrawn by the requester.",
@@ -7140,7 +7142,7 @@
     "retry": "Retry",
     "loading": "Opening the discussion…"
   },
-  "homeStatusOtherWork": "IN YOUR OTHER WORK",
+  "homeStatusOtherWork": "in your other work",
   "homeDecisions": {
     "notNow": "Not now",
     "setAside": "Set aside until Monday. It comes back then.",

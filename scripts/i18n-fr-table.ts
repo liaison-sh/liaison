@@ -4145,7 +4145,7 @@ export const FR: Record<string, string> = {
   "tasks still use this status. Move them first.":
     "tâches utilisent encore ce statut. Déplacez-les d'abord.",
   "Move tasks to": "Déplacer les tâches vers",
-  "ACTIVE ·": "ACTIVES ·",
+  "ACTIVE ·": "ACTIFS ·",
   Title: "Titre",
   Project: "Projet",
   "SUBTASKS ·": "SOUS-TÂCHES ·",

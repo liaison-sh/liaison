@@ -228,28 +228,28 @@ describe("runConfigVerify: apps[].config drift", () => {
 })
 
 describe("runConfigVerify: app-held secrets", () => {
-  const stripeApp: NonNullable<ProvisioningConfig["apps"]>[number] = {
-    name: "stripe",
+  const paymentsApp: NonNullable<ProvisioningConfig["apps"]>[number] = {
+    name: "payments",
     enable: true,
-    connection: { name: "stripe", credentials: { apiKey: SECRET_TOKEN } },
+    connection: { name: "payments", credentials: { apiKey: SECRET_TOKEN } },
   }
   const webhooks = [
-    { endpoint: "events", url: "https://liaison.example/webhooks/org-1/stripe/events" },
+    { endpoint: "events", url: "https://liaison.example/webhooks/org-1/payments/events" },
   ]
 
   test("a set secret: one line per secret and the webhook address, after the probe; exit 0", async () => {
     const logs: string[] = []
     const seen: unknown[] = []
     const res = await runConfigVerify({
-      config: configWith([stripeApp]),
-      appFilter: "stripe",
+      config: configWith([paymentsApp]),
+      appFilter: "payments",
       log: (m) => logs.push(m),
       resolveOrgId: async () => "org-1",
       probe: async () => ({ identity: "acct_1" }),
       appSecretCheck: async (orgId, app, conn) => {
         seen.push([orgId, app, conn])
         return {
-          connection: "stripe",
+          connection: "payments",
           secrets: [
             {
               key: "webhookSigningSecret",
@@ -263,34 +263,34 @@ describe("runConfigVerify: app-held secrets", () => {
       },
     })
     expect(res.exitCode).toBe(0)
-    expect(seen).toEqual([["org-1", "stripe", "stripe"]])
+    expect(seen).toEqual([["org-1", "payments", "payments"]])
     expect(logs).toEqual([
-      "app 'stripe': PASS (identity: acct_1)",
-      "app 'stripe': secret 'webhookSigningSecret' set, previous still verifies until 2026-11-27T10:00:00.000Z",
-      "app 'stripe': webhook 'events' address https://liaison.example/webhooks/org-1/stripe/events",
+      "app 'payments': PASS (identity: acct_1)",
+      "app 'payments': secret 'webhookSigningSecret' set, previous still verifies until 2026-11-27T10:00:00.000Z",
+      "app 'payments': webhook 'events' address https://liaison.example/webhooks/org-1/payments/events",
     ])
     expect(res.report.appSecrets).toEqual([
       {
-        app: "stripe",
-        connection: "stripe",
+        app: "payments",
+        connection: "payments",
         key: "webhookSigningSecret",
         status: "SET",
         previousUntil: "2026-11-27T10:00:00.000Z",
       },
     ])
-    expect(res.report.webhooks).toEqual([{ app: "stripe", ...webhooks[0] }])
+    expect(res.report.webhooks).toEqual([{ app: "payments", ...webhooks[0] }])
   })
 
   test("a secret not set is a warning line, not a FAIL", async () => {
     const logs: string[] = []
     const res = await runConfigVerify({
       config: configWith([
-        { name: "stripe", enable: true, appSecrets: { webhookSigningSecret: "" } },
+        { name: "payments", enable: true, appSecrets: { webhookSigningSecret: "" } },
       ]),
       log: (m) => logs.push(m),
       resolveOrgId: async () => "org-1",
       appSecretCheck: async () => ({
-        connection: "stripe",
+        connection: "payments",
         secrets: [
           {
             key: "webhookSigningSecret",
@@ -305,8 +305,8 @@ describe("runConfigVerify: app-held secrets", () => {
     expect(res.exitCode).toBe(0)
     expect(res.report.ok).toBe(true)
     expect(res.report.appSecrets?.[0]?.status).toBe("NOT_SET")
-    expect(logs[0]).toStartWith("app 'stripe': secret 'webhookSigningSecret' not set (warning:")
-    expect(logs[1]).toContain("address https://liaison.example/webhooks/org-1/stripe/events")
+    expect(logs[0]).toStartWith("app 'payments': secret 'webhookSigningSecret' not set (warning:")
+    expect(logs[1]).toContain("address https://liaison.example/webhooks/org-1/payments/events")
   })
 
   test("an app without settable secrets prints nothing more", async () => {

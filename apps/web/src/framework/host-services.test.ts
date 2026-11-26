@@ -360,9 +360,9 @@ describe("buildHostServices: person-only actions are refused to app UIs", () => 
   })
 
   it.each([
-    "/api/connections/stripe/stripe/app-secrets/webhookSigningSecret",
+    "/api/connections/payments/payments/app-secrets/webhookSigningSecret",
     "/api/connections/other/conn/app-secrets/anyKey/",
-    "/api//connections/stripe/stripe/App-Secrets/webhookSigningSecret",
+    "/api//connections/payments/payments/App-Secrets/webhookSigningSecret",
   ])("fetch PUT of an app-held secret %s is refused: no app plants a secret", async (path) => {
     await expect(
       host().fetch(path, { method: "PUT", body: JSON.stringify({ value: "whsec_x" }) }),
@@ -371,7 +371,7 @@ describe("buildHostServices: person-only actions are refused to app UIs", () => 
   })
 
   it("reading which app-held secrets are set stays open to app UIs", async () => {
-    await host().fetch("/api/connections/stripe/stripe/app-secrets")
+    await host().fetch("/api/connections/payments/payments/app-secrets")
     expect(calls.map((c) => c.method)).toEqual(["GET"])
   })
 

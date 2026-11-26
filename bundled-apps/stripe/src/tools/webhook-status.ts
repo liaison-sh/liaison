@@ -85,7 +85,16 @@ export async function verifyStripe(
   _input: { config?: Record<string, unknown> },
   ctx: WebhookCtx,
 ): Promise<{ ok: boolean; problems: string[]; identity?: string }> {
-  const check = await runConnectionCheck(ctx)
+  let check: Awaited<ReturnType<typeof runConnectionCheck>>
+  try {
+    check = await runConnectionCheck(ctx)
+  } catch (err) {
+    // No key, or one the host refused before Stripe saw it: a problem to report, not a crash.
+    const e = err as { code?: unknown; message?: unknown }
+    const code = typeof e?.code === "string" ? e.code : "connection_check_failed"
+    const message = typeof e?.message === "string" ? e.message : String(err)
+    return { ok: false, problems: [`${code}: ${message}`] }
+  }
   if ("error" in check) {
     return { ok: false, problems: [`${check.error.code}: ${check.error.message}`] }
   }

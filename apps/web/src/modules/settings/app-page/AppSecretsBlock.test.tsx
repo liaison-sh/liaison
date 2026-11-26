@@ -15,8 +15,8 @@ vi.mock("~/modules/shell/ApiContext", () => ({
 import { AppSecretsBlock } from "./AppSecretsBlock"
 
 let api: FakeApi
-const PATH = "/connections/stripe/stripe/app-secrets"
-const URL_ = "https://x.example/webhooks/org/stripe/events"
+const PATH = "/connections/payments/payments/app-secrets"
+const URL_ = "https://x.example/webhooks/org/payments/events"
 
 function read(set: boolean, previousUntil: string | null = null) {
   return {
@@ -35,7 +35,7 @@ function read(set: boolean, previousUntil: string | null = null) {
 
 function mount() {
   return render(() => (
-    <AppSecretsBlock app="stripe" block={{ block: "appSecrets", connection: "stripe" }} />
+    <AppSecretsBlock app="payments" block={{ block: "appSecrets", connection: "payments" }} />
   ))
 }
 

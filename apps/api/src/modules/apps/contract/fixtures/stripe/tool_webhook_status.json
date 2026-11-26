@@ -1,0 +1,25 @@
+{
+  "entry": "tool:webhook_status",
+  "params": {},
+  "unrecorded": {
+    "reason": "hand-written, not recorded: a recording needs a restricted Stripe key, which the recording run does not have yet. Awaiting a recording against a Stripe test account."
+  },
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["install_metadata", "{\"limit\":1}"],
+      "reply": "[]"
+    },
+    {
+      "method": "config_has",
+      "args": ["webhookSigningSecret"],
+      "reply": false
+    },
+    {
+      "method": "config_has",
+      "args": ["webhookSigningSecretPrevious"],
+      "reply": false
+    }
+  ],
+  "recordedFrom": "an install with no rows and no signing secret yet (contract replay, no provider call)"
+}

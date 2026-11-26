@@ -375,21 +375,21 @@ describe("SecretRequestToolCard", () => {
   it("app secret: a password field with the app's label, the webhook address shown, saved with PUT to its field", async () => {
     const r = row({
       kind: "app_secret",
-      target: { app: "stripe", connection: "stripe", field: "webhookSigningSecret" },
-      title: "stripe stripe webhookSigningSecret",
+      target: { app: "payments", connection: "payments", field: "webhookSigningSecret" },
+      title: "payments payments webhookSigningSecret",
       fields: [{ name: "value", label: "Webhook signing secret", secret: true, required: true }],
       destination: [
-        { name: "app", value: "stripe" },
-        { name: "connection", value: "stripe" },
+        { name: "app", value: "payments" },
+        { name: "connection", value: "payments" },
         { name: "field", value: "webhookSigningSecret" },
-        { name: "webhookUrl", value: "https://x.example/webhooks/o/stripe/events" },
+        { name: "webhookUrl", value: "https://x.example/webhooks/o/payments/events" },
       ],
     })
     mount(r)
     await screen.findByTestId("secret-request-field-value")
     expect(input("secret-request-field-value").type).toBe("password")
     expect(screen.getByText("Webhook signing secret")).toBeTruthy()
-    expect(screen.getByText("https://x.example/webhooks/o/stripe/events")).toBeTruthy()
+    expect(screen.getByText("https://x.example/webhooks/o/payments/events")).toBeTruthy()
     apiMocks.put.mockResolvedValue({ key: "webhookSigningSecret", set: true, rolled: false })
     apiMocks.post.mockResolvedValue({ ...r, status: "saved", canSubmit: false })
     fireEvent.input(input("secret-request-field-value"), {
@@ -398,7 +398,7 @@ describe("SecretRequestToolCard", () => {
     fireEvent.click(screen.getByTestId("secret-request-save"))
     await waitFor(() =>
       expect(apiMocks.put).toHaveBeenCalledWith(
-        "/connections/stripe/stripe/app-secrets/webhookSigningSecret",
+        "/connections/payments/payments/app-secrets/webhookSigningSecret",
         { value: "whsec_abcdefghijklmnop0123" },
         { suppressGlobalError: true },
       ),

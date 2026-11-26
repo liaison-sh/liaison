@@ -75,3 +75,19 @@ describe("dmReplyWindow — agent-readable descriptor (aged-DM-window honesty)",
     expect(w.explanation.toLowerCase()).toContain("native app")
   })
 })
+
+describe("dm window without the human agent tag (Instagram Unified login)", () => {
+  const opts = { humanAgent: false }
+  test("24 h is the whole window: exactly 24h is open, 24h + 1s is closed", () => {
+    expect(dmWindowTag(ago(24 * H), new Date(NOW), opts)).toBe("none")
+    expect(dmWindowTag(ago(24 * H + 1000), new Date(NOW), opts)).toBe("closed")
+    expect(dmWindowTag(ago(3 * D), new Date(NOW), opts)).toBe("closed")
+  })
+
+  test("the reply window says it is closed after 24 hours", () => {
+    const w = dmReplyWindow(ago(3 * D), new Date(NOW), opts)
+    expect(w.tag).toBe("closed")
+    expect(w.canSend).toBe(false)
+    expect(w.explanation).toContain("24 hours")
+  })
+})

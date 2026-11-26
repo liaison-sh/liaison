@@ -269,16 +269,34 @@ export async function gmailOrgsForAddress(address: string): Promise<GmailPushOrg
  * takes it out at once). The Social app keeps the list itself current against
  * Meta's own answer (`bundled-apps/social/src/meta-pages.ts`): it prunes Pages
  * the account no longer manages and drops entries for them before ingesting.
+ *
+ * Instagram deliveries name the Instagram professional account (`entry.id`): an org gets them
+ * while its Social `instagram_unified` connection (Instagram API with Unified login, the same
+ * Meta app) holds that account and is `active`. The Instagram-login connection is signed with
+ * another app's secret, so its deliveries never reach this callback.
  */
 export async function metaOrgsForPageIds(pageIds: string[]): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>()
   if (pageIds.length === 0) return out
   const rows = await withSystemDb("cell-meta-page-orgs", async (db) => {
+    const instagram = extractRows<{ org_id: string; page_id: string }>(
+      await db.execute(drizzleSql`
+      SELECT DISTINCT ca.org_id::text AS org_id, ca.identifier AS page_id
+      FROM ${drizzleSql.raw(schemaRef("kernel"))}.connected_accounts ca
+      WHERE ca.app_name = 'social'
+        AND ca.connection_name = 'instagram_unified'
+        AND ca.status = 'active'
+        AND ca.identifier IN (${drizzleSql.join(
+          pageIds.map((id) => drizzleSql`${id}`),
+          drizzleSql`, `,
+        )})
+    `),
+    )
     const exists = extractRows<{ ok: boolean }>(
       await db.execute(drizzleSql`SELECT to_regclass('app_social.sync_state') IS NOT NULL AS ok`),
     )
-    if (!exists[0]?.ok) return [] as Array<{ org_id: string; page_id: string }>
-    return extractRows<{ org_id: string; page_id: string }>(
+    if (!exists[0]?.ok) return instagram
+    const pages = extractRows<{ org_id: string; page_id: string }>(
       await db.execute(drizzleSql`
       SELECT DISTINCT s.org_id::text AS org_id, p.page_id
       FROM app_social.sync_state s,
@@ -301,6 +319,7 @@ export async function metaOrgsForPageIds(pageIds: string[]): Promise<Map<string,
         )})
     `),
     )
+    return [...pages, ...instagram]
   })
   for (const r of rows) {
     const list = out.get(r.page_id) ?? []

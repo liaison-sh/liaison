@@ -5212,8 +5212,8 @@
       "shop": "Shopify store"
     },
     "social": {
-      "instagram": "Instagram account",
-      "instagram_unified": "Instagram account (Unified login, preview)",
+      "instagram": "Instagram account (Instagram login, older Meta apps)",
+      "instagram_unified": "Instagram account",
       "facebook": "Facebook Page",
       "google": "Google account"
     },

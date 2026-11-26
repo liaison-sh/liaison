@@ -7,6 +7,7 @@
 import { describe, expect, test } from "bun:test"
 import { connectedAccountList } from "./adapters/mock-fetch"
 import type { SocialToolCtx } from "./ctx"
+import { DM_ACCESS_DISABLED_MESSAGE, DM_ACCESS_DISABLED_METADATA_KEY } from "./dm-access"
 import {
   type ConnectionAccount,
   connectionsStatus,
@@ -47,11 +48,12 @@ function makeCtx(db: MockDb, connections: unknown): SocialToolCtx {
 }
 
 describe("connections_status", () => {
-  test("lists facebook, instagram and google with each one's real kernel state", async () => {
+  test("lists facebook, instagram, instagram_unified and google with each one's real kernel state", async () => {
     const asked: string[] = []
     const byName: Record<string, ConnectionAccount[]> = {
       facebook: [account({ identifier: "fb-user", displayName: "Resonant Audio Labs Page" })],
       instagram: [account({ identifier: "ig-1", ownerType: "user", isMine: true })],
+      instagram_unified: [account({ identifier: "17841400000000101", displayName: "liaison.sh" })],
       google: [],
     }
     const ctx = makeCtx(createMockDb(), {
@@ -63,20 +65,54 @@ describe("connections_status", () => {
     })
     const res = await connectionsStatus({}, ctx, NOW)
     expect(res.available).toBe(true)
-    expect(asked).toEqual(["facebook", "instagram", "google"])
-    expect(res.connections.map((c) => [c.name, c.state])).toEqual([
-      ["facebook", "connected"],
-      ["instagram", "connected"],
-      ["google", "not_connected"],
+    expect(asked).toEqual(["facebook", "instagram", "instagram_unified", "google"])
+    expect(res.connections.map((c) => [c.name, c.state, c.platform])).toEqual([
+      ["facebook", "connected", "facebook"],
+      ["instagram", "connected", "instagram"],
+      ["instagram_unified", "connected", "instagram"],
+      ["google", "not_connected", "youtube"],
     ])
+    expect(res.connections[1]!.label).toBe("Instagram (Instagram login, older Meta apps)")
+    expect(res.connections[2]!.label).toBe("Instagram")
     expect(res.connections[0]!.primary?.displayName).toBe("Resonant Audio Labs Page")
     expect(res.connections[1]!.primary?.ownerType).toBe("user")
+  })
+
+  test("an Instagram account with DM access off carries the dm_access_disabled issue", async () => {
+    const db = createMockDb()
+    await db.insert("sync_state", {
+      id: "dm-ss-ig",
+      platform: "instagram",
+      account_external_id: "17841400000000101",
+      source_type: "dm",
+      active: true,
+      metadata: { [DM_ACCESS_DISABLED_METADATA_KEY]: "2026-11-26T10:00:00.000Z" },
+    })
+    const byName: Record<string, ConnectionAccount[]> = {
+      instagram: [account({ identifier: "ig-1" })],
+      instagram_unified: [account({ identifier: "17841400000000101" })],
+    }
+    const ctx = makeCtx(db, {
+      describe: async (name: string) => JSON.stringify(byName[name] ?? []),
+    })
+    const res = await connectionsStatus({}, ctx, NOW)
+    const byConn = Object.fromEntries(res.connections.map((c) => [c.name, c]))
+    expect(byConn.instagram_unified?.issues).toEqual([
+      {
+        code: "dm_access_disabled",
+        accountExternalId: "17841400000000101",
+        since: "2026-11-26T10:00:00.000Z",
+        message: DM_ACCESS_DISABLED_MESSAGE,
+      },
+    ])
+    expect(byConn.instagram?.issues).toEqual([])
+    expect(byConn.facebook?.issues).toEqual([])
   })
 
   test("a kernel without describe answers available false, never a fake Not connected", async () => {
     const res = await connectionsStatus(
       {},
-      makeCtx(createMockDb(), { getAccounts: async () => connectedAccountList() }),
+      makeCtx(createMockDb(), { getAccounts: async (name: string) => connectedAccountList(name) }),
       NOW,
     )
     expect(res.available).toBe(false)

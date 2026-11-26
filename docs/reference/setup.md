@@ -26,7 +26,7 @@ Measured on a live install with a coding agent running the AGENT steps: about 9 
 | Google Ads, Merchant Center and YouTube (optional, advanced): their APIs on the same Google client, Explorer access to the Google Ads API in the Cloud console (no developer token) and the account ids | 6 to 12 min | Explorer access is usually granted within minutes; Basic access (only for creating accounts or managing users, which Liaison does not use) needs the Cloud project's brand verification |
 | Shopify: a Dev Dashboard app, released and installed on the store | 6 to 12 min |  |
 | Facebook Pages and Instagram: one Meta app with both products, then the consents and the Page webhooks | 12 to 20 min | Pages of people without a role on the Meta app need Business verification and App Review, which take days |
-| Instagram with Unified login (preview, instead of the Instagram login above): the account in the app's business portfolio, a Unified-login configuration and its id *(on top)* | 12 to 20 min |  |
+| Instagram with Unified login (preview, instead of the Instagram login above): the account in the app's business portfolio, a Unified-login configuration and its id, and access to messages turned on in the Instagram app *(on top)* | 12 to 22 min |  |
 | Meta Ads: a system user token | 5 to 8 min |  |
 | An IMAP mailbox: an app password | 2 to 4 min |  |
 | GitLab: a read-only access token | 2 to 4 min |  |
@@ -471,9 +471,9 @@ Sign-in at the provider (OAuth). Steps on your server: `liaison guide google --e
 
 The Google guide covers it: the client, the redirect URIs, the scopes and the APIs to turn on for every Google connection of the apps that are on.
 
-#### social/instagram: Instagram account
+#### social/instagram: Instagram account (Instagram login, older Meta apps)
 
-Sign-in at the provider (OAuth). Steps on your server: `liaison guide social/instagram`.
+Sign-in at the provider (OAuth), optional. Steps on your server: `liaison guide social/instagram`.
 
 An Instagram professional (business or creator) account connects through a Meta app with the Instagram product (API setup with Instagram login). Meta requires an https redirect, so Liaison must be on its public https address.
 
@@ -494,11 +494,11 @@ An Instagram professional (business or creator) account connects through a Meta 
 
 Provider docs: <https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login>
 
-#### social/instagram_unified: Instagram account (Unified login, preview)
+#### social/instagram_unified: Instagram account
 
-Sign-in at the provider (OAuth), optional. Steps on your server: `liaison guide social/instagram_unified`.
+Sign-in at the provider (OAuth). Steps on your server: `liaison guide social/instagram_unified`.
 
-Preview: reads pending verification, so the account connects but the app does not read or post through it yet. Use it when your Meta app has no **API setup with Instagram login** (newer apps only offer **API setup with Unified login**). The Instagram professional account must belong to your Meta app's business portfolio first. The sign-in gives a system-user token that never expires when the configuration says so; Meta has no call to revoke it, so after disconnecting here, remove the app from the business portfolio (Business settings > Integrations) to revoke it at Meta.
+Use it when your Meta app has no **API setup with Instagram login** (newer apps only offer **API setup with Unified login**). The Instagram professional account must belong to your Meta app's business portfolio first. The sign-in gives a system-user token that never expires when the configuration says so; Meta has no call to revoke it, so after disconnecting here, remove the app from the business portfolio (Business settings > Integrations) to revoke it at Meta.
 
 1. **HUMAN** (5 min) Make the business portfolio that owns your Meta app own the Instagram professional account: in **Business settings > Accounts > Instagram accounts**, click **Add** and sign in to Instagram. If that dialog stays blank, link the Instagram account to a Facebook Page the portfolio owns instead (the Page's **Settings > Linked accounts > Instagram**): it then appears here. The Unified login only offers accounts the app's portfolio owns.
    Open: <https://business.facebook.com/settings/instagram-account-v2>
@@ -506,7 +506,7 @@ Preview: reads pending verification, so the account connects but the app does no
    Open: <https://developers.facebook.com/apps>
 3. **HUMAN** (1 min) On **Manage messaging & content on Instagram**, click **Customize**, then open **API setup with Unified login**.
    Open: <https://developers.facebook.com/apps>
-4. **HUMAN** (4 min) Click **Create new configuration** and keep the suggested settings: token type **System-user access token**, permissions instagram_basic, instagram_manage_messages, instagram_manage_comments and instagram_content_publish. For the token expiry choose **Never**: a 60-day expiry ends the connection and asks for a new sign-in every two months. Select the Instagram account and finish.
+4. **HUMAN** (4 min) Click **Create new configuration** and keep the suggested settings: token type **System-user access token**, permissions instagram_basic, instagram_manage_comments and instagram_manage_messages only. For the token expiry choose **Never**: a 60-day expiry ends the connection and asks for a new sign-in every two months. Select the Instagram account and finish.
    Open: <https://developers.facebook.com/apps>
 5. **HUMAN** (1 min) Copy the new configuration's **Configuration ID** (digits only) and give it to the agent.
    Open: <https://developers.facebook.com/apps>
@@ -514,11 +514,14 @@ Preview: reads pending verification, so the account connects but the app does no
 7. **HUMAN** (2 min) In **Facebook Login for Business > Settings**, add the redirect URI this guide lists (this server's /api/connections/callback) to **Valid OAuth Redirect URIs** and save. It is already there if you connected Facebook with this app.
    Open: <https://developers.facebook.com/apps>
 8. **HUMAN** (2 min) On the client card, enter the Meta **App ID** and **App secret** from the app's **App settings > Basic**: the same values as the Facebook connection, not an Instagram app ID.
-9. **HUMAN** (1 min) Click **Connect** on the Instagram (Unified login) connection and sign in with Instagram or Facebook. If the sign-in covers several Instagram accounts, Liaison connects none and names them: ask the agent to connect the one you mean.
-10. **HUMAN** In the provider's app settings, add this exact redirect URI (also called callback URL or Valid OAuth Redirect URI): https://liaison.example.com/api/connections/callback
-11. **AGENT** Before connecting, set the social app setting instagramLoginConfigurationId (the value the steps above copy): `apps[].config` in the config, then `liaison config apply`.
-12. **HUMAN** This server receives the app's `meta` webhook at https://liaison.example.com/webhooks/<org-id>/social/meta (the steps above say who registers it).
-13. **AGENT** The owner pastes the app's client ID and client secret into deploy/.setup-secrets.env (never the chat); reference them as ${NAME} in the config: an `apps` entry { name: social, connection: { name: instagram_unified, oauthClient: { clientId, clientSecret } } } (repeat the app's entry once per connection), run `liaison config apply`, then `liaison connect social/instagram_unified --config <path>` and open the URL it prints to approve.
+9. **HUMAN** (2 min) While the app is in Development mode, add the Instagram account under **App roles > Roles > Instagram testers** and accept the invitation in Instagram (Settings > Website permissions > Apps and websites > Tester invites).
+   Open: <https://developers.facebook.com/apps>
+10. **HUMAN** (1 min) Click **Connect** on the Instagram connection and sign in with Instagram or Facebook. If the sign-in covers several Instagram accounts, Liaison connects none and names them: ask the agent to connect the one you mean.
+11. **HUMAN** (1 min) Turn on access to direct messages, before or right after connecting: in the Instagram app, open **Settings and activity > Messages and story replies > Message requests > Connected tools** and turn on **Allow access to messages** (older app versions: **Message controls > Connected tools**). It is off by default on new professional accounts; while it is off Instagram refuses Liaison's DM reads, and **Messages** says so until it is on.
+12. **HUMAN** In the provider's app settings, add this exact redirect URI (also called callback URL or Valid OAuth Redirect URI): https://liaison.example.com/api/connections/callback
+13. **AGENT** Before connecting, set the social app setting instagramLoginConfigurationId (the value the steps above copy): `apps[].config` in the config, then `liaison config apply`.
+14. **HUMAN** This server receives the app's `meta` webhook at https://liaison.example.com/webhooks/<org-id>/social/meta (the steps above say who registers it).
+15. **AGENT** The owner pastes the app's client ID and client secret into deploy/.setup-secrets.env (never the chat); reference them as ${NAME} in the config: an `apps` entry { name: social, connection: { name: instagram_unified, oauthClient: { clientId, clientSecret } } } (repeat the app's entry once per connection), run `liaison config apply`, then `liaison connect social/instagram_unified --config <path>` and open the URL it prints to approve.
 
 Provider docs: <https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login>
 

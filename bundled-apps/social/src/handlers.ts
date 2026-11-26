@@ -13,6 +13,7 @@ import { youtubeAdapter } from "./adapters/youtube"
 import { computeSocialAttention } from "./attention"
 import { onConnectionDisconnected, onConnectionEstablished, resolveAccountAuth } from "./connection"
 import type { SocialToolCtx } from "./ctx"
+import { clearDmAccessDisabled, noteDmAccessDisabled } from "./dm-access"
 import {
   findConversationRow,
   ingestDmMessages,
@@ -452,6 +453,18 @@ async function syncOneDmAccount(ctx: SocialToolCtx, s: DmSyncRow): Promise<void>
   // untouched — advancing cursor/last_synced_at on an errored sync records a
   // FALSE watermark over a window that never landed (the same silent-failure
   // class the discovery "watermark not advanced" fix eliminated in sync.ts).
+  if (result.error === "DM_ACCESS_DISABLED") {
+    // Not a fault of ours and no reconnect fixes it: the owner has to turn on
+    // "Allow access to messages" in the Instagram app. Stamped on the row so
+    // connections_status and dm_list say it (dm-access.ts), warned once.
+    if (await noteDmAccessDisabled(ctx, s)) {
+      ctx.logger?.warn?.(
+        "social: Instagram direct messages are off for this account, DM sync waits",
+        { platform: s.platform, accountExternalId: s.account_external_id },
+      )
+    }
+    return
+  }
   if (result.error) {
     // RATE_LIMITED self-resolves on the next tick — warn, not a paged error.
     const logFn =
@@ -465,6 +478,7 @@ async function syncOneDmAccount(ctx: SocialToolCtx, s: DmSyncRow): Promise<void>
     })
     return
   }
+  await clearDmAccessDisabled(ctx, s)
   const convByExternalId = new Map<string, { id: string }>()
   for (const c of result.conversations) {
     // Per-conversation isolation (D): one conversation's upsert failure

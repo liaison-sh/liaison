@@ -29,7 +29,7 @@ function ctxWith(db: MockDb, opts: { token?: string | null } = {}): SocialToolCt
     })) as never,
     connections: {
       // The host lists the active accounts; their token is added to a fetch host-side.
-      getAccounts: async () => (token ? connectedAccountList() : []),
+      getAccounts: async (name: string) => (token ? connectedAccountList(name) : []),
     },
     config: { get: async () => null },
     async emit() {},

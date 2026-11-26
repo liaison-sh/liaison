@@ -80,6 +80,17 @@ describe("windowPillState (B9 — closed-window compose replacement)", () => {
     expect(s.tag).toBe("closed")
     expect(s.showFallback).toBe(true)
   })
+  test("server says closed (Unified login, 24 h window) → closed even inside 7 days", () => {
+    const now = new Date("2026-06-04T12:00:00Z")
+    const s = windowPillState("2026-06-01T12:00:00Z", now, "closed")
+    expect(s.tag).toBe("closed")
+    expect(s.composeEnabled).toBe(false)
+  })
+  test("a stale server tag never reopens a window the clock has closed", () => {
+    const now = new Date("2026-06-10T12:00:00Z")
+    const s = windowPillState("2026-06-01T12:00:00Z", now, "none")
+    expect(s.tag).toBe("closed")
+  })
 })
 
 describe("messageBubbleText (B: snippet/thread honesty for empty-body attachments)", () => {

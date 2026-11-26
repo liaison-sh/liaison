@@ -71,7 +71,7 @@ function ctxFor(
       }
       return { status: 200, body: "{}" }
     },
-    connections: { getAccounts: async () => connectedAccountList() },
+    connections: { getAccounts: async (name: string) => connectedAccountList(name) },
     config: { get: async () => null },
     approval: opts.approvalRequestId ? { approvalRequestId: opts.approvalRequestId } : undefined,
     async emit() {},

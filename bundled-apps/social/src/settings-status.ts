@@ -18,6 +18,7 @@
 
 import type { Platform } from "./adapters/types"
 import type { SocialToolCtx } from "./ctx"
+import { type DmAccessNotice, dmAccessNotices } from "./dm-access"
 import type { YoutubeQuotaStatus } from "./quota"
 import { readYoutubeQuotaStatus } from "./sync"
 
@@ -28,7 +29,12 @@ export const SOCIAL_CONNECTIONS: ReadonlyArray<{
   platform: Platform
 }> = [
   { name: "facebook", label: "Facebook Page", platform: "facebook" },
-  { name: "instagram", label: "Instagram", platform: "instagram" },
+  {
+    name: "instagram",
+    label: "Instagram (Instagram login, older Meta apps)",
+    platform: "instagram",
+  },
+  { name: "instagram_unified", label: "Instagram", platform: "instagram" },
   { name: "google", label: "Google (YouTube)", platform: "youtube" },
 ]
 
@@ -61,6 +67,16 @@ export interface ConnectionStatusEntry {
   /** The account the app runs on: the org's active one first, then the caller's. */
   primary: ConnectionAccount | null
   accounts: ConnectionAccount[]
+  /** Problems on a connected account that only its owner can fix outside
+   *  Liaison (Instagram DM access switched off, dm-access.ts). */
+  issues: ConnectionIssue[]
+}
+
+export interface ConnectionIssue {
+  code: DmAccessNotice["code"]
+  accountExternalId: string
+  since: string
+  message: string
 }
 
 export interface ConnectionsStatusResult {
@@ -140,13 +156,24 @@ export async function connectionsStatus(
         state: "not_connected",
         primary: null,
         accounts: [],
+        issues: [],
       })),
     }
   }
+  const notices = await dmAccessNotices(ctx)
   const connections = await Promise.all(
     SOCIAL_CONNECTIONS.map(async (c) => {
       const accounts = parseAccounts(await describe(c.name))
-      return { ...c, ...deriveConnectionState(accounts, now), accounts }
+      const ids = new Set(accounts.map((a) => a.identifier))
+      const issues: ConnectionIssue[] = notices
+        .filter((n) => n.platform === c.platform && ids.has(n.accountExternalId))
+        .map(({ code, accountExternalId, since, message }) => ({
+          code,
+          accountExternalId,
+          since,
+          message,
+        }))
+      return { ...c, ...deriveConnectionState(accounts, now), accounts, issues }
     }),
   )
   return { available: true, connections }

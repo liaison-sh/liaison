@@ -1,6 +1,6 @@
 {
   "name": "social",
-  "version": "0.6.73",
+  "version": "0.7.1",
   "secrets": {
     "webhookVerifyToken": {
       "hosts": ["graph.facebook.com"],
@@ -41,7 +41,9 @@
   "connections": {
     "instagram": {
       "adminScope": "social:admin:connection",
-      "purpose": "Instagram account",
+      "purpose": "Instagram account (Instagram login, older Meta apps)",
+      "description": "An Instagram professional account connected through API setup with Instagram login, for older Meta apps that still offer it. Current Meta apps use the Instagram connection (Unified login).",
+      "optional": true,
       "type": "oauth2",
       "authorizationUrl": "https://www.instagram.com/oauth/authorize",
       "tokenUrl": "https://api.instagram.com/oauth/access_token",
@@ -98,89 +100,6 @@
           }
         ],
         "docsUrl": "https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login"
-      }
-    },
-    "instagram_unified": {
-      "adminScope": "social:admin:connection",
-      "purpose": "Instagram account (Unified login, preview)",
-      "description": "Preview: reads pending verification. An Instagram professional account connected through Meta's Instagram API with Unified login (Facebook Login for Business with a configuration), for Meta apps that no longer offer API setup with Instagram login. The account connects and is named; the app does not read or post through it yet.",
-      "optional": true,
-      "type": "oauth2",
-      "authorizationUrl": "https://www.facebook.com/v26.0/dialog/oauth",
-      "tokenUrl": "https://graph.facebook.com/v26.0/oauth/access_token",
-      "tokenDebugUrl": "https://graph.facebook.com/v26.0/debug_token",
-      "scopes": [],
-      "extraParams": {
-        "override_default_response_type": "true"
-      },
-      "authorizeConfigParams": {
-        "config_id": {
-          "configKey": "instagramLoginConfigurationId",
-          "pattern": "^[0-9]{1,30}$"
-        }
-      },
-      "userinfoUrl": "https://graph.facebook.com/v26.0/me/assigned_instagram_accounts?fields=id,username",
-      "identifierFromUserinfoPath": "data[].id",
-      "accountNameField": "username",
-      "allowedDomains": ["graph.facebook.com", "www.facebook.com"],
-      "setupGuide": {
-        "summary": "Preview: reads pending verification, so the account connects but the app does not read or post through it yet. Use it when your Meta app has no **API setup with Instagram login** (newer apps only offer **API setup with Unified login**). The Instagram professional account must belong to your Meta app's business portfolio first. The sign-in gives a system-user token that never expires when the configuration says so; Meta has no call to revoke it, so after disconnecting here, remove the app from the business portfolio (Business settings > Integrations) to revoke it at Meta.",
-        "steps": [
-          {
-            "who": "human",
-            "minutes": 5,
-            "url": "https://business.facebook.com/settings/instagram-account-v2",
-            "text": "Make the business portfolio that owns your Meta app own the Instagram professional account: in **Business settings > Accounts > Instagram accounts**, click **Add** and sign in to Instagram. If that dialog stays blank, link the Instagram account to a Facebook Page the portfolio owns instead (the Page's **Settings > Linked accounts > Instagram**): it then appears here. The Unified login only offers accounts the app's portfolio owns."
-          },
-          {
-            "who": "human",
-            "minutes": 2,
-            "url": "https://developers.facebook.com/apps",
-            "text": "Open your Meta app (the one used for Facebook, owned by that portfolio), go to **Use cases**, click **Add use case**, tick **Manage messaging & content on Instagram** and click **Add**."
-          },
-          {
-            "who": "human",
-            "minutes": 1,
-            "url": "https://developers.facebook.com/apps",
-            "text": "On **Manage messaging & content on Instagram**, click **Customize**, then open **API setup with Unified login**."
-          },
-          {
-            "who": "human",
-            "minutes": 4,
-            "url": "https://developers.facebook.com/apps",
-            "text": "Click **Create new configuration** and keep the suggested settings: token type **System-user access token**, permissions instagram_basic, instagram_manage_messages, instagram_manage_comments and instagram_content_publish. For the token expiry choose **Never**: a 60-day expiry ends the connection and asks for a new sign-in every two months. Select the Instagram account and finish."
-          },
-          {
-            "who": "human",
-            "minutes": 1,
-            "url": "https://developers.facebook.com/apps",
-            "text": "Copy the new configuration's **Configuration ID** (digits only) and give it to the agent."
-          },
-          {
-            "who": "agent",
-            "minutes": 1,
-            "text": "Set the social app setting **instagramLoginConfigurationId** to that Configuration ID (`kernel__config_apps` in the product, or `apps[].config.instagramLoginConfigurationId` with `liaison config apply`). Until it is set, the Connect button says the setting is missing."
-          },
-          {
-            "who": "human",
-            "minutes": 2,
-            "url": "https://developers.facebook.com/apps",
-            "text": "In **Facebook Login for Business > Settings**, add the redirect URI this guide lists (this server's /api/connections/callback) to **Valid OAuth Redirect URIs** and save. It is already there if you connected Facebook with this app."
-          },
-          {
-            "who": "human",
-            "minutes": 2,
-            "place": "liaison",
-            "text": "On the client card, enter the Meta **App ID** and **App secret** from the app's **App settings > Basic**: the same values as the Facebook connection, not an Instagram app ID."
-          },
-          {
-            "who": "human",
-            "minutes": 1,
-            "place": "liaison",
-            "text": "Click **Connect** on the Instagram (Unified login) connection and sign in with Instagram or Facebook. If the sign-in covers several Instagram accounts, Liaison connects none and names them: ask the agent to connect the one you mean."
-          }
-        ],
-        "docsUrl": "https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login"
       }
     },
     "facebook": {
@@ -262,6 +181,102 @@
       },
       "appSecretConfigKeys": ["webhookVerifyToken"]
     },
+    "instagram_unified": {
+      "adminScope": "social:admin:connection",
+      "purpose": "Instagram account",
+      "description": "An Instagram professional account connected through Meta's Instagram API with Unified login (Facebook Login for Business with a configuration), the Instagram setup current Meta apps offer. Liaison reads its comments and direct messages and posts the replies you approve.",
+      "type": "oauth2",
+      "authorizationUrl": "https://www.facebook.com/v26.0/dialog/oauth",
+      "tokenUrl": "https://graph.facebook.com/v26.0/oauth/access_token",
+      "tokenDebugUrl": "https://graph.facebook.com/v26.0/debug_token",
+      "scopes": [],
+      "extraParams": {
+        "override_default_response_type": "true",
+        "prompt": "login"
+      },
+      "authorizeConfigParams": {
+        "config_id": {
+          "configKey": "instagramLoginConfigurationId",
+          "pattern": "^[0-9]{1,30}$"
+        }
+      },
+      "userinfoUrl": "https://graph.facebook.com/v26.0/me/assigned_instagram_accounts?fields=id,username",
+      "identifierFromUserinfoPath": "data[].id",
+      "accountNameField": "username",
+      "allowedDomains": ["graph.facebook.com", "www.facebook.com"],
+      "clientSecretConfigKey": "socialMetaAppSecret",
+      "setupGuide": {
+        "summary": "Use it when your Meta app has no **API setup with Instagram login** (newer apps only offer **API setup with Unified login**). The Instagram professional account must belong to your Meta app's business portfolio first. The sign-in gives a system-user token that never expires when the configuration says so; Meta has no call to revoke it, so after disconnecting here, remove the app from the business portfolio (Business settings > Integrations) to revoke it at Meta.",
+        "steps": [
+          {
+            "who": "human",
+            "minutes": 5,
+            "url": "https://business.facebook.com/settings/instagram-account-v2",
+            "text": "Make the business portfolio that owns your Meta app own the Instagram professional account: in **Business settings > Accounts > Instagram accounts**, click **Add** and sign in to Instagram. If that dialog stays blank, link the Instagram account to a Facebook Page the portfolio owns instead (the Page's **Settings > Linked accounts > Instagram**): it then appears here. The Unified login only offers accounts the app's portfolio owns."
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "url": "https://developers.facebook.com/apps",
+            "text": "Open your Meta app (the one used for Facebook, owned by that portfolio), go to **Use cases**, click **Add use case**, tick **Manage messaging & content on Instagram** and click **Add**."
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "url": "https://developers.facebook.com/apps",
+            "text": "On **Manage messaging & content on Instagram**, click **Customize**, then open **API setup with Unified login**."
+          },
+          {
+            "who": "human",
+            "minutes": 4,
+            "url": "https://developers.facebook.com/apps",
+            "text": "Click **Create new configuration** and keep the suggested settings: token type **System-user access token**, permissions instagram_basic, instagram_manage_comments and instagram_manage_messages only. For the token expiry choose **Never**: a 60-day expiry ends the connection and asks for a new sign-in every two months. Select the Instagram account and finish."
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "url": "https://developers.facebook.com/apps",
+            "text": "Copy the new configuration's **Configuration ID** (digits only) and give it to the agent."
+          },
+          {
+            "who": "agent",
+            "minutes": 1,
+            "text": "Set the social app setting **instagramLoginConfigurationId** to that Configuration ID (`kernel__config_apps` in the product, or `apps[].config.instagramLoginConfigurationId` with `liaison config apply`). Until it is set, the Connect button says the setting is missing."
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "url": "https://developers.facebook.com/apps",
+            "text": "In **Facebook Login for Business > Settings**, add the redirect URI this guide lists (this server's /api/connections/callback) to **Valid OAuth Redirect URIs** and save. It is already there if you connected Facebook with this app."
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "place": "liaison",
+            "text": "On the client card, enter the Meta **App ID** and **App secret** from the app's **App settings > Basic**: the same values as the Facebook connection, not an Instagram app ID."
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "url": "https://developers.facebook.com/apps",
+            "text": "While the app is in Development mode, add the Instagram account under **App roles > Roles > Instagram testers** and accept the invitation in Instagram (Settings > Website permissions > Apps and websites > Tester invites)."
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "place": "liaison",
+            "text": "Click **Connect** on the Instagram connection and sign in with Instagram or Facebook. If the sign-in covers several Instagram accounts, Liaison connects none and names them: ask the agent to connect the one you mean."
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "place": "own",
+            "text": "Turn on access to direct messages, before or right after connecting: in the Instagram app, open **Settings and activity > Messages and story replies > Message requests > Connected tools** and turn on **Allow access to messages** (older app versions: **Message controls > Connected tools**). It is off by default on new professional accounts; while it is off Instagram refuses Liaison's DM reads, and **Messages** says so until it is on."
+          }
+        ],
+        "docsUrl": "https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login"
+      }
+    },
     "google": {
       "adminScope": "social:admin:connection",
       "purpose": "Google account (YouTube)",
@@ -296,21 +311,21 @@
   "webhookHealth": { "probe": "probe-webhook-upstream" },
   "jobs": {
     "discovery-sync": {
-      "runsFor": {"connection": ["instagram", "facebook", "google"]},
+      "runsFor": {"connection": ["instagram", "instagram_unified", "facebook", "google"]},
       "schedule": "*/15 * * * *",
       "handler": "discoverySyncJob",
       "timeoutMs": 60000,
       "retry": { "attempts": 3, "backoff": "exponential" }
     },
     "watch-poller": {
-      "runsFor": {"connection": ["instagram", "facebook", "google"]},
+      "runsFor": {"connection": ["instagram", "instagram_unified", "facebook", "google"]},
       "schedule": "*/5 * * * *",
       "handler": "watchPollerJob",
       "timeoutMs": 60000,
       "retry": { "attempts": 3, "backoff": "exponential" }
     },
     "dm-sync": {
-      "runsFor": {"connection": ["instagram", "facebook", "google"]},
+      "runsFor": {"connection": ["instagram", "instagram_unified", "facebook", "google"]},
       "schedule": "*/10 * * * *",
       "handler": "dmSyncJob",
       "timeoutMs": 60000,
@@ -519,7 +534,7 @@
   "outsideTextFields": ["text", "author", "messages", "title"],
   "tools": {
     "webhooks_setup": {
-      "description": "Point Meta's Facebook Page webhooks at this instance, so new comments and Messenger DMs arrive in real time instead of on the next poll. Makes the Meta app's page subscription (fields feed and messages) target this instance's social webhook, provisioning the verify token it checks, then subscribes every managed Page of each connected Facebook account to the app. Needs the pages_manage_metadata permission on the Facebook connection: if a Page fails with '(#200) Requires pages_manage_metadata permission', reconnect Facebook and run it again. Idempotent: what already matches is left alone and reported unchanged. Gated: a person approves. Returns the callback URL, the app subscription status and one result per Page (subscribed, unchanged or failed with Meta's error).",
+      "description": "Point Meta's Facebook Page and Instagram webhooks at this instance, so comments and DMs arrive in real time instead of on the next poll. Facebook: targets the app's page subscription (feed, messages) at this instance with its verify token, then subscribes each managed Page; on '(#200) Requires pages_manage_metadata permission', reconnect Facebook and rerun. Instagram (Unified login): subscribes each account (comments, messages) and reports whether the app's Instagram webhook, set only in the App Dashboard, points here; if not, the result gives the callback URL and verify token to enter. Idempotent: what matches is reported unchanged. Gated: a person approves. Returns the callback URL, the app subscription status and one result per Page and Instagram account.",
       "requiredScopes": ["social:admin:connection", "social:findings:read"],
       "handler": "webhooksSetupHandler",
       "preflight": "webhooksSetupPreflightHandler",
@@ -534,13 +549,13 @@
         "properties": {
           "callback_base_url": {
             "type": "string",
-            "description": "The public HTTPS address Liaison is reached at; only needed when the Facebook connection did not record it."
+            "description": "The public HTTPS address Liaison is reached at; only needed when the connection did not record it."
           }
         },
         "additionalProperties": false
       },
       "approvalCard": {
-        "summary": "Subscribe Facebook Page webhooks (comments and Messenger) to this instance"
+        "summary": "Subscribe Facebook Page and Instagram webhooks (comments and messages) to this instance"
       }
     },
     "findings_list": {
@@ -669,7 +684,7 @@
       "params": { "type": "object", "properties": { "status": { "type": "string" } } }
     },
     "connections_status": {
-      "description": "Status of each Social connection (facebook, instagram, google) from the kernel: connected or not, org or personal, who connected it, token expiry, and whether it needs a reconnect. Read only.",
+      "description": "Status of each Social connection (facebook, instagram, instagram_unified, google) from the kernel: connected, org or personal, who connected it, token expiry, needs a reconnect. Read only.",
       "readOnly": true,
       "requiredScopes": ["social:findings:read"],
       "handler": "connectionsStatusHandler",

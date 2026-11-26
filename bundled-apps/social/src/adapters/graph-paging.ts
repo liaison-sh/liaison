@@ -44,9 +44,11 @@ export interface GraphPage<T> {
  *  the source is skipped this tick with its state kept, never read as empty. */
 export type ListError = GraphError | "UNAVAILABLE"
 
-export type GraphPageFetch<T> = (
+/** A page fetch may name extra failures of its own edge (Instagram's
+ *  conversations add `DM_ACCESS_DISABLED`); the walk passes them through. */
+export type GraphPageFetch<T, E extends string = ListError> = (
   after: string | null,
-) => Promise<GraphPage<T> | { error: ListError }>
+) => Promise<GraphPage<T> | { error: E }>
 
 /** Graph error codes that mean "throttled", whatever the HTTP status says
  *  (Meta answers most rate limits with a 400 or 403, not a 429): app, user,
@@ -142,13 +144,13 @@ export function readListState(v: unknown): ListState | null {
   return { hw, bf }
 }
 
-export interface WalkOptions<T> {
+export interface WalkOptions<T, E extends string = ListError> {
   /** Stored state; null for a source never synced (`fresh`) or one carrying a legacy cursor. */
   state: ListState | null
   /** True when the source has no cursor at all: a new connection, whose history is backfilled. */
   fresh: boolean
   mode: "watermark" | "rotating"
-  fetchPage: GraphPageFetch<T>
+  fetchPage: GraphPageFetch<T, E>
   timeOf: (item: T) => number
   idOf: (item: T) => string
   /** Head pages per tick (newest first) before the rest is left to the history pass. */
@@ -171,9 +173,9 @@ export interface WalkResult<T> {
  * the head page fails the walk (the caller keeps its cursor); a failure on a
  * later page ends the walk early with what was read.
  */
-export async function walkNewestFirst<T>(
-  opts: WalkOptions<T>,
-): Promise<WalkResult<T> | { error: ListError }> {
+export async function walkNewestFirst<T, E extends string = ListError>(
+  opts: WalkOptions<T, E>,
+): Promise<WalkResult<T> | { error: E }> {
   const prior = opts.state ?? { hw: null, bf: null }
   const hwMs = graphTime(prior.hw)
   const items: T[] = []

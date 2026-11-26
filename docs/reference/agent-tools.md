@@ -935,7 +935,7 @@ Watch Facebook, Instagram and YouTube activity and answer with approved replies.
 
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
-| `connections_status` | Status of each Social connection (facebook, instagram, google) from the kernel: connected or not, org or personal, who connected it, token expiry, and whether it needs a reconnect. |  | `social:findings:read` |
+| `connections_status` | Status of each Social connection (facebook, instagram, instagram_unified, google) from the kernel: connected, org or personal, who connected it, token expiry, needs a reconnect. |  | `social:findings:read` |
 | `correct_triage` | Deliberately re-triage a finding after the fact (human correction). |  | `social:internal` |
 | `counts` | Sidebar badge counts: new findings, awaiting approval, open DMs. |  | `social:findings:read` |
 | `dismiss_finding` | Dismiss a finding (no reply needed). |  | `social:internal` |
@@ -954,7 +954,7 @@ Watch Facebook, Instagram and YouTube activity and answer with approved replies.
 | `unwatch_object` | Stop watching an object. |  | `social:watched:write` |
 | `watch_object` | Promote a SPECIFIC post/video/thread to a watched object so its FUTURE comments keep getting caught, and backfill-link its existing findings. |  | `social:watched:write` |
 | `watched_list` | List the posts/videos/threads ALREADY being watched (read-only). |  | `social:watched:read` |
-| `webhooks_setup` | Point Meta's Facebook Page webhooks at this instance, so new comments and Messenger DMs arrive in real time instead of on the next poll. | yes | `social:admin:connection`, `social:findings:read` |
+| `webhooks_setup` | Point Meta's Facebook Page and Instagram webhooks at this instance, so comments and DMs arrive in real time instead of on the next poll. | yes | `social:admin:connection`, `social:findings:read` |
 
 ## stripe
 

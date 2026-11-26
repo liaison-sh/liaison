@@ -174,3 +174,106 @@ describe("the digest carries only what is still unread (rule 5)", () => {
     expect(state.get(unreadDaily)).toBe("pending")
   })
 })
+
+//
+// The digest says what is still waiting when it is sent: a row about an
+// approval request decided since it was queued (the computed "approval
+// pending" row, or a reminder naming the request) is retired, never mailed,
+// and a digest with nothing left is not sent at all.
+
+const APPROVAL_ORG = "00000000-0000-0000-0000-0000000009f0"
+const APPROVAL_USER = "00000000-0000-0000-0000-0000000009f1"
+
+async function approvalRequest(status: string): Promise<string> {
+  const [thread] = await sql<{ id: string }[]>`
+    INSERT INTO kernel.threads (id, org_id, handle, title, type, created_by)
+    VALUES (gen_random_uuid(), ${APPROVAL_ORG}::uuid, ${`digest-ap-${crypto.randomUUID()}`},
+            'Approval', 'thread', ${APPROVAL_USER}::uuid)
+    RETURNING id::text AS id`
+  const [req] = await sql<{ id: string }[]>`
+    INSERT INTO kernel.approval_requests
+      (org_id, handle, thread_id, originating_thread_id, tool_name, tool_params,
+       current_payload, expires_at, requested_by, status)
+    VALUES (${APPROVAL_ORG}::uuid, ${`digest-ap-${crypto.randomUUID().slice(0, 8)}`},
+            ${thread!.id}::uuid, ${thread!.id}::uuid, 'knowledge:create', '{}'::jsonb, '{}'::jsonb,
+            now() + interval '1 day', ${APPROVAL_USER}::uuid, ${status})
+    RETURNING id::text AS id`
+  return req!.id
+}
+
+async function pendingRow(requestId: string): Promise<string> {
+  const [r] = await sql<{ id: string }[]>`
+    INSERT INTO kernel.attention_events
+      (org_id, user_id, app, entity_type, entity_id, kind, urgency, summary, actor_type,
+       occurred_at, is_urgent, digest_state, digest_eligible_at, email_only, source_key)
+    VALUES (${APPROVAL_ORG}, ${APPROVAL_USER}, 'kernel', 'approval_request', ${requestId},
+      'approval_pending', 40, 'Create a knowledge page', 'system', now(), false, 'pending',
+      now() - interval '1 minute', true, ${`state:kernel:approval_pending:approval_request:${requestId}`})
+    RETURNING id`
+  return r!.id
+}
+
+async function reminderRow(requestId: string): Promise<string> {
+  const [r] = await sql<{ id: string }[]>`
+    INSERT INTO kernel.attention_events
+      (org_id, user_id, app, entity_type, entity_id, kind, urgency, summary, actor_type,
+       occurred_at, is_urgent, digest_state, digest_eligible_at, metadata)
+    VALUES (${APPROVAL_ORG}, ${APPROVAL_USER}, 'kernel', 'thread', ${crypto.randomUUID()},
+      'agent_notification', 40, 'Still waiting for you', 'agent', now(), false, 'pending',
+      now() - interval '1 minute', ${JSON.stringify({ routedReminder: { approvalId: requestId } })}::jsonb)
+    RETURNING id`
+  return r!.id
+}
+
+describe("the digest drops approval requests settled since they were queued", () => {
+  let stillPending = ""
+  let approvedRow = ""
+  let rejectedReminder = ""
+  let deferredRow = ""
+
+  beforeAll(async () => {
+    await sql`INSERT INTO kernel.organizations (id, name, slug)
+      VALUES (${APPROVAL_ORG}, 'DigestApprovalOrg', 'digest-approval-org') ON CONFLICT (id) DO NOTHING`
+    await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash)
+      VALUES (${APPROVAL_USER}, ${APPROVAL_ORG}, 'digest-approval@t.com', 'Ada', 'x') ON CONFLICT (id) DO NOTHING`
+    stillPending = await pendingRow(await approvalRequest("pending"))
+    approvedRow = await pendingRow(await approvalRequest("approved"))
+    rejectedReminder = await reminderRow(await approvalRequest("rejected"))
+    deferredRow = await pendingRow(await approvalRequest("deferred"))
+  })
+
+  afterAll(async () => {
+    await sql`DELETE FROM kernel.attention_events WHERE org_id = ${APPROVAL_ORG}`
+    await sql`DELETE FROM kernel.approval_requests WHERE org_id = ${APPROVAL_ORG}`
+    await sql`DELETE FROM kernel.threads WHERE org_id = ${APPROVAL_ORG}`
+    await sql`DELETE FROM kernel.users WHERE org_id = ${APPROVAL_ORG}`
+    await sql`DELETE FROM kernel.organizations WHERE id = ${APPROVAL_ORG}`
+  })
+
+  it("an approved request and a reminder of a rejected one leave the queue; pending and deferred stay", async () => {
+    const ids = (await DigestJobsTestAccess.fetchCadencePending("daily")).map((r) => r.id)
+    expect(ids).toContain(stillPending)
+    expect(ids).toContain(deferredRow)
+    expect(ids).not.toContain(approvedRow)
+    expect(ids).not.toContain(rejectedReminder)
+    const states = await sql<{ id: string; digest_state: string }[]>`
+      SELECT id, digest_state FROM kernel.attention_events WHERE org_id = ${APPROVAL_ORG}`
+    const state = new Map(states.map((s) => [s.id, s.digest_state]))
+    expect(state.get(approvedRow)).toBe("suppressed")
+    expect(state.get(rejectedReminder)).toBe("suppressed")
+    expect(state.get(stillPending)).toBe("pending")
+  })
+
+  it("nothing is left once the last request is decided: no row, so no mail", async () => {
+    await sql`UPDATE kernel.approval_requests SET status = 'approved'
+      WHERE org_id = ${APPROVAL_ORG} AND status IN ('pending', 'deferred')`
+    const ids = (await DigestJobsTestAccess.fetchCadencePending("daily"))
+      .filter((r) => r.orgId === APPROVAL_ORG)
+      .map((r) => r.id)
+    expect(ids).toEqual([])
+    const urgent = (await DigestJobsTestAccess.fetchUrgent()).filter(
+      (r) => r.orgId === APPROVAL_ORG,
+    )
+    expect(urgent).toEqual([])
+  })
+})

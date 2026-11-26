@@ -652,12 +652,16 @@ const BillingSettings: Component = () => {
                           when={s().nextInvoice}
                           fallback={t("cloud-billing.plan.noNextInvoice")}
                         >
-                          {(n) =>
-                            t("cloud-billing.plan.nextInvoice", {
-                              amount: localMoney(n().amountDisplay, locale()),
-                              date: formatDate(n().date),
-                            })
-                          }
+                          {/* An expression, not a string built once: a re-read (a plan
+                              switch) shows the new amount, not the one first drawn. */}
+                          {(n) => (
+                            <>
+                              {t("cloud-billing.plan.nextInvoice", {
+                                amount: localMoney(n().amountDisplay, locale()),
+                                date: formatDate(n().date),
+                              })}
+                            </>
+                          )}
                         </Show>
                       </p>
                     </>,

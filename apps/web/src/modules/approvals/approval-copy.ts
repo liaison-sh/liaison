@@ -208,6 +208,47 @@ const TEMPLATES: Template[] = [
   T(/^Invite (\S+) as (.+)$/, "inviteAs", "email", "role"),
   T(/^Assign (\S+) to (.+)$/, "assignTo", "email", "role"),
   T(/^Remove (\S+) from (.+)$/, "removeFrom", "email", "role"),
+  // skills-routines-tools.ts summarizeUpdateSkill: its title and lines.
+  T(/^Update skill: (.+)$/, "updateSkillNamed", "name"),
+  T(/^Skill created: (\d{4}-\d{2}-\d{2})$/, "skillCreated", "date"),
+  T(/^name → (.+)$/, "nameChange", "value"),
+  T(/^description → (.+)$/, "descriptionChange", "value"),
+  T(/^body \((\d+) chars\)$/, "bodyChars", "n"),
+  T(/^starts: (.+)$/, "bodyStarts", "text"),
+  T(/^Domain: (.+) -> (.+)$/, "domainChange", "from", "to"),
+  T(/^Domain: (.+)$/, "domainLine", "value"),
+  T(/^requiredScopes → \[(.*)\]$/, "requiredScopesChange", "scopes"),
+  // contact-tools.ts summarizeContactsMerge: its lines.
+  T(/^Survivor \(kept\): (.+)$/, "mergeSurvivor", "contact"),
+  T(/^Deleted \(merged away\): (.+)$/, "mergeDeleted", "contact"),
+  T(
+    /^This is IRREVERSIBLE: the deleted record is permanently removed and all of its mail conversations are reassigned to the survivor\.$/,
+    "mergeIrreversible",
+  ),
+  T(/^Resolved field values on the survivor: (.+)\.$/, "mergeResolved", "fields"),
+  // The Shopify discount summarizers (shopify summarizers.ts, mutations/discounts.ts).
+  T(/^Create discount code: (.+)$/, "createDiscountCode", "code"),
+  T(/^Create automatic discount: (.+)$/, "createAutomaticDiscount", "title"),
+  T(/^Title: (.+)$/, "titleLine", "value"),
+  T(/^Code: (.+)$/, "codeLine", "value"),
+  T(/^Discount: ([\d.]+)% off$/, "discountPercentOff", "pct"),
+  T(/^Discount: fixed amount (.+)$/, "discountFixedAmount", "amount"),
+  T(/^Minimum purchase: none$/, "minimumNone"),
+  T(/^Minimum purchase: at least (\d+) item\(s\)$/, "minimumItems", "n"),
+  T(
+    /^Minimum purchase: order subtotal of at least (.+) \(store currency\)$/,
+    "minimumSubtotal",
+    "amount",
+  ),
+  T(/^Available to: all customers, in every market$/, "availableAllMarkets"),
+  T(/^Available to: all customers$/, "availableAll"),
+  T(/^Available to: selected customers only$/, "availableSelected"),
+  T(/^Combines with: no other discounts$/, "combinesNone"),
+  T(/^Usage limit: (\d+) use\(s\) per code$/, "usageLimitPerCode", "n"),
+  T(/^Usage limit: NONE \(unlimited uses\)$/, "usageLimitNone"),
+  T(/^Limit: once per customer$/, "oncePerCustomer"),
+  T(/^Starts: (.+)$/, "startsLine", "when"),
+  T(/^Ends: (.+)$/, "endsLine", "when"),
   T(/^Create skill (.+)$/, "createSkill", "name"),
   T(/^Delete skill (.+)$/, "deleteSkill", "name"),
   T(/^Create routine (.+)$/, "createRoutine", "name"),
@@ -390,6 +431,12 @@ function localizeTemplate(text: string, ctx: ApprovalCopyContext): string {
     })
     if (tpl.key.endsWith(".editRole") && params.changes) {
       params.changes = localizeRoleChanges(params.changes, ctx.t)
+    }
+    // A skill with no domain reads "general (none set)" in the summarizer's words.
+    for (const name of ["value", "from", "to"]) {
+      if (tpl.key.includes(".domain") && params[name] === "general (none set)") {
+        params[name] = ctx.t("kernel.approvalsUi.tpl.domainGeneral")
+      }
     }
     // A priority the projects catalog names ("high" -> "Haute"); any other value as written.
     if (tpl.key.endsWith(".priorityLine") && params.value) {

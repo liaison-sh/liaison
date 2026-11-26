@@ -24,7 +24,7 @@ import { ApiError } from "~/lib/api-error"
 import { appLabel } from "~/lib/app-label"
 import { scopeLabel } from "~/lib/capability-copy"
 import { openExternal } from "~/modules/desktop/external-links"
-import { catalogHasKey, seededCopy, type Translate, useI18n } from "~/modules/i18n/i18n-context"
+import { catalogHasKey, type Translate, useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
@@ -43,6 +43,7 @@ import {
   StoreIcon,
   StoreStateChip,
   stateLabel,
+  storeItemSummary,
   useStoreActions,
 } from "./AppStorePage"
 import { OutboundAccessSection } from "./OutboundAccessSection"
@@ -334,14 +335,12 @@ export const AppStoreDetail: Component = () => {
               </div>
             </div>
 
-            <Show when={it().description ?? it().listing?.summary}>
-              <p class="mb-2 text-sm text-text" data-testid="app-store-detail-description">
-                {seededCopy(
-                  it().description ?? it().listing?.summary,
-                  `kernel.appDescriptions.${it().name}`,
-                  i18n.t,
-                )}
-              </p>
+            <Show when={storeItemSummary(it(), i18n.t)}>
+              {(summary) => (
+                <p class="mb-2 text-sm text-text" data-testid="app-store-detail-description">
+                  {summary()}
+                </p>
+              )}
             </Show>
             <p class="mb-6 text-xs text-text-secondary">
               {i18n.t(it().kind === "connector" ? `${S}.connectorKindHint` : `${S}.appKindHint`)}

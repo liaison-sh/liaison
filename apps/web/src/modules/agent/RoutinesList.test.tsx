@@ -104,9 +104,10 @@ describe("RoutinesList", () => {
     expect(screen.getByTestId("routine-template-kind-kernel-morning-brief")).toHaveTextContent(
       /^Recurring$/,
     )
-    // The title has a line of its own (it truncates there instead of wrapping mid-word).
+    // The title has a line of its own (it truncates there instead of wrapping mid-word), and it
+    // is the template's name in words, never its slug.
     expect(screen.getByTestId("routine-template-title-kernel-morning-brief")).toHaveTextContent(
-      "morning-brief",
+      "Morning brief",
     )
     fireEvent.click(screen.getByTestId("routine-template-enable-kernel-morning-brief"))
     await waitFor(() =>

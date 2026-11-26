@@ -3,9 +3,10 @@
 import { CalendarClock } from "lucide-solid"
 import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js"
 import { namespaceRegistryKey } from "~/framework/app-registry"
+import { appLabel, humanizeId } from "~/lib/app-label"
 import { relativeTime } from "~/lib/relative-time"
 import { userFromToken } from "~/modules/auth/auth-store"
-import { useI18n } from "~/modules/i18n/i18n-context"
+import { catalogHasKey, seededCopy, type Translate, useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { openTab } from "~/modules/shell/tab-store"
 import Chip from "./Chip"
@@ -402,14 +403,14 @@ const RoutinesList: Component<Props> = (props) => {
                       data-testid={`routine-template-title-${t.appName}-${t.templateKey}`}
                       class="truncate text-[13px] font-medium text-text"
                     >
-                      {t.title ?? t.templateKey}
+                      {templateTitle(i18n.t, t)}
                     </div>
                     <div class="mt-1 flex flex-wrap items-center gap-2">
                       {/* A kernel template is the platform's own, not an app's (S28). */}
                       <Chip class="whitespace-nowrap">
                         {t.appName === "kernel"
                           ? i18n.t("kernel.agents.builtInTemplate")
-                          : t.appName}
+                          : appLabel(t.appName, i18n.t)}
                       </Chip>
                       <Chip
                         class="whitespace-nowrap"
@@ -418,7 +419,9 @@ const RoutinesList: Component<Props> = (props) => {
                         {templateKindLabel(i18n.t, t.kind)}
                       </Chip>
                     </div>
-                    <p class="mt-1 truncate text-[12px] text-text-tertiary">{t.description}</p>
+                    <p class="mt-1 truncate text-[12px] text-text-tertiary">
+                      {templateDescription(i18n.t, t)}
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -440,6 +443,34 @@ const RoutinesList: Component<Props> = (props) => {
         </Show>
       </div>
     </div>
+  )
+}
+
+type TemplateCopy = {
+  appName: string
+  templateKey: string
+  title?: string | null
+  description?: string | null
+}
+
+/**
+ * A template's name in the reader's language: the catalog's
+ * `kernel.routineTemplates.<app>.<key>.title`, else the template's own title, else its key
+ * in words ("month-end-check" reads "Month end check"), never the raw slug.
+ */
+export function templateTitle(translate: Translate, t: TemplateCopy): string {
+  const key = `kernel.routineTemplates.${t.appName}.${t.templateKey}.title`
+  if (t.title) return seededCopy(t.title, key, translate)
+  if (catalogHasKey(key)) return translate(key)
+  return humanizeId(t.templateKey)
+}
+
+/** A template's description in the reader's language while it still says the catalog's English. */
+export function templateDescription(translate: Translate, t: TemplateCopy): string {
+  return seededCopy(
+    t.description,
+    `kernel.routineTemplates.${t.appName}.${t.templateKey}.description`,
+    translate,
   )
 }
 

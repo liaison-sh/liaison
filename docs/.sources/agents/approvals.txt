@@ -250,3 +250,4 @@ One run's requests are one Home row (who asked, count, Show all), each decided a
 Requests no run staged group by same action, same people, same day in the org's zone; a run's stay together across days -> apps/api/src/modules/approvals/group-key.ts:48 ; apps/api/src/modules/approvals/attention.ts:962 ; packages/shared/src/i18n/locales/en/kernel.json:7546
 Home row approve of a sequence carries each later step's fingerprint -> apps/api/src/modules/approvals/attention.ts:665
 The row sends them with the approve -> apps/web/src/modules/shell/AttentionRow.tsx:543
+Actions that ask first for some requests (conditionalGate: credit note, quote, purchase order, org knowledge document) keep their own deciding scope after reading scoped data -> apps/api/src/modules/approvals/authority.ts:113 ; apps/api/src/modules/apps/execute-tool.ts:5739

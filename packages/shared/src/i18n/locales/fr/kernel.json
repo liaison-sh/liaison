@@ -2850,7 +2850,39 @@
       "ratePerHourLine": "Taux : {{rate}} de l'heure",
       "priceLine": "Prix : {{price}}",
       "changeRequestClientApproves": "Le client l'approuve sur un lien avec un code envoyé par e-mail : une approbation enregistrée, pas une signature.",
-      "replyBody": "Réponse :\n{{body}}"
+      "replyBody": "Réponse :\n{{body}}",
+      "updateSkillNamed": "Modifier la compétence : {{name}}",
+      "skillCreated": "Compétence créée le {{date}}",
+      "nameChange": "nom → {{value}}",
+      "descriptionChange": "description → {{value}}",
+      "bodyChars": "contenu ({{n}} caractères)",
+      "bodyStarts": "début : {{text}}",
+      "domainChange": "Domaine : {{from}} -> {{to}}",
+      "domainLine": "Domaine : {{value}}",
+      "domainGeneral": "général (aucun)",
+      "requiredScopesChange": "autorisations requises → [{{scopes}}]",
+      "mergeSurvivor": "Conservé : {{contact}}",
+      "mergeDeleted": "Supprimé (fusionné) : {{contact}}",
+      "mergeIrreversible": "C'est IRRÉVERSIBLE : la fiche supprimée disparaît définitivement et toutes ses conversations mail passent à la fiche conservée.",
+      "mergeResolved": "Valeurs retenues sur la fiche conservée : {{fields}}.",
+      "createDiscountCode": "Créer le code de remise : {{code}}",
+      "createAutomaticDiscount": "Créer la remise automatique : {{title}}",
+      "titleLine": "Titre : {{value}}",
+      "codeLine": "Code : {{value}}",
+      "discountPercentOff": "Remise : {{pct}} %",
+      "discountFixedAmount": "Remise : montant fixe de {{amount}}",
+      "minimumNone": "Achat minimum : aucun",
+      "minimumItems": "Achat minimum : au moins {{n}} article(s)",
+      "minimumSubtotal": "Achat minimum : sous-total d'au moins {{amount}} (devise de la boutique)",
+      "availableAll": "Pour : tous les clients",
+      "availableAllMarkets": "Pour : tous les clients, sur tous les marchés",
+      "availableSelected": "Pour : certains clients seulement",
+      "combinesNone": "Cumulable avec : aucune autre remise",
+      "usageLimitPerCode": "Limite d'utilisation : {{n}} par code",
+      "usageLimitNone": "Limite d'utilisation : AUCUNE (illimitée)",
+      "oncePerCustomer": "Limite : une fois par client",
+      "startsLine": "Début : {{when}}",
+      "endsLine": "Fin : {{when}}"
     },
     "refFromStep": "{{what}} de l'étape {{n}}",
     "refFromEarlierStep": "{{what}} d'une étape précédente",
@@ -3650,7 +3682,38 @@
       "collection": "collection",
       "incident": "incident",
       "invoice": "facture",
-      "order": "commande"
+      "order": "commande",
+      "product": "produit",
+      "customer": "client",
+      "finding": "mention sociale",
+      "shipment": "expédition",
+      "company": "entreprise",
+      "user": "personne",
+      "deal": "affaire"
+    },
+    "entityTypeChips": {
+      "document": "Documents",
+      "task": "Tâches",
+      "ticket": "Tickets",
+      "project": "Projets",
+      "contact": "Contacts",
+      "thread": "Discussions",
+      "message": "Messages",
+      "conversation": "Discussions",
+      "file": "Fichiers",
+      "event": "Événements",
+      "skill": "Compétences",
+      "collection": "Collections",
+      "incident": "Incidents",
+      "invoice": "Factures",
+      "order": "Commandes",
+      "product": "Produits",
+      "customer": "Clients",
+      "finding": "Mentions sociales",
+      "shipment": "Expéditions",
+      "company": "Entreprises",
+      "user": "Personnes",
+      "deal": "Affaires"
     }
   },
   "auth": {
@@ -3980,14 +4043,20 @@
       "create": "créer un ticket",
       "assign": "attribuer",
       "setStatus": "changer le statut",
-      "convertToMail": "convertir en mail"
+      "convertToMail": "convertir en mail",
+      "inboxes_create": "créer une boîte de réception",
+      "inboxes_update": "modifier une boîte de réception",
+      "idSegment_set": "définir le préfixe des numéros de ticket",
+      "approveFromHome_set": "modifier l'approbation depuis l'accueil",
+      "apiKeys_create": "créer une clé d'API"
     },
     "mail": {
       "reply": "répondre",
       "forward": "transférer",
       "compose": "écrire un mail",
       "archive": "archiver",
-      "convertToTicket": "convertir en ticket"
+      "convertToTicket": "convertir en ticket",
+      "suppression_remove": "retirer de la liste d'exclusion"
     },
     "knowledge": {
       "create": "créer un document",
@@ -4009,7 +4078,10 @@
       "createProject": "créer un projet",
       "status_add": "ajouter une colonne de statut",
       "status_update": "modifier une colonne de statut",
-      "status_delete": "supprimer une colonne de statut"
+      "status_delete": "supprimer une colonne de statut",
+      "deals_update": "modifier une affaire",
+      "checklist_remove_item": "retirer un élément de la checklist",
+      "client_report_send": "envoyer un rapport client"
     },
     "invoicing": {
       "invoice_issue": "émettre une facture",
@@ -4026,7 +4098,38 @@
       "documents_mark_paid": "marquer un document comme payé",
       "documents_record_refund": "enregistrer un remboursement",
       "documents_convert_to_invoice": "convertir un document en facture",
-      "order_reissue_apply": "réémettre les documents d'une commande"
+      "order_reissue_apply": "réémettre les documents d'une commande",
+      "recurring_run_issue": "émettre une facturation de fin de mois",
+      "recurring_run_unapprove": "retirer l'approbation d'une facturation de fin de mois",
+      "recurring_item_issue": "émettre une facture récurrente",
+      "received_einvoice_set_status": "changer le statut d'une facture électronique reçue",
+      "einvoice_send": "envoyer une facture électronique",
+      "einvoice_book_batch": "comptabiliser des factures électroniques",
+      "einvoice_send_batch": "envoyer des factures électroniques",
+      "milestone_draft_create": "préparer une facture d'étape",
+      "advance_refund_prepare": "préparer le remboursement d'un acompte",
+      "credit_note_from_reconcile": "émettre un avoir depuis le rapprochement",
+      "deferred_tax_override": "corriger la TVA différée",
+      "recurring_schedule_create": "créer une facturation récurrente",
+      "recurring_schedule_update": "modifier une facturation récurrente",
+      "recurring_schedule_pause": "suspendre une facturation récurrente",
+      "issuer_stream_set": "définir la série d'émission",
+      "issuer_emails_confirm": "confirmer les e-mails de l'émetteur",
+      "invoice_from_stripe_payment": "facturer un paiement Stripe",
+      "payment_link_to_invoice": "lier un paiement à une facture",
+      "drafts_create": "créer un brouillon",
+      "drafts_update": "modifier un brouillon",
+      "drafts_discard": "abandonner un brouillon",
+      "quote_set_outcome": "enregistrer l'issue d'un devis",
+      "settings_issuer_profile_create": "créer un profil émetteur",
+      "settings_issuer_profile_update": "modifier un profil émetteur",
+      "settings_issuer_profile_delete": "supprimer un profil émetteur",
+      "documents_update": "modifier un document",
+      "counterparty_identity_set": "définir l'identité d'un tiers",
+      "counterparty_territory_set": "définir le territoire d'un tiers",
+      "einvoicing_settings_set": "modifier les réglages de facturation électronique",
+      "einvoicing_backfill_identities": "compléter les identités des tiers",
+      "einvoicing_backfill_legacy_originals": "compléter les originaux anciens"
     },
     "mcp-manager": {
       "add_connection": "connecter un serveur MCP"
@@ -4038,20 +4141,27 @@
     },
     "google-drive": {
       "upload": "déposer un fichier",
-      "import": "importer un fichier"
+      "import": "importer un fichier",
+      "choose_shared_drives": "choisir les drives partagés"
     },
     "boxtal": {
       "create_shipment": "créer une expédition",
       "cancel_shipment": "annuler une expédition",
-      "claim_open": "ouvrir une réclamation"
+      "claim_open": "ouvrir une réclamation",
+      "settings_sender_address_set": "définir l'adresse d'expédition",
+      "prep_set_address_choice": "choisir l'adresse de livraison",
+      "settle_orphan_create": "régulariser une expédition non liée"
     },
     "pennylane": {
-      "supplier_invoice_upload": "déposer une facture fournisseur"
+      "supplier_invoice_upload": "déposer une facture fournisseur",
+      "webhooks_setup": "configurer les webhooks",
+      "supplier_invoices_list": "lister les factures fournisseurs"
     },
     "social": {
       "reply_to_finding": "répondre à une publication",
       "send_dm": "envoyer un message privé",
-      "like_item": "aimer une publication"
+      "like_item": "aimer une publication",
+      "webhooks_setup": "configurer les webhooks"
     },
     "agreements": {
       "agreement_update": "modifier un contrat",
@@ -4059,7 +4169,82 @@
       "change_request_send": "envoyer une demande de modification",
       "agreement_reminder_send": "relancer les signataires",
       "agreement_new_link": "envoyer un nouveau lien de signature",
-      "agreement_void": "annuler un contrat"
+      "agreement_void": "annuler un contrat",
+      "template_save": "enregistrer un modèle de contrat"
+    },
+    "ads": {
+      "create_campaign": "créer une campagne Meta",
+      "create_adset": "créer un ensemble de publicités Meta",
+      "create_ad": "créer une publicité Meta",
+      "create_creative": "créer un visuel publicitaire",
+      "upload_image": "téléverser une image publicitaire",
+      "update_budget": "modifier un budget Meta",
+      "set_status": "changer un statut Meta",
+      "create_custom_audience": "créer une audience personnalisée",
+      "create_lookalike_audience": "créer une audience similaire",
+      "add_users_to_audience": "ajouter des personnes à une audience",
+      "pause": "mettre en pause des publicités Meta",
+      "google_pause": "mettre en pause des publicités Google",
+      "google_create_campaign": "créer une campagne Google",
+      "google_create_adgroup": "créer un groupe d'annonces Google",
+      "google_create_ad": "créer une annonce Google",
+      "google_update_budget": "modifier un budget Google",
+      "google_set_status": "changer un statut Google",
+      "google_add_negative_keywords": "ajouter des mots clés à exclure",
+      "google_create_conversion_action": "créer une action de conversion",
+      "manual_spend_add": "enregistrer une dépense manuelle",
+      "dealer_profile_upsert": "enregistrer une fiche revendeur"
+    },
+    "api-connector": {
+      "connector_write": "écrire via le connecteur"
+    },
+    "shopify": {
+      "refunds_create": "créer un remboursement",
+      "draft_orders_create": "créer un brouillon de commande",
+      "draft_orders_complete": "finaliser un brouillon de commande",
+      "fulfillments_create": "créer une expédition",
+      "fulfillments_cancel": "annuler une expédition",
+      "fulfillments_update_tracking": "modifier le suivi",
+      "products_create": "créer un produit",
+      "products_update": "modifier un produit",
+      "products_delete": "supprimer un produit",
+      "products_merge": "fusionner des produits",
+      "variants_create": "créer une variante",
+      "variants_update": "modifier une variante",
+      "variants_delete": "supprimer une variante",
+      "inventory_adjust": "ajuster le stock",
+      "inventory_set_on_hand": "définir le stock disponible",
+      "discounts_create": "créer une remise",
+      "discounts_bulk_create": "créer des codes de remise",
+      "discounts_update": "modifier une remise",
+      "discounts_delete": "supprimer une remise",
+      "discounts_set_status": "changer le statut d'une remise",
+      "returns_request": "demander un retour",
+      "returns_approve": "accepter un retour",
+      "returns_decline": "refuser un retour",
+      "returns_refund": "rembourser un retour",
+      "returns_close": "clôturer un retour",
+      "customers_update": "modifier un client",
+      "customers_email_marketing_consent_update": "modifier le consentement e-mail marketing",
+      "customers_sms_marketing_consent_update": "modifier le consentement SMS marketing",
+      "apply_seed_suggestion": "appliquer une suggestion de configuration",
+      "connection_disconnect": "déconnecter la boutique",
+      "staff_overrides_upsert": "enregistrer une exception pour l'équipe",
+      "staff_overrides_delete": "supprimer une exception pour l'équipe",
+      "order_update": "modifier une commande",
+      "order_cancel": "annuler une commande",
+      "draft_orders_update": "modifier un brouillon de commande",
+      "draft_orders_delete": "supprimer un brouillon de commande",
+      "draft_orders_send": "envoyer un brouillon de commande",
+      "products_publish": "publier un produit",
+      "products_unpublish": "dépublier un produit",
+      "customers_tag": "étiqueter un client",
+      "metafields_set": "définir un champ personnalisé",
+      "metafields_delete": "supprimer un champ personnalisé"
+    },
+    "stripe": {
+      "refunds_create": "créer un remboursement",
+      "subscription_cancel": "résilier un abonnement"
     }
   },
   "agentNotice": {
@@ -4868,10 +5053,10 @@
     "timezoneFromOrg": "Vous n'avez pas choisi de fuseau horaire : celui de votre organisation est utilisé.",
     "timezoneUnknown": "Votre fuseau horaire n'est pas encore connu, donc les heures calmes n'ont pas commencé : vous êtes notifié à toute heure. Elles commencent dès que votre fuseau est connu (l'application le lit sur votre appareil, ou choisissez-le ci-dessous).",
     "kindsTitle": "Comment chaque type vous parvient",
-    "kindsHint": "Interrompre : votre téléphone et votre ordinateur vous alertent. Boîte de réception seulement : il attend sans bruit dans votre boîte de réception. Désactivée : en sourdine partout, téléphone, ordinateur et mail ; il reste visible dans votre boîte de réception, déjà lu.",
+    "kindsHint": "Interrompre : votre téléphone et votre ordinateur vous alertent. En silence : il attend sans bruit dans votre boîte de réception. Désactivée : en sourdine partout, téléphone, ordinateur et mail ; il reste visible dans votre boîte de réception, déjà lu.",
     "kindModes": {
       "interrupt": "Interrompre",
-      "inbox": "Boîte de réception seulement",
+      "inbox": "En silence",
       "off": "Désactivée"
     },
     "mutedTitle": "Conversations en sourdine",
@@ -7650,6 +7835,110 @@
     "corporateTemplates": {
       "label": "Modèles juridiques de société",
       "description": "Ajoute les modèles juridiques de société (documents du conseil et des associés) à la liste des modèles."
+    }
+  },
+  "appSummaries": {
+    "calendar": "Un agenda au mois et à la semaine, synchronisé dans les deux sens avec Google Agenda.",
+    "contacts": "Un seul annuaire des personnes et des entreprises avec qui vous travaillez.",
+    "knowledge": "Les documents, règles et liens de référence partagés par votre équipe.",
+    "mail": "Lire, écrire et répondre aux e-mails depuis Gmail ou toute boîte IMAP/SMTP.",
+    "mcp-manager": "Connecter des serveurs MCP externes et choisir les outils que les agents peuvent utiliser.",
+    "projects": "Des projets et des tâches avec responsables, statuts, échéances et discussions.",
+    "tickets": "Suivre les demandes clients, les retours et les garanties jusqu'à leur résolution.",
+    "ads": "Gérer les campagnes Meta et Google, chaque changement de dépense étant approuvé par une personne.",
+    "agreements": "Contrats : brouillons, versions, modèles et signature électronique simple.",
+    "api-connector": "Connecter un ERP, un CRM ou toute API HTTP à partir d'un document d'adaptation, avec des outils pour les agents et une fiche client.",
+    "boxtal": "Boxtal : expédier les commandes avec les transporteurs Boxtal, avec devis, expéditions, suivi et documents de douane.",
+    "calls": "Transformer les transcriptions d'appels en connaissances consultables, liées aux contacts et aux affaires.",
+    "database": "Un accès en lecture seule à la base de données de votre déploiement, pour le dépannage et le support.",
+    "github": "Lire les dépôts, commits, pull requests et issues sur GitHub, en lecture seule.",
+    "gitlab": "Synchroniser les manuels GitLab dans les Connaissances et lire projets, merge requests et issues.",
+    "google-drive": "Rechercher, lire et importer des fichiers Google Drive, et y déposer de nouveaux rapports.",
+    "invoicing": "Factures, devis, factures proforma, bons de commande et avoirs.",
+    "monitoring": "Transformer les alertes de production en incidents dédoublonnés à prendre en charge et résoudre.",
+    "pennylane": "Pennylane : connecteur comptable pour Pennylane, avec factures, balances, trésorerie et autonomie financière.",
+    "shopify": "Commandes, clients, produits, remboursements, expéditions et retours Shopify.",
+    "social": "Suivre l'activité Facebook, Instagram et YouTube et répondre avec des réponses approuvées.",
+    "stripe": "Stripe : clients, abonnements, factures et paiements de votre compte Stripe, lus avec une clé restreinte."
+  },
+  "routineTemplates": {
+    "projects": {
+      "client-reports": {
+        "title": "Rapports clients",
+        "description": "Le vendredi après-midi : un brouillon de rapport client par projet dont les rapports sont partagés avec le client, à faire approuver par une personne."
+      },
+      "assign-on-status": {
+        "title": "Attribuer selon le statut",
+        "description": "Quand une tâche atteint un statut, l'attribuer et prévenir la personne."
+      },
+      "remind-if-still": {
+        "title": "Relancer si rien ne bouge",
+        "description": "Relancer la personne attribuée quand une tâche reste trop longtemps dans un statut."
+      },
+      "sla-to-reach": {
+        "title": "Délai de statut",
+        "description": "Prévenir le responsable quand une nouvelle tâche n'a pas atteint un statut à temps."
+      },
+      "notify-on-status": {
+        "title": "Prévenir selon le statut",
+        "description": "Prévenir des personnes quand une tâche atteint un statut."
+      }
+    },
+    "ads": {
+      "low-roas-autopause": {
+        "title": "Pause si ROAS faible",
+        "description": "Le lundi : pour chaque ensemble de publicités ou groupe d'annonces actif, le ROAS combiné sur 7 jours (revenu net Shopify / dépense), Meta ET Google. Sous le seuil, PROPOSE des pauses soumises à approbation ; les hausses de budget restent soumises à approbation. Avec les réserves sur les chiffres combinés et en retard."
+      },
+      "monthly-deep-review": {
+        "title": "Revue mensuelle approfondie",
+        "description": "Revue mensuelle approfondie : signes de lassitude des visuels, répartition géographique en vente directe ajustée des revendeurs, et une réallocation de budget PRÉPARÉE comme demande d'approbation (jamais exécutée seule) avec un plan d'expérience."
+      },
+      "weekly-account-review": {
+        "title": "Revue hebdomadaire des comptes",
+        "description": "Revue du lundi sur toutes les plateformes : dépenses Meta et Google, MER combiné (les deux variantes via metrics_run), expériences en cours, anomalies, éléments ACTIFS sans diffusion. Une plateforme absente est passée avec une note."
+      }
+    },
+    "agreements": {
+      "scope-check": {
+        "title": "Vérification du périmètre",
+        "description": "Quand un client sous contrat signé écrit, comparer sa demande au texte signé."
+      }
+    },
+    "invoicing": {
+      "month-end-check": {
+        "title": "Contrôle de fin de mois",
+        "description": "Quand une facturation de fin de mois est préparée, dire ce que les autres données montrent sur ses clients."
+      }
+    },
+    "social": {
+      "morning-digest": {
+        "title": "Résumé du matin",
+        "description": "Chaque matin, résumer les nouvelles mentions sociales et préparer des réponses quand c'est utile."
+      },
+      "triage-event": {
+        "title": "Tri à l'arrivée",
+        "description": "Trier chaque nouvelle mention sociale dès qu'elle est découverte."
+      },
+      "triage-cron": {
+        "title": "Tri de rattrapage",
+        "description": "Rattrapage : passer en revue les mentions non triées toutes les 15 minutes, au cas où un événement aurait été manqué."
+      }
+    },
+    "stripe": {
+      "failed-payments": {
+        "title": "Paiements échoués",
+        "description": "Chaque matin, préparer une relance de paiement pour chaque paiement par carte échoué qui en a besoin."
+      }
+    },
+    "kernel": {
+      "morning-brief": {
+        "title": "Brief du matin",
+        "description": "Brief du matin : mails de la nuit, brouillons en attente de votre approbation et tâches à échéance, chaque matin de semaine."
+      },
+      "deal-followups": {
+        "title": "Relances d'affaires",
+        "description": "Relances d'affaires : chaque jour de semaine, un brouillon de relance pour chaque affaire ouverte restée sans nouvelles, à faire approuver par son responsable."
+      }
     }
   }
 }

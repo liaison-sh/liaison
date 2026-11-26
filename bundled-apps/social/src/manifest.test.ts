@@ -41,6 +41,8 @@ describe("social manifest (B1)", () => {
     // 0.6.65: one deduplicated discovery run after a connect; job timeouts declared.
     // 0.6.66: watch_object commits the watch and its backfilled finding links in one batch, with no
     // transaction held across the run.
+    // 0.7.1: Instagram DMs switched off by the owner ("Allow access to messages") are an explicit
+    // state (connections_status issues, dm_list notices, a Messages notice), not an empty sync.
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/)
     expect(manifest.packageFormat).toBe(1)
   })

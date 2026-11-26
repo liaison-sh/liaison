@@ -6,6 +6,7 @@
 
 import type { Platform } from "./adapters/types"
 import type { SocialToolCtx } from "./ctx"
+import { type DmAccessNotice, dmAccessNotices } from "./dm-access"
 import { type DmWindowOptions, dmReplyWindow } from "./dm-window"
 import {
   derivedFindingStatus,
@@ -165,7 +166,7 @@ export async function findingsGet(
 export async function dmList(
   params: { status?: string; contact_id?: string; limit?: number },
   ctx: SocialToolCtx,
-): Promise<{ conversations: unknown[] }> {
+): Promise<{ conversations: unknown[]; notices: DmAccessNotice[] }> {
   const where: Record<string, unknown> = {}
   if (params.status) where.status = params.status
   if (params.contact_id) where.contact_id = params.contact_id
@@ -207,7 +208,8 @@ export async function dmList(
       windowOpts.get((r as { platform?: string }).platform ?? "") ?? {},
     ),
   )
-  return { conversations }
+  // Why DMs are missing, when it is something the person can fix (dm-access.ts).
+  return { conversations, notices: await dmAccessNotices(ctx) }
 }
 
 /** Fetch one conversation with its messages (chronological). */

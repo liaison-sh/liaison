@@ -123,8 +123,10 @@ export interface DmSyncResult {
    *  sets `retryAfter`. On either, `nextCursor` MUST echo the passed-in cursor
    *  unchanged — the caller (`dmSyncJob`) persists `nextCursor` unconditionally,
    *  so an adapter that advanced it on a failed sync would silently skip the
-   *  unsynced window on the next tick. */
-  error?: "CONNECTION_LOST" | "RATE_LIMITED"
+   *  unsynced window on the next tick. DM_ACCESS_DISABLED: Instagram refuses
+   *  the conversations read until the owner turns on "Allow access to messages"
+   *  in the Instagram app (dm-access.ts); same cursor rule. */
+  error?: "CONNECTION_LOST" | "RATE_LIMITED" | "DM_ACCESS_DISABLED"
   retryAfter?: number
 }
 

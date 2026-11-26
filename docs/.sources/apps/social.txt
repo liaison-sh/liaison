@@ -84,3 +84,11 @@ a reply whose confirmation timed out is looked up on the platform about a minute
 found: approval recorded as done; not found: back to waiting -> apps/api/src/modules/approvals/reconcile-outcome.ts:60
 a reply refused as gone or blocked closes its approval; a rate limit goes back to waiting -> bundled-apps/social/src/post-back.ts:385 ; apps/api/src/modules/approvals/decide.ts:919
 Account token added host-side; app token by client credentials grant; verify token placed host-side; Meta signature verified by config key -> bundled-apps/social/src/connection.ts (resolveAccountAuth) ; bundled-apps/social/src/webhooks-setup.ts (APP_AUTH, VERIFY_TOKEN_PLACEHOLDER) ; bundled-apps/social/src/handlers.ts (metaWebhookVerifier)
+Unified login step: turn on Allow access to messages (Settings and activity > Messages and story replies > Message requests > Connected tools), off by default -> bundled-apps/social/app.manifest.json:274
+Instagram 403 code 200 "disabled access to Instagram Direct Messaging" is DM_ACCESS_DISABLED -> bundled-apps/social/src/adapters/instagram.ts:443
+DM sync stamps dmAccessDisabledSince on the account's sync_state row, clears it on the next sync that lands -> bundled-apps/social/src/handlers.ts:456
+DM sync clears the stamp once a sync lands -> bundled-apps/social/src/handlers.ts:481
+Messages shows the notice with the path to the setting -> bundled-apps/social/src/ui/Messages.tsx:287
+dm_list returns notices -> bundled-apps/social/src/reads.ts:212
+connections_status lists the dm_access_disabled issue on the connection -> bundled-apps/social/src/settings-status.ts:163
+notice text: messages arrive on the next sync -> bundled-apps/social/src/dm-access.ts:20

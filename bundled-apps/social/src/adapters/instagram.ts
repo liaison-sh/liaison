@@ -9,6 +9,7 @@
 // `discover` doc comment below for why — the `mentioned_media` edge does not
 // exist under Instagram Login).
 
+import { isDmAccessDisabled } from "../dm-access"
 import { packCursor, parseCursor, parseJsonCursor } from "./cursor"
 import { facebookAdapter, metaTimeToIso } from "./facebook"
 import {
@@ -417,11 +418,29 @@ async function fetchListPage<T>(
   ctx: AdapterContext,
   url: string,
 ): Promise<GraphPage<T> | { error: ListError }> {
+  const page = await fetchListPageOrDmRefusal<T>(ctx, url)
+  // Only the conversations edge can answer DM_ACCESS_DISABLED; elsewhere it is
+  // one more refusal that skips the source this tick.
+  if ("error" in page) {
+    return { error: page.error === "DM_ACCESS_DISABLED" ? "UNAVAILABLE" : page.error }
+  }
+  return page
+}
+
+/** `fetchListPage` for the conversations edge, where Graph refuses the read
+ *  while the owner has not allowed access to messages (dm-access.ts). */
+async function fetchListPageOrDmRefusal<T>(
+  ctx: AdapterContext,
+  url: string,
+): Promise<GraphPage<T> | { error: ListError | "DM_ACCESS_DISABLED" }> {
   const res = await ctx.fetch(url, {
     ...accountAuth(ctx),
   })
   const err = graphError(res)
   if (err) return { error: err }
+  // The owner has not allowed access to messages: an explicit state, never an
+  // empty sync (dm-access.ts).
+  if (isDmAccessDisabled(res)) return { error: "DM_ACCESS_DISABLED" }
   // Any other failure: skip this source this tick with its state kept,
   // instead of reading an error body as an empty list.
   if (res.status !== 200) return { error: "UNAVAILABLE" }
@@ -530,7 +549,7 @@ export const instagramAdapter: PlatformAdapter = {
     // Cursor: `{ conversations: ListState }`. A raw string is a legacy `after`
     // token from the backward walk and reads as "no state, no history owed".
     const stored = parseJsonCursor(cursor) as { conversations?: unknown }
-    const walk = await walkNewestFirst<IgConversation>({
+    const walk = await walkNewestFirst<IgConversation, ListError | "DM_ACCESS_DISABLED">({
       state: readListState(stored.conversations),
       fresh: cursor === null,
       mode: "watermark",
@@ -539,7 +558,7 @@ export const instagramAdapter: PlatformAdapter = {
       timeOf: (c) => graphTime(c.updated_time),
       idOf: (c) => c.id,
       fetchPage: (after) =>
-        fetchListPage<IgConversation>(
+        fetchListPageOrDmRefusal<IgConversation>(
           ctx,
           igDm.conversations(igApi(ctx), CONVERSATION_PAGE_LIMIT, after),
         ),

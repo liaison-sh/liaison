@@ -240,19 +240,34 @@ export const ConversationDetailPanel: Component<{ conversation: ConversationRow 
 }
 
 // ── Master/detail surface ─────────────────────────────────────────────────────
-async function loadConversations(): Promise<ConversationRow[]> {
+interface DmListNotice {
+  code: string
+  accountExternalId: string
+  message: string
+}
+
+interface DmListView {
+  conversations: ConversationRow[]
+  notices: DmListNotice[]
+}
+
+async function loadConversations(): Promise<DmListView> {
   try {
-    const res = await app.invokeTool<{ conversations?: ConversationRow[] }>("dm_list", {})
-    return res?.conversations ?? []
+    const res = await app.invokeTool<{
+      conversations?: ConversationRow[]
+      notices?: DmListNotice[]
+    }>("dm_list", {})
+    return { conversations: res?.conversations ?? [], notices: res?.notices ?? [] }
   } catch {
-    return []
+    return { conversations: [], notices: [] }
   }
 }
 
 export const Messages: Component = () => {
   const [rows] = app.createResource(loadConversations)
   const [selected, setSelected] = createSignal<string | null>(null)
-  const visible = createMemo<ConversationRow[]>(() => rows() ?? [])
+  const visible = createMemo<ConversationRow[]>(() => rows()?.conversations ?? [])
+  const notices = createMemo<DmListNotice[]>(() => rows()?.notices ?? [])
   const selectedId = createMemo(() => {
     const s = selected()
     if (s && visible().some((r) => r.id === s)) return s
@@ -266,6 +281,16 @@ export const Messages: Component = () => {
   return (
     <div class="flex h-full min-h-0 flex-col">
       <PageHeader title="Messages" subtitle="Direct messages across Facebook and Instagram" />
+      <For each={notices()}>
+        {(n) => (
+          <div
+            data-testid={`social-dm-notice-${n.code}`}
+            class="border-b border-border-subtle bg-surface-hover px-4 py-2 text-[12.5px] text-text"
+          >
+            {n.message}
+          </div>
+        )}
+      </For>
       <div class="flex min-h-0 flex-1">
         <div
           class="w-80 shrink-0 overflow-y-auto border-r border-border-subtle"

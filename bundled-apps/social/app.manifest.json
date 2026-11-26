@@ -1,6 +1,6 @@
 {
   "name": "social",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "secrets": {
     "webhookVerifyToken": {
       "hosts": ["graph.facebook.com"],
@@ -266,6 +266,12 @@
             "minutes": 1,
             "place": "liaison",
             "text": "Click **Connect** on the Instagram connection and sign in with Instagram or Facebook. If the sign-in covers several Instagram accounts, Liaison connects none and names them: ask the agent to connect the one you mean."
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "place": "own",
+            "text": "Turn on access to direct messages, before or right after connecting: in the Instagram app, open **Settings and activity > Messages and story replies > Message requests > Connected tools** and turn on **Allow access to messages** (older app versions: **Message controls > Connected tools**). It is off by default on new professional accounts; while it is off Instagram refuses Liaison's DM reads, and **Messages** says so until it is on."
           }
         ],
         "docsUrl": "https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login"

@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from "bun:test"
 import type { SocialToolCtx } from "./ctx"
+import { DM_ACCESS_DISABLED_MESSAGE, DM_ACCESS_DISABLED_METADATA_KEY } from "./dm-access"
 import {
   countsRead,
   dmGet,
@@ -403,5 +404,36 @@ describe("dm reply window by Instagram connection", () => {
     expect((got.conversation as { reply_window?: { tag: string } }).reply_window?.tag).toBe(
       "human_agent",
     )
+  })
+})
+
+describe("dm_list notices", () => {
+  test("an Instagram account with DM access off comes back as a notice that says how to turn it on", async () => {
+    const db = createMockDb()
+    await db.insert("sync_state", {
+      id: "dm-ss-ig",
+      platform: "instagram",
+      account_external_id: "17841400000000101",
+      source_type: "dm",
+      active: true,
+      metadata: { [DM_ACCESS_DISABLED_METADATA_KEY]: "2026-11-26T10:00:00.000Z" },
+    })
+    const list = await dmList({}, makeCtx(db))
+    expect(list.notices).toEqual([
+      {
+        code: "dm_access_disabled",
+        platform: "instagram",
+        accountExternalId: "17841400000000101",
+        since: "2026-11-26T10:00:00.000Z",
+        message: DM_ACCESS_DISABLED_MESSAGE,
+      },
+    ])
+    expect(DM_ACCESS_DISABLED_MESSAGE).toContain("Allow access to messages")
+    expect(DM_ACCESS_DISABLED_MESSAGE).toContain("Connected tools")
+  })
+
+  test("no stamped account, no notices", async () => {
+    const list = await dmList({}, makeCtx(createMockDb()))
+    expect(list.notices).toEqual([])
   })
 })

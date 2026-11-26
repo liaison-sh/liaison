@@ -588,6 +588,35 @@ describe("instagramAdapter (B4)", () => {
       })
     })
 
+    // Live Graph answer when the account owner has not turned on "Allow access to
+    // messages" in the Instagram app: an explicit state, never an empty sync.
+    test("403 code 200 'disabled access to Instagram Direct Messaging' → DM_ACCESS_DISABLED, cursor unchanged", async () => {
+      const fetch = makeMockFetch(
+        {
+          ...ME_ROUTE,
+          "/me/conversations": {
+            error: {
+              message:
+                "(#200) The account owner has disabled access to Instagram Direct Messaging Outside of Instagram App.",
+              type: "OAuthException",
+              code: 200,
+            },
+          },
+        },
+        { status: 403 },
+      )
+      const result = await instagramAdapter.syncDms?.(
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
+        "PRIOR_CURSOR",
+      )
+      expect(result).toMatchObject({
+        conversations: [],
+        messages: [],
+        nextCursor: "PRIOR_CURSOR",
+        error: "DM_ACCESS_DISABLED",
+      })
+    })
+
     test("429 on /me/conversations → RATE_LIMITED, cursor unchanged", async () => {
       const fetch = makeMockFetch({ ...ME_ROUTE, "/me/conversations": {} }, { status: 429 })
       const result = await instagramAdapter.syncDms?.(

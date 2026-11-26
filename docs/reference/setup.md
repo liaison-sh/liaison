@@ -517,10 +517,11 @@ Use it when your Meta app has no **API setup with Instagram login** (newer apps 
 9. **HUMAN** (2 min) While the app is in Development mode, add the Instagram account under **App roles > Roles > Instagram testers** and accept the invitation in Instagram (Settings > Website permissions > Apps and websites > Tester invites).
    Open: <https://developers.facebook.com/apps>
 10. **HUMAN** (1 min) Click **Connect** on the Instagram connection and sign in with Instagram or Facebook. If the sign-in covers several Instagram accounts, Liaison connects none and names them: ask the agent to connect the one you mean.
-11. **HUMAN** In the provider's app settings, add this exact redirect URI (also called callback URL or Valid OAuth Redirect URI): https://liaison.example.com/api/connections/callback
-12. **AGENT** Before connecting, set the social app setting instagramLoginConfigurationId (the value the steps above copy): `apps[].config` in the config, then `liaison config apply`.
-13. **HUMAN** This server receives the app's `meta` webhook at https://liaison.example.com/webhooks/<org-id>/social/meta (the steps above say who registers it).
-14. **AGENT** The owner pastes the app's client ID and client secret into deploy/.setup-secrets.env (never the chat); reference them as ${NAME} in the config: an `apps` entry { name: social, connection: { name: instagram_unified, oauthClient: { clientId, clientSecret } } } (repeat the app's entry once per connection), run `liaison config apply`, then `liaison connect social/instagram_unified --config <path>` and open the URL it prints to approve.
+11. **HUMAN** (1 min) Turn on access to direct messages, before or right after connecting: in the Instagram app, open **Settings and activity > Messages and story replies > Message requests > Connected tools** and turn on **Allow access to messages** (older app versions: **Message controls > Connected tools**). It is off by default on new professional accounts; while it is off Instagram refuses Liaison's DM reads, and **Messages** says so until it is on.
+12. **HUMAN** In the provider's app settings, add this exact redirect URI (also called callback URL or Valid OAuth Redirect URI): https://liaison.example.com/api/connections/callback
+13. **AGENT** Before connecting, set the social app setting instagramLoginConfigurationId (the value the steps above copy): `apps[].config` in the config, then `liaison config apply`.
+14. **HUMAN** This server receives the app's `meta` webhook at https://liaison.example.com/webhooks/<org-id>/social/meta (the steps above say who registers it).
+15. **AGENT** The owner pastes the app's client ID and client secret into deploy/.setup-secrets.env (never the chat); reference them as ${NAME} in the config: an `apps` entry { name: social, connection: { name: instagram_unified, oauthClient: { clientId, clientSecret } } } (repeat the app's entry once per connection), run `liaison config apply`, then `liaison connect social/instagram_unified --config <path>` and open the URL it prints to approve.
 
 Provider docs: <https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login>
 

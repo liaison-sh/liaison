@@ -55,6 +55,7 @@ Current Meta apps offer **API setup with Unified login** for Instagram: the conn
 5. The client ID and secret are the Meta **App ID** and **App secret**, the same as for Facebook.
 6. While the Meta app is in Development mode, add the Instagram account under **App roles > Roles > Instagram testers** and accept the invitation in Instagram.
 7. Click **Connect** on **Instagram account**. If the sign-in covers several Instagram accounts, Liaison connects none and names them: ask the agent to connect the one you mean.
+8. Turn on access to direct messages, before or right after connecting: in the Instagram app, open **Settings and activity > Messages and story replies > Message requests > Connected tools** and turn on **Allow access to messages** (older app versions: **Message controls > Connected tools**). It is off by default on new professional accounts. While it is off, Instagram refuses Liaison's direct message reads: **Messages** shows a notice saying how to turn it on, and `connections_status` lists the issue `dm_access_disabled` on the connection. Messages arrive on the next sync after you turn it on.
 
 `liaison guide social/instagram_unified` prints every step. Meta has no call to revoke this token: after you disconnect it in Liaison, remove the app from the business portfolio in Business settings to revoke it at Meta. Meta accepts a direct message reply from an account connected this way within 24 hours of the person's last message only, and liking is not available for it.
 
@@ -75,6 +76,8 @@ Each pending reply is named by the words it would post, and a reply or direct me
 ## Read direct messages
 
 **Messages** lists direct messages across Facebook and Instagram. Click a conversation to read it, or **Open in** the native app.
+
+If an Instagram account's owner has not turned on **Allow access to messages** in the Instagram app, its messages cannot be read: **Messages** says so at the top with the path to the setting (see step 8 of [Connect Instagram with Unified login](#connect-instagram-with-unified-login)), and the notice goes away after the first sync that reads them.
 
 Platforms only allow a reply within 7 days of the person's last message. An Instagram account connected with the Unified login sends without Meta's human agent tag, so its window is 24 hours. After the window, `send_dm` fails with `dm_window_closed` and the reply has to go through the platform's own app or another channel. Ask an agent to reply: `send_dm` waits for approval.
 

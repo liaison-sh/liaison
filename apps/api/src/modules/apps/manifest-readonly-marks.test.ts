@@ -330,6 +330,8 @@ const READ_ONLY: Record<string, string[]> = {
   stripe: [
     "connection_precheck", // the key check run on a key before it is stored: records nothing
     "settings_load",
+    // The webhook's setup: path, events, set or not, the state; never the secret.
+    "webhook_status",
     "home_load",
     // The mirror readers: app-database reads, plus the kernel's own company search for a suggestion.
     "customers_search",

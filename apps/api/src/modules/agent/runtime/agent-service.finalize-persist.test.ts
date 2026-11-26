@@ -5,7 +5,12 @@
 // that fails for any reason must still end the turn and show the failure.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
+import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import { agents } from "~/db/schema/kernel/agents"
+import { creditBalances, modelPricing } from "~/db/schema/kernel/credits"
+import { threadParticipants, threads } from "~/db/schema/kernel/threads"
 import { AgentServiceTestAccess } from "~/modules/agent/runtime/agent-service"
+import { seedOrgRow, seedUserRows } from "~/seed/factories/org/rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const ORIG_ANTHROPIC_KEY = process.env.LIAISON_ANTHROPIC_API_KEY
@@ -52,14 +57,65 @@ describe("agent-service finalize: the reply write never strands the turn", () =>
     await acquireTestLock()
     AgentServiceTestAccess.setStreamText(fakeAgentStreamText as never)
     process.env.LIAISON_ANTHROPIC_API_KEY = "sk-test-key"
-    await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG_ID}, 'NulFinalizeOrg', 'nul-finalize-org')`
-    await sql`INSERT INTO kernel.users (id, org_id, email, name) VALUES (${USER_ID}, ${ORG_ID}, 'nulfinalize@test.com', 'Nul Finalize')`
-    await sql`INSERT INTO kernel.agents (org_id, kind, handle, display_name, owner_user_id, scope_ceiling)
-      VALUES (${ORG_ID}, 'personal', '@nulfinalize', 'Test agent', ${USER_ID}, '["*"]'::jsonb)`
-    await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by) VALUES (${THREAD_ID}, ${ORG_ID}, 'nul-finalize-chat', 'agent_chat', ${USER_ID})`
-    await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id) VALUES (${THREAD_ID}, ${USER_ID}, ${ORG_ID})`
-    await sql`INSERT INTO kernel.credit_balances (org_id, included_balance, purchased_balance, currency) VALUES (${ORG_ID}, '10.00000000', '0', 'EUR')`
-    await sql`INSERT INTO kernel.model_pricing (provider, model_id, display_name, input_cost_per_m, output_cost_per_m, context_window, auto_eligible, tier_minimum) VALUES ('anthropic', 'claude-haiku-4-5-nulfin', 'Claude Haiku NulFin', '1.00', '5.00', 200000, true, 'starter') ON CONFLICT DO NOTHING`
+    await seedOrgRow(
+      { id: ORG_ID, name: "NulFinalizeOrg", slug: "nul-finalize-org" },
+      { onConflict: "skip" },
+    )
+    await seedUserRows(
+      [{ id: USER_ID, orgId: ORG_ID, email: "nulfinalize@test.com", name: "Nul Finalize" }],
+      { onConflict: "skip" },
+    )
+    await withPrivilegedDb(ORG_ID, "test-nul-finalize-seed", async (tx) => {
+      await tx
+        .insert(agents)
+        .values({
+          orgId: ORG_ID,
+          kind: "personal",
+          handle: "@nulfinalize",
+          displayName: "Test agent",
+          ownerUserId: USER_ID,
+          scopeCeiling: ["*"],
+        })
+        .onConflictDoNothing()
+      await tx
+        .insert(threads)
+        .values({
+          id: THREAD_ID,
+          orgId: ORG_ID,
+          handle: "nul-finalize-chat",
+          type: "agent_chat",
+          createdBy: USER_ID,
+        })
+        .onConflictDoNothing()
+      await tx
+        .insert(threadParticipants)
+        .values({ threadId: THREAD_ID, userId: USER_ID, orgId: ORG_ID })
+        .onConflictDoNothing()
+    })
+    await withSystemDb("test-nul-finalize-pricing", async (db) => {
+      await db
+        .insert(modelPricing)
+        .values({
+          provider: "anthropic",
+          modelId: "claude-haiku-4-5-nulfin",
+          displayName: "Claude Haiku NulFin",
+          inputCostPerM: "1.00",
+          outputCostPerM: "5.00",
+          contextWindow: 200000,
+          autoEligible: true,
+          tierMinimum: "starter",
+        })
+        .onConflictDoNothing()
+      await db
+        .insert(creditBalances)
+        .values({
+          orgId: ORG_ID,
+          includedBalance: "10.00000000",
+          purchasedBalance: "0",
+          currency: "EUR",
+        })
+        .onConflictDoNothing()
+    })
   })
 
   afterAll(async () => {

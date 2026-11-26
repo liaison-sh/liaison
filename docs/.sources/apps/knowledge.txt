@@ -28,6 +28,8 @@ Drive folder ID and where to find it -> packages/shared/src/i18n/locales/en/know
 Display name, Sync interval (minutes) -> apps/web/src/modules/knowledge/SyncedSourceAddTab.tsx:126
 Scope Personal / Shared with org -> apps/web/src/modules/knowledge/SyncedSourceAddTab.tsx:160
 Shared needs knowledge:sources:manage -> packages/shared/src/i18n/locales/en/knowledge.json:86
+Untouched new page discarded -> apps/api/src/apps/knowledge/trash.ts:209
+History diff drawn as the page -> apps/web/src/modules/knowledge/TextDiff.tsx:26
 Sensitivity options -> apps/web/src/modules/knowledge/SyncedSourceAddTab.tsx:194
 Add source submit -> apps/web/src/modules/knowledge/SyncedSourceAddTab.tsx:235
 Confidential or restricted synced documents are not org-wide -> apps/api/src/apps/knowledge/sync-reconciler.ts:294
@@ -98,5 +100,3 @@ Verify/refresh ask the app; gone or unshared -> stale; app unreachable leaves th
 Reads go through the person's own connection -> apps/api/src/modules/apps/knowledge-sync-dispatch.ts (wakeAppExport tenant.userId) ; bundled-apps/google-drive/src/items.ts (personClient)
 get reads a remote hit's text -> apps/api/src/modules/apps/sandbox/bridge/knowledge.ts (knowledge_get remote branch)
 The same app, kind, owner and ref find their source again (reactivated), whatever else its config holds -> apps/api/src/apps/knowledge/synced-sources.ts (findAppSource, doCreateSyncedSource)
-Untouched new page discarded -> apps/api/src/apps/knowledge/trash.ts:209
-History diff drawn as the page -> apps/web/src/modules/knowledge/TextDiff.tsx:26

@@ -156,7 +156,7 @@ export function localMoney(display: string, locale: string, perMonth?: string): 
  * reply (success, or a refusal it chose) ends the intent, and a changed
  * amount or target is a new one.
  */
-/** Stripe's card brand id as people write it: "visa" -> "Visa", "amex" -> "American Express". */
+/** A card network id as people write it: "visa" -> "Visa", "amex" -> "American Express". */
 const CARD_BRANDS: Record<string, string> = {
   amex: "American Express",
   cartes_bancaires: "Cartes Bancaires",

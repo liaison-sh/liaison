@@ -32,6 +32,8 @@ export const REDACTED_COLUMNS: Readonly<Record<string, string>> = {
   "kernel.connected_accounts.credentials_encrypted": "connection credentials",
   "kernel.oauth_providers.client_secret_encrypted": "sign-in provider client secret",
   "kernel.users.password_hash": "password hash",
+  "kernel.client_actions.token_hash": "client request link token hash",
+  "kernel.client_actions.prior_token_hashes": "client request earlier link token hashes",
   "kernel.users.recovery_codes": "two-step recovery codes",
   "kernel.users.totp_secret": "TOTP secret",
   "kernel.invitations.token_hash": "invitation token hash",
@@ -40,6 +42,7 @@ export const REDACTED_COLUMNS: Readonly<Record<string, string>> = {
   "kernel.mcp_connections.refresh_token_hash": "MCP client token hash",
   "kernel.nodes.credential_hash": "node credential hash",
   "kernel.notification_device_credentials.token_hash": "device credential hash",
+  "kernel.suppression_links.token_hash": "opt-out link token hash",
   "kernel.push_tokens.token": "push notification token",
   "kernel.browser_push_subscriptions.auth": "web push subscription secret",
   "kernel.browser_push_subscriptions.p256dh": "web push subscription key",
@@ -61,6 +64,20 @@ export const REDACTED_COLUMNS: Readonly<Record<string, string>> = {
   "app_tickets.api_keys.key_hash": "API key hash",
   "app_tickets.ticket_csat.survey_token": "survey link token",
   "app_tickets.tickets.reply_token": "reply address token",
+  // A dispatch grant is a signed token that sends an e-invoice with no further approval while it lasts.
+  "app_invoicing.recurring_run_items.send_grant": "e-invoice send grant",
+  "app_invoicing.einvoice_standing.grant_ref": "e-invoice send grant",
+  // Payment card fragments mirrored from the payment provider: the provider keeps them, a
+  // restored mirror reads them again at its next sync, and an archive never carries card data.
+  "app_stripe.stripe_subscriptions.card_brand": "payment card detail",
+  "app_stripe.stripe_subscriptions.card_last4": "payment card detail",
+  "app_stripe.stripe_subscriptions.card_exp": "payment card detail",
+  "app_stripe.stripe_payments.card_brand": "payment card detail",
+  "app_stripe.stripe_payments.card_last4": "payment card detail",
+  "app_stripe.stripe_payments.card_exp": "payment card detail",
+  // A row's frozen cost is a person's rate times their minutes; a project's cost is the money
+  // figure finance reads (withheld.ts keeps the dated sheet's rows, not the rate behind them).
+  "app_projects.task_time.cost_minor": "a person's cost on one entry",
 }
 
 /** jsonb paths written as `null` (`*` matches any key). */
@@ -87,6 +104,18 @@ const STATUS = "a status label, not an OAuth state value"
 
 /** Reviewed: sensitive-looking names that are kept, with why. */
 export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
+  "app_agreements.evidence_packages.hash_alg":
+    "the name of the hash algorithm of a signature's evidence, not a key",
+  "app_agreements.evidence_packages.last_verified_at": "when the evidence was last checked",
+  "app_agreements.evidence_packages.last_verify_ok": "whether the last evidence check matched",
+  "app_agreements.agreements.send_key":
+    "a change request's dedup key (the parent agreement and the mail it answers), not a credential",
+  "app_agreements.signature_events.code_verified_at":
+    "when the signer proved the emailed code (the code itself is never stored)",
+  "kernel.suppression_links.email_hash":
+    "fingerprint of an address that opted out, not a credential (the token hash is redacted)",
+  "kernel.suppressions.email_hash":
+    "fingerprint of an address that opted out: the org keeps honouring it after a restore",
   "app_knowledge.documents.verified_at": "a timestamp",
   "app_knowledge.documents.verified_by": "who checked the document, not a verifier",
   "app_knowledge.source_links.verified_at": "a timestamp",
@@ -94,9 +123,13 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
   "kernel.config_applied_fields.value_hash":
     "drift check over config values that are never a secret",
   "kernel.contact_addresses.verified_at": "a timestamp",
+  "kernel.contact_segments.system_key": "the app and name a group is kept under, not a secret",
   "kernel.contact_addresses.verified_by": "who checked the address, not a verifier",
   "app_boxtal.short_code_sync.state": STATUS,
   "kernel.agent_turns.state": STATUS,
+  "app_projects.reconciliations.state": STATUS,
+  "app_projects.billing_claims.state": STATUS,
+  "app_projects.billing_claims.period_key": "a billing period (all or a month), not a key",
   "kernel.demo_world_marks.state": STATUS,
   "kernel.device_flow_requests.state": STATUS,
   "kernel.effect_ledger.state": STATUS,
@@ -105,6 +138,7 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
   "kernel.oauth_providers.userinfo_endpoint": "a public URL",
   "app_boxtal.app_config.key": NOT_SECRET_KEY,
   "app_pennylane.app_config.key": NOT_SECRET_KEY,
+  "app_stripe.install_metadata.state": STATUS,
   "app_projects.projects.key": NOT_SECRET_KEY,
   "kernel.product_attributes.key": NOT_SECRET_KEY,
   "app_test_bridge_a.audit.key": NOT_SECRET_KEY,
@@ -112,9 +146,18 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
   "app_boxtal.prep_quote.input_hash": CONTENT_HASH,
   "app_calendar.calendars.sync_token": "provider sync cursor, grants no access",
   "app_invoicing.counterparty_identities.verified_by": "who approved the identity, not a verifier",
+  "app_invoicing.advance_deductions.state": STATUS,
+  "app_invoicing.billing_steps.state": STATUS,
   "app_invoicing.einvoice_book_batches.state": STATUS,
+  "app_invoicing.einvoice_send_batches.state": STATUS,
   "app_invoicing.einvoice_transmissions.idempotency_key": CONTENT_HASH,
   "app_invoicing.einvoice_transmissions.state": STATUS,
+  "app_invoicing.recurring_run_items.approved_hash": CONTENT_HASH,
+  "app_invoicing.recurring_run_items.period_key":
+    "the billing period a row is for, not a credential",
+  "app_invoicing.recurring_run_items.state": STATUS,
+  "app_invoicing.stripe_sales.key":
+    "the Stripe invoice or charge id of a sale that has its document, not a credential",
   "app_mail.accounts.encryption_state": "mailbox encryption status label",
   "app_mail.accounts.encryption_conversion":
     "progress of a mailbox encryption change, holds no key",
@@ -208,6 +251,9 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
   "kernel.user_mailbox_identities.keyring_attestation": "a public attestation",
   "kernel.users.avatar_key": "object storage path of the avatar",
   "kernel.users.totp_enabled": "whether two-step verification is on",
+  "kernel.client_actions.code_verified_at": "when the client passed the emailed code (a time)",
+  "kernel.client_actions.words_key": "the translation key of the consent words shown",
+  "kernel.companies.portal_require_totp": "whether the company's portal requires a second factor",
   "kernel.users.totp_last_used_at": "a timestamp",
 }
 

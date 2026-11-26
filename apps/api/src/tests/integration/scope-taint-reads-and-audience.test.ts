@@ -373,7 +373,9 @@ describe("scope taint: reads run, gated writes park for a scoped audience", () =
     expect(write.blocked).toBe(true)
     expect(write.status).toBe("pending_approval")
     const text = JSON.stringify(write)
-    expect(text).toContain("some people who can read app_aud.items cannot see")
+    // The place in words (its record kind and app), never the table's name.
+    expect(text).toContain("some people who can read items in aud cannot see")
+    expect(text).not.toContain("app_aud.items")
     expect(text).toContain("kpi data")
     expect(ran).toEqual(["kpi:kpi_run"])
   })

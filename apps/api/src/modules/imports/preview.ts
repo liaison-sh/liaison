@@ -13,6 +13,12 @@ import type { UserContext } from "~/db/rls"
 import type { ImportRunRow } from "~/db/schema/kernel"
 import { wrapExternalContent } from "~/lib/external-content"
 import { countMembersByEmail, liveActor } from "~/modules/imports/authority"
+import {
+  builtinCode,
+  builtinParams,
+  builtinSourceLabel,
+  builtinTransform,
+} from "~/modules/imports/builtin/registry"
 import { enqueueImportRun } from "~/modules/imports/job"
 import { getImportKind, type ImportKindInfo } from "~/modules/imports/kinds"
 import { missingWriteScopes, runImport, transformRunSource } from "~/modules/imports/runner"
@@ -101,8 +107,21 @@ export async function actingPerson(ctx: ImportActorCtx): Promise<UserContext> {
 // Preview binding
 // ---------------------------------------------------------------------------
 
-export interface PreviewFacts {
-  transform: { id: string; version: number; sha256: string }
+/** What a preview pinned: a saved transform's version, or a built-in's settings and code. */
+export interface SavedPin {
+  id: string
+  version: number
+  sha256: string
+}
+export interface BuiltinRunPin {
+  builtin: string
+  params: Record<string, unknown>
+  sha256: string
+}
+export type AnyPin = SavedPin | BuiltinRunPin
+
+export interface PreviewFacts<P extends AnyPin = SavedPin> {
+  transform: P
   binding: string
   kinds: string[]
   sourceLabel: string
@@ -138,7 +157,7 @@ export async function sourceBindingOf(
   return canonical({ input: source.input, files: source.files ?? [], ...(api ? { api } : {}) })
 }
 
-export function previewHashOf(previewId: string, f: PreviewFacts): string {
+export function previewHashOf(previewId: string, f: PreviewFacts<AnyPin>): string {
   return createHash("sha256")
     .update(canonical({ previewId, ...f, kinds: [...f.kinds].sort() }))
     .digest("hex")
@@ -158,23 +177,58 @@ export function errorRateOf(counts: ImportRunRow["counts"]): {
   return { total, failed, rate: total === 0 ? 0 : failed / total }
 }
 
-export interface LoadedPreview {
+export interface LoadedPreview<P extends AnyPin = SavedPin> {
   run: ImportRunRow
   source: TransformSource
-  facts: PreviewFacts
+  facts: PreviewFacts<P>
   hash: string
   rate: number
 }
 
 /**
- * A preview the requester made, still fresh, re-derived from its row and the
- * transform version it pinned (whose code must still hash the same).
+ * A preview the requester made, of a saved transform or a built-in (the
+ * Imports view and the Knowledge import start either).
  */
-export async function loadPreview(
+export async function loadAnyPreview(
   orgId: string,
   previewId: string,
   userId: string,
-): Promise<LoadedPreview> {
+): Promise<LoadedPreview<AnyPin>> {
+  const run = await previewRow(orgId, previewId, userId)
+  const source = transformSourceOfRun(run.source)
+  if (!source || !("builtin" in source.transform)) return loadPreview(orgId, previewId, userId)
+  const pin = source.transform
+  const params = builtinParams(pin.builtin, pin.params)
+  const sha256 = sha256Of(builtinCode(pin.builtin, params))
+  if (pin.sha256 && pin.sha256 !== sha256) {
+    throw new ImportError("invalid_request", "The import changed since the preview; preview again.")
+  }
+  const facts: PreviewFacts<BuiltinRunPin> = {
+    transform: { builtin: pin.builtin, params, sha256 },
+    binding: await sourceBindingOf(orgId, userId, source),
+    kinds: run.kindSet,
+    sourceLabel: run.sourceLabel,
+    placeholders: run.placeholders,
+    counts: run.counts,
+  }
+  const hash = checkedHash(run, facts)
+  return { run, source, facts, hash, rate: errorRateOf(run.counts).rate }
+}
+
+function checkedHash(run: ImportRunRow, facts: PreviewFacts<AnyPin>): string {
+  const hash = previewHashOf(run.id, facts)
+  const stored = (run.report.preview as { hash?: unknown } | undefined)?.hash
+  if (stored !== hash) {
+    throw new ImportError(
+      "invalid_request",
+      "The preview no longer matches its record; preview again.",
+    )
+  }
+  return hash
+}
+
+/** The dry-run row of a fresh, finished preview the requester made. */
+async function previewRow(orgId: string, previewId: string, userId: string): Promise<ImportRunRow> {
   if (!z.string().uuid().safeParse(previewId).success) {
     throw new ImportError("not_found", "No such preview.")
   }
@@ -189,8 +243,23 @@ export async function loadPreview(
   if (Date.now() - run.createdAt.getTime() > PREVIEW_TTL_MS) {
     throw new ImportError("invalid_request", "The preview is more than a day old; preview again.")
   }
+  return run
+}
+
+/**
+ * A preview the requester made, still fresh, re-derived from its row and the
+ * transform version it pinned (whose code must still hash the same). Saved
+ * transforms only (the agent's import tools); `loadAnyPreview` also takes a
+ * built-in's.
+ */
+export async function loadPreview(
+  orgId: string,
+  previewId: string,
+  userId: string,
+): Promise<LoadedPreview> {
+  const run = await previewRow(orgId, previewId, userId)
   const source = transformSourceOfRun(run.source)
-  if (!source || "inline" in source.transform) {
+  if (!source || !("id" in source.transform)) {
     throw new ImportError("invalid_request", "This preview did not run a saved transform.")
   }
   const row = await loadPinnedTransform(orgId, source.transform)
@@ -206,14 +275,7 @@ export async function loadPreview(
     placeholders: run.placeholders,
     counts: run.counts,
   }
-  const hash = previewHashOf(run.id, facts)
-  const stored = (run.report.preview as { hash?: unknown } | undefined)?.hash
-  if (stored !== hash) {
-    throw new ImportError(
-      "invalid_request",
-      "The preview no longer matches its record; preview again.",
-    )
-  }
+  const hash = checkedHash(run, facts)
   return { run, source, facts, hash, rate: errorRateOf(run.counts).rate }
 }
 
@@ -266,7 +328,14 @@ export const previewParams = z.object({
  * pages): the counts, refused records, clipped samples and the preview's
  * hash, recorded on its dry-run row. Throws `ImportError` on a refusal.
  */
-export async function previewImport(params: unknown, ctx: ImportActorCtx) {
+export async function previewImport(
+  params: unknown,
+  ctx: ImportActorCtx,
+  opts: { namedLosses?: boolean } = {},
+) {
+  if (params !== null && typeof params === "object" && "builtin" in params) {
+    return previewBuiltinImport(params, ctx, opts)
+  }
   const p = previewParams.parse(params)
   {
     const live = await actingPerson({ ...ctx, approverUserId: null })
@@ -381,7 +450,7 @@ export async function previewImport(params: unknown, ctx: ImportActorCtx) {
  */
 export async function startFromPreview(
   ctx: ImportActorCtx,
-  pv: LoadedPreview,
+  pv: LoadedPreview<AnyPin>,
 ): Promise<{ runId: string; status: string }> {
   const blocked = tooManyErrors(pv.rate)
   if (blocked) throw new ImportError("invalid_request", blocked)
@@ -413,7 +482,10 @@ export async function startFromPreview(
   const run = await createImportRun({
     orgId: ctx.orgId,
     kinds: pv.run.kindSet,
-    sourceLabel: pv.run.sourceLabel,
+    // A built-in's label is the server's for the person the run acts as.
+    sourceLabel: prepared.builtin
+      ? builtinSourceLabel(prepared.builtin.key, prepared.builtin.params, actor.userId)
+      : pv.run.sourceLabel,
     // Who asked (the agent's person) and who approved (`startedBy`, whom the run acts as).
     source: {
       ...transformRunSource(runSource, prepared),
@@ -433,4 +505,120 @@ export async function startFromPreview(
     throw err
   }
   return { runId: run.id, status: run.status }
+}
+
+/**
+ * Everything a built-in's preview would not carry, unclipped, for the person's
+ * own preview screen (the Knowledge import): every loss named up to the
+ * runner's cap and the rest counted, every file not read, and what the upload
+ * held by type, so a screen can tell an export of the wrong format. An agent's
+ * preview keeps the clipped report.
+ */
+export function namedLossesOf(report: Record<string, unknown>) {
+  const types = (report.entryTypes ?? {}) as Record<string, unknown>
+  const entries = {
+    markdown: Number(types.markdown) || 0,
+    csv: Number(types.csv) || 0,
+    html: Number(types.html) || 0,
+    other: Number(types.other) || 0,
+  }
+  return {
+    losses: Array.isArray(report.losses) ? report.losses : [],
+    lossesNotListed: Number(report.lossesNotListed) || 0,
+    missingFiles: Array.isArray(report.missingFiles) ? report.missingFiles : [],
+    attachmentsMissing: Number(report.attachmentsMissing) || 0,
+    filesToCopy: Number(report.filesToCopy) || 0,
+    entries,
+  }
+}
+
+/** A built-in's preview: its key and settings; the label is never the client's. */
+export const builtinPreviewParams = z
+  .object({
+    builtin: z.string().min(1).max(64),
+    params: z.record(z.string(), z.unknown()).optional(),
+    fileIds: z.array(z.string().uuid()).min(1).max(20),
+    placeholders: z.boolean().optional(),
+    sourceLabel: z.unknown().optional(),
+  })
+  .strict()
+
+/**
+ * Preview a built-in import as the caller: every record, for at most the
+ * built-in's time limit, nothing written or copied; per-kind counts, refused
+ * records and the report (files not carried, losses). Its source label is
+ * set here, per person for a private import (K-R7).
+ */
+async function previewBuiltinImport(
+  params: unknown,
+  ctx: ImportActorCtx,
+  opts: { namedLosses?: boolean } = {},
+) {
+  const parsed = builtinPreviewParams.safeParse(params)
+  if (!parsed.success) {
+    throw new ImportError(
+      "invalid_request",
+      parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "),
+    )
+  }
+  const p = parsed.data
+  if (p.sourceLabel !== undefined) {
+    throw new ImportError(
+      "invalid_request",
+      "A built-in import's source label is set by the server; send none.",
+    )
+  }
+  const def = builtinTransform(p.builtin)
+  const settings = builtinParams(p.builtin, p.params)
+  const live = await actingPerson({ ...ctx, approverUserId: null })
+  const actor: UserContext = { ...live, scopes: ctx.scopes?.length ? ctx.scopes : live.scopes }
+  const sha256 = sha256Of(builtinCode(p.builtin, settings))
+  const source: TransformSource = {
+    type: "transform",
+    transform: { builtin: p.builtin, params: settings, sha256 },
+    input: transformInputSchema.parse({ type: "files", fileIds: p.fileIds }),
+    files: def.files,
+    limit: { timeMs: def.limits.previewTimeMs },
+  }
+  const sourceLabel = builtinSourceLabel(p.builtin, settings, actor.userId)
+  const result = await runImport({
+    orgId: ctx.orgId,
+    actor,
+    kinds: def.kinds,
+    source,
+    sourceLabel,
+    mode: "api",
+    dryRun: true,
+    placeholders: p.placeholders === true,
+  })
+  const facts: PreviewFacts<BuiltinRunPin> = {
+    transform: { builtin: p.builtin, params: settings, sha256 },
+    binding: await sourceBindingOf(ctx.orgId, ctx.userId, source),
+    kinds: def.kinds,
+    sourceLabel,
+    placeholders: p.placeholders === true,
+    counts: result.counts,
+  }
+  const { total, failed, rate } = errorRateOf(result.counts)
+  await mergeRunReport(ctx.orgId, result.runId, {
+    preview: { hash: previewHashOf(result.runId, facts), total, failed, errorRate: rate },
+  })
+  const blocked = tooManyErrors(rate)
+  return {
+    previewId: result.runId,
+    transform: `built-in ${p.builtin}`,
+    counts: result.counts,
+    errorRate: Number(rate.toFixed(4)),
+    errors: result.errors.slice(0, ERRORS_SHOWN).map((e) => clipValue(e)),
+    ...(result.errors.length > ERRORS_SHOWN
+      ? { moreErrors: result.errors.length - ERRORS_SHOWN }
+      : {}),
+    report: clipValue(result.report),
+    ...(opts.namedLosses ? { named: namedLossesOf(result.report) } : {}),
+    next:
+      blocked ??
+      (result.report.cutAtLimit
+        ? "This preview stopped at its time limit; the counts cover the first part of the upload. Starting it imports everything."
+        : "If the counts look right, start this preview."),
+  }
 }

@@ -1,0 +1,5 @@
+Only class demo is deleted or reset; a billed, control plane made or named operator org is refused -> apps/api/src/modules/demo/demo-reset.ts (claimForPurge, assertPurgeAllowed, assertResetAllowed) ; apps/api/src/modules/demo/org-class.ts (notACustomerOrg, isNamedOperatorOrg)
+Class set at creation, never changed -> apps/api/src/modules/provisioning/ensure-org.ts (ensureOrg, OrgClassMismatchError) ; apps/api/src/modules/demo/demo-pool.ts (createVisitorOrgShell)
+Postgres refuses a class change and demo settings on an org of another class -> apps/api/src/db/migrations/0355_org_class_constraints.sql
+The next migration stops on a marked org of class standard, naming it and the way out -> apps/api/src/db/migrations/0355_org_class_constraints.sql
+The migration classes existing demo workspaces and stops on a marked, billed org -> apps/api/src/db/migrations/0309_org_class.sql

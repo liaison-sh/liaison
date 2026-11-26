@@ -35,7 +35,7 @@ The app's `/healthz` shows the service as the `sandbox` dependency: `ok` when it
 
 ### The way back, this release only
 
-`LIAISON_APP_RUNTIME=quickjs` in `deploy/.env`, then `docker compose up -d`: every app runs on the local QuickJS sandbox again, whatever else is set. It is the only way back while a server moves to the service, and it is temporary: the next release removes QuickJS and this switch, so a server must run its apps on the service before it takes that release. While the switch is on, `/healthz` does not list the service as a dependency. A host where the service cannot start at all (no gVisor yet) can leave it out meanwhile with `docker compose up -d --scale sandbox=0`, together with the switch.
+`LIAISON_APP_RUNTIME=quickjs` in `deploy/.env`, then `docker compose up -d`: every app runs on the local QuickJS sandbox again, whatever else is set. It is the only way back while a server moves to the service, and it is temporary: the next release removes QuickJS and this switch, so a server must run its apps on the service before it takes that release. While the switch is on, `/healthz` does not list the service as a dependency. A host where the service cannot start at all (no gVisor yet) can leave it out meanwhile with `docker compose up -d --scale sandbox=0`, together with the switch. On such a host `sudo deploy/sandbox-firewall.sh install` still puts the rules in place, and `deploy/sandbox-firewall.sh check` passes with a line saying there is nothing to check while no sandbox service runs and the app runs on QuickJS; run it again once the service runs.
 
 ## Upgrading to the release that turns it on
 
@@ -68,7 +68,7 @@ sudo deploy/sandbox-firewall.sh install   # rules now, and a systemd unit for ev
 deploy/sandbox-firewall.sh check          # from inside the sandbox: only the bridge port answers
 ```
 
-`check` prints one line per probe for every running app process on the sandbox network (`app`, or the rolling `api` and `worker` processes: each one's bridge port must answer and its main port must be blocked; the host's SSH port, the cloud metadata address and a public address must be blocked too), then one per workerd process (each runs as its own uid, and another uid cannot open its environment or memory), and exits non-zero on any miss. `sudo deploy/sandbox-firewall.sh remove` takes the rules away.
+`check` prints one line per probe for every running app process on the sandbox network (`app`, or the rolling `api` and `worker` processes: each one's bridge port must answer and its main port must be blocked; the host's SSH port, the cloud metadata address and a public address must be blocked too), then one per workerd process (each runs as its own uid, and another uid cannot open its environment or memory), and exits non-zero on any miss. `sudo deploy/sandbox-firewall.sh remove` takes the rules, the unit and its copy away.
 
 ### The service checks it too
 
@@ -83,7 +83,31 @@ sudo deploy/sandbox-firewall.sh -p liaison --env-file /srv/liaison/liaison.env i
 deploy/sandbox-firewall.sh -p liaison --env-file /srv/liaison/liaison.env check
 ```
 
-It accepts `-p`/`--project-name`, `--env-file` (several allowed) and `-f`/`--file` (default `deploy/docker-compose.yml`), and honours `COMPOSE_PROJECT_NAME` from the environment or the env file. Without `--env-file` it reads `deploy/.env`, as compose does. The settings it reads (environment first, then the env files) are the compose file's: `LIAISON_SANDBOX_SUBNET`, `LIAISON_SANDBOX_IP`, `LIAISON_SANDBOX_BRIDGE` (liaison-sbx0) and `LIAISON_APP_BRIDGE_PORT` (3100). `install` writes the options and values into the systemd unit.
+It accepts `-p`/`--project-name`, `--env-file` (several allowed) and `-f`/`--file` (default `deploy/docker-compose.yml`), and honours `COMPOSE_PROJECT_NAME` from the environment or the env file. Without `--env-file` it reads `deploy/.env`, as compose does. The settings it reads (environment first, then the env files) are the compose file's: `LIAISON_SANDBOX_SUBNET`, `LIAISON_SANDBOX_IP`, `LIAISON_SANDBOX_BRIDGE` (liaison-sbx0) and `LIAISON_APP_BRIDGE_PORT` (3100). `install` writes those values into the systemd unit.
+
+### At boot
+
+The unit `liaison-sandbox-firewall.service` puts the rules back before Docker starts any container:
+
+- It runs before `docker.service` and is wanted by it, so it runs whenever Docker starts: at boot, or later when something else starts Docker (a script that unlocks an encrypted data volume first, for example).
+- It runs a copy of the script that `install` keeps at `/usr/local/lib/liaison/sandbox-firewall.sh`, with `apply --boot`: the settings come from the unit, not from your env files, and it does not ask Docker about the network (Docker is not up yet). So it works when your checkout or env file sits on a volume that is mounted after boot.
+- Docker never depends on it: if the unit fails, Docker still starts, and the service refuses every run with `sandbox_network_open` until the rules are back (`sudo deploy/sandbox-firewall.sh install`). `systemctl status liaison-sandbox-firewall` says why it failed.
+- It runs after `network-pre.target`, so a host firewall that loads its own rules at boot (nftables, firewalld, iptables-persistent, ufw) loads them first.
+- IPv6 is dropped by the bridge's name (`ip6tables`, to the host and through it), which holds before Docker creates the bridge. The compose file keeps IPv6 off on the sandbox network anyway; a host without `ip6tables` gets a warning.
+- It is wanted by `docker.service` only. Where Docker runs under another unit name (the snap package's `snap.docker.dockerd.service`, for example), the unit does not run at boot: run `sudo deploy/sandbox-firewall.sh apply --boot` before that unit starts (a drop-in of your own), or use Docker's own packages. The service still refuses runs while the rules are missing.
+
+Run `install` again after each upgrade (with your `-p`/`--env-file`) so the copy and the unit follow the release. Installs made before this unit existed ran their rules after Docker had started the containers; running `install` again replaces that unit. The unit keeps the settings it was written with: an `apply` after you change them rewrites an installed unit and its copy too, so the next boot uses the new ones.
+
+To see after a reboot that the rules went in before Docker, run this; it prints the line only when the unit succeeded and finished before Docker's process started, and fails otherwise (a failed or timed-out unit included). Then run `check` as above, which must exit 0:
+
+```sh
+systemctl is-active --quiet liaison-sandbox-firewall &&
+  [ "$(systemctl show -p Result --value liaison-sandbox-firewall)" = success ] &&
+  [ "$(systemctl show -p ExecMainExitTimestampMonotonic --value liaison-sandbox-firewall)" -lt "$(systemctl show -p ExecMainStartTimestampMonotonic --value docker)" ] &&
+  echo "rules in before Docker"
+```
+
+Each `apply` empties the script's chains and fills them again, so a running stack has a gap of well under a second while it runs. Nothing re-applies the rules after the host firewall reloads (`systemctl restart nftables` or a firewalld reload); the service notices the open network and refuses runs until you run `apply` again.
 
 On the sandbox network the rules let through only an app process's connection to the service and the service's connection to an app process's bridge port; anything else coming from that network is dropped. `apply` and `check` stop with an error when the live network's subnet, or the service's address, is not the one in the settings.
 

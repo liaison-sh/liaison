@@ -44,7 +44,7 @@ import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/poo
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { installDemoBoxtalConnection } from "~/modules/demo/boxtal"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { installDemoShopifyConnection } from "~/modules/demo/shopify/connection"
 import { resetDemoShopifyOverlay } from "~/modules/demo/shopify/overlay"
 import { DEMO_SHOP_DOMAIN } from "~/modules/demo/shopify/sentinel"
@@ -56,6 +56,7 @@ import {
 import { registerDemoWorldConsumer } from "~/modules/demo/world/consumer"
 import { demoBoxtalSender, demoShippingProfiles } from "~/seed/tiers/demo/boxtal-catalog"
 import { DEMO_WORLD } from "~/seed/world/fiction"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..", "..")
@@ -145,7 +146,7 @@ describe("the commerce scenario's live order (walk D37)", () => {
     // The demo world's consumer, which prepares the live order's shipment once
     // its invoice is issued (the outbox runs it, as on the demo box).
     registerDemoWorldConsumer()
-    await markOrgAsDemo(ORG, visitorMarker(24))
+    await markDemoOrgForTest(ORG, visitorMarker(24))
     invalidateDemoMarker(ORG)
     await initSandboxPool()
     await initWorkerPool()

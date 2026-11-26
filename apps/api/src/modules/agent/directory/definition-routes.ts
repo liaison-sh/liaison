@@ -49,11 +49,14 @@ import {
 } from "~/modules/agent/directory/archive"
 import { pickAgentAvatarColor } from "~/modules/agent/directory/avatar-color"
 import { listDirectoryAgents, listMentionableAgents } from "~/modules/agent/directory/listing"
-import { personalCeiling } from "~/modules/agent/directory/personal-agent"
+import { personalCeiling, personalRestriction } from "~/modules/agent/directory/personal-agent"
 import { roomBoundViewer } from "~/modules/agent/local-sessions/local-session-routes"
 import { pathForRow } from "~/modules/agent/memory/memory-tree"
 import { RoomFloorError } from "~/modules/agent/scopes/room-floor"
-import { isScopeSubset } from "~/modules/agent/subruns/sub-agent-definitions"
+import {
+  ceilingRefusalMessage,
+  ungrantableCeilingScopes,
+} from "~/modules/agent/scopes/scope-coverage"
 import { PermissionDeniedError } from "~/modules/permissions/errors"
 import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { isDmShapedThread } from "~/modules/threads/dm-shape"
@@ -1130,10 +1133,12 @@ definitionRoutes.post("/:agentId/archive", requireScope("kernel:agents:admin"), 
  * 200 that silently saved three fields out of four: a quietly ignored write
  * reads, on any surface, exactly like a saved one.
  *
- * THE CEILING IS BOUNDED BY THE CALLER'S OWN GRANTABLE SCOPES, through the
- * SAME predicate `sub-agent-definitions.ts` applies to a sub-agent role
- * (`isScopeSubset`, which understands `*`, `:*` globs and bare prefixes). An
- * admin cannot hand an agent a scope they do not themselves hold.
+ * THE CEILING IS BOUNDED BY THE CALLER'S OWN GRANTABLE SCOPES, judged on what
+ * the write ADDS (`ungrantableCeilingScopes`): a scope the stored ceiling
+ * already covers is kept whoever saves, so a form resending the ceiling
+ * unchanged never fails; every other scope must be covered by the caller's
+ * own (`*`, `:*` globs and bare prefixes), an exact-only one by its exact
+ * grant. An admin cannot hand an agent a scope they do not themselves hold.
  */
 const EDITABLE_FIELDS = [
   "displayName",
@@ -1318,11 +1323,14 @@ definitionRoutes.patch("/:agentId", async (c) => {
   }
   const write = readWrite(body)
   if (typeof write === "string") return c.json({ error: { message: write } }, 400)
-  if (write.scopeCeiling && !isScopeSubset(write.scopeCeiling, scopes)) {
+  const ungrantable = write.scopeCeiling
+    ? ungrantableCeilingScopes(write.scopeCeiling, row.scopeCeiling ?? [], scopes)
+    : []
+  if (ungrantable.length > 0) {
     return c.json(
       {
         error: {
-          message: "that ceiling is wider than what you may grant",
+          message: ceilingRefusalMessage(ungrantable),
           code: "scope_ceiling_exceeded",
         },
       },
@@ -1339,7 +1347,12 @@ definitionRoutes.patch("/:agentId", async (c) => {
     // holds narrows nothing and clears the restriction.
     if (write.scopeCeiling && row.kind === "personal" && row.ownerUserId) {
       const { scopes: ownerScopes } = await loadEffectivePermissions(tx, row.ownerUserId, orgId)
-      const restriction = isScopeSubset(ownerScopes, write.scopeCeiling) ? null : write.scopeCeiling
+      const restriction = personalRestriction(
+        ownerScopes,
+        write.scopeCeiling,
+        row.scopeCeiling ?? [],
+        row.ceilingRestriction ?? null,
+      )
       return tx
         .update(agents)
         .set({
@@ -1510,11 +1523,13 @@ definitionRoutes.post("/", requireScope("kernel:agents:admin"), async (c) => {
     return c.json({ error: { message: "displayName must not be empty" } }, 400)
   }
   const scopeCeiling = write.scopeCeiling ?? []
-  if (!isScopeSubset(scopeCeiling, scopes)) {
+  // A new agent has no stored ceiling: every scope it names is an addition.
+  const ungrantable = ungrantableCeilingScopes(scopeCeiling, [], scopes)
+  if (ungrantable.length > 0) {
     return c.json(
       {
         error: {
-          message: "that ceiling is wider than what you may grant",
+          message: ceilingRefusalMessage(ungrantable),
           code: "scope_ceiling_exceeded",
         },
       },

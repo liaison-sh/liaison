@@ -22,6 +22,11 @@
 //     so a run that lacked one and carried on did its job. The discovery
 //     helper kernel__tool_search is not a job tool: calling it where it does
 //     not exist is noise, and a job tool it then lacks is caught by its own call;
+//   - a tool it called broke on the server (its answer is the bridge's error line
+//     for an HTTP 500: a handler fault or a result that failed the tool's own
+//     check) and the run never called that tool again with an answer. A run
+//     whose source read broke used to read "succeeded" with nothing done. A 4xx
+//     refusal is the model's to correct and stays as before;
 //   - its final text declares it blocked ("Classification: Blocked", "Blocked:"
 //     at the start of a line);
 //   - its last turn did not end with an answer: it failed at the provider (an
@@ -50,6 +55,8 @@ export interface TickToolCall {
   toolName?: string
   status?: string
   error?: { message?: string } | string | null
+  /** What the call answered; a failed call answers `{ error: "<the bridge's line>" }`. */
+  result?: unknown
 }
 
 const UNAVAILABLE_RE =
@@ -78,7 +85,17 @@ export interface TickOutcome {
   warnings: string[]
 }
 
-const succeeded = (c: TickToolCall): boolean => !c.error && c.status !== "error"
+/** The bridge's error line a call answered with, when it answered one. */
+function resultError(c: TickToolCall): string | null {
+  const e = (c.result as { error?: unknown } | null | undefined)?.error
+  return typeof e === "string" ? e : null
+}
+
+/** The bridge's line for a call that broke on the server (tool-bridge.ts: "failed (HTTP 500"). */
+const SERVER_FAULT_RE = /failed \(HTTP 500\b/
+
+const succeeded = (c: TickToolCall): boolean =>
+  !c.error && c.status !== "error" && resultError(c) === null
 
 /** Judge a tick from its tool calls and final text. Pure. */
 export function judgeTickOutcome(input: {
@@ -112,6 +129,17 @@ export function judgeTickOutcome(input: {
       return { failure: `A tool the routine called was unavailable: ${name}`, warnings }
     }
     warnings.push(`A tool the routine called was unavailable: ${name}`)
+  }
+  for (let i = 0; i < calls.length; i++) {
+    const err = resultError(calls[i])
+    if (!err || !SERVER_FAULT_RE.test(err)) continue
+    const name = calls[i].toolName ?? "unknown"
+    if (calls.slice(i + 1).some((c) => c.toolName === name && succeeded(c))) continue
+    const detail = err
+      .slice(err.indexOf("):") + 2)
+      .trim()
+      .slice(0, 300)
+    return { failure: `A tool the routine called failed: ${name}: ${detail}`, warnings }
   }
   if (BLOCKED_RE.test(text)) {
     const line = text.split("\n").find((l) => /blocked/i.test(l)) ?? "Blocked"

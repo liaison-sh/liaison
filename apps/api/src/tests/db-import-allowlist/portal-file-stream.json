@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "modules/portal/file-stream.ts": "Streams a file the portal role's own portal.file_allowed just allowed: reads that one row's storage key, name and type (the portal role reaches no kernel table), never a sealed file, and lets no key, storage key or URL out."
+  }
+}

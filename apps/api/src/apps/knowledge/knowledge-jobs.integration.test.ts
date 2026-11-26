@@ -27,6 +27,7 @@ import {
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { withRlsContext } from "~/db/rls"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -426,7 +427,7 @@ describe("knowledge synced-source jobs (J-1)", () => {
 // ---------------------------------------------------------------------------
 describe("knowledge synced-source jobs — demo workspace", () => {
   it("a sync of a demo org's source is a quiet no-op: no provider, no reconcile, the row untouched", async () => {
-    const { markOrgAsDemo, visitorMarker } = await import("~/modules/demo/demo-org")
+    const { visitorMarker } = await import("~/modules/demo/demo-org")
     const [demo] = extractRows<{ id: string }>(
       await db.execute(
         sql`INSERT INTO kernel.organizations (id, name, slug)
@@ -435,7 +436,7 @@ describe("knowledge synced-source jobs — demo workspace", () => {
       ),
     )
     const demoOrgId = demo!.id
-    await markOrgAsDemo(demoOrgId, visitorMarker(24))
+    await markDemoOrgForTest(demoOrgId, visitorMarker(24))
     const [owner] = extractRows<{ id: string }>(
       await db.execute(
         sql`INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)

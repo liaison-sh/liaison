@@ -482,7 +482,7 @@ describe("RLS policy generator", () => {
       expect(select).toContain('"disclosure_list"')
       expect(select).toContain("rls_ctx.scopes()")
       expect(select).toContain("rls_ctx.user_id()")
-      expect(select).toMatch(/\)\s*OR COALESCE\(/)
+      expect(select).toMatch(/\)\s*OR \(\s*COALESCE\(/)
       expect(select).toContain(
         withSublinkReaders(generateRequiredScopesVisibilityClause(visibility)),
       )

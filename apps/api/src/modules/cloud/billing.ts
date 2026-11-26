@@ -143,7 +143,9 @@ export async function applyBillingPush(
     db
       .select({ id: organizations.id })
       .from(organizations)
-      .where(eq(organizations.id, req.orgId))
+      // A demo org is no customer's: it is not found here, and the database
+      // refuses a billing row for it (org_billing_state_org_class_fk).
+      .where(and(eq(organizations.id, req.orgId), eq(organizations.class, "standard")))
       .limit(1),
   )
   if (!org) return { status: 404, reply: { ok: false, code: CLOUD_ERROR_CODES.notFound } }

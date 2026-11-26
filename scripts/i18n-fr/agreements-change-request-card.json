@@ -1,0 +1,19 @@
+{
+  "key": {
+    "kernel.approvalsUi.tpl.changeRequestTitle": "Répondre au client et envoyer une demande de modification",
+    "kernel.approvalsUi.tpl.changeRequestGuard": "Rien n'est envoyé si le client a écrit après cette carte",
+    "kernel.approvalsUi.tpl.changeRequestLine": "Demande de modification : {{title}}",
+    "kernel.approvalsUi.tpl.workLine": "Travail : {{item}}",
+    "kernel.approvalsUi.tpl.hoursFromLine": "Heures : {{hours}} (source : {{source}})",
+    "kernel.approvalsUi.tpl.ratePerHourLine": "Taux : {{rate}} de l'heure",
+    "kernel.approvalsUi.tpl.priceLine": "Prix : {{price}}",
+    "kernel.approvalsUi.tpl.changeRequestClientApproves": "Le client l'approuve sur un lien avec un code envoyé par e-mail : une approbation enregistrée, pas une signature.",
+    "kernel.approvalsUi.tpl.replyBody": "Réponse :\n{{body}}",
+    "kernel.approvalActions.agreements.agreement_update": "modifier un contrat",
+    "kernel.approvalActions.agreements.agreement_send": "envoyer un contrat à signer",
+    "kernel.approvalActions.agreements.change_request_send": "envoyer une demande de modification",
+    "kernel.approvalActions.agreements.agreement_reminder_send": "relancer les signataires",
+    "kernel.approvalActions.agreements.agreement_new_link": "envoyer un nouveau lien de signature",
+    "kernel.approvalActions.agreements.agreement_void": "annuler un contrat"
+  }
+}

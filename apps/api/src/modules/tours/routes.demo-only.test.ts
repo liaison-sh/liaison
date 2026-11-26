@@ -16,9 +16,10 @@ import { env } from "~/lib/env"
 import { declaredEmits } from "~/modules/apps/app-registries"
 import { signAccessToken } from "~/modules/auth/jwt"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { DemoSeederTestAccess } from "~/modules/demo/demo-seeder"
 import { loadTourOrgContext } from "~/modules/tours/service"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 
 let orgId: string
@@ -84,15 +85,39 @@ describe("demo-only tours", () => {
     expect((await loadTourOrgContext(orgId)).features.includes("connector-add")).toBe(installed)
     DemoModeTestAccess.set(true)
     try {
-      await markOrgAsDemo(orgId, visitorMarker(24))
+      await markDemoOrgForTest(orgId, visitorMarker(24))
       expect((await loadTourOrgContext(orgId)).features).not.toContain("connector-add")
     } finally {
       DemoModeTestAccess.set(null)
     }
   })
 
+  it("a software world tour is unavailable, 404s and its injector refuses in any other world", async () => {
+    const FIXTURE = "kernel.world-fixture"
+    // A demo org of the default world: not listed, not found, no row written.
+    await markDemoOrgForTest(orgId, visitorMarker(24))
+    const list = ((await (await call("GET", "")).json()) as { data: ListToursResponse }).data
+    expect(list.tours.some((t) => t.tourId === FIXTURE)).toBe(false)
+    expect((await call("POST", `/${FIXTURE}/start`, { source: "demo" })).status).toBe(404)
+    expect((await call("GET", `/${FIXTURE}/progress`)).status).toBe(404)
+    const rowsOf = () =>
+      sql`SELECT 1 FROM kernel.tour_progress WHERE org_id = ${orgId} AND tour_id = ${FIXTURE}`
+    expect(await rowsOf()).toHaveLength(0)
+    // The same org holding the software world is offered it and starts it.
+    await markDemoOrgForTest(orgId, visitorMarker(24, new Date(), undefined, { worldId: "saas" }))
+    const inWorld = ((await (await call("GET", "")).json()) as { data: ListToursResponse }).data
+    expect(inWorld.tours.some((t) => t.tourId === FIXTURE)).toBe(true)
+    expect((await call("POST", `/${FIXTURE}/start`, { source: "demo" })).status).toBe(200)
+    expect(await rowsOf()).toHaveLength(1)
+    // And the scenarios of the default world are no longer offered there.
+    expect(inWorld.tours.some((t) => t.tourId === SCENARIO)).toBe(false)
+    expect((await call("POST", `/${SCENARIO}/start`, { source: "demo" })).status).toBe(404)
+    await sql`DELETE FROM kernel.tour_progress WHERE org_id = ${orgId}`
+    await markDemoOrgForTest(orgId, visitorMarker(24))
+  })
+
   it("on a demo org: listed and startable", async () => {
-    await markOrgAsDemo(orgId, visitorMarker(24))
+    await markDemoOrgForTest(orgId, visitorMarker(24))
     const list = ((await (await call("GET", "")).json()) as { data: ListToursResponse }).data
     expect(list.tours.some((t) => t.tourId === SCENARIO)).toBe(true)
     const start = await call("POST", `/${SCENARIO}/start`, { source: "demo" })
@@ -103,7 +128,7 @@ describe("demo-only tours", () => {
   // D23: a visitor's workspace opens with nothing waiting; a scenario brings
   // in its own seeded approvals as it starts.
   it("starting a scenario on a visitor org brings in what that scenario needs", async () => {
-    await markOrgAsDemo(orgId, visitorMarker(24))
+    await markDemoOrgForTest(orgId, visitorMarker(24))
     prepared.length = 0
     const start = await call("POST", `/${SCENARIO}/start`, { source: "demo" })
     expect(start.status).toBe(200)
@@ -111,7 +136,7 @@ describe("demo-only tours", () => {
   })
 
   it("starting a scenario records the person's DM with their own agent; starting again records the same one", async () => {
-    await markOrgAsDemo(orgId, visitorMarker(24))
+    await markDemoOrgForTest(orgId, visitorMarker(24))
     const conversationOf = async () => {
       const res = await call("POST", `/${SCENARIO}/start`, { source: "demo" })
       expect(res.status).toBe(200)

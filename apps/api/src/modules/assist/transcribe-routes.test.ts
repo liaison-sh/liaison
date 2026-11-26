@@ -18,8 +18,9 @@ import { bucketKey } from "~/middleware/rate-limiter"
 import { signAccessToken } from "~/modules/auth/jwt"
 import { registerDemoAlertMailer } from "~/modules/demo/demo-alerts"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { clearTestCreditPricing, setTestCreditPricing } from "~/tests/helpers/credit-pricing"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { defaultTranscribeDeps, transcribe } from "./transcribe-service"
 
@@ -164,7 +165,7 @@ describe("POST /api/assist/transcribe", () => {
     }
     await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${DEMO_ORG_ID}, 'DictationDemo', 'dictation-demo') ON CONFLICT (id) DO NOTHING`
     await sql`INSERT INTO kernel.users (id, org_id, email, name) VALUES (${DEMO_USER_ID}, ${DEMO_ORG_ID}, 'dict-demo@test.com', 'Visitor') ON CONFLICT DO NOTHING`
-    await markOrgAsDemo(DEMO_ORG_ID, visitorMarker(24))
+    await markDemoOrgForTest(DEMO_ORG_ID, visitorMarker(24))
     token = await sign(USER_ID, ORG_ID)
     rateToken = await sign(RATE_USER_ID, ORG_ID)
     demoToken = await sign(DEMO_USER_ID, DEMO_ORG_ID)

@@ -27,6 +27,9 @@ export const ATTENTION_KINDS = [
   // A routine run waiting for its owner's private mailbox: an item of the
   // owner's approvals list (Run now, Dismiss).
   "routine_mailbox_wait",
+  // A request sent outside the organization to sign, accept or approve: news
+  // for its sender (decided, opened, asked, locked), and a staff signer's turn.
+  "client_action",
 ] as const
 
 export type AttentionKind = (typeof ATTENTION_KINDS)[number]
@@ -38,7 +41,17 @@ export type AttentionAction =
   // resolved server-side so the click handler can open it synchronously without
   // tripping the browser popup blocker.
   | { type: "open_url"; url: string; label?: string }
-  | { type: "decide_approval"; approvalId: string; payloadHash?: string }
+  | {
+      type: "decide_approval"
+      approvalId: string
+      payloadHash?: string
+      /**
+       * A request of several steps: the fingerprint of each later step the row
+       * shows, by step id. An approve from the row carries them (the server
+       * refuses one without them, 409 `payload_changed`).
+       */
+      stepPayloadHashes?: Record<string, string>
+    }
 
 export type AttentionItem = {
   id: string

@@ -1,0 +1,12 @@
+{
+  "entry": "job:scope-group-reconcile",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
+  "calls": [
+    {
+      "method": "client_actions_own_group",
+      "args": ["{\"key\":\"clients-signed\"}"],
+      "reply": "{\"status\":\"ok\",\"group_id\":null}"
+    }
+  ]
+}

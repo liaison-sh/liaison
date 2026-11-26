@@ -80,6 +80,15 @@ function compareTrees(pkg: Map<string, string>, existingDir: string): Comparison
 }
 
 /**
+ * The version directory already holds other files for the same version: the
+ * package changed without a new version. Its own class, so a caller can tell
+ * this cause (the fix is a new version) from every other install failure.
+ */
+export class VersionDirConflictError extends Error {
+  override readonly name = "VersionDirConflictError"
+}
+
+/**
  * Put the unpacked package at `stagingDir` in place as `<installRoot>/<name>/<version>/`, by the
  * rules in this file's header. Returns `"placed"` when it wrote the directory, `"kept"` when
  * the same files were already there. Throws when the directory holds other files.
@@ -96,7 +105,7 @@ export function placeVersionDir(
   if (!pkg)
     throw new Error(`Cannot install '${name}' ${version}: the package's files cannot be read`)
   const refuse = (): never => {
-    throw new Error(
+    throw new VersionDirConflictError(
       `Cannot install '${name}' ${version}: ${versionDir} already holds different files for this version. A version directory is never rewritten in place, because a running process may be loading it: publish the change under a new version.`,
     )
   }

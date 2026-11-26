@@ -11,6 +11,7 @@ import {
 } from "@liaison/shared"
 import type { SchemaObject } from "ajv"
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
+import { HTTPException } from "hono/http-exception"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { ActorContext, RlsSession } from "~/db/rls"
@@ -19,6 +20,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { logFailure } from "~/lib/failure-severity"
 import { nextApprovalHandle } from "~/lib/handle"
 import { appsLogger as log } from "~/lib/logger"
+import { quoteIdent } from "~/lib/sql-utils"
 import {
   callerSafeDbError,
   describeDbError,
@@ -28,6 +30,7 @@ import {
 } from "~/lib/transient-db-error"
 import { checkReadOnlyRun, isReadOnlyTool } from "~/modules/agent/runtime/read-only-run"
 import { captureReadOnlyRun } from "~/modules/agent/runtime/run-context"
+import { resolveHeldToolName } from "~/modules/agent/tools/tool-name-resolve"
 import { alreadyPendingMessage } from "~/modules/approvals/already-pending"
 import {
   type ApprovalPolicyDecision,
@@ -49,13 +52,17 @@ import {
   CONNECTION_CREDENTIALS_MISSING,
   ConnectionCredentialsMissingError,
 } from "~/modules/apps/connections/credentials-missing"
-import { NoConnectedAccountError } from "~/modules/apps/connections/no-connected-account"
+import {
+  CONNECTION_NOT_CONNECTED,
+  NoConnectedAccountError,
+} from "~/modules/apps/connections/no-connected-account"
 import { createAppContext } from "~/modules/apps/context"
 import { CORE_OPEN_TRANSACTION, type OpenTransaction } from "~/modules/apps/core/ctx"
 import { coreModuleFor } from "~/modules/apps/core/registry"
 import { validateParamsForTool } from "~/modules/apps/execute-tool-params"
 import { mintExecutionToken } from "~/modules/apps/execution-token"
 import {
+  callerIdempotencyKey,
   finalizeIdempotency,
   invalidateIdempotency,
   reserveIdempotency,
@@ -178,7 +185,8 @@ import {
   currentToolCallScopesBefore,
   isPersonClientFrame,
   isPersonExternalClientCall,
-  runHasPerson,
+  type RunContext,
+  runAnswersPerson,
   type SpawnParentFrame,
 } from "~/modules/agent/runtime/run-context"
 import { hostRequiresApproval } from "~/modules/agent/scopes/host-approval-gates"
@@ -187,6 +195,7 @@ import {
   TAINT_DISCLOSURE_EXTERNAL_CLIENT_KEY,
 } from "~/modules/agent/scopes/post-disclosure"
 import { checkToolScopes, resolveRequiredScopes } from "~/modules/agent/scopes/required-scopes"
+import { resolveRoomFloor } from "~/modules/agent/scopes/room-floor"
 import {
   carriesNoTurnContent,
   contentParamsRetryHint,
@@ -196,6 +205,7 @@ import {
   mcpReadOfOwnServer,
   personClientWriteUnjudged,
   postDisclosureRelay,
+  resultHoldsField,
   returnsToOwnMcpServer,
   SCOPE_TAINT_BLOCKED_MESSAGE,
   SCOPE_TAINT_NO_DECIDER_MESSAGE,
@@ -244,14 +254,17 @@ import {
 import {
   resolveToolApprovalAuthority,
   taintDisclosureAuthority,
+  taintMayDecideAlone,
 } from "~/modules/approvals/authority"
 import { buildApprovalSummary, proposingTurnScopesUnionSql } from "~/modules/approvals/event-data"
+import { maskApprovalPayload } from "~/modules/approvals/payload-mask"
 import { humanizeStepSummary } from "~/modules/approvals/ref-provenance"
 import { readApprovalRequester } from "~/modules/approvals/requester"
 import {
   resolveApprovalResourceOwner,
   resolveRoutineOwnerApprover,
 } from "~/modules/approvals/resource-owner"
+import { BACKGROUND_ROUTE_BUDGET_MS, resolveProposeRoute } from "~/modules/approvals/route-world"
 import {
   narrowPendingApprovalForTaint,
   rowTaintMustHold,
@@ -264,10 +277,20 @@ import {
   approvalEditableFieldsRegistry,
   approvalExpiryRegistry,
 } from "~/modules/apps/app-registries"
+import { withoutNames } from "~/modules/apps/approval-record-names"
 import { generateApprovalSummary } from "~/modules/apps/approval-summarizers"
 import { ingestionCallerApp } from "~/modules/apps/cross-app-ingestions"
 import { ensureAppsForOrg, getDefaultApps } from "~/modules/apps/init"
-import { APP_STATE_UNAVAILABLE_CODE, isAppActiveForOrgAsync } from "~/modules/apps/org-apps"
+import {
+  APP_STATE_UNAVAILABLE_CODE,
+  FEATURE_OFF_CODE,
+  isAppActiveForOrgAsync,
+  isFeatureOffForTool,
+  orgFeaturesUnreadable,
+  primeOrgApps,
+} from "~/modules/apps/org-apps"
+import { featureOffAnswer, settleFeatureRecomputes } from "~/modules/apps/org-features"
+import type { CandidateCredentials } from "~/modules/apps/sandbox/bridge/context"
 import {
   declaresPersonalAgentOnlyRows,
   sharedAgentMailToolRefusal,
@@ -282,6 +305,15 @@ import {
 } from "~/modules/permissions/eligible-approvers"
 import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { filterResponse, returnsDimensionDefs } from "~/modules/permissions/response-filter"
+import {
+  restrictedListNotice,
+  restrictedListsBefore,
+} from "~/modules/permissions/restricted-list-notice"
+import {
+  isRestrictedScope,
+  restrictedAsReadScopes,
+  restrictedScope,
+} from "~/modules/permissions/restricted-scope"
 import { sendMessage } from "~/modules/threads/message"
 import { insertThreadWithParticipants } from "~/modules/threads/thread"
 import {
@@ -306,7 +338,10 @@ function validateSingleResult(item: unknown, schema: Record<string, string>): bo
   const obj = item as Record<string, unknown>
   for (const [field, expectedType] of Object.entries(schema)) {
     if (!(field in obj)) return false
-    if (expectedType !== "any" && typeof obj[field] !== expectedType) return false
+    // `typeof` never answers "array": an array field is checked as one.
+    if (expectedType === "array") {
+      if (!Array.isArray(obj[field])) return false
+    } else if (expectedType !== "any" && typeof obj[field] !== expectedType) return false
   }
   return true
 }
@@ -376,6 +411,14 @@ interface ExecuteToolParams {
    * request lifetime to observe (jobs, routines, cross-app calls).
    */
   signal?: AbortSignal
+  /**
+   * Credentials not yet stored, which this run's `ctx.fetch({auth})` and
+   * `connections_getCredentials` use for `connection` instead of the stored
+   * ones: the connection's check before a key is kept
+   * (connections/precheck.ts). Host side only; never reaches the sandbox, a
+   * nested call, a result or a log.
+   */
+  candidateCredentials?: CandidateCredentials
   /**
    * The kernel.agents row acting in this dispatch, for a caller that is not
    * inside an agent run frame and so cannot be read from one: the MCP gateway,
@@ -692,9 +735,18 @@ interface CreateApprovalRequestOpts {
   threadId: string
   toolName: string
   toolParams: unknown
+  /**
+   * Set only by host code that knows the request is about a personal resource of this person
+   * (a reply that came into their own mailbox): they alone decide it, as a declared
+   * `resourceOwner` routes it. Never set from a sandbox. Absent: the usual routing answer.
+   */
+  ownerOfResource?: string
   /** A47b: the payload paths the manifest's schema supplied, marked on the card. The agent's
    *  own arguments are this payload minus these paths, which is how the row keeps them. */
   defaultedParams?: string[]
+  /** The card's title is the app's own (`ctx.requestApproval`): kept, masked, as
+   *  `metadata.cardTitle`, so a card rebuilt after an edit keeps it. */
+  ownTitle?: boolean
   requestedBy: string
   reason: string
   summary: ApprovalSummary
@@ -771,6 +823,12 @@ interface CreateApprovalRequestOpts {
    * any sub-agent it spawns below that run instead of at depth 0.
    */
   originRun?: OriginRun | null
+  /**
+   * Hours until this request expires, set by a handler that knows its own deadline
+   * (`ctx.requestApproval({expiry_hours})`, validated 1 to 720 by `createHandlerApprovalRequest`).
+   * Wins over the tool's `approvalExpiryHours` and the 168-hour default.
+   */
+  expiryHours?: number
 }
 
 /** The proposing agent run of an approval: id, root and nesting depth. */
@@ -1448,11 +1506,13 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
     toolParams,
     requestedBy,
     reason,
-    summary,
+    summary: unmaskedSummary,
     appName,
     toolShortName,
     origin,
   } = opts
+  // The card's text is masked like the payload it describes (payload-mask.ts).
+  const summary = maskApprovalPayload(unmaskedSummary)
   // Dimension-constrained approvals: a custom decision scope + optional dimension
   // constraint override the derived default. The derivation is the shared
   // authority answer, so write-time and read-time can never disagree.
@@ -1492,7 +1552,7 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
   // act, such as a report only its reporter can send, reads it back when the
   // approval runs it). Only recorded when a frame says so: no frame is a direct
   // call of a person's own.
-  if (liveFrame) routineMeta.originHasPerson = runHasPerson(liveFrame)
+  if (liveFrame) routineMeta.originHasPerson = runAnswersPerson(liveFrame)
   const originRun: OriginRun | null =
     opts.originRun !== undefined
       ? opts.originRun
@@ -1508,6 +1568,12 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
   // approval and resumes once it is decided (routine-run-resume.ts).
   const originRoutineRunId = originRoutineId ? liveFrame?.routineRunId : undefined
   if (originRoutineRunId) routineMeta.originRoutineRunId = originRoutineRunId
+  // The run that asked, by its root (a chat turn, a routine tick, the sub-runs below either):
+  // Home folds the cards one run staged for one person into one row (approvals/attention.ts).
+  // A handler that parks its own card runs in a sandbox hop with no live frame: the run the
+  // bridge captured (`opts.originRun`) names it instead, so its card groups with the run's others.
+  const originRootRunId = liveFrame?.rootRunId ?? originRun?.rootRunId
+  if (originRootRunId) routineMeta.originRootRunId = originRootRunId
   // A47b: which payload paths the schema filled, so the card marks them as defaults rather
   // than showing them as something the agent chose.
   const defaultedMeta: Record<string, unknown> =
@@ -1538,7 +1604,9 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
   const dependsOnId = opts.dependsOnId ?? null
   const id = opts.id ?? crypto.randomUUID()
   const expiryHours =
-    approvalExpiryRegistry.get([orgId, appName, toolShortName]) ?? APPROVAL_DEFAULT_EXPIRY_HOURS
+    opts.expiryHours ??
+    approvalExpiryRegistry.get([orgId, appName, toolShortName]) ??
+    APPROVAL_DEFAULT_EXPIRY_HOURS
   const now = new Date()
   const expiresAt = new Date(now.getTime() + expiryHours * 3600 * 1000)
   const editableFields = approvalEditableFieldsRegistry.get([orgId, appName, toolShortName]) ?? []
@@ -1554,7 +1622,8 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
     appName,
     toolShortName,
     approvalRequestId: id,
-    toolParams: (toolParams ?? {}) as Record<string, unknown>,
+    // Card numbers and payment keys never reach the row (payload-mask.ts).
+    toolParams: maskApprovalPayload((toolParams ?? {}) as Record<string, unknown>),
   })
   const payloadJson = JSON.parse(JSON.stringify(sealedToolParams))
 
@@ -1570,18 +1639,20 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
   // default deciding-scope audience applies.
   // A personal MCP connection's tool (S16): its owner alone decides, like any
   // other personal resource; the org's approvers never see its calls.
-  const resourceOwnerId = await resolveApprovalOwnerRouting({
-    orgId,
-    appName,
-    toolShortName,
-    toolParams,
-    requestedBy,
-    approveScope,
-    dimensionConstraint,
-    mustHold: audienceMustHold,
-    actingAgentId,
-    routeToRequester: opts.routeToRequester === true,
-  })
+  const resourceOwnerId =
+    opts.ownerOfResource ??
+    (await resolveApprovalOwnerRouting({
+      orgId,
+      appName,
+      toolShortName,
+      toolParams,
+      requestedBy,
+      approveScope,
+      dimensionConstraint,
+      mustHold: audienceMustHold,
+      actingAgentId,
+      routeToRequester: opts.routeToRequester === true,
+    }))
   // An N-eyes floor the audience can never meet is refused here, never parked
   // (every caller also checks earlier, before creating any thread).
   await assertApproversAvailable({
@@ -1593,6 +1664,17 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
     dimensionConstraint,
     mustHold: audienceMustHold,
   })
+  // Who the request is for, from the record it is about, asked of that record's app outside the
+  // transaction and within a short budget. An owner's own request is theirs alone and asks nothing.
+  const routeColumns = resourceOwnerId
+    ? {}
+    : await resolveProposeRoute({
+        orgId,
+        toolName,
+        summary,
+        requestedBy,
+        ...(origin === "system" ? { budgetMs: BACKGROUND_ROUTE_BUDGET_MS } : {}),
+      })
 
   // When `bundleId` is set, we wrap the tx in a retry loop: concurrent inserts
   // into the same bundle (READ COMMITTED) can both read MAX(bundle_position) =
@@ -1754,6 +1836,7 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
           approveScope,
           dimensionConstraint,
           proposingTurnScopes,
+          ...routeColumns,
           // A11: the agent whose turn PROPOSED this gated call, persisted at
           // request time. The approved re-entry happens in another request with
           // that turn's frame long gone, so the identity has to travel on the
@@ -1788,6 +1871,7 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
             ...tightenMeta,
             ...routineMeta,
             ...defaultedMeta,
+            ...(opts.ownTitle ? { cardTitle: summary.title } : {}),
             // Rule 8: who may decide, edit or read the pending body of a tainted proposal,
             // kept on the row for the surfaces widened past `notify_user_ids` (shared-surface
             // drafts, whose readers are the surface's). Read by decide, edit and RLS (0167).
@@ -2132,6 +2216,158 @@ async function resolveBundleForRefs(
   })
 }
 
+/**
+ * One agent turn's requests of one tool (`RunContext.turnToolBundles`, keyed by tool): the
+ * request's head and its last step. Each later call of the tool in the turn waits for the one
+ * before it, so the steps chain in call order even when the model calls the tool in parallel.
+ */
+export interface TurnToolBundle {
+  headId: string
+  lastId: string
+}
+
+/**
+ * The key a call joins its turn's request under: the tool alone for an untainted call; for a
+ * tainted one, the tool plus the audience its approval parks for (the taint it demands, its
+ * deciding scope, whether approving discloses to the target's readers). Only calls with the
+ * same audience share a request, so no step shows to, or is decided by, anyone its own call
+ * would not have reached.
+ */
+export function turnBundleKey(
+  toolName: string,
+  parkTaint: readonly string[] | null,
+  approveScope: string | null,
+  disclosedToReaders: boolean,
+): string {
+  if (parkTaint === null) return toolName
+  const demand = [...new Set(parkTaint)].sort()
+  return `${toolName}\u0000${JSON.stringify([demand, approveScope, disclosedToReaders])}`
+}
+
+/**
+ * The key a ROUTINE run's gated calls share (`routineChainOf`): one request for the whole run,
+ * whatever tool each step runs, so the run's work is one decision taken in the order it was
+ * proposed. A routine's run is one piece of work its owner approves once (the sales routine's
+ * company, deal, proposal and reply): a later call that cites no `@ref` token (a reply naming the
+ * firm in plain words) staged a request of its own beside the chained one, both waited at once,
+ * and the reply could be approved, and sent, before the writes it spoke of (demo walk
+ * 2026-11-25). A tainted call keys on its audience as `turnBundleKey` does, less the deciding
+ * scope: a step of a request is decided with its head, as a step citing an `@ref` token is.
+ */
+export function routineChainKey(
+  parkTaint: readonly string[] | null,
+  disclosedToReaders: boolean,
+): string {
+  if (parkTaint === null) return "\u0000routine-chain"
+  const demand = [...new Set(parkTaint)].sort()
+  return `\u0000routine-chain\u0000${JSON.stringify([demand, disclosedToReaders])}`
+}
+
+/**
+ * Whether this turn's gated calls chain into one request as a routine run's (`routineChainKey`):
+ * a routine's run that waits for its approvals. A follow-up routine never pauses (each of its
+ * calls waits for a person while the run goes on), so its calls keep the per-tool requests.
+ */
+export function routineChainOf(frame: RunContext | undefined): boolean {
+  return Boolean(frame?.routineId) && frame?.routineFollowUp !== true
+}
+
+/**
+ * A routine run's step that cited an `@ref` token joined the request of the call it cites: the
+ * run's chain now ends at it, so a later call citing nothing waits for it too (and is declined
+ * with it). Only when the chain's request is that same request.
+ */
+export async function noteRoutineChainStep(
+  bundles: Map<string, Promise<TurnToolBundle | null>>,
+  key: string,
+  bundleId: string,
+  stepId: string,
+): Promise<void> {
+  const prior = bundles.get(key)
+  const tail = prior ? await prior : null
+  if (tail && tail.headId !== bundleId) return
+  bundles.set(key, Promise.resolve({ headId: bundleId, lastId: stepId }))
+}
+
+/** The turn's same-tool bundles, created on the turn's first gated call. Null outside a turn. */
+export function turnToolBundlesOf(
+  frame: RunContext | undefined,
+): Map<string, Promise<TurnToolBundle | null>> | null {
+  if (!frame) return null
+  frame.turnToolBundles ??= new Map()
+  return frame.turnToolBundles
+}
+
+/**
+ * Stages one gated call of `key` in the turn: as a step of the turn's request for that tool when
+ * one is still open (`join` answers the step's id, or null when the request was decided in the
+ * meantime), else as a new request (`standalone`) that later calls join.
+ */
+export async function stageInTurnBundle(
+  bundles: Map<string, Promise<TurnToolBundle | null>>,
+  key: string,
+  standalone: () => Promise<string>,
+  join: (tail: TurnToolBundle) => Promise<string | null>,
+): Promise<{ id: string; joined: boolean }> {
+  const prior = bundles.get(key)
+  let settle: (tail: TurnToolBundle | null) => void = () => {}
+  bundles.set(
+    key,
+    new Promise<TurnToolBundle | null>((resolve) => {
+      settle = resolve
+    }),
+  )
+  const tail = prior ? await prior : null
+  try {
+    if (tail) {
+      const id = await join(tail)
+      if (id) {
+        settle({ headId: tail.headId, lastId: id })
+        return { id, joined: true }
+      }
+    }
+    const id = await standalone()
+    settle({ headId: id, lastId: id })
+    return { id, joined: false }
+  } catch (err) {
+    settle(tail)
+    throw err
+  }
+}
+
+/**
+ * Whether a turn's request can still take a step: its head is undecided and its last step too.
+ * A head still on its own becomes the bundle's head (bundle_id = its id, position 0), as a
+ * sequenced step's source does.
+ */
+async function joinTurnBundleHead(
+  orgId: string,
+  requesterId: string,
+  tail: TurnToolBundle,
+  actingAgentId: string | null,
+): Promise<boolean> {
+  return withPrivilegedDb(orgId, "turn-bundle-join", async (tx) => {
+    const rows = extractRows<{ id: string; status: string; bundle_id: string | null }>(
+      await tx.execute(drizzleSql`
+        SELECT id, status, bundle_id FROM ${K}.approval_requests
+        WHERE org_id = ${orgId} AND id IN (${tail.headId}::uuid, ${tail.lastId}::uuid)
+        FOR UPDATE`),
+    )
+    const head = rows.find((r) => r.id === tail.headId)
+    const last = rows.find((r) => r.id === tail.lastId)
+    if (head?.status !== "pending") return false
+    if (head.bundle_id !== null && head.bundle_id !== head.id) return false
+    if (!last || (last.status !== "pending" && last.status !== "deferred")) return false
+    if (head.bundle_id === null) {
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.approval_requests SET bundle_id = id, bundle_position = 0
+        WHERE id = ${head.id} AND bundle_id IS NULL`)
+      await queueHeadPromotedEvent(tx, orgId, requesterId, head.id, actingAgentId)
+    }
+    return true
+  })
+}
+
 /** Existence + RLS + output-key validation for `@ref` tokens, without the
  *  bundle-promotion side-effects of `resolveBundleForRefs`. Used by the
  *  flag-on parallel-bundling path: the new step's bundle is the agent step's
@@ -2289,6 +2525,9 @@ export async function createSequencedApprovalStep(args: {
   proposingTurnScopes?: string[] | null
   /** FX18: the acting agent, forwarded by that same caller (A11). */
   actingAgentId?: string | null
+  /** A tainted turn's step whose approval discloses what the turn read to its target's
+   *  readers (rule 8), recorded like its head's so an edit of the step keeps saying so. */
+  taintDisclosedToReaders?: boolean
 }): Promise<string> {
   const id = crypto.randomUUID()
   // Invariant K, as in createApprovalRequest: a sequenced mail send from an
@@ -2301,9 +2540,10 @@ export async function createSequencedApprovalStep(args: {
       appName: args.appName,
       toolShortName: args.toolShortName,
       approvalRequestId,
-      toolParams: (args.toolParams ?? {}) as Record<string, unknown>,
+      toolParams: maskApprovalPayload((args.toolParams ?? {}) as Record<string, unknown>),
     })
   const sealedToolParams = await sealStepParams(id)
+  const stepSummary = maskApprovalPayload(args.summary)
   const payloadJson = JSON.parse(JSON.stringify(sealedToolParams))
   // FX4: captured here, in the proposing turn's frame. A deferred step is
   // executed by the same approved re-entry path as a head, so it needs the same
@@ -2377,7 +2617,7 @@ export async function createSequencedApprovalStep(args: {
         UPDATE ${K}.approval_requests
         SET tool_params = ${JSON.stringify(payload)}::jsonb,
             current_payload = ${JSON.stringify(payload)}::jsonb,
-            summary = ${JSON.stringify(args.summary)}::jsonb,
+            summary = ${JSON.stringify(stepSummary)}::jsonb,
             notify_user_ids = (SELECT s.notify_user_ids FROM ${K}.approval_requests s
                                 WHERE s.id = ${args.bundle.dependsOnId}),
             ${
@@ -2469,7 +2709,7 @@ export async function createSequencedApprovalStep(args: {
           requestedBy: args.requestedBy,
           status: "deferred",
           reason: "gated",
-          summary: args.summary,
+          summary: stepSummary,
           bundleId: args.bundle.bundleId,
           bundlePosition,
           dependsOnId: args.bundle.dependsOnId,
@@ -2480,12 +2720,18 @@ export async function createSequencedApprovalStep(args: {
           agentId: rowAgentId,
           // A routine run's step carries its routine and run like any of its
           // approvals (createApprovalRequest), so the run waits on it too.
-          ...(stepAskId || stepRoutine.originRoutineId || stepMustHold.length > 0
+          ...(stepAskId ||
+          stepRoutine.originRoutineId ||
+          stepMustHold.length > 0 ||
+          args.taintDisclosedToReaders === true
             ? {
                 metadata: {
                   ...(stepAskId ? { askId: stepAskId } : {}),
                   ...stepRoutine,
                   ...(stepMustHold.length > 0 ? { taintAudienceMustHold: stepMustHold } : {}),
+                  ...(args.taintDisclosedToReaders === true
+                    ? { taintDisclosedToReaders: true }
+                    : {}),
                 },
               }
             : {}),
@@ -2502,7 +2748,7 @@ export async function createSequencedApprovalStep(args: {
             expires_at: new Date(source.expires_at),
             tool_name: args.toolName,
             approve_scope: args.approveScope ?? null,
-            summary: args.summary,
+            summary: stepSummary,
             current_payload: payloadJson,
             thread_id: source.thread_id,
             originating_thread_id: args.threadId,
@@ -2598,6 +2844,8 @@ export interface HandlerApprovalInput {
     subtitle?: string
     lines?: string[]
     links?: Array<{ label: string; app: string; entityType: string; entityId: string }>
+    /** The last day it can be decided in time (`YYYY-MM-DD`); Home sorts it up from 4 days before. */
+    latest_on?: string
   }
   current_payload: unknown
   editable_fields?: string[]
@@ -2608,6 +2856,19 @@ export interface HandlerApprovalInput {
    * handler that does not set it always parks for a person.
    */
   auto_approvable?: boolean
+  /**
+   * The scope that decides this request, when the tool's own deciding scope is not the right
+   * audience (a handler that parks a call only some of the app's approvers should see). It must
+   * be the calling app's own scope: the app's name, or a scope under `<app>:`. It decides an
+   * agent's request only; a person's own call is still decided by the tool's own required scopes.
+   */
+  approve_scope?: string
+  /**
+   * Hours until the request expires, for a handler that knows its own deadline (a run that must
+   * issue by a legal date). A whole number from 1 to 720; it wins over the tool's
+   * `approvalExpiryHours` and the 168-hour default. Anything else is refused and nothing is staged.
+   */
+  expiry_hours?: number
 }
 
 export interface HandlerApprovalResult {
@@ -2682,6 +2943,8 @@ export async function createHandlerApprovalRequest(args: {
   personToolRequiredScopes?: readonly string[]
   /** The proposing agent run, captured across the sandbox hop (see CreateApprovalRequestOpts). */
   originRun?: OriginRun | null
+  /** Host callers only: see CreateApprovalRequestOpts. The sandbox paths never pass it. */
+  ownerOfResource?: string
 }): Promise<HandlerApprovalResult> {
   const { input } = args
   const colonIdx = input.tool_name.indexOf(":")
@@ -2696,10 +2959,44 @@ export async function createHandlerApprovalRequest(args: {
       `ctx.requestApproval: '${input.tool_name}' is not a tool of '${args.defaultAppName}'; a handler may only request approval for its own app's tools`,
     )
   }
+  // The deciding scope a handler names must be its own app's: an app cannot route its approvals
+  // to another app's deciders, and a bare wildcard or malformed scope decides nothing sensible.
+  if (input.approve_scope !== undefined) {
+    const scope = input.approve_scope
+    const own =
+      typeof scope === "string" &&
+      /^[a-z0-9_-]+(:[A-Za-z0-9_.-]+)*$/.test(scope) &&
+      (scope === appName || scope.startsWith(`${appName}:`))
+    if (!own) {
+      throw Object.assign(
+        new Error(
+          `approve_scope_not_own: approve_scope ${JSON.stringify(scope)} is not a scope of '${appName}'; it must be '${appName}' or start with '${appName}:'. No approval was created. Omit approve_scope to use the tool's own deciding scope.`,
+        ),
+        { code: "approve_scope_not_own", status: 422 },
+      )
+    }
+  }
+  // A handler's own deadline: a whole number of hours, 1 to 720, as the manifest's
+  // `approvalExpiryHours` takes it. Refused before anything is written.
+  if (input.expiry_hours !== undefined) {
+    const hours = input.expiry_hours
+    if (typeof hours !== "number" || !Number.isInteger(hours) || hours < 1 || hours > 720) {
+      throw Object.assign(
+        new Error(
+          `expiry_hours_invalid: expiry_hours ${JSON.stringify(hours)} must be a whole number of hours from 1 to 720. No approval was created. Omit it to use the tool's own expiry.`,
+        ),
+        { code: "expiry_hours_invalid", status: 422 },
+      )
+    }
+  }
   // A tool whose approval binds pinned params gets them from its preflight only
   // (executeTool's stage path). A handler-built payload would put the
-  // handler's own values in their place, unchecked: refused.
-  if ((toolRegistry.get([args.orgId, appName, toolShortName])?.pinnedParams ?? []).length > 0) {
+  // handler's own values in their place, unchecked: refused. The exception is a
+  // tool whose own handler builds its pinned value (`pinnedOptionalOnRefs`): its
+  // app parks its own request with the value it computed, as its handler builds
+  // it at execute for a call chaining `@ref` tokens.
+  const parkedTool = toolRegistry.get([args.orgId, appName, toolShortName])
+  if ((parkedTool?.pinnedParams ?? []).length > 0 && parkedTool?.pinnedOptionalOnRefs !== true) {
     throw new Error(
       `ctx.requestApproval: '${input.tool_name}' declares pinned params, which only its preflight sets; call the tool itself so its preflight pins them`,
     )
@@ -2722,6 +3019,9 @@ export async function createHandlerApprovalRequest(args: {
     subtitle: input.summary_detail?.subtitle ?? "Pending approval",
     lines: (input.summary_detail?.lines ?? []).slice(0, 8).map((l) => String(l).slice(0, 200)),
     ...(input.summary_detail?.links ? { links: input.summary_detail.links.slice(0, 10) } : {}),
+    ...(typeof input.summary_detail?.latest_on === "string"
+      ? { latestOn: input.summary_detail.latest_on }
+      : {}),
   }
   // Same validation discipline as registered summarizers: malformed detail
   // (handler bug, sandbox-bridge mangling) degrades to the plain-string form
@@ -2738,12 +3038,14 @@ export async function createHandlerApprovalRequest(args: {
   // This path previously hardcoded `<app>:approve` and passed no
   // approveScope/dimensionConstraint at all, so rows it created LOST their
   // custom deciding scope and fanned out to the wrong approvers.
-  const { approveScope, dimensionConstraint } = await resolveToolApprovalAuthority({
+  const resolvedAuthority = await resolveToolApprovalAuthority({
     orgId: args.orgId,
     appName,
     toolShortName,
     params: input.current_payload,
   })
+  const { dimensionConstraint } = resolvedAuthority
+  const approveScope = input.approve_scope ?? resolvedAuthority.approveScope
   const requesterCanApprove =
     hasScope(approveScope, args.actorScopes) &&
     (dimensionConstraint === null ||
@@ -2827,16 +3129,18 @@ export async function createHandlerApprovalRequest(args: {
         orgId: args.orgId,
         toolName: input.tool_name,
         minApprovers: tighten.minApprovers,
-        resourceOwnerId: await resolveApprovalOwnerRouting({
-          orgId: args.orgId,
-          appName,
-          toolShortName,
-          toolParams: input.current_payload,
-          requestedBy: args.requestedBy,
-          approveScope,
-          dimensionConstraint,
-          mustHold: [],
-        }),
+        resourceOwnerId:
+          args.ownerOfResource ??
+          (await resolveApprovalOwnerRouting({
+            orgId: args.orgId,
+            appName,
+            toolShortName,
+            toolParams: input.current_payload,
+            requestedBy: args.requestedBy,
+            approveScope,
+            dimensionConstraint,
+            mustHold: [],
+          })),
         approveScope,
         dimensionConstraint,
         mustHold: [],
@@ -2909,6 +3213,7 @@ export async function createHandlerApprovalRequest(args: {
     requestedBy: args.requestedBy,
     reason: "gated",
     summary,
+    ...(input.summary ? { ownTitle: true } : {}),
     appName,
     toolShortName,
     requesterCanApprove,
@@ -2919,6 +3224,8 @@ export async function createHandlerApprovalRequest(args: {
     actingAgentId: args.actingAgentId,
     ...(tighten ? { tighten } : {}),
     ...(args.originRun !== undefined ? { originRun: args.originRun } : {}),
+    ...(args.ownerOfResource ? { ownerOfResource: args.ownerOfResource } : {}),
+    ...(input.expiry_hours !== undefined ? { expiryHours: input.expiry_hours } : {}),
   })
   return { approval_id: approvalRequestId }
 }
@@ -2958,6 +3265,8 @@ export async function executeToolHandler(
   },
   bridgeOptions?: {
     callChain?: string[]
+    /** Credentials not yet stored, for the connection's check (ExecuteToolParams). */
+    candidateCredentials?: CandidateCredentials
     /**
      * The sandbox EXECUTION this dispatch runs inside, as a per-execution id.
      * It is what bounds one handler's `Promise.all` fan-out: every hop that one
@@ -3345,6 +3654,9 @@ export async function executeToolHandler(
     // The app that dispatched this call app-to-app, when one did (a handler acting for its own app's
     // records with no person behind the call reads it: kernel:documents_print from a scheduled pass).
     ctx.callerApp = bridgeOptions?.callerApp
+    // Where the call came from (a person's own call, an agent, MCP, a job), for a handler whose
+    // default depends on it: a contact a person adds themselves is the organisation's.
+    ctx.origin = bridgeOptions?.origin
     // The routine this call came from, when it came from one. Handlers that
     // record an author use it to attribute the work to the ROUTINE rather than
     // to the human who happens to own it.
@@ -3460,6 +3772,13 @@ function refusalStatus(code: string, declared: unknown): number {
   return isClientClass(mapped) ? mapped : 422
 }
 
+/** The card a tool's own `card_changed` refusal carries. */
+function latestCardOf(details: unknown): unknown {
+  const latest =
+    details && typeof details === "object" ? (details as { latest?: unknown }).latest : undefined
+  return latest && typeof latest === "object" ? latest : undefined
+}
+
 function normalizeToolErrorResult(result: unknown): ExecuteToolError | null {
   if (typeof result !== "object" || result === null || !("error" in result)) return null
   const error = (result as { error?: unknown }).error
@@ -3471,6 +3790,7 @@ function normalizeToolErrorResult(result: unknown): ExecuteToolError | null {
       status?: unknown
       body?: unknown
       refusal?: unknown
+      details?: unknown
     }
     const code = typeof e.code === "string" ? e.code : "tool_error"
     const status =
@@ -3485,6 +3805,10 @@ function normalizeToolErrorResult(result: unknown): ExecuteToolError | null {
       retryable: typeof e.retryable === "boolean" ? e.retryable : false,
       ...(status !== undefined ? { status } : {}),
       ...(e.body !== undefined ? { body: e.body } : {}),
+      // A card that moved on: the latest one, for the click that was made on the old one.
+      ...(code === "card_changed" && latestCardOf(e.details) !== undefined
+        ? { details: { latest: latestCardOf(e.details) } }
+        : {}),
     }
   }
   if (typeof error === "string") {
@@ -3506,6 +3830,80 @@ export function isNotConnectedToolErrorCode(code: string): boolean {
   return code === "not_connected" || code.endsWith("_not_connected")
 }
 
+/** A tool that writes a table or is gated: its not-connected answer means nothing was done. */
+function actsOnSomething(params: { orgId: string; toolName: string }): boolean {
+  const i = params.toolName.indexOf(":")
+  if (i <= 0) return false
+  const tool = toolRegistry.get([
+    params.orgId,
+    params.toolName.slice(0, i),
+    params.toolName.slice(i + 1),
+  ])
+  return Boolean(tool && (typeof tool.writesToTable === "string" || tool.gated === true))
+}
+
+export const HUMAN_TURN_ONLY_CODE = "human_turn_only"
+export const DM_ONLY_CODE = "dm_only"
+
+/**
+ * May a `humanTurnOnly` tool run from this call's place? Only on a person's own turn: never in a
+ * routine tick or a sub-run (`routineId`, `background` on the frame, whatever the origin), never
+ * an agent's ask of another agent (`coordinated`), never a job or anything else with no run frame
+ * at all. A person in the app (`human-ui`, which has no frame) and an MCP client (the person's
+ * own, or one bound to an agent, which works for that person) pass. Approvals are not judged
+ * here: a refused call never parks.
+ */
+export function humanTurnOnlyAllows(
+  origin: ToolOrigin,
+  frame: { routineId?: string; background?: boolean; coordinated?: boolean } | undefined,
+): boolean {
+  if (frame?.routineId) return false
+  if (frame?.background === true) return false
+  if (origin === "human-ui" || origin === "mcp") return true
+  if (origin !== "in-app-agent" || frame === undefined) return false
+  return frame.coordinated !== true
+}
+
+/** A `humanTurnOnly` refusal: what did not run, and who can ask for it instead. */
+function humanTurnOnlyRefusal(tool: { appName: string; name: string }) {
+  return {
+    code: HUMAN_TURN_ONLY_CODE,
+    message: `${tool.appName}__${tool.name} did not run and nothing changed: it runs only on a person's own turn, never from a routine, a sub-run or a job.`,
+    retryable: false,
+    status: 409,
+    body: {
+      next: "Tell the person: they ask for it themselves, in their chat with the agent, in the app or from their own coding agent.",
+    },
+  }
+}
+
+/** A `dmOnly` refusal: what did not run, and where to ask instead. */
+function dmOnlyRefusal(tool: { appName: string; name: string }) {
+  return {
+    code: DM_ONLY_CODE,
+    message: `${tool.appName}__${tool.name} did not run and nothing changed: it runs only in a DM with the agent, not in a shared thread.`,
+    retryable: false,
+    status: 409,
+    body: { next: "Continue in a DM: the person asks the same in their DM with the agent." },
+  }
+}
+
+/**
+ * Is the in-app agent's thread its DM with the person? Read with `resolveRoomFloor`, the same
+ * case analysis the room's effective scope uses. A thread it cannot place (gone, a sub-run's
+ * hidden thread, a type with no case) is not a DM: fail closed.
+ */
+async function isAgentDm(orgId: string, threadId: string, requesterUserId: string) {
+  try {
+    const floor = await withPrivilegedDb(orgId, "dm-only-room", (tx) =>
+      resolveRoomFloor(tx, orgId, threadId, requesterUserId),
+    )
+    return floor.kind === "dm"
+  } catch {
+    return false
+  }
+}
+
 export function statusForToolError(code: string): number {
   switch (code) {
     case "invalid_params":
@@ -3516,7 +3914,8 @@ export function statusForToolError(code: string): number {
     case "merge_self_reference":
     case "ticket_already_merged":
     case "merge_target_invalid":
-    // A merge whose source is more sensitive than its target.
+    // A merge whose source is of another company, or more sensitive than its target.
+    case "merge_other_company":
     case "merge_more_sensitive":
     case "category_depth_limit":
     case "archived_category":
@@ -3546,6 +3945,12 @@ export function statusForToolError(code: string): number {
     // database connector: db_read naming a read the catalog does not declare
     // (the error lists the valid names).
     case "unknown_read":
+    // Client actions (modules/client-actions/mint.ts): a target or kind no app declared,
+    // a link length outside 7/14/30 days, no address to send to.
+    case "TARGET_NOT_REGISTERED":
+    case "KIND_NOT_ALLOWED":
+    case "INVALID_EXPIRY":
+    case "EMAIL_REQUIRED":
       return 400
     case "forbidden":
     // A scope the caller does not hold is an AUTHORIZATION refusal, not a
@@ -3561,8 +3966,27 @@ export function statusForToolError(code: string): number {
     // The app is turned Off for the workspace (S19): a conflict with the
     // workspace's state, not a fault and not a missing permission.
     case APP_DISABLED_CODE:
+    case FEATURE_OFF_CODE:
+    // A tool called from the wrong place (manifest `humanTurnOnly` / `dmOnly`): the call is
+    // fine, where it came from is not; the answer says where to ask instead.
+    case HUMAN_TURN_ONLY_CODE:
+    case DM_ONLY_CODE:
+    // The document changed since it was read: read it again and send that version.
+    case "VERSION_CHANGED":
+    // An approved client request whose pinned send check now stops it (the person
+    // replied, the address bounced or is held), or that no longer matches its card.
+    case "SEND_GUARD_MISMATCH":
+    case "SEND_GUARD_REPLIED":
+    case "SEND_GUARD_BOUNCED":
+    case "SEND_GUARD_HELD":
+    case "SEND_GUARD_OPTED_OUT":
+    case "SEND_GUARD_REF_STOP":
       return 409
     case APP_STATE_UNAVAILABLE_CODE:
+    // The target app's read tool did not answer: nothing was sent.
+    case "TARGET_UNAVAILABLE":
+    // The send check could not read what it needs: it fails closed, nothing is sent.
+    case "SEND_GUARD_UNAVAILABLE":
       return 503
     case "tool_not_found":
     case "not_found":
@@ -3585,8 +4009,35 @@ export function statusForToolError(code: string): number {
     // administrator's fix, not a server fault: it must not page the watchdog.
     case "config_error":
       return 409
+    // A company delete refused while portal accounts or a live recurring invoice schedule still
+    // hold it (contacts/companies.ts): the workspace's state, not a fault.
+    case "company_has_accounts":
+    case "company_has_schedules":
+      return 409
+    // A deactivation refused until it says who takes the person's companies, or because it would
+    // leave no admin (kernel-bulk.ts): the same 409 as the admin route.
+    case "accounts_to_required":
+    case "last_admin":
+    // A company's account manager that cannot be: inactive, a client, or unable to read the
+    // company (contacts/companies.ts).
+    case "manager_inactive":
+    case "manager_external":
+    case "manager_cannot_see_company":
+      return 409
+    case "manager_not_found":
+      return 404
+    // A person delete refused while a live recurring invoice schedule bills them
+    // (contacts/service.ts): the workspace's state, not a fault.
+    case "contact_has_schedules":
+      return 409
+    // A project's documents in more than one currency (invoicing project_invoiced_get): they are
+    // not summed into one amount, the data's state, not a fault.
+    case "mixed_currencies":
+      return 409
     // A connection with no stored credentials: the person reconnects it.
     case CONNECTION_CREDENTIALS_MISSING:
+    // A connection with no connected account, answered by a write or a send: nothing was done.
+    case CONNECTION_NOT_CONNECTED:
       return 422
     case "call_chain_limit":
       return 400
@@ -3641,7 +4092,8 @@ export function dashboardSourceRefusal(
   if (tool.contractOnly) return "it is reached only through a provider contract"
   // Hidden from agents (`agentVisible: false`) is a catalog choice, not a reason: a settings
   // page's own read runs as the viewer, under its scopes, like any other read.
-  if (tool.requiresHumanTurn) return "it runs only on a person's own turn"
+  if (tool.requiresHumanTurn || tool.humanTurnOnly) return "it runs only on a person's own turn"
+  if (tool.dmOnly) return "it runs only in a DM with the agent"
   // A "user" boundary is a read people and agents both call (taint-checked inside a
   // thread): a view may show it like any other read. Internal and agent-only tools
   // are not a viewer's to call.
@@ -3701,6 +4153,43 @@ async function taintJudgedTool<T extends NonNullable<ReturnType<typeof toolRegis
   }
 }
 
+const CALL_TOOL_CANONICAL = "kernel:call_tool"
+
+/**
+ * The tool a `kernel:call_tool` call names, as its canonical id, with its arguments. The name is
+ * resolved the way the call-tool entry resolves it: against the tools the calling turn holds when
+ * a turn frame is present (it never widens what the turn may call), otherwise against the org's
+ * registry by its SDK or canonical name.
+ */
+function callToolRefTarget(
+  orgId: string,
+  params: unknown,
+): { toolName: string; params: unknown } | { error: ExecuteToolError } {
+  const { name, arguments: args } = (params ?? {}) as { name?: unknown; arguments?: unknown }
+  const refuse = (message: string) => ({
+    error: { code: "invalid_params", message, retryable: true } satisfies ExecuteToolError,
+  })
+  if (typeof name !== "string" || name.trim().length === 0) {
+    return refuse('kernel__call_tool needs the tool to call in "name".')
+  }
+  const bySdkName = new Map<string, string>()
+  for (const [key] of toolRegistry.entriesOf(orgId)) {
+    if (key[0] !== orgId) continue
+    bySdkName.set(`${key[1]}__${key[2].replace(/[^a-zA-Z0-9_-]/g, "_")}`, `${key[1]}:${key[2]}`)
+  }
+  const held = currentRunContext()?.turnToolNames
+  const resolution = resolveHeldToolName(name, held ? [...held] : [...bySdkName.keys()])
+  const sdkName =
+    resolution.kind === "exact" || resolution.kind === "resolved" ? resolution.name : null
+  const toolName = sdkName ? bySdkName.get(sdkName) : undefined
+  if (!toolName || toolName === CALL_TOOL_CANONICAL) {
+    return refuse(
+      `No tool named "${name}" is available to you, so nothing was staged. Call the tool by its exact name, with its arguments in "arguments".`,
+    )
+  }
+  return { toolName, params: args ?? {} }
+}
+
 export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<ExecuteToolEnvelope> {
   const callChain = opts.callChain ?? []
   // A non-empty INCOMING chain means this dispatch was made from inside another
@@ -3717,6 +4206,17 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         retryable: false,
       },
     }
+  }
+
+  // A call through `kernel:call_tool` that cites an @ref token is the named
+  // tool's call, and is dispatched as that tool: it defers into the bundle as
+  // that tool's step, under its own gate, summary and scopes. `kernel:call_tool`
+  // runs nothing itself, so staged as the step it approved "successfully" while
+  // the write it stood for never ran.
+  if (opts.toolName === CALL_TOOL_CANONICAL && findRefTokens(opts.params).length > 0) {
+    const inner = callToolRefTarget(opts.orgId, opts.params)
+    if ("error" in inner) return { error: inner.error }
+    return executeToolCore({ ...opts, toolName: inner.toolName, params: inner.params })
   }
 
   const colonIdx = opts.toolName.indexOf(":")
@@ -3742,8 +4242,11 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
 
   let tool = toolRegistry.get([opts.orgId, appName, name])
   if (!tool) {
-    const defaultApps = await getDefaultApps()
-    if (!defaultApps.some((app) => app.name === appName)) {
+    // Not registered in this process: the org's runtime may not be set up here
+    // yet, or it was released (org-runtime-release.ts). The kernel's own tools
+    // are registered with the org's runtime like any catalog app's, so a miss on
+    // either sets the org up and looks again; any other app name is unknown.
+    if (appName !== "kernel" && !(await getDefaultApps()).some((app) => app.name === appName)) {
       return {
         error: {
           code: "tool_not_found",
@@ -4582,11 +5085,16 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
 
   // Cross-app callers may invoke an internal tool either via an approved
   // `cross_app_calls` capability, or (legacy) when they declared the dependency
-  // and the target sets `deferLoading: true`.
+  // and the target sets `deferLoading: true`. The app's own code (a job, an
+  // event handler or another of its tools calling `ctx.executeTool`) may call
+  // its own internal tool. A person (the REST tool route), an agent or an MCP
+  // client never reaches it directly: those calls carry no `internalCall`.
   if (tool.trustBoundary === "internal") {
     const callerDeps =
       callerApp != null ? (appDependenciesRegistry.get([opts.orgId, callerApp])?.tools ?? []) : []
+    const ownAppCall = callerApp === appName
     const allowed =
+      ownAppCall ||
       approvedCrossAppCall ||
       approvedContractCall ||
       (callerApp != null && callerDeps.includes(opts.toolName) && tool.deferLoading === true)
@@ -4621,15 +5129,17 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       },
     }
   }
+  // Hidden from agents holds for a coding agent over MCP too: its actor is the person's, but a
+  // model chose the call. A dashboard source, a settings page and the app itself still read it.
   if (
     tool.agentVisible === false &&
-    (opts.actor as { actorType?: string }).actorType === "agent" &&
+    ((opts.actor as { actorType?: string }).actorType === "agent" || opts.origin === "mcp") &&
     !opts.internalCall
   ) {
     return {
       error: {
         code: "forbidden",
-        message: `tool ${opts.toolName} not callable by agent`,
+        message: hiddenToolRefusal(opts.toolName, appName, tool.useInstead),
         retryable: false,
       },
     }
@@ -4694,6 +5204,49 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         },
         opts.toolName,
       ),
+    }
+  }
+
+  // A FEATURE SWITCHED OFF INSIDE THE APP runs nothing, for an admin holding `*` as
+  // for anyone: its tool is gone from every catalog, so a call that still names it
+  // comes from an old schema or a stale list, and it is told what happened in the
+  // feature's own words. Before anything can park an approval for it. A row still being
+  // recomputed from a write that just committed (the first project to turn the feature on, then
+  // a call that uses it) is waited for once, so the call sees what that write made.
+  // A call another app declared in its `cross_app_calls` is that app's plumbing (agreements
+  // finding a client's company, a payments connector naming open deals): the switch hides a
+  // surface from people and agents, it does not break an app an admin turned on. Such a call
+  // still waits for a recompute in flight: the tool's own checks read the same row (agreements
+  // setting the plan of the project it just turned time and budgets on for).
+  if (isFeatureOffForTool(opts.orgId, tool)) {
+    const settled = await settleFeatureRecomputes(opts.orgId)
+    if (!approvedCrossAppCall && !(settled && !isFeatureOffForTool(opts.orgId, tool))) {
+      const { code, message, feature, next, retryable } = featureOffAnswer(opts.orgId, tool)
+      return { error: { code, message, retryable, status: 409, body: { feature, next } } }
+    }
+  }
+
+  // WHERE THE CALL COMES FROM (manifest `humanTurnOnly`, `dmOnly`, first-party apps only): a tool
+  // called from the wrong place is refused with where to ask instead, before anything can park
+  // an approval for it. Another app's call is never the person's own turn or their DM, declared
+  // or not, inside an approved action or not: the person decided the outer action, not this.
+  const fromAnotherApp =
+    opts.internalCall?.callerApp != null && opts.internalCall.callerApp !== appName
+  if (tool.humanTurnOnly === true) {
+    if (fromAnotherApp || !humanTurnOnlyAllows(opts.origin, currentRunContext())) {
+      return { error: markRefusedBeforeRun(humanTurnOnlyRefusal(tool), opts.toolName) }
+    }
+  }
+  if (tool.dmOnly === true) {
+    if (fromAnotherApp) {
+      return { error: markRefusedBeforeRun(dmOnlyRefusal(tool), opts.toolName) }
+    }
+    // An in-app agent's call with no thread is in no DM.
+    if (opts.origin === "in-app-agent") {
+      const requester = (opts.actor as { userId?: string }).userId ?? ""
+      if (!opts.threadId || !(await isAgentDm(opts.orgId, opts.threadId, requester))) {
+        return { error: markRefusedBeforeRun(dmOnlyRefusal(tool), opts.toolName) }
+      }
     }
   }
 
@@ -4802,11 +5355,20 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     }
   }
 
-  const idemKey =
+  const rawIdemKey =
     opts.internalCall?.idempotencyKey ??
     (typeof (validatedParams as any)?.idempotencyKey === "string"
       ? ((validatedParams as any).idempotencyKey as string)
       : undefined)
+  // The stored answer is one caller's, read under their access and stamped for their turn: the
+  // key is that caller's own, so another person's call with the same key runs as theirs.
+  const idemKey =
+    rawIdemKey === undefined
+      ? undefined
+      : callerIdempotencyKey(
+          opts.actor as { actorType: string; userId?: string | null; agentId?: string },
+          rawIdemKey,
+        )
   const innerChain = [...callChain, opts.toolName]
   const userId = opts.actor.actorType === "user" ? opts.actor.userId : "system"
 
@@ -4824,7 +5386,9 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // org-scoped knowledge doc, an invoice over the issuer threshold) — and a
   // gated call must never be queued for a human when the data it needs is
   // missing. Requiring `tool.gated` here left every such tool validating only
-  // AFTER the approver clicked approve.
+  // AFTER the approver clicked approve. The same holds for a tool that declares a preflight
+  // but no gate: an org policy or a turn's outside text can still park its call, so a declared
+  // preflight runs on every call (it is read-only and refuses only what the handler would).
   // A host tool's outright refusal of its caller comes before every gate below: a caller that may
   // never run the tool must not leave an approval behind for a human to decide in vain.
   if (tool.refuseBeforeGate && !approvalExecutingNestedCall && opts.origin !== "human-ui") {
@@ -4946,7 +5510,13 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   const paramsCarryRefTokens = findRefTokens(validatedParams).length > 0
   // A token-bearing call skips the preflight (below), so a tool whose approval binds pinned
   // values would be staged with none: refused at stage time instead. Nothing is staged.
-  if ((tool.gated || tool.conditionalGate) && pinnedKeys.length > 0 && paramsCarryRefTokens) {
+  // A tool may build the value at execute instead (`pinnedOptionalOnRefs`): such a call stages unpinned.
+  if (
+    (tool.gated || tool.conditionalGate) &&
+    pinnedKeys.length > 0 &&
+    paramsCarryRefTokens &&
+    tool.pinnedOptionalOnRefs !== true
+  ) {
     return {
       error: {
         code: "ref_not_allowed",
@@ -4960,7 +5530,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   }
   // Set when the preflight says THIS call must be decided by a person (preflightRequiresPerson).
   let preflightForcesPerson = false
-  if ((tool.gated || tool.conditionalGate) && tool.preflight && !paramsCarryRefTokens) {
+  if (tool.preflight && !paramsCarryRefTokens) {
     // A tool that owns its transactions gets a session for its preflight too.
     const inPreflightTx = <T>(fn: (tx: any) => Promise<T>): Promise<T> =>
       tool.ownsTransactions === true
@@ -5005,6 +5575,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       opts.toolName,
       idemKey,
       validatedParams,
+      rawIdemKey,
     )
     if (reservation.outcome === "hit") return reservation.cached as ExecuteToolEnvelope
     if (reservation.outcome === "conflict") {
@@ -5161,9 +5732,11 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // parked for every admin, and she could not decide her own card). Anything else that gates the
   // call keeps the tool's own deciding scope: a gated tool, a host or per-param gate, the
   // outside-content hold, an org approval policy, a sequenced @ref step, a routine's request.
+  // A `conditionalGate` tool keeps it too: its handler parks some calls itself and runs them on
+  // any approval of the call, so a card decided by the taint's read scopes would issue them.
   const taintDisclosureOnly =
     taintForcedApprovalScopes !== null &&
-    tool.gated !== true &&
+    taintMayDecideAlone(tool) &&
     !hostGated &&
     !paramGated &&
     !taintEscalated &&
@@ -5187,11 +5760,18 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // decided by that resource's own deciders (the tool's approval authority and owner routing),
   // never by a holder of an app's read scope: who may widen what a table's readers see is the
   // table's question. Rule 15 (the requester alone decides) keeps the taint authority.
+  // A turn that read a restricted record (`restricted:` scope) parks owner-routed to the person
+  // who asked, who is on its list (judged above): the card is decided by them alone and hidden
+  // from every other feed and list. The record's own read scope stands for the restricted one
+  // wherever a deciding or audience scope is needed, since no grant holds the restricted one.
+  if ((taintForcedApprovalScopes ?? judgedTurnTaint ?? []).some(isRestrictedScope)) {
+    resourceReadRoutesToRequester = true
+  }
   const disclosureAuthority =
     taintDisclosureOnly &&
     taintForcedApprovalScopes !== null &&
     (!tool.sinkReadersResource || resourceReadRoutesToRequester)
-      ? taintDisclosureAuthority(taintForcedApprovalScopes)
+      ? taintDisclosureAuthority(restrictedAsReadScopes(taintForcedApprovalScopes))
       : null
 
   // Dimension-constrained approvals: a gated tool may declare a CUSTOM decision
@@ -5229,28 +5809,27 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     ? ((await tool.taintCardPlace?.(validatedParams, { orgId: opts.orgId }).catch(() => null)) ??
       taintSurfaceLabelForTool(opts.orgId, opts.toolName, tool.writesToTable))
     : ""
-  const withTaintDisclosure = (s: ApprovalSummary): ApprovalSummary =>
-    taintDisclosedToReaders
-      ? {
-          ...s,
-          lines: [
-            ...s.lines.slice(0, 7),
-            taintPostHiddenFrom !== undefined
-              ? taintPostDisclosureLine(
-                  taintPostMissingScopes ?? taintForcedApprovalScopes ?? [],
-                  taintPostHiddenFrom,
-                )
-              : taintDisclosureLine(taintForcedApprovalScopes ?? [], taintSurface),
-          ],
-        }
-      : s
+  const withTaintDisclosure = (s: ApprovalSummary): ApprovalSummary => {
+    if (!taintDisclosedToReaders) return s
+    const consent =
+      taintPostHiddenFrom !== undefined
+        ? taintPostDisclosureLine(
+            taintPostMissingScopes ?? taintForcedApprovalScopes ?? [],
+            taintPostHiddenFrom,
+          )
+        : taintDisclosureLine(taintForcedApprovalScopes ?? [], taintSurface)
+    return { ...s, lines: [...s.lines.slice(0, 7), consent], consent }
+  }
   // A tainted proposal nobody may decide (no holder of the deciding scope also holds what the
   // turn read) is refused now, naming the remedy: parking it would wait for a decider who
   // cannot exist (rule 8). Checked before either parking path (taint escalation, the gate)
   // creates a thread or a row.
   // Every approval this call parks is narrowed to holders of what its turn read (rule 13): the
   // taint-forced audience when the taint parked it, else the judged turn's whole taint.
-  const parkTaint: string[] | null = taintForcedApprovalScopes ?? judgedTurnTaint
+  // No grant holds a restricted record's scope, so as an audience demand it stands for its
+  // record's read scope; the list itself is honoured by the owner routing above.
+  const parkTaintRead: string[] | null = taintForcedApprovalScopes ?? judgedTurnTaint
+  const parkTaint: string[] | null = parkTaintRead ? restrictedAsReadScopes(parkTaintRead) : null
   const noTaintDeciderRefusal = async (mustHold: string[]): Promise<ExecuteToolEnvelope | null> => {
     const resourceOwnerId = await resolveApprovalOwnerRouting({
       orgId: opts.orgId,
@@ -5293,7 +5872,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     }
   }
   if (taintForcedApprovalScopes !== null && findRefTokens(validatedParams).length === 0) {
-    const refusal = await noTaintDeciderRefusal(taintForcedApprovalScopes)
+    const refusal = await noTaintDeciderRefusal(restrictedAsReadScopes(taintForcedApprovalScopes))
     if (refusal) return refusal
   }
   // A dashboard block never parks: held for outside content, it is refused instead.
@@ -5361,7 +5940,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       blocked: {
         reason: "taint_escalation",
         approvalRequestId,
-        summary,
+        summary: withoutNames(summary),
         requesterCanApprove,
         outsideText: OUTSIDE_TEXT_HOLD_NOTE,
         ...(await gatedAgentNotesFor(tool, validatedParams, {
@@ -5722,50 +6301,104 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           }
         }
       }
+      let joinedTurnBundle = false
       if (approvalRequestId === null) {
-        approvalRequestId = await createApprovalRequest({
-          orgId: opts.orgId,
-          // Creates the fallback surface thread ONLY on this arm — the dedupe
-          // hit above must not leave an orphan behind.
-          threadId: await ensureApprovalThreadId(),
-          toolName: opts.toolName,
-          toolParams: validatedParams,
-          defaultedParams,
-          requestedBy: userId,
-          reason: "gated",
-          summary,
-          appName,
-          toolShortName: name,
-          requesterCanApprove,
-          approveScope,
-          dimensionConstraint,
-          origin: opts.origin,
-          bundleId: opts.stepBundleId ?? null,
-          tighten: approvalTighten,
-          proposingTurnScopes: dispatchProposingTurnScopes,
-          ...(opts.spawnParentFrame !== undefined
-            ? { originRun: opts.spawnParentFrame?.run ?? null }
-            : {}),
-          ...(parkTaint
-            ? {
-                audienceMustHold: parkTaint,
-                taintDisclosedToReaders,
-                ...(taintPostSnapshot ? { taintDisclosureAudience: taintPostSnapshot } : {}),
-                ...(taintPostExternalClientScopes
-                  ? { taintDisclosureExternalClientScopes: taintPostExternalClientScopes }
-                  : {}),
-              }
-            : {}),
-          actingAgentId,
-          routeToRequester: resourceReadRoutesToRequester,
-          ...(autoCreatedApprovalId ? { id: autoCreatedApprovalId } : {}),
-        })
+        const standalone = async () =>
+          createApprovalRequest({
+            orgId: opts.orgId,
+            // Creates the fallback surface thread ONLY on this arm — the dedupe
+            // hit above must not leave an orphan behind.
+            threadId: await ensureApprovalThreadId(),
+            toolName: opts.toolName,
+            toolParams: validatedParams,
+            defaultedParams,
+            requestedBy: userId,
+            reason: "gated",
+            summary,
+            appName,
+            toolShortName: name,
+            requesterCanApprove,
+            approveScope,
+            dimensionConstraint,
+            origin: opts.origin,
+            bundleId: opts.stepBundleId ?? null,
+            tighten: approvalTighten,
+            proposingTurnScopes: dispatchProposingTurnScopes,
+            ...(opts.spawnParentFrame !== undefined
+              ? { originRun: opts.spawnParentFrame?.run ?? null }
+              : {}),
+            ...(parkTaint
+              ? {
+                  audienceMustHold: parkTaint,
+                  taintDisclosedToReaders,
+                  ...(taintPostSnapshot ? { taintDisclosureAudience: taintPostSnapshot } : {}),
+                  ...(taintPostExternalClientScopes
+                    ? { taintDisclosureExternalClientScopes: taintPostExternalClientScopes }
+                    : {}),
+                }
+              : {}),
+            actingAgentId,
+            routeToRequester: resourceReadRoutesToRequester,
+            ...(autoCreatedApprovalId ? { id: autoCreatedApprovalId } : {}),
+          })
+        // One agent turn staging the same tool again and again (one ask over ten projects) makes
+        // ONE request: the first call is its head, each later one a step after it. A request
+        // with its own audience (a personal resource, an N-eyes policy, a post's disclosure
+        // snapshot) or a step-scoped bundle stays on its own.
+        // A tainted turn's calls join too, but only calls parked for the SAME audience: the same
+        // taint demand, deciding scope and disclosure. A step shows to its head's audience and
+        // demands what the head demands (rule 8f), so a call whose turn has read more since the
+        // head starts a request of its own instead of riding on a narrower head. Each step keeps
+        // its own payload and card line, and can be declined on its own.
+        const turnBundles =
+          opts.stepBundleId == null &&
+          !resourceReadRoutesToRequester &&
+          approvalTighten === undefined &&
+          taintPostSnapshot === undefined &&
+          taintPostExternalClientScopes === undefined &&
+          opts.threadId
+            ? turnToolBundlesOf(currentRunContext())
+            : null
+        if (turnBundles && opts.threadId) {
+          const turnThreadId = opts.threadId
+          const staged = await stageInTurnBundle(
+            turnBundles,
+            routineChainOf(currentRunContext())
+              ? routineChainKey(parkTaint, taintDisclosedToReaders)
+              : turnBundleKey(opts.toolName, parkTaint, approveScope, taintDisclosedToReaders),
+            standalone,
+            async (tail) =>
+              (await joinTurnBundleHead(opts.orgId, userId, tail, actingAgentId))
+                ? createSequencedApprovalStep({
+                    orgId: opts.orgId,
+                    threadId: turnThreadId,
+                    toolName: opts.toolName,
+                    toolParams: validatedParams,
+                    requestedBy: userId,
+                    summary,
+                    appName,
+                    toolShortName: name,
+                    approveScope,
+                    dimensionConstraint,
+                    bundle: { bundleId: tail.headId, dependsOnId: tail.lastId, position: -1 },
+                    proposingTurnScopes: dispatchProposingTurnScopes,
+                    actingAgentId,
+                    ...(taintDisclosedToReaders ? { taintDisclosedToReaders: true } : {}),
+                  })
+                : null,
+          )
+          approvalRequestId = staged.id
+          joinedTurnBundle = staged.joined
+        } else {
+          approvalRequestId = await standalone()
+        }
       }
       envelope = {
         blocked: {
           reason: "gated",
           approvalRequestId,
-          summary,
+          summary: withoutNames(summary),
+          ...(joinedTurnBundle ? { sequenced: true } : {}),
           // The row's real audience: an owner-routed approval (a personal
           // resource of the requester) is decided by the requester alone even
           // without the approve scope, so the agent must tell THEM to decide.
@@ -5829,11 +6462,24 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         proposingTurnScopes: dispatchProposingTurnScopes,
         actingAgentId,
       })
+      // A routine run's chain now ends at this step: a later call citing no token waits for it.
+      const chainFrame = currentRunContext()
+      if (routineChainOf(chainFrame) && stepBundleId === null) {
+        const chain = turnToolBundlesOf(chainFrame)
+        if (chain) {
+          await noteRoutineChainStep(
+            chain,
+            routineChainKey(parkTaint, taintDisclosedToReaders),
+            bundle.bundleId,
+            approvalRequestId,
+          )
+        }
+      }
       envelope = {
         blocked: {
           reason: "gated",
           approvalRequestId,
-          summary,
+          summary: withoutNames(summary),
           requesterCanApprove,
           sequenced: true,
           ...buildSequencingOutputs(tool, approvalRequestId),
@@ -5869,6 +6515,24 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       await finalizeIdempotency(opts.orgId, opts.toolName, idemKey, validatedParams, envelope)
     return envelope
   }
+
+  // A write on a restricted record (`restrictedRows` with the record's id in its params): its
+  // list as it stood, so the result can name the people the write adds who cannot open the app.
+  const restrictedListBefore =
+    tool.restrictedRows?.paramPath && !isReadOnlyTool(tool)
+      ? await restrictedListsBefore(
+          opts.orgId,
+          idsAtPath(validatedParams, tool.restrictedRows.paramPath).map((id) => {
+            const [app, entity] = (tool.restrictedRows?.kind ?? "").split(".") as [string, string]
+            return restrictedScope(app, entity, id)
+          }),
+        ).catch((err: unknown) => {
+          log.warn({ err, toolName: opts.toolName }, "restricted list before a write: not read")
+          return null
+        })
+      : tool.restrictedRows && !isReadOnlyTool(tool)
+        ? new Map()
+        : null
 
   try {
     // Bridge-owned transactions: the handler gets a SESSION, not a live
@@ -5942,6 +6606,9 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
             priority: opts.priority, // propagate worker-pool scheduling class (main handler site)
             nested: isNestedDispatch, // reentrancy admission (main handler site)
             signal: opts.signal,
+            ...(opts.candidateCredentials
+              ? { candidateCredentials: opts.candidateCredentials }
+              : {}),
             actingAgentId, // FX3-1: the agent this dispatch acts as (main handler site)
             turnTaintScopes: handlerTurnTaint,
           },
@@ -5977,6 +6644,8 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           opts.orgId,
           [opts.threadId, opts.alsoJudgeTaintOnThreadId],
           opts.toolName,
+          // The rows the caller is handed: a `taintSourceWhen` row condition reads them.
+          { result: envelope.data },
         )
       } catch (err) {
         // Fail closed: untrusted text that reaches the model without the turn being marked would
@@ -6254,7 +6923,11 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       return {
         error: {
           code: "timeout",
-          message: `${opts.toolName} timed out while executing. Retry once; if it persists, the operation is genuinely slow or stuck.`,
+          // A write reaching outside (a send, a mail) was cut off here, not undone.
+          message:
+            (tool as { approvalImpact?: unknown }).approvalImpact === "external"
+              ? `${opts.toolName} timed out while executing, and what it started may have gone through. Look at the record before trying again.`
+              : `${opts.toolName} timed out while executing. Retry once; if it persists, the operation is genuinely slow or stuck.`,
           retryable: true,
           status: 504,
         },
@@ -6458,6 +7131,64 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     }
   }
 
+  // A read that returned a restricted row stamps the turn with that row's restricted scope,
+  // from the kernel's own lookup of each returned id, so what the turn writes next stays with
+  // the row's list (scope-taint.ts rules 8b, 8h, 11, 13 do the rest). Fails closed: a result
+  // whose rows could not be looked up is withheld.
+  if ("data" in envelope && tool.restrictedRows && taintOriginStore) {
+    try {
+      const scopes = await restrictedStampOf(
+        opts.orgId,
+        tool.restrictedRows,
+        envelope.data,
+        validatedParams,
+      )
+      if (scopes.length > 0) taintOriginStore.recordResultScopes(scopes)
+    } catch (err) {
+      log.error(
+        { err, toolName: opts.toolName, orgId: opts.orgId },
+        "Failed to look up restricted rows of a read: result withheld",
+      )
+      envelope = {
+        error: {
+          code: "restricted_stamp_failed",
+          message: `${opts.toolName}: the result was withheld because the kernel could not check whether it holds a record closed to the organization (${err instanceof Error ? err.message : String(err)}). Nothing was shown. Retry the same call.`,
+          retryable: true,
+        },
+      }
+    }
+  }
+
+  // People a write put on a restricted record's list who cannot open its app: the share stands,
+  // and the result says so, with who can give the access. Any surface (an agent turn, a person's
+  // click in the app), so it does not wait on a turn's taint store.
+  if ("data" in envelope && tool.restrictedRows && restrictedListBefore) {
+    const written = envelope.data
+    if (written !== null && typeof written === "object" && !Array.isArray(written)) {
+      const notice = await restrictedStampOf(
+        opts.orgId,
+        tool.restrictedRows,
+        written,
+        validatedParams,
+      )
+        .then((scopes) =>
+          restrictedListNotice(
+            opts.orgId,
+            userId === "system" ? null : userId,
+            scopes,
+            restrictedListBefore,
+          ),
+        )
+        .catch((err: unknown) => {
+          log.warn({ err, toolName: opts.toolName }, "restricted list notice: not computed")
+          return null
+        })
+      if (notice) {
+        envelope = { data: { ...(written as Record<string, unknown>), access_notice: notice } }
+      }
+    }
+  }
+
   if (idemKey) {
     if ("error" in envelope) {
       await invalidateIdempotency(opts.orgId, opts.toolName, idemKey)
@@ -6493,8 +7224,66 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     const readOrigin = taintOriginOf(tool, validatedParams, envelope.data)
     if (readOrigin) taintOriginStore.recordOriginRows(readOrigin.table, readOrigin.rowIds)
   }
+  // A result that carries a part classified by a narrower read scope (a project's money in its
+  // budget) adds that scope to the turn's taint, so a later write or post is judged against it as
+  // it is against the tool's own scopes. Filed from what the call RETURNED, like the origin above.
+  if ("data" in envelope && tool.resultTaintWhen && taintOriginStore) {
+    const { fields, scopes } = tool.resultTaintWhen
+    if (resultHoldsField(envelope.data, fields)) taintOriginStore.recordResultScopes([...scopes])
+  }
 
   return envelope
+}
+
+/** The values at a `restrictedRows` id path (`items[].id`, `agreement.id`) in a result. */
+export function idsAtPath(data: unknown, path: string): string[] {
+  let level: unknown[] = [data]
+  for (const raw of path.split(".")) {
+    const many = raw.endsWith("[]")
+    const key = many ? raw.slice(0, -2) : raw
+    const next: unknown[] = []
+    for (const node of level) {
+      if (node === null || typeof node !== "object" || Array.isArray(node)) continue
+      const value = (node as Record<string, unknown>)[key]
+      if (many) {
+        if (Array.isArray(value)) next.push(...value)
+      } else if (value !== undefined) next.push(value)
+    }
+    level = next
+  }
+  return [...new Set(level.filter((v): v is string => typeof v === "string" && v !== ""))]
+}
+
+/**
+ * The restricted scopes a read's result carries: one `restricted:<kind>:<id>` for every id at
+ * the tool's `idPath` whose row is closed to the organization, by the kernel's lookup
+ * (`kernel.restricted_among`, 0331), never by the handler or the model.
+ */
+export async function restrictedStampOf(
+  orgId: string,
+  decl: { kind: string; idPath?: string; paramPath?: string },
+  data: unknown,
+  params?: unknown,
+): Promise<string[]> {
+  const ids = [
+    ...new Set([
+      ...(decl.idPath ? idsAtPath(data, decl.idPath) : []),
+      ...(decl.paramPath ? idsAtPath(params, decl.paramPath) : []),
+    ]),
+  ]
+  if (ids.length === 0) return []
+  const [app, entity] = decl.kind.split(".") as [string, string]
+  const rows = await withPrivilegedDb(orgId, "restricted-rows-stamp", async (db) =>
+    extractRows<{ ids: string[] | null }>(
+      await db.execute(
+        drizzleSql`SELECT ${drizzleSql.raw(quoteIdent(schemaRef("kernel")))}.restricted_among(${orgId}::uuid, ${decl.kind}, ARRAY[${drizzleSql.join(
+          ids.map((id) => drizzleSql`${id}`),
+          drizzleSql`, `,
+        )}]::text[]) AS ids`,
+      ),
+    ),
+  )
+  return (rows[0]?.ids ?? []).map((id) => restrictedScope(app, entity, String(id))).sort()
 }
 
 /**
@@ -6569,15 +7358,21 @@ export async function executeTool<TData = unknown>(
     ...(agentId !== undefined ? { actingAgentId: agentId } : {}),
   })
   if ("error" in envelope) {
-    // Not connected is an answer, not a failure: see isNotConnectedToolErrorCode.
-    if (isNotConnectedToolErrorCode(envelope.error.code)) {
+    // Not connected is a read's answer, not a failure: see isNotConnectedToolErrorCode. A write
+    // or a gated act (a send) that found its connection gone did nothing, so it stays a refusal.
+    if (isNotConnectedToolErrorCode(envelope.error.code) && !actsOnSomething(params)) {
       return {
         data: {
           error: { code: envelope.error.code, message: envelope.error.message },
         } as TData,
       }
     }
-    const status = envelope.error.status ?? statusForToolError(envelope.error.code)
+    // A write or a send refused for a missing connection is the person's to fix, never a fault.
+    const status =
+      envelope.error.status ??
+      (isNotConnectedToolErrorCode(envelope.error.code)
+        ? 422
+        : statusForToolError(envelope.error.code))
     const err = new Error(envelope.error.message) as Error & {
       status: number
       code: string
@@ -6652,13 +7447,44 @@ export async function executeApprovedToolHandlerInternal(args: {
    */
   threadId?: string
 }): Promise<unknown> {
-  const validated = validateParamsForTool(
-    args.tool,
-    args.orgId,
-    args.tool.appName,
-    args.tool.name,
-    args.payload,
-  )
+  // The feature went off while this waited for a person. Approving the same request
+  // again cannot pass, so the answer is final and closes it with the feature's words
+  // (`revertToPending`, approvals/decide.ts), rather than re-pending it forever.
+  await primeOrgApps(args.orgId)
+  if (isFeatureOffForTool(args.orgId, args.tool)) {
+    // The feature rows could not be read: the call does not run now, but nothing
+    // says the feature is off, so the request stays pending and can be approved again.
+    if (orgFeaturesUnreadable(args.orgId)) {
+      return {
+        error: {
+          code: APP_STATE_UNAVAILABLE_CODE,
+          message: `${args.tool.appName}__${args.tool.name} did not run and nothing changed: the workspace's feature settings could not be read. The request is still pending; approve it again in a moment.`,
+          retryable: true,
+        },
+      }
+    }
+    const { code, message, feature, next } = featureOffAnswer(args.orgId, args.tool)
+    // The closing notice carries the message alone, so the next step travels in it.
+    return { error: { code, message: `${message} ${next}`, feature, next, final: true } }
+  }
+  // The tool refuses the stored parameters (its schema changed while the request waited, or the
+  // request was never made through the tool): its handler never ran, so nothing happened, whatever
+  // the tool's impact. Answered as the refusal it is, the request goes back to pending with the
+  // reason. Thrown, it would read as a handler of unknown outcome and hold an external tool's
+  // request at `approving` for good.
+  let validated: unknown
+  try {
+    validated = validateParamsForTool(
+      args.tool,
+      args.orgId,
+      args.tool.appName,
+      args.tool.name,
+      args.payload,
+    )
+  } catch (err) {
+    if (!(err instanceof HTTPException) || err.status !== 400) throw err
+    return { error: { code: "invalid_params", message: err.message } }
+  }
   // The approval-request-create event itself stays actorType:"user" (spec C7);
   // that is stamped at createApprovalRequest, not here. Here we only propagate
   // the recorded origin so the EXECUTED (post-approval) mutation — an
@@ -6797,4 +7623,19 @@ export async function widenSequencedStepHeads(args: {
     }
     return { ok: true }
   })
+}
+
+/**
+ * The refusal an agent gets for a tool hidden from it. A stored routine or approval policy can
+ * still name the tool, so the message says which visible tool does the job now: `useInstead` is
+ * a tool of the same app, or `app__tool` for another app's.
+ */
+export function hiddenToolRefusal(
+  toolName: string,
+  appName: string,
+  useInstead: string | undefined,
+): string {
+  if (!useInstead) return `tool ${toolName} not callable by agent`
+  const visible = useInstead.includes("__") ? useInstead : `${appName}__${useInstead}`
+  return `tool ${toolName} is not callable by an agent. Use ${visible} instead.`
 }

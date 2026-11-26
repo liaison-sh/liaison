@@ -11,6 +11,7 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { setOrgAppStatus } from "~/modules/apps/org-app-service"
 import { getOrgAppState } from "~/modules/apps/org-apps"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { bootstrapAdminCtx, bootstrapScopedAdminCtx } from "~/tests/helpers/agent-ctx"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -200,6 +201,37 @@ describe("org-config kernel tool handlers", () => {
     expect(
       docs.some((d) => d.title === "Shipping policy" && d.documentScope === "organization"),
     ).toBe(true)
+  })
+
+  test("capture_business_knowledge never files in a person's own folder, whatever its name", async () => {
+    const own = crypto.randomUUID()
+    await withPrivilegedDb(ctx.orgId, "test-own-folder", (tx) =>
+      tx.execute(
+        sql.raw(
+          insertSql("app_knowledge.collections", {
+            id: own,
+            org_id: ctx.orgId,
+            name: "Business Basics",
+            owner_user_id: ctx.userId,
+          }),
+        ),
+      ),
+    )
+    const r = (await handleCaptureBusinessKnowledge(
+      { title: "Opening hours", body: "9 to 5.", dimensions: {} },
+      ctx,
+    )) as { documentId: string }
+    const places = extractRows<{ id: string; owner: string | null }>(
+      await withPrivilegedDb(ctx.orgId, "test-places", (tx) =>
+        tx.execute(sql`
+          SELECT c.id::text AS id, c.owner_user_id::text AS owner
+            FROM app_knowledge.collection_memberships m
+            JOIN app_knowledge.collections c ON c.id = m.collection_id
+           WHERE m.target_id = ${r.documentId}::uuid`),
+      ),
+    )
+    expect(places.map((p) => p.owner)).toEqual([null])
+    expect(places[0]?.id).not.toBe(own)
   })
 
   test("capture_business_knowledge with NO sensitivity dimension still writes (explicit default, not an error left for the approver)", async () => {

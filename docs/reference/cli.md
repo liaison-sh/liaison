@@ -687,6 +687,19 @@ liaison files purge-deleted-message-attachments [--org <uuid>] [--dry-run]
 | `--org <uuid>` | no | Only this org. |
 | `--dry-run` | no | Only count. |
 
+## knowledge links-backfill
+
+Remove the linked page's title from Knowledge page links stored before links held only the page id (bodies, summaries, page history) and record each page's links, as the daily job does. Only link tokens change: no new revision, no event, review status kept. Every org, or only `--org`; idempotent.
+
+```
+liaison knowledge links-backfill [--org <uuid>] [--dry-run]
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--org <uuid>` | no | Only this org. |
+| `--dry-run` | no | Only count. |
+
 ## routines reconcile
 
 Run the event routine reconciler once, over a window of your choosing: fire event routines again for the events they never handled. The scheduled job looks back 14 days; this is the one-shot backfill after an outage. A dry run unless `--execute`.
@@ -763,10 +776,10 @@ liaison seed --tier demo|lively|load|standard [--admin <email>] [--now <instant>
 | `--slug <slug>` | no | The org to seed (default: the reserved org's slug). |
 | `--name <org name>` | no | The org's name for a new org. |
 | `--locale <locale>` | no | The language the world is written in. |
-| `--reset` | no | Clear the org's seeded content first (the default for `reserved`). |
+| `--reset` | no | Clear the reserved org's seeded content first (its default). With `--variant visitor`, delete the demo org under the slug and seed it fresh instead; refused on a public demo box and for any org that is not of class demo. |
 | `--no-reset` | no | Top up: adopt what is there, clear nothing. |
 | `--passwords <password>` | no | Give the seeded people this password so a tester can sign in as them; refused in demo mode. |
-| `--passwords-env <VAR>` | no | `lively` and `load`: read that password from this environment variable, so it never shows in a process list. |
+| `--passwords-env <VAR>` | no | `demo`, `lively` and `load`: read that password from this environment variable, so it never shows in a process list. |
 | `--replace` | no | `lively`: delete the earlier demo org under `--slug` first, so the activity ends now; refused in demo mode. |
 | `--no-commerce` | no | `lively`: leave out the shop, invoices, carrier and books, for an org without the commerce apps installed. |
 | `--people <file>` | no | `lively`: a JSON array of your own people in the world's seats (`seat`, `name`, `email`, optional `jobTitle` and `bio`); everything the world writes for that seat is written for them. |

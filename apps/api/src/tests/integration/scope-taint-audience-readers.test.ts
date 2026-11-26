@@ -77,6 +77,8 @@ const BOXTAL_MANIFEST = JSON.parse(
 }
 const DRAFT_TOOL = "shipment_draft_set_package"
 const DRAFT_TABLE = "app_boxtal.app_config"
+/** The same draft write declared `conditionalGate`: a tool whose handler parks some calls itself. */
+const SELF_GATING_TOOL = "shipment_draft_set_package_self_gating"
 /** What the stub draft handler returns, so a run is told apart from a refusal. */
 const DRAFT_RAN = "draftHandlerRan"
 
@@ -172,7 +174,10 @@ describe("scope taint: one audience rule, judged by who can read what the write 
           version: BOXTAL_MANIFEST.version,
           scopes: BOXTAL_MANIFEST.scopes,
           schema: BOXTAL_MANIFEST.schema,
-          tools: { [DRAFT_TOOL]: BOXTAL_MANIFEST.tools[DRAFT_TOOL] },
+          tools: {
+            [DRAFT_TOOL]: BOXTAL_MANIFEST.tools[DRAFT_TOOL],
+            [SELF_GATING_TOOL]: { ...BOXTAL_MANIFEST.tools[DRAFT_TOOL], conditionalGate: true },
+          },
           _firstParty: true,
           _format: "manifest",
           _bundlePath: bundlePath,
@@ -259,7 +264,9 @@ describe("scope taint: one audience rule, judged by who can read what the write 
       // reader lacking one scope.
       expect([...(row?.notify_user_ids ?? [])].sort()).toEqual([REQUESTER, READER].sort())
       const note = row?.summary.lines.at(-1) ?? ""
-      expect(note).toContain(`some people who can read ${DRAFT_TABLE} cannot see`)
+      // The place in words, never the table's name.
+      expect(note).toContain("some people who can read app config in boxtal cannot see")
+      expect(note).not.toContain(DRAFT_TABLE)
       expect(note).toContain("approving shares it with them")
 
       // The reader's feed folds it as peer noise: its requester can decide it herself.
@@ -314,6 +321,61 @@ describe("scope taint: one audience rule, judged by who can read what the write 
       await revokeAll(LACKER)
       // The approved run's execution record pins the row (ON DELETE RESTRICT).
       await sql`DELETE FROM kernel.approved_handler_executions WHERE org_id = ${ORG}`
+    }
+  })
+
+  it("a self-gating (conditionalGate) write on the same tainted turn keeps its own deciding scope: a holder of the taint alone cannot decide it (rule 8h)", async () => {
+    ran.length = 0
+    await sql`DELETE FROM kernel.approval_requests WHERE org_id = ${ORG}`
+    await grant(
+      LACKER,
+      REQUESTER_TAINT_PROJECTION.filter((s) => s !== "tickets:tickets:read"),
+    )
+    // Someone holding the whole taint AND the app's deciding scope decides it.
+    await grant(READER, ["boxtal:approve"])
+    try {
+      const parked = await call(
+        turnFrame(REQUESTER_EFFECTIVE_SCOPE),
+        `boxtal__${SELF_GATING_TOOL}`,
+        { draft_id: "d1", override: { pack: "STUDIO-BOX" } },
+      )
+      expect({ refused: refused(parked), parked }).toEqual({ refused: false, parked })
+      expect(parked.blocked).toBe(true)
+      expect(JSON.stringify(parked)).not.toContain(DRAFT_RAN)
+      const [row] = (await sql`SELECT status, approve_scope, notify_user_ids, metadata
+        FROM kernel.approval_requests WHERE id = ${parked.approvalRequestId as string}`) as Array<{
+        status: string
+        approve_scope: string | null
+        notify_user_ids: string[]
+        metadata: { taintAudienceMustHold?: string[] }
+      }>
+      expect(row?.status).toBe("pending")
+      // Its handler would run on any approval of the call: the taint narrows who among the
+      // app's deciders decides, it never replaces them with a read scope.
+      expect(row?.approve_scope).toBe("boxtal:approve")
+      expect([...(row?.metadata.taintAudienceMustHold ?? [])].sort()).toEqual(
+        [...REQUESTER_TAINT_PROJECTION].sort(),
+      )
+      expect(row?.notify_user_ids).toContain(READER)
+
+      // The requester holds every taint scope but not boxtal:approve: she cannot decide it.
+      const ownDecision = await decideApproval({
+        orgId: ORG,
+        requestId: parked.approvalRequestId as string,
+        actor,
+        decision: "approve",
+      }).then(
+        () => null,
+        (err: unknown) => err,
+      )
+      expect(ownDecision).toBeInstanceOf(ApprovalDecisionError)
+      const [after] = (await sql`SELECT status FROM kernel.approval_requests
+        WHERE id = ${parked.approvalRequestId as string}`) as Array<{ status: string }>
+      expect(after?.status).toBe("pending")
+    } finally {
+      await revokeAll(LACKER)
+      await sql`DELETE FROM kernel.user_scope_grants
+        WHERE org_id = ${ORG} AND user_id = ${READER} AND scope = 'boxtal:approve'`
     }
   })
 

@@ -1,0 +1,12 @@
+{
+  "entry": "job:timestamp-retry",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["evidence_packages", "{\"where\":{\"timestamp_status\":\"pending\"},\"limit\":500}"],
+      "reply": "[]"
+    }
+  ]
+}

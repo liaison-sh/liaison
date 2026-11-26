@@ -1324,3 +1324,57 @@ describe("processTranslationEvent — a message in an entity's thread", () => {
     for (const row of inserted) expect(row.metadata?.threadAnchor).toBeUndefined()
   })
 })
+
+describe("processTranslationEvent — a row held for a colleague away", () => {
+  const decided = (data: Record<string, unknown> = {}): AppEvent => ({
+    app: "kernel",
+    entity: "client_action",
+    action: "decided",
+    orgId: ORG,
+    actorId: null,
+    actorType: "system",
+    entityId: "ca-1",
+    timestamp: "2026-11-19T12:00:00.000Z",
+    data: {
+      title: "Proposal",
+      decision: "accepted",
+      invitedName: "A client",
+      companyId: "00000000-0000-0000-0000-00000000c0c0",
+      senderUserIds: [],
+      ...data,
+    },
+  })
+  const run = async (
+    event: AppEvent,
+    managers: string[],
+  ): Promise<Record<string, string | null>> => {
+    const { inserted, deps } = makeDeps()
+    await mod.processTranslationEvent(event, {
+      ...deps,
+      recipientContext: {
+        loadAccountManager: async () => managers,
+        keepMembers: async (_org: string, ids: string[]) => ids,
+      },
+      buildSubscriptionFilter: async () => async () => true,
+      dispatchLive: async () => {},
+    } as never)
+    return Object.fromEntries(
+      inserted.map((r) => [r.userId as string, (r.metadata?.forUserId as string) ?? null]),
+    )
+  }
+
+  it("the manager's next in line gets the row marked for the manager; the manager's is unmarked", async () => {
+    expect(await run(decided(), [USER_B, USER_C])).toEqual({ [USER_B]: null, [USER_C]: USER_B })
+  })
+
+  it("a manager who is not away: no mark", async () => {
+    expect(await run(decided(), [USER_B])).toEqual({ [USER_B]: null })
+  })
+
+  it("an event naming who stands in for whom marks that recipient", async () => {
+    const event = decided({ senderUserIds: [USER_A], standingInFor: { [USER_A]: USER_B } })
+    const rows = await run(event, [USER_B])
+    expect(rows[USER_A]).toBe(USER_B)
+    expect(rows[USER_B]).toBeNull()
+  })
+})

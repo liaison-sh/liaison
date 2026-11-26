@@ -102,6 +102,18 @@ export async function resolveToolApprovalAuthority(args: {
  * Null for an empty taint: there is then nothing to decide by, and the caller keeps the tool's
  * own authority.
  */
+/**
+ * Whether a parked call of this tool may be decided as a disclosure alone (rule 8h), by the
+ * taint's read scopes instead of the tool's own deciding scope. Only when nothing in the tool
+ * itself can ask for an approval: a `gated` tool parks every call, and a `conditionalGate` tool's
+ * handler parks some calls itself (a credit note, a quote, an org knowledge document) and runs
+ * them once ANY approval of the call was granted (its handler sees `ctx.approval`). Decided by a
+ * read scope, such a card would let a reader issue what only the tool's deciders may issue.
+ */
+export function taintMayDecideAlone(tool: { gated?: boolean; conditionalGate?: boolean }): boolean {
+  return tool.gated !== true && tool.conditionalGate !== true
+}
+
 export function taintDisclosureAuthority(taintScopes: readonly string[]): {
   approveScope: string
   dimensionConstraint: null

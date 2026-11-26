@@ -18,12 +18,13 @@ import { redis } from "~/lib/redis"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { prepareDemoScenario } from "~/modules/demo/demo-seeder"
 import { handleRunOnMyComputer, summarizeRunOnMyComputer } from "~/modules/nodes/run-on-my-computer"
 import { actorSatisfies, bindingMatches } from "~/modules/tours/consumer"
 import { completeDoBeat, type TourState } from "~/modules/tours/service"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { RECORDING, REPLAY_NODE_NAME, REPLAY_SOURCE_REF } from "./replay"
@@ -133,7 +134,7 @@ describe("the developer scenario's dispatch goes through the agent's tool", () =
     const regularOrg = await createTestOrg()
     regular = await setUp(await minimal.session(regularOrg.id))
     const demoOrgId = (await minimal.secondOrg({ name: "Dispatch Demo" })).orgId
-    await markOrgAsDemo(demoOrgId, visitorMarker(24))
+    await markDemoOrgForTest(demoOrgId, visitorMarker(24))
     invalidateDemoMarker(demoOrgId)
     visitor = await setUp(await minimal.adminSession(demoOrgId))
     DemoModeTestAccess.set(true)

@@ -17,7 +17,7 @@ import {
   recordAgentStreamEvent,
 } from "~/modules/agent/runtime/stream-registry"
 import { setTaintFlag, untrustedTurnNeedsApproval } from "~/modules/agent/scopes/taint"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import {
   actorSatisfies,
   beatDoneAhead,
@@ -37,6 +37,7 @@ import {
   tourBeats,
 } from "~/modules/tours/service"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 
 const TOUR = findTour("kernel.sample", { includeTestTours: true }) as Tour
@@ -520,7 +521,7 @@ describe("tour-progress consumer", () => {
 
   it("two scenarios played in a row both talk to the person's one DM with their agent, never a new conversation", async () => {
     // Scenarios start in a demo org only.
-    await markOrgAsDemo(orgId, visitorMarker(24))
+    await markDemoOrgForTest(orgId, visitorMarker(24))
     const ctx = await loadTourOrgContext(orgId)
     const start = async (tourId: string) => {
       const tour = findTour(tourId) as Tour

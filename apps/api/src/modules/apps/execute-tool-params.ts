@@ -5,6 +5,7 @@
  * and the readable ajv / Zod error messages.
  */
 import { minorAmountRefusal, readMinorAmount } from "@liaison/app-sdk"
+import { parseRefToken } from "@liaison/shared"
 import type { ErrorObject, SchemaObject } from "ajv"
 import { HTTPException } from "hono/http-exception"
 import { isManifestHandler, type toolRegistry } from "~/modules/apps/app-registries"
@@ -190,6 +191,89 @@ function valueAtPath(params: unknown, dottedPath: string): unknown {
   return cur
 }
 
+// ── An id that comes from an earlier step ───────────────────────────────────
+//
+// A later step of one approval request names an earlier step's id with a whole
+// `@ref:<approval>:<key>` token (ref-messages.ts). The id exists only once that
+// step has run, so a field whose schema wants a uuid cannot hold for the token
+// itself: the call was refused, and the chain broke at its second step (a
+// contact linked to the company the step before creates). Only a uuid check is
+// lifted, only for a whole token; the cascade fills the id the earlier step
+// returned before this step runs (approvals/cascade.ts).
+
+/** Stands in for a whole @ref token while the rest of the arguments are checked. */
+const REF_UUID_STAND_IN = "00000000-0000-4000-8000-000000000000"
+
+/** The value at a JSON pointer (`/companyId`, `/items/0/id`) inside `params`. */
+function valueAtPointer(params: unknown, pointer: string): unknown {
+  let cur: unknown = params
+  for (const raw of pointer.split("/").slice(1)) {
+    const seg = raw.replace(/~1/g, "/").replace(/~0/g, "~")
+    if (cur == null || typeof cur !== "object") return undefined
+    cur = (cur as Record<string, unknown>)[seg]
+  }
+  return cur
+}
+
+/** An ajv error that is only a uuid format check on a whole @ref token. */
+function isRefUuidFormatError(params: unknown, err: ErrorObject): boolean {
+  return (
+    err.keyword === "format" &&
+    (err.params as { format?: unknown }).format === "uuid" &&
+    parseRefToken(valueAtPointer(params, err.instancePath)) !== null
+  )
+}
+
+/** Put `value` at `path` (keys and indexes) of a clone-on-write copy of `params`. */
+function withValueAt(params: unknown, path: readonly PropertyKey[], value: unknown): unknown {
+  if (path.length === 0) return value
+  const [head, ...rest] = path
+  if (params == null || typeof params !== "object") return params
+  const copy: Record<PropertyKey, unknown> = Array.isArray(params)
+    ? ([...params] as unknown as Record<PropertyKey, unknown>)
+    : { ...(params as Record<PropertyKey, unknown>) }
+  copy[head as PropertyKey] = withValueAt(copy[head as PropertyKey], rest, value)
+  return copy
+}
+
+function valueAtKeys(params: unknown, path: readonly PropertyKey[]): unknown {
+  let cur: unknown = params
+  for (const seg of path) {
+    if (cur == null || typeof cur !== "object") return undefined
+    cur = (cur as Record<PropertyKey, unknown>)[seg]
+  }
+  return cur
+}
+
+type ZodIssueLike = { code?: string; format?: string; path?: PropertyKey[] }
+
+/**
+ * A Zod refusal that is only uuid checks on whole @ref tokens: the arguments
+ * parsed with each token stood in by a uuid, then the tokens put back where
+ * they were. Null when any other check failed.
+ */
+function zodParseWithRefIds(
+  schema: { safeParse: (v: unknown) => { success: boolean; data?: unknown } },
+  params: unknown,
+  issues: readonly ZodIssueLike[],
+): { data: unknown } | null {
+  if (issues.length === 0) return null
+  const paths: PropertyKey[][] = []
+  for (const issue of issues) {
+    const path = issue.path ?? []
+    const isUuidCheck = issue.code === "invalid_format" && issue.format === "uuid"
+    if (!isUuidCheck || parseRefToken(valueAtKeys(params, path)) === null) return null
+    paths.push(path)
+  }
+  let standIn = params
+  for (const path of paths) standIn = withValueAt(standIn, path, REF_UUID_STAND_IN)
+  const reparsed = schema.safeParse(standIn)
+  if (!reparsed.success) return null
+  let data = reparsed.data
+  for (const path of paths) data = withValueAt(data, path, valueAtKeys(params, path))
+  return { data }
+}
+
 /** Runtime JS type of the value at a dotted path inside `params`. */
 function jsTypeAtPath(params: unknown, dottedPath: string): string {
   const cur = valueAtPath(params, dottedPath)
@@ -288,7 +372,13 @@ function formatAjvParamError(
     const field = (e.instancePath ?? "").replace(/^\//, "").replace(/\//g, ".")
     const p = (e.params ?? {}) as Record<string, unknown>
     if (e.keyword === "required") {
-      lines.push(`- "${String(p.missingProperty)}" is required but was not provided.`)
+      // A nested shape names the whole path (`source.body.blocks.0.text`), so the model
+      // knows which object lacks it.
+      const missing = String(p.missingProperty)
+      lines.push(`- "${field ? `${field}.${missing}` : missing}" is required but was not provided.`)
+    } else if (e.keyword === "if") {
+      // A conditional shape (one per block type) fails with its `then` errors, named above
+      // or below; the bare "must match then schema" line says nothing more.
     } else if (e.keyword === "enum") {
       const allowed = (Array.isArray(p.allowedValues) ? p.allowedValues : []).map(String)
       lines.push(`- "${field}" must be one of: ${allowed.join(", ")}.`)
@@ -400,7 +490,11 @@ export function validateParamsForTool(
         )
       }
       const validate = paramValidator(tool.params as unknown as SchemaObject)
-      if (!validate(validatedParams)) {
+      const params = validatedParams
+      if (
+        !validate(validatedParams) &&
+        !(validate.errors ?? []).every((err) => isRefUuidFormatError(params, err))
+      ) {
         throw new HTTPException(400, {
           message: formatAjvParamError(
             `${appName}:${name}`,
@@ -428,11 +522,20 @@ export function validateParamsForTool(
       | { success: true; data: unknown }
       | { success: false; error: { issues?: Array<Record<string, unknown>> } }
     if (!parseResult.success) {
-      throw new HTTPException(400, {
-        message: formatZodParamError(`${appName}:${name}`, parseResult.error, validatedParams),
-      })
+      const withRefIds = zodParseWithRefIds(
+        tool.params as { safeParse: (v: unknown) => { success: boolean; data?: unknown } },
+        validatedParams,
+        (parseResult.error.issues ?? []) as ZodIssueLike[],
+      )
+      if (!withRefIds) {
+        throw new HTTPException(400, {
+          message: formatZodParamError(`${appName}:${name}`, parseResult.error, validatedParams),
+        })
+      }
+      validatedParams = withRefIds.data
+    } else {
+      validatedParams = parseResult.data
     }
-    validatedParams = parseResult.data
   } else if (
     tool.params &&
     typeof tool.params === "object" &&

@@ -8,6 +8,35 @@ export function splitToolName(toolName: string): { appName: string; toolShortNam
   return { appName: toolName.slice(0, idx), toolShortName: toolName.slice(idx + 1) }
 }
 
+/** The stable entry a tool loaded outside an agent's tool list is called through. */
+const CALL_TOOL = "kernel:call_tool"
+
+/**
+ * The tool a gated call stands for. A call through `kernel:call_tool`
+ * (`{name, arguments}`, a step deferred into a bundle by its @ref arguments)
+ * is the named tool's call: a person reads "Workspace: write contact", never
+ * "Workspace: call tool". Any other call is itself. The name may be the
+ * model's (`kernel__contacts_write`) or the canonical one (`kernel:contacts_write`).
+ */
+export function shownToolCall(
+  toolName: string,
+  payload: unknown,
+): { toolName: string; payload: unknown } {
+  if (toolName !== CALL_TOOL || typeof payload !== "object" || payload === null) {
+    return { toolName, payload }
+  }
+  const { name, arguments: args } = payload as { name?: unknown; arguments?: unknown }
+  if (typeof name !== "string" || name.length === 0) return { toolName, payload }
+  const sep = name.indexOf("__")
+  const inner = name.includes(":")
+    ? name
+    : sep > 0
+      ? `${name.slice(0, sep)}:${name.slice(sep + 2)}`
+      : null
+  if (!inner || inner === CALL_TOOL) return { toolName, payload }
+  return { toolName: inner, payload: args ?? {} }
+}
+
 /**
  * Human-readable action title derived from a raw tool id, for surfaces that
  * have no author-supplied summary (attention tiles, digests). A tool id like

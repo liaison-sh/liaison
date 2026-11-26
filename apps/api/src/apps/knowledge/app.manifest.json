@@ -34,7 +34,7 @@
           "archive",
           "restore"
         ],
-        "text": "If you DID end up with a stray duplicate or a clearly-wrong document, RETIRE it with knowledge__archive (pass its id), a reversible soft-archive (knowledge__restore reverses it) that removes it from the active KB; never leave an '[ARCHIVED]'/'OLD'-titled stub doc as a fake cleanup, and never hard-edit a real article into a tombstone. NEVER claim you 'archived', 'deleted', 'replaced', or 'cleaned up' a document unless a knowledge__archive (or knowledge__update) tool result confirms it, asserting a cleanup you did not actually perform is a fabrication; leave the KB with exactly the one clean article you were asked for."
+        "text": "If you DID end up with a stray duplicate or a clearly-wrong document, RETIRE it with knowledge__archive (pass its id): it moves to Trash, leaves the active KB at once and is deleted for good after 30 days (knowledge__restore brings it back until then); never leave an '[ARCHIVED]'/'OLD'-titled stub doc as a fake cleanup, and never hard-edit a real article into a tombstone. NEVER claim you 'archived', 'deleted', 'replaced', or 'cleaned up' a document unless a knowledge__archive (or knowledge__update) tool result confirms it, asserting a cleanup you did not actually perform is a fabrication; leave the KB with exactly the one clean article you were asked for."
       },
       {
         "tools": [
@@ -54,10 +54,14 @@
           "source_link_create"
         ],
         "text": "REGISTERING A SINGLE LIVING DOC AS A LINK (not a copy), when asked to 'register / track / link / reference' ONE external doc 'that keeps changing' / 'always points to the live version' / 'don't want a frozen copy' / 'this is the canonical X', use source_link_create, it registers a LIVING source_link that points at the remote doc (it always reflects the current version), NOT a frozen body copy. Resolve the real remote id FIRST, never guess it from the file's name: a knowledge__search hit from that source gives source + sourceEntityId directly; otherwise for Google Drive the file id from google-drive__search (source:'google-drive'), for GitLab '<project id>:<branch>:<file path>' from gitlab_search or gitlab_list_tree (source:'gitlab'). Then source_link_create with source + externalId + a title. Do NOT knowledge__create a document for a 'live link' request: create freezes a snapshot copy of the body, so calling it a 'live link' is a misrepresentation. Conversely, use knowledge__create (a document) only when the user wants to SAVE / SUMMARISE / IMPORT the content as an editable local copy. NEVER claim a link was registered unless source_link_create returned a real id, and NEVER freeze a copy and label it a live link."
+      },
+      {
+        "tools": ["create"],
+        "text": "`create`: ORGANIZATION documents must additionally be access-classified: pass an explicit sensitivity, and for 'confidential'/'restricted' pass shareWithRoles naming who may access it (roles_list gives role ids; finance, pricing, margin, revenue and contract material belongs to the executive/C-Level role, NOT org-wide). Missing placement or access rules returns a structured error listing existing collections so you can retry. Create a local Knowledge document. The result includes the new document's id, a `resourceUrl`, and a ready-made `mentionTag` (an @[Title](knowledge:document:<id>) entity tag) — after creating, ALWAYS confirm to the user by pasting the returned mentionTag verbatim in your reply (it renders as a clickable entity pill that opens the doc), never just a bare success sentence. NEVER FABRICATE DATES OR AN EVENT SCHEDULE INTO A DOC: do not author a document containing SPECIFIC dates (an event/expo/launch start or end date, a 'schedule', a 'calendar', a date-bounded window like 'July 1–14') unless those exact dates came from a source you actually READ (a retrieved Knowledge article, a project task's real due date, an order/invoice). If the user frames a request with a RELATIVE window ('in the two weeks before the launch', 'in the run-up to the expo', 'until the event') but the SPECIFIC dates are not in any readable source, do NOT search-then-invent and do NOT create a 'Schedule'/'Launch Calendar' doc to fill the gap — manufacturing concrete dates and persisting them here is a fabrication. Just report the real records you read (e.g. the project's open + overdue tasks) and, for a recurring digest, bound the recurrence with the cron schedule, not with an invented date doc."
       }
     ]
   },
-  "version": "1.0.9",
+  "version": "1.0.17",
   "description": "Knowledge workspace for local documents and curated source links",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -81,7 +85,13 @@
         "aclUserIds",
         "aclRoleIds",
         "orgWide",
-        "requiredScopes"
+        "requiredScopes",
+        "authorReads",
+        "trashedAt",
+        "trashedBy",
+        "updateEventAt",
+        "updateEventPendingAt",
+        "linksIndexedAt"
       ],
       "fields": {
         "title": "string",
@@ -176,6 +186,13 @@
           "type": "string",
           "required": false,
           "description": "Import dedup key `<source>:<key>` (modules/imports). Column and partial unique index added by migration 0208; NULL for rows the app writes itself."
+        },
+        "trashedBy": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize",
+          "description": "Who moved the page to Trash. Added by migration 0310; only the app's own SQL writes it."
         }
       },
       "constraints": {
@@ -205,6 +222,40 @@
           "where": "archived_at IS NULL"
         }
       ]
+    },
+    "document_versions": {
+      "migrationOwnedColumns": ["requiredScopes"],
+      "fields": {
+        "documentId": {
+          "type": "uuid",
+          "references": { "table": "documents", "column": "id", "onDelete": "cascade" }
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["baseline", "edit", "agent", "import", "restore", "unapplied"],
+          "description": "Page history (migration 0310 creates the table and its row security: the edit right on the page)."
+        },
+        "title": "string",
+        "body": "text",
+        "bodyMd5": "string",
+        "revision": "integer?",
+        "baseRevision": "integer?",
+        "sessionId": "uuid?",
+        "authorType": { "type": "string", "enum": ["user", "agent", "system"] },
+        "authorId": { "type": "uuid", "required": false, "userRef": true, "onErase": "anonymize" },
+        "agentId": "uuid?",
+        "startedAt": "date"
+      }
+    },
+    "document_links": {
+      "fields": {
+        "sourceDocumentId": {
+          "type": "uuid",
+          "references": { "table": "documents", "column": "id", "onDelete": "cascade" },
+          "description": "Which page links to which (migration 0310: primary key on both ids, no foreign key on the target)."
+        },
+        "targetDocumentId": "uuid"
+      }
     },
     "source_identities": {
       "fields": {
@@ -342,6 +393,7 @@
       ]
     },
     "collections": {
+      "migrationOwnedColumns": ["previousOwnerUserId", "indexDocumentId"],
       "fields": {
         "parentCollectionId": {
           "type": "uuid",
@@ -357,6 +409,13 @@
           "required": false,
           "userRef": true,
           "onErase": "anonymize"
+        },
+        "previousOwnerUserId": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize",
+          "description": "Who owned the folder before migration 0308 shared it. Only that migration writes it."
         },
         "maintainerUserIds": {
           "type": "json",
@@ -651,8 +710,15 @@
         "schemaRef": "app_knowledge",
         "joinOn": "id",
         "readScope": "knowledge:attachments:download",
-        "writeScope": "knowledge:documents:update"
+        "writeScope": "knowledge:documents:update",
+        "canWrite": "can_edit_document"
       }
+    },
+    "collection": {
+      "labelField": "name",
+      "tableName": "collections",
+      "archivedField": "archived_at",
+      "readScope": "knowledge:documents:read"
     },
     "source_link": {
       "labelField": "title",
@@ -714,6 +780,8 @@
       }
     },
     "search": {
+      "focusCore": true,
+      "restrictedRows": { "entity": "document", "idPath": "hits[].id" },
       "description": "Federated search across Knowledge and enabled remote sources",
       "searchKeywords": ["politique", "procédure", "doc", "documentation", "chercher", "rechercher", "connaissances", "policy", "article", "find", "trouver", "retrouver"],
       "readOnly": true,
@@ -745,6 +813,7 @@
       }
     },
     "review_queue": {
+      "restrictedRows": { "entity": "document", "idPath": "items[].entityId" },
       "description": "List Knowledge items that need attention — documents or source links that are flagged needs_review/stale, are missing an owner, or are past their review-due date. Read-only; verified items are excluded. Use this to find what to verify or refresh.",
       "searchKeywords": ["revoir", "relire", "doc", "document"],
       "readOnly": true,
@@ -879,6 +948,8 @@
       }
     },
     "get": {
+      "focusCore": true,
+      "restrictedRows": { "entity": "document", "idPath": "document.id" },
       "description": "Fetch the full content of a Knowledge document OR a remote connected-source item. Pass `id` for a local Knowledge document. To read a file that lives in a connected source (e.g. a Google Doc found via google-drive__search), pass `source` (the connector id, e.g. 'google-drive') + `sourceEntityId` (the file id from the search hit) — this returns the file's REAL text content (Google Docs/Sheets are exported to text), so you can ground a new Knowledge document's body in it instead of inventing one. Remote content reads require the knowledge:sources:read scope.",
       "searchKeywords": ["lire", "ouvrir", "doc", "document", "read"],
       "readOnly": true,
@@ -908,6 +979,7 @@
       }
     },
     "find_by_title": {
+      "restrictedRows": { "entity": "document", "idPath": "document.id" },
       "description": "Look up a Knowledge document by its EXACT title — DB-backed, never rides the search index, so a document created moments ago resolves immediately (unlike `search`, which is Meilisearch-backed and can lag behind a fresh write under load). Use this when you already know (or another tool told you) the precise title to check for — e.g. a connector app's deterministic per-entity doc naming convention — not for keyword discovery (use `search` for that). Returns found:false + document:null when no exact match exists or you cannot read it; pass includeArchived:true to also match an archived document.",
       "searchKeywords": ["titre", "doc", "document"],
       "readOnly": true,
@@ -932,8 +1004,8 @@
       }
     },
     "create": {
-      "description": "Create a local Knowledge document. SEARCH BEFORE YOU CREATE: the knowledge base is curated and org-wide, so first look for a document that already covers this subject (search by topic, find_by_title when you know the exact title). If one exists, UPDATE it instead: a second doc on a subject someone already wrote splits the truth in two and both become untrustworthy. Create only when the subject is genuinely new. EVERY document MUST be filed into a collection via collectionId (never free-floating). ORGANIZATION documents must additionally be access-classified: pass an explicit sensitivity, and for 'confidential'/'restricted' pass shareWithRoles naming who may access it (roles_list gives role ids; finance, pricing, margin, revenue and contract material belongs to the executive/C-Level role, NOT org-wide). Missing placement or access rules returns a structured error listing existing collections so you can retry. Create a local Knowledge document. The result includes the new document's id, a `resourceUrl`, and a ready-made `mentionTag` (an @[Title](knowledge:document:<id>) entity tag) — after creating, ALWAYS confirm to the user by pasting the returned mentionTag verbatim in your reply (it renders as a clickable entity pill that opens the doc), never just a bare success sentence. NEVER FABRICATE DATES OR AN EVENT SCHEDULE INTO A DOC: do not author a document containing SPECIFIC dates (an event/expo/launch start or end date, a 'schedule', a 'calendar', a date-bounded window like 'July 1–14') unless those exact dates came from a source you actually READ (a retrieved Knowledge article, a project task's real due date, an order/invoice). If the user frames a request with a RELATIVE window ('in the two weeks before the launch', 'in the run-up to the expo', 'until the event') but the SPECIFIC dates are not in any readable source, do NOT search-then-invent and do NOT create a 'Schedule'/'Launch Calendar' doc to fill the gap — manufacturing concrete dates and persisting them here is a fabrication. Just report the real records you read (e.g. the project's open + overdue tasks) and, for a recurring digest, bound the recurrence with the cron schedule, not with an invented date doc.",
-      "searchKeywords": ["rédiger", "écrire", "write", "doc", "document", "politique", "policy", "procédure", "nouveau", "connaissances"],
+      "description": "Create a local Knowledge document. SEARCH BEFORE YOU CREATE: the knowledge base is curated and org-wide, so first look for a document that already covers this subject (search by topic, find_by_title when you know the exact title). If one exists, UPDATE it instead: a second doc on a subject someone already wrote splits the truth in two and both become untrustworthy. Create only when the subject is genuinely new. EVERY document MUST be filed into a collection via collectionId (never free-floating).",
+      "searchKeywords": ["rédiger", "écrire", "write", "doc", "document", "politique", "policy", "procédure", "nouveau", "connaissances", "créer"],
       "requiredScopes": ["knowledge:documents:create"],
       "writesToTable": "app_knowledge.documents",
       "trustBoundary": "user",
@@ -952,6 +1024,7 @@
           "widget": "richtext"
         }
       ],
+      "resourceOwner": { "host": "knowledge.page" },
       "handler": "create",
       "params": {
         "type": "object",
@@ -1030,6 +1103,8 @@
             },
             "description": "Explicit role-based access grants applied at creation. REQUIRED (non-empty) when sensitivity is 'confidential' or 'restricted': such documents are invisible to everyone but the owner until shared, so name who may access them. Find role ids with the kernel roles_list tool; for finance/pricing/margin material grant the executive (e.g. C-Level) role."
           },
+          "orgAccess": { "type": "string", "enum": ["none", "viewer", "editor"] },
+          "shareWithUsers": { "type": "array", "items": { "type": "object", "properties": { "userId": { "type": "string" }, "role": { "type": "string", "enum": ["viewer", "editor"] } }, "required": ["userId", "role"] } },
           "tagNames": {
             "type": "array",
             "items": {
@@ -1049,7 +1124,7 @@
       }
     },
     "update": {
-      "description": "Update a local Knowledge document with revision check The result includes a `mentionTag` (@[Title](knowledge:document:<id>)) — paste it verbatim in your confirmation so the updated doc is one click away.",
+      "description": "Update a local Knowledge document with revision check. When you rewrite the body, keep every `![](liaison-file:…)` and `[](knowledge:document:…)` exactly as `get` returned them: they are the page's images, files and page links (`get` lists the files in `files`). A file token of another page is copied onto this page and the answer's `fileIdMap` gives the new ids. The result includes a `mentionTag` (@[Title](knowledge:document:<id>)) — paste it verbatim in your confirmation so the updated doc is one click away.",
       "searchKeywords": ["modifier", "edit", "doc", "document", "mettre"],
       "requiredScopes": ["knowledge:documents:update"],
       "writesToTable": "app_knowledge.documents",
@@ -1069,6 +1144,7 @@
           "widget": "richtext"
         }
       ],
+      "resourceOwner": { "host": "knowledge.page" },
       "handler": "update",
       "params": {
         "type": "object",
@@ -1127,14 +1203,15 @@
       }
     },
     "archive": {
-      "description": "Archive (retire) a Knowledge document — a reversible soft-archive that removes it from the active KB and from search. Use this to retire a wrong, superseded, or stray DUPLICATE document you created; restore reverses it. Do NOT rename a doc to '[ARCHIVED]'/'OLD' as a fake cleanup — archive it. Pass the document id.",
+      "description": "Move a Knowledge document to Trash (retire it): it leaves the active KB and search at once, and is DELETED FOR GOOD after 30 days unless someone restores it. Use this to retire a wrong, superseded, or stray DUPLICATE document you created; restore brings it back within the 30 days. Do NOT rename a doc to '[ARCHIVED]'/'OLD' as a fake cleanup: move it to Trash. Synced documents (from Drive, GitLab or another source) cannot be trashed: they are managed in their source. Pass the document id.",
       "searchKeywords": ["archiver", "doc", "document"],
       "requiredScopes": ["knowledge:documents:archive"],
       "writesToTable": "app_knowledge.documents",
       "trustBoundary": "user",
       "conditionalGate": true,
-      "approvalCard": { "summary": "Archive a knowledge document" },
+      "approvalCard": { "summary": "Move a knowledge document to Trash" },
       "approvalImpact": "internal",
+      "resourceOwner": { "host": "knowledge.page" },
       "handler": "archive",
       "params": {
         "type": "object",
@@ -1149,7 +1226,7 @@
       }
     },
     "restore": {
-      "description": "Restore a previously-archived Knowledge document back into the active KB. Reverses archive; a no-op (no event) if the document is already active. Pass the document id.",
+      "description": "Restore a Knowledge document from Trash back into the active KB, back in its folders (Unfiled when none is left). Reverses archive and stops the 30-day deletion; a no-op (no event) if the document is already active. Pass the document id.",
       "searchKeywords": ["restaurer", "doc", "document"],
       "requiredScopes": ["knowledge:documents:archive"],
       "writesToTable": "app_knowledge.documents",
@@ -1168,8 +1245,8 @@
       }
     },
     "collection_create": {
-      "description": "Create a Knowledge collection (folder).",
-      "searchKeywords": ["dossier", "folder"],
+      "description": "Create a Knowledge collection (folder). Shared with the organization unless `personal` is true; a subfolder is seen by whoever sees its parent.",
+      "searchKeywords": ["dossier", "folder", "créer"],
       "requiredScopes": ["knowledge:collections:manage"],
       "trustBoundary": "user",
       "handler": "collection_create",
@@ -1191,6 +1268,10 @@
               "string",
               "null"
             ]
+          },
+          "personal": {
+            "type": "boolean",
+            "description": "True only when the user asks for a folder of their own that nobody else sees."
           }
         },
         "required": [
@@ -1233,7 +1314,7 @@
       }
     },
     "collection_delete": {
-      "description": "Archive a Knowledge collection (removes it from the active tree).",
+      "description": "Delete a Knowledge collection (folder). Its documents and subfolders move to its parent folder; documents at the top become unfiled. No document is deleted.",
       "searchKeywords": ["dossier", "folder", "supprimer"],
       "requiredScopes": ["knowledge:collections:manage"],
       "trustBoundary": "user",
@@ -1348,7 +1429,7 @@
             },
             "shared": {
               "type": "boolean",
-              "description": "Shared with the whole organization rather than owned by the person importing."
+              "description": "Shared with the whole organization (the default). False makes it a personal folder only the person importing sees; a subfolder is seen by whoever sees its parent."
             }
           }
         },
@@ -1391,6 +1472,7 @@
             },
             "collectionRefs": {
               "type": "array",
+              "maxItems": 500,
               "items": {
                 "type": "string",
                 "minLength": 1
@@ -1434,6 +1516,7 @@
             },
             "attachments": {
               "type": "array",
+              "maxItems": 500,
               "items": {
                 "type": "object",
                 "required": [
@@ -1444,6 +1527,47 @@
                   "fileId": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "ref": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "How the body names the file: ![](import-file:<ref>). A file that cannot be copied is named in the report and its link becomes its text."
+                  }
+                }
+              }
+            },
+            "orgAccess": {
+              "type": "string",
+              "enum": [
+                "none",
+                "viewer",
+                "editor"
+              ],
+              "description": "Who in the organization sees the page: only its owner (none), everyone reads (viewer), everyone edits (editor). Default: from the sensitivity."
+            },
+            "indexOfCollectionRef": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The page is this imported folder's own page, filed in it."
+            },
+            "losses": {
+              "type": "array",
+              "maxItems": 500,
+              "description": "What the source had that this page does not carry, named in the run report.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "what",
+                  "where"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "what": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "where": {
+                    "type": "string"
                   }
                 }
               }
@@ -1457,7 +1581,8 @@
           "app_knowledge.collection_memberships",
           "app_knowledge.tags",
           "app_knowledge.taggings",
-          "kernel.files"
+          "kernel.files",
+          "app_knowledge.document_versions"
         ],
         "writeScopes": [
           "knowledge:documents:create"
@@ -1606,12 +1731,32 @@
         "resolveLabel": "resolveKnowledgeDocLabel",
         "referenceable": false
       },
+      "folder": {
+        "component": "KnowledgeFolderView",
+        "sidebar": "KnowledgeSidebar",
+        "label": "Folder",
+        "icon": "KnowledgeIcon",
+        "urlPattern": "/knowledge/folders/:entityId",
+        "entity": "collection",
+        "resolveLabel": "resolveKnowledgeFolderLabel",
+        "referenceable": false
+      },
       "source_link": {
         "component": "KnowledgeLinkedSourceView",
         "sidebar": "KnowledgeSidebar",
         "label": "Linked Source",
         "icon": "KnowledgeIcon",
         "urlPattern": "/knowledge/sources/:entityId",
+        "referenceable": false
+      },
+      "import": {
+        "component": "KnowledgeImportView",
+        "sidebar": "KnowledgeSidebar",
+        "label": "Import from Notion",
+        "labelKey": "knowledge.notionImport.tabLabel",
+        "icon": "KnowledgeIcon",
+        "urlPattern": "/knowledge/import",
+        "singleton": true,
         "referenceable": false
       },
       "synced-source-add": {
@@ -1626,6 +1771,8 @@
     },
     "wsHandlers": {
       "document": "handleKnowledgeDocumentWsEvent",
+      "collection": "handleKnowledgeCollectionWsEvent",
+      "collection_membership": "handleKnowledgeCollectionWsEvent",
       "synced_source": "handleSyncedSourceWsEvent"
     },
     "activityBar": {
@@ -1642,11 +1789,13 @@
   },
   "roles": {
     "member": {
-      "description": "Knowledge member: read, create, update, link, and attach allowed Knowledge items",
+      "description": "Knowledge member: read, create, update, link, and attach allowed Knowledge items, manage folders, and move pages they can edit to Trash and back",
       "scopes": [
         "knowledge:documents:read",
         "knowledge:documents:create",
         "knowledge:documents:update",
+        "knowledge:collections:manage",
+        "knowledge:documents:archive",
         "knowledge:links:create",
         "knowledge:sources:read",
         "knowledge:attachments:download",
@@ -1654,10 +1803,9 @@
       ]
     },
     "curator": {
-      "description": "Knowledge curator: manage collections, tags, archives, and source settings",
+      "description": "Knowledge curator: manage tags, archives, and source settings",
       "extends": "member",
       "scopes": [
-        "knowledge:collections:manage",
         "knowledge:tags:manage",
         "knowledge:documents:archive",
         "knowledge:documents:assign-owner",
@@ -1680,5 +1828,9 @@
       "kind": "guide",
       "enabledByDefault": true
     }
+  },
+  "attention": {
+    "groupLabel": { "label": "Knowledge", "labelKey": "kernel.homeGroupKnowledge" },
+    "translations": []
   }
 }

@@ -66,6 +66,30 @@ describe("MagicLinkVerify", () => {
     })
   })
 
+  it("a handoff's Continue marks the first open (personal agent); an emailed link does not", async () => {
+    sessionStorage.clear()
+    postMock.mockResolvedValueOnce({ accessToken: "at-emailed" })
+    const emailed = renderPage()
+    await waitFor(() => expect(accessToken()).toBe("at-emailed"), { timeout: 15000 })
+    expect(sessionStorage.getItem("liaison:first-open")).toBeNull()
+    emailed.unmount()
+
+    clearAuth()
+    window.history.replaceState({}, "", "/login/magic?challengeId=c1&token=t1")
+    postMock.mockResolvedValueOnce({
+      confirmRequired: true,
+      workspace: { name: "Acme Tools", slug: "acme-tools" },
+      account: { email: "owner@acme.test", name: "Olive Owner" },
+    })
+    const page = renderPage()
+    await page.findByTestId("magic-link-confirm", {}, { timeout: 15000 })
+    postMock.mockResolvedValueOnce({ accessToken: "at-handoff" })
+    fireEvent.click(page.getByTestId("magic-link-continue"))
+    await waitFor(() => expect(accessToken()).toBe("at-handoff"), { timeout: 15000 })
+    expect(sessionStorage.getItem("liaison:first-open")).toBe("personal-agent")
+    sessionStorage.clear()
+  })
+
   it("a refused Continue shows the invalid-link message and no session", async () => {
     postMock.mockResolvedValueOnce({
       confirmRequired: true,
@@ -78,5 +102,54 @@ describe("MagicLinkVerify", () => {
     fireEvent.click(page.getByTestId("magic-link-continue"))
     await page.findByTestId("magic-link-invalid", {}, { timeout: 15000 })
     expect(hasSession()).toBe(false)
+  })
+})
+
+describe("MagicLinkVerify: the goal a signup chose", () => {
+  beforeEach(() => {
+    clearAuth()
+    postMock.mockReset()
+  })
+  afterEach(() => {
+    clearAuth()
+    window.history.replaceState({}, "", "/")
+  })
+
+  async function continueWith(search: string) {
+    window.history.replaceState({}, "", `/login/magic?${search}`)
+    postMock.mockResolvedValueOnce({
+      confirmRequired: true,
+      workspace: { name: "Acme Tools", slug: "acme-tools" },
+      account: { email: "owner@acme.test", name: "Olive Owner" },
+    })
+    const page = renderPage()
+    await page.findByTestId("magic-link-continue", {}, { timeout: 15000 })
+    // Read before the URL is cleaned: nothing of it stays in the address bar.
+    expect(window.location.search).toBe("")
+    expect(postMock).toHaveBeenLastCalledWith("/auth/magic-link/verify", {
+      challengeId: "c1",
+      token: "t1",
+    })
+    postMock.mockResolvedValueOnce({ accessToken: "at-goal" })
+    fireEvent.click(page.getByTestId("magic-link-continue"))
+    await waitFor(() => expect(accessToken()).toBe("at-goal"), { timeout: 15000 })
+    return postMock.mock.calls.at(-1)![1]
+  }
+
+  it("rides on Continue only, when it is one of the three", async () => {
+    expect(await continueWith("challengeId=c1&token=t1&goal=knowledge")).toEqual({
+      challengeId: "c1",
+      token: "t1",
+      confirm: true,
+      goal: "knowledge",
+    })
+  })
+
+  it("an unknown goal is dropped", async () => {
+    expect(await continueWith("challengeId=c1&token=t1&goal=billing")).toEqual({
+      challengeId: "c1",
+      token: "t1",
+      confirm: true,
+    })
   })
 })

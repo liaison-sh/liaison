@@ -51,6 +51,10 @@ interface EntityProbe {
   table: string
   /** The probed id is this `data` key, not the event's entity id (a table row: its table). */
   idDataKey?: string
+  /** The probed id is this `data` key when the event carries it, else the event's entity id
+   *  (an agreement's evidence event names the agreement in `agreement_id` when its entity id is
+   *  a version). */
+  preferDataKey?: string
   /** When the entity row is gone (a delete event), the parent whose
    *  visibility stands in for it, read from these `data` keys in order. */
   parents?: Array<{ dataKey: string; schema: string; table: string }>
@@ -84,6 +88,21 @@ const OWNER_SCOPED_FAMILIES: Record<string, EntityProbe> = {
   "kernel:contact": { schema: "kernel", table: "contacts" },
   "mcp-manager:connection": { schema: "app_mcp_manager", table: "mcp_connections" },
   "knowledge:document": { schema: "app_knowledge", table: "documents" },
+  // An agreement closed to the organization (`sharedRows`): only an owner on its list ticks.
+  "agreements:agreement": { schema: "app_agreements", table: "agreements" },
+  "agreements:evidence": {
+    schema: "app_agreements",
+    table: "agreements",
+    preferDataKey: "agreement_id",
+  },
+  // Folders: the owner of the routine must see the folder. A membership that is gone (its delete
+  // event names the page, not the row) is decided by its folder.
+  "knowledge:collection": { schema: "app_knowledge", table: "collections" },
+  "knowledge:collection_membership": {
+    schema: "app_knowledge",
+    table: "collection_memberships",
+    parents: [{ dataKey: "collectionId", schema: "app_knowledge", table: "collections" }],
+  },
   // A dashboard table's row (modules/dashboards/tables): the owner must read its table (0298).
   "kernel:dashboard_table_row": {
     schema: "kernel",
@@ -175,7 +194,9 @@ export async function ownerCanSeeEventEntity(owner: UserContext, evt: GateEvent)
   if (!probe) return true
   const id = probe.idDataKey
     ? asUuid(dataOf(evt)[probe.idDataKey])
-    : (asUuid(evt.entityId) ?? asUuid(dataOf(evt).id))
+    : ((probe.preferDataKey ? asUuid(dataOf(evt)[probe.preferDataKey]) : null) ??
+      asUuid(evt.entityId) ??
+      asUuid(dataOf(evt).id))
   if (!id) return false
   const visible = await withRlsContext(
     owner,
@@ -254,6 +275,15 @@ export function isMailSenderFilterEvent(
   evt: Pick<GateEvent, "app" | "entity" | "action">,
 ): boolean {
   return evt.app === "mail" && evt.entity === "message" && evt.action === "create"
+}
+
+/**
+ * Whether a `mail:message:create` event is mail the org SENT (a member's send, or a routine's
+ * approved reply or change request) rather than mail that arrived. A mail routine reacts to mail
+ * that arrives: the org's own outgoing mail never starts one, filtered or not.
+ */
+export function isOutboundMailEvent(evt: GateEvent): boolean {
+  return isMailSenderFilterEvent(evt) && (dataOf(evt).direction ?? "inbound") !== "inbound"
 }
 
 /**

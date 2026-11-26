@@ -1,0 +1,2 @@
+# An accepted amendment adds one milestone to a billing plan, once per change request.
+src/billing-step-add.test.ts

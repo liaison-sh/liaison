@@ -6,8 +6,10 @@
 // with. Nothing here re-implements a provisioner.
 //
 // Three passes, each idempotent, so a re-seed is the same run as a no-op:
-//   1. the org alone (`provisionOrgShell`), so a tier can stamp what it must on
-//      the org (a demo marker, say) before a single account exists in it;
+//   1. the org alone (`provisionOrgShell`), with its email section (the
+//      commercial identity its mail states) when the config has one, so a tier
+//      can stamp what it must on the org (a demo marker, say) before a single
+//      account exists in it;
 //   2. the admin and the roles (`provisionAdminAndRoles`);
 //   3. the people (`provisionPeople`). `runConfigApply` validates every
 //      `users[].role` before any provisioner writes, and for an org that does
@@ -20,11 +22,12 @@ import { eq, sql } from "drizzle-orm"
 import { runConfigApply } from "~/cli/config/apply"
 import type { ProvisioningConfig } from "~/cli/config/schema"
 import { adminProvisioner } from "~/cli/provisioners/admin"
-import { orgProvisioner } from "~/cli/provisioners/org"
+import { emailProvisioner } from "~/cli/provisioners/email"
+import { orgProvisioner, orgProvisionerOf } from "~/cli/provisioners/org"
 import { rolesProvisioner } from "~/cli/provisioners/roles"
 import { usersProvisioner } from "~/cli/provisioners/users"
 import { withSystemDb } from "~/db/privileged"
-import { organizations, systemConfig } from "~/db/schema/kernel"
+import { type OrgClass, organizations, systemConfig } from "~/db/schema/kernel"
 
 export type OrgConfig = Omit<ProvisioningConfig, "users">
 export type PeopleConfig = NonNullable<ProvisioningConfig["users"]>
@@ -121,11 +124,15 @@ export async function provisionOrgShell(
   config: OrgConfig,
   who: string,
   log: (msg: string) => void,
+  opts: {
+    /** The class of an org this pass creates; an org under the slug with another class is refused. */
+    orgClass?: OrgClass
+  } = {},
 ): Promise<{ orgId: string; created: boolean }> {
   const pass = await runConfigApply({
     ...applyOptions(log),
     config,
-    registry: { org: orgProvisioner },
+    registry: { org: orgProvisionerOf(opts.orgClass), email: emailProvisioner },
   })
   if (pass.exitCode !== 0) {
     throw new Error(
@@ -138,6 +145,17 @@ export async function provisionOrgShell(
   }
 }
 
+/**
+ * The config of a pass after the first: without the email section, which pass 1
+ * wrote. A pass whose registry has no email provisioner never writes it, and
+ * carrying it would only make the apply's drift record read the org's email
+ * settings back twice per pass, on the visitor seed's load path.
+ */
+function laterPass(config: OrgConfig): OrgConfig {
+  const { email: _written, ...rest } = config
+  return rest
+}
+
 /** Pass 2: the org's admin and its custom roles. */
 export async function provisionAdminAndRoles(
   config: OrgConfig,
@@ -146,7 +164,7 @@ export async function provisionAdminAndRoles(
 ): Promise<void> {
   const pass = await runConfigApply({
     ...applyOptions(log),
-    config,
+    config: laterPass(config),
     registry: { org: orgProvisioner, admin: adminProvisioner, roles: rolesProvisioner },
   })
   if (pass.exitCode !== 0) {
@@ -165,7 +183,7 @@ export async function provisionPeople(
 ): Promise<void> {
   const pass = await runConfigApply({
     ...applyOptions(log),
-    config: { ...config, users: people },
+    config: { ...laterPass(config), users: people },
     registry: { org: orgProvisioner, admin: adminProvisioner, users: usersProvisioner },
   })
   if (pass.exitCode !== 0) {

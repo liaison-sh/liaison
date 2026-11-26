@@ -275,6 +275,32 @@ describe("AttentionRow", () => {
     expect(getByTestId(`${id}-last-failure`).textContent).toContain("App execution timed out")
   })
 
+  it("a decision dropped at boot as too old says on its row that it was not sent", () => {
+    const item: AttentionItem = {
+      id: "kernel:approval_pending:old1",
+      app: "kernel",
+      entity: "approval_request",
+      entityId: "old1",
+      kind: "approval_pending",
+      summary: "Reply to the customer",
+      urgency: 50,
+      occurredAt: "2026-07-07T10:00:00Z",
+      action: { type: "decide_approval", approvalId: "old1" },
+      metadata: { subtitle: "Pending approval", actionLabel: "Reply to the customer" },
+    }
+    const { queryByTestId, getByTestId } = render(() => (
+      <ApiContext.Provider value={makeApi(vi.fn())}>
+        <AttentionRow item={item} />
+      </ApiContext.Provider>
+    ))
+    const id = "attention-row-kernel-approval_request-old1"
+    expect(queryByTestId(`${id}-not-sent`)).toBeNull()
+    DecisionQueueTestAccess.markNotSent("approval", "old1")
+    expect(getByTestId(`${id}-not-sent`).textContent).toBe(
+      "Not sent: this decision was more than 15 minutes old. Decide again.",
+    )
+  })
+
   it("a notification about this approval opens its card and scrolls it into view (LIF-18)", async () => {
     const { focusApproval, focusedApproval } = await import("~/modules/shell/approval-focus")
     const item: AttentionItem = {
@@ -383,6 +409,65 @@ describe("AttentionRow", () => {
     )
   })
 
+  it("attention-row.approval shows the consent line on its face, desktop and phone, never only in Details", () => {
+    const consent =
+      "Drafted after reading agreements data that some people who can read days off in projects cannot see: approving shares it with them."
+    const item: AttentionItem = {
+      id: "kernel:approval_pending:cs1",
+      app: "kernel",
+      entity: "approval_request",
+      entityId: "cs1",
+      kind: "approval_pending",
+      summary: "Projects: days off set",
+      urgency: 60,
+      occurredAt: "2026-09-09T00:00:00Z",
+      action: { type: "decide_approval", approvalId: "cs1" },
+      metadata: {
+        requestHandle: "request-29",
+        // Three lines of its own fill the row's quota; the consent line is the fourth.
+        summaryLines: ["On: 12-25", "Label: Christmas Day", "Yearly: yes", consent],
+        consentLine: consent,
+        actionLabel: "Projects: days off set",
+      },
+    }
+    const tid = "attention-row-kernel-approval_request-cs1"
+    const desktop = render(() => (
+      <ApiContext.Provider value={makeApi(vi.fn())}>
+        <AttentionRow item={item} />
+      </ApiContext.Provider>
+    ))
+    expect(desktop.getByTestId(`${tid}-consent`).textContent).toBe(consent)
+    // Once, as its own line: not repeated among the summary lines.
+    const lines = desktop.getByTestId(`${tid}-lines`)
+    expect(Array.from(lines.querySelectorAll("li")).map((li) => li.textContent)).toEqual([
+      "On: 12-25",
+      "Label: Christmas Day",
+      "Yearly: yes",
+    ])
+    desktop.unmount()
+
+    const realMatchMedia = window.matchMedia
+    window.matchMedia = ((query: string) =>
+      ({
+        matches: query === PHONE_QUERY,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }) as unknown as MediaQueryList) as typeof window.matchMedia
+    syncShellTier()
+    try {
+      const phone = render(() => (
+        <ApiContext.Provider value={makeApi(vi.fn())}>
+          <AttentionRow item={item} />
+        </ApiContext.Provider>
+      ))
+      expect(phone.getByTestId(`${tid}-consent`).textContent).toBe(consent)
+    } finally {
+      window.matchMedia = realMatchMedia
+      syncShellTier()
+    }
+  })
+
   it("attention-row.approval lists a sequence's steps in order, in place of the outcome's lines", () => {
     const item: AttentionItem = {
       id: "kernel:approval_pending:s1",
@@ -481,6 +566,42 @@ describe("AttentionRow", () => {
     expect(post).toHaveBeenCalledWith(
       "/approvals/a1/decide",
       { decision: "approve" },
+      { suppressGlobalError: true },
+    )
+  })
+
+  // Demo walk 2026-11-25: Approve on a row of two steps was refused (409
+  // payload_changed) for want of the later step's fingerprint, which the row
+  // now carries from the feed.
+  it("attention-row.decide-approve on a request of several steps sends each later step's fingerprint", async () => {
+    const post = vi.fn().mockResolvedValue({})
+    const item: AttentionItem = {
+      id: "kernel:approval:b1",
+      app: "kernel",
+      entity: "approval_request",
+      entityId: "b1",
+      kind: "approval_pending",
+      summary: "Create the company",
+      urgency: 60,
+      occurredAt: "2026-05-06T00:00:00Z",
+      action: {
+        type: "decide_approval",
+        approvalId: "b1",
+        payloadHash: "hash-b1",
+        stepPayloadHashes: { b2: "hash-b2" },
+      },
+    }
+    const { getByTestId } = render(() => (
+      <ApiContext.Provider value={makeApi(post)}>
+        <AttentionRow item={item} />
+      </ApiContext.Provider>
+    ))
+    fireEvent.click(getByTestId("attention-row-kernel-approval_request-b1-approve"))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(post).toHaveBeenCalledWith(
+      "/approvals/b1/decide",
+      { decision: "approve", payloadHash: "hash-b1", stepPayloadHashes: { b2: "hash-b2" } },
       { suppressGlobalError: true },
     )
   })
@@ -1519,5 +1640,175 @@ describe("AttentionRow: Open on an approval whose item has its own page", () => 
     const item = { ...linked("ol3"), metadata: {} }
     const { queryByTestId } = renderRow(item)
     expect(queryByTestId("attention-row-invoicing-approval_request-ol3-open-link")).toBeNull()
+  })
+})
+
+// A newcomer reading the Home rows lost the decision, the deadline and the title to internal ids.
+describe("AttentionRow: what a newcomer reads on a Home row", () => {
+  const ID = "cw-1"
+  const tid = `attention-row-kernel-approval_request-${ID}`
+  const item = (metadata: Record<string, unknown> = {}): AttentionItem => ({
+    id: `kernel:approval_pending:${ID}`,
+    app: "kernel",
+    entity: "approval_request",
+    entityId: ID,
+    kind: "approval_pending",
+    summary: "Update skill: shipment-exception",
+    urgency: 60,
+    occurredAt: "2026-11-08T00:00:00Z",
+    action: { type: "decide_approval", approvalId: ID },
+    metadata: {
+      toolName: "kernel:update_skill",
+      actionLabel: "Workspace: update skill",
+      requestHandle: "demo-skill-shipment-exception-customs",
+      requesterName: "Margot Dufour",
+      expiresInSeconds: 7 * 86_400,
+      ...metadata,
+    },
+  })
+  const asPhone = (fn: () => void) => {
+    const realMatchMedia = window.matchMedia
+    window.matchMedia = ((query: string) =>
+      ({
+        matches: query === PHONE_QUERY,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }) as unknown as MediaQueryList) as typeof window.matchMedia
+    syncShellTier()
+    try {
+      fn()
+    } finally {
+      window.matchMedia = realMatchMedia
+      syncShellTier()
+    }
+  }
+  const renderRow = (it: AttentionItem) =>
+    render(() => (
+      <ApiContext.Provider value={makeApi(vi.fn())}>
+        <AttentionRow item={it} />
+      </ApiContext.Provider>
+    ))
+
+  it("says what runs out: Expires in 7 days, not 7d left", () => {
+    const { getByTestId } = renderRow(item())
+    expect(getByTestId(`${tid}-metric`).textContent).toBe("Expires in 7 days")
+  })
+
+  it("desktop meta line: who asked and when lead, the handle comes last", () => {
+    const { getByTestId } = renderRow(item())
+    const requester = getByTestId(`${tid}-requester`)
+    const ref = getByTestId(`${tid}-ref`)
+    expect(ref.textContent).toBe("demo-skill-shipment-exception-customs")
+    // DOCUMENT_POSITION_FOLLOWING: the ref comes after the requester.
+    expect(requester.compareDocumentPosition(ref) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("phone: the pill names the app only, the title leads, the handle is not the byline", () => {
+    asPhone(() => {
+      const { getByTestId } = renderRow(item())
+      expect(getByTestId(`${tid}-action-chip`).textContent).toBe("Workspace")
+      expect(getByTestId(`${tid}-title`).textContent).toBe("Update skill: shipment-exception")
+      const secondary = getByTestId(`${tid}-secondary`).textContent ?? ""
+      expect(secondary).not.toContain("demo-skill")
+      expect(secondary).toContain("Margot Dufour")
+      expect(getByTestId(`${tid}-deadline`).textContent).toBe("Expires in 7 days")
+    })
+  })
+
+  it("Details keeps Approve and Reject in view: the card's decision row sticks, no id header", async () => {
+    handleWsCreate(
+      {
+        id: ID,
+        handle: "request-0102",
+        status: "pending",
+        createdAt: "2026-11-08T00:00:00.000Z",
+        expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+        toolName: "test:gated_write",
+        summary: { kind: "generic", title: "Update skill: shipment-exception", lines: [] },
+        editableFields: [],
+        currentPayload: { a: 1 },
+        requestedBy: { id: "u-agent" },
+        requester: { kind: "agent", id: "u-agent", name: "Support agent" },
+        notifyUserIds: [],
+        lastEdit: null,
+        lastFailure: null,
+      } as never,
+      "u-approver",
+    )
+    const api = makeApi(vi.fn().mockResolvedValue({}))
+    api.get.mockResolvedValue(undefined)
+    const { getByTestId, findByTestId, queryByTestId } = render(() => (
+      <ApiContext.Provider value={api}>
+        <AttentionRow item={item()} />
+      </ApiContext.Provider>
+    ))
+    fireEvent.click(getByTestId(`${tid}-details`))
+    const expanded = getByTestId(`${tid}-expanded`)
+    await findByTestId("approval-card-title")
+    const actions = expanded.querySelector('[data-testid="actions-inline-row"]')
+    expect(actions).not.toBeNull()
+    expect(actions?.className).toContain("sticky")
+    expect(queryByTestId("approval-card-handle")).toBeNull()
+  })
+})
+
+// A member who signs: their own turn reads as their decision, with the one way to make it.
+describe("AttentionRow: a staff signer's own turn", () => {
+  const turn: AttentionItem = {
+    id: "kernel:client_action:ca-1",
+    app: "kernel",
+    entity: "client_action",
+    entityId: "ca-1",
+    kind: "client_action",
+    summary: "PR-2026-001 Website: open it in Liaison to read and sign",
+    urgency: 70,
+    occurredAt: "2026-11-08T00:00:00Z",
+    persisted: true,
+    action: { type: "open_entity", tabType: "kernel:client_action", entityId: "ca-1" },
+    metadata: { staffTurn: true },
+  }
+  const tid = "attention-row-kernel-client_action-ca-1"
+
+  it("offers Read and sign, and no draft to ask an agent for", () => {
+    const { getByTestId, queryByTestId } = render(() => (
+      <ApiContext.Provider value={makeApi(vi.fn())}>
+        <AttentionRow item={turn} />
+      </ApiContext.Provider>
+    ))
+    expect(getByTestId(`${tid}-open`).textContent).toContain("Read and sign")
+    expect(queryByTestId(`${tid}-ask-draft`)).toBeNull()
+  })
+})
+
+describe("AttentionRow: an approval's age", () => {
+  it("keeps time with the clock, so the row and its open card say one age", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date("2026-11-19T12:00:00.000Z"))
+      const item: AttentionItem = {
+        id: "kernel:approval_pending:r-age",
+        app: "kernel",
+        entity: "approval_request",
+        entityId: "r-age",
+        kind: "approval_pending",
+        summary: "Reply to the client and send a change request",
+        urgency: 60,
+        occurredAt: "2026-11-19T11:47:00.000Z",
+        action: { type: "decide_approval", approvalId: "r-age" },
+        metadata: { toolName: "agreements:change_request_send", subtitle: "Pending approval" },
+      }
+      const { getByTestId } = render(() => (
+        <ApiContext.Provider value={makeApi(vi.fn())}>
+          <AttentionRow item={item} />
+        </ApiContext.Provider>
+      ))
+      const age = () => getByTestId("attention-row-kernel-approval_request-r-age-age").textContent
+      expect(age()).toBe("13m ago")
+      vi.advanceTimersByTime(6 * 60_000)
+      expect(age()).toBe("19m ago")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

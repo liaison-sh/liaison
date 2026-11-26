@@ -163,6 +163,8 @@ export interface ZipEntry {
   uncompressedSize: number
   localHeaderOffset: number
   isDirectory: boolean
+  /** The Unix file mode, when the archive was made on Unix (a symlink is 0o120000). */
+  unixMode: number | null
 }
 
 const SIG_EOCD = 0x06054b50
@@ -323,6 +325,7 @@ export async function readZipDirectory(
     if (p + 46 > cd.byteLength || dv.getUint32(p, true) !== SIG_CENTRAL) {
       throw invalid(`central directory entry ${n + 1} is malformed`)
     }
+    const madeBy = dv.getUint16(p + 4, true)
     const flags = dv.getUint16(p + 8, true)
     const method = dv.getUint16(p + 10, true)
     let compressedSize = dv.getUint32(p + 20, true)
@@ -330,6 +333,7 @@ export async function readZipDirectory(
     const nameLen = dv.getUint16(p + 28, true)
     const extraLen = dv.getUint16(p + 30, true)
     const commentLen = dv.getUint16(p + 32, true)
+    const externalAttrs = dv.getUint32(p + 38, true)
     let localHeaderOffset = dv.getUint32(p + 42, true)
     const nameStart = p + 46
     if (nameStart + nameLen + extraLen + commentLen > cd.byteLength) {
@@ -371,6 +375,8 @@ export async function readZipDirectory(
       uncompressedSize,
       localHeaderOffset,
       isDirectory,
+      // Host 3 is Unix: the mode sits in the high half of the external attributes.
+      unixMode: madeBy >>> 8 === 3 ? externalAttrs >>> 16 : null,
     })
     p = nameStart + nameLen + extraLen + commentLen
   }
@@ -387,6 +393,78 @@ export async function readZipDirectory(
     )
   }
   return entries
+}
+
+// ---------------------------------------------------------------------------
+// Strict checks (built-in imports)
+// ---------------------------------------------------------------------------
+
+const S_IFMT = 0o170000
+const S_IFLNK = 0o120000
+
+/** Why an entry name is unsafe to read as a path, or null. */
+function unsafeName(name: string): string | null {
+  if (name.includes("\0")) return "a name with a NUL character"
+  const path = name.replace(/\\/g, "/")
+  if (path.startsWith("/") || /^[a-zA-Z]:/.test(path)) return "an absolute path"
+  if (path.split("/").some((seg) => seg === "..")) return "a path that leaves its folder"
+  return null
+}
+
+export interface StrictZipLimits {
+  /** Everything the archive declares, decompressed, at most this. */
+  maxDecompressedBytes: number
+  maxEntryRatio: number
+  ratioFloorBytes: number
+}
+
+/**
+ * Refuse an archive before any entry is read: a name that leaves its folder
+ * (`../`, an absolute path), a symbolic link, an entry whose declared size is
+ * more than `maxEntryRatio` times its compressed size (a likely bomb), or
+ * declared sizes adding up past `maxDecompressedBytes`. Reading still checks
+ * every slice (`readZipEntry`): a declared size that lies is caught there.
+ * Returns the declared decompressed total.
+ */
+export function assertSafeArchive(
+  entries: ZipEntry[],
+  limits: StrictZipLimits,
+  what = "The archive",
+): number {
+  let total = 0
+  for (const e of entries) {
+    const bad = unsafeName(e.name)
+    if (bad) {
+      throw new ParserError(
+        "zip_unsafe_entry",
+        `${what} holds ${JSON.stringify(e.name)}, ${bad}; refused.`,
+      )
+    }
+    if (e.unixMode !== null && (e.unixMode & S_IFMT) === S_IFLNK) {
+      throw new ParserError(
+        "zip_unsafe_entry",
+        `${what} holds ${JSON.stringify(e.name)}, a symbolic link; refused.`,
+      )
+    }
+    if (e.isDirectory) continue
+    total += e.uncompressedSize
+    if (total > limits.maxDecompressedBytes) {
+      throw new ParserError(
+        "zip_decompressed_too_large",
+        `${what} declares more than ${limits.maxDecompressedBytes} decompressed bytes; refused.`,
+      )
+    }
+    if (
+      e.uncompressedSize > limits.ratioFloorBytes &&
+      e.uncompressedSize > Math.max(1, e.compressedSize) * limits.maxEntryRatio
+    ) {
+      throw new ParserError(
+        "zip_ratio_exceeded",
+        `${e.name} expands more than ${limits.maxEntryRatio} times its compressed size; refused as a possible zip bomb.`,
+      )
+    }
+  }
+  return total
 }
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,179 @@
+---
+title: Prepare agreements
+description: "Draft proposals, statements of work, contracts and any PDF, keep templates with versions, and decide who in the organization can see each agreement."
+---
+
+The Agreements app keeps your proposals, statements of work, contracts and any PDF you upload as drafts, checks them before they go out for a simple electronic signature, and keeps the templates they come from.
+
+## Install Agreements
+
+Agreements is not installed in a workspace until an admin installs it: an existing workspace that upgrades does not get it. Open **Settings › App store**, find **Agreements** and choose **Install** (needs `kernel:apps:admin`), or list it in a config file: `apps: [{ name: agreements, enable: true }]` with `liaison config apply` ([the provisioning CLI](../provisioning-cli.md)). Its page, **Settings › Apps › Agreements**, appears once it is installed.
+
+## What a signature here is
+
+Simple electronic signature: the signer reads the document, confirms with a code sent by email, and types their name. You keep the proof.
+
+What that shows, and what it does not:
+
+- It shows that someone who could read the signer's mailbox opened the document, proved the code and typed that name and capacity, at a recorded time from a recorded device. It does not check an identity document.
+- It is the simple level only. Liaison offers no higher signature level, and the signed PDF carries signature pages, not a signature embedded in the file.
+- One outside timestamp covers the sealed package, once the last signer signed: each signer's own time is the server's clock.
+- The copy on your server is the weakest proof, since whoever administers its database could change it. The signers' copies by email and the outside timestamp are the proof that does not depend on your server.
+
+In a demo organization, seeded signatures are stand-ins: the agreement says "In this demo the signature, seal and timestamp are stand-ins. No signature took place.", **verify** answers "stand-in" and checks nothing, and there is no evidence file to download or check.
+
+## Who does what
+
+| Who | Does |
+|---|---|
+| A person with `agreements:agreements:write` | Drafts, sets the price, prepares and sends. The app role `agreements.lead` gives it, with the templates and the evidence; every member (`agreements.member`, part of **Full Member**) reads agreements. |
+| An agent | Drafts, prepares, reads and quotes. Its sends, reminders, new links, voids and template saves wait for a person's approval. It never sets a price and never signs, accepts or decides anything. |
+| A signer outside the organization | Reads, proves the code, signs or declines on their own link (or on the client portal). |
+| A colleague who signs | Signs in their own session, from their Home. |
+| People with `agreements:evidence:read` | Read and verify the proof; device details need `agreements:evidence:devices`. |
+| Administrators | See nothing of an agreement closed to the organization while someone on its list is active (see below). |
+
+## Set up signing on your server
+
+- `LIAISON_TSA_URL`: the RFC 3161 timestamp authority. Without it, a send for signature is refused with `TIMESTAMP_NOT_CONFIGURED`, and the Agreements screens (the list, **New agreement**, the editor and the send page) say at the top that signatures are off on this server, before anyone prepares a document; **Send for signature** stays greyed. Drafts, templates, preparing and acceptances that need no stamp keep working.
+- `LIAISON_TSA_CHAIN_FILE` (a path, preferred) or `LIAISON_TSA_CHAIN_PEM` (inline): the authority's published certificate chain, the only certificates a timestamp is checked against. A URL with no chain is a configuration error: nothing is stamped.
+- `LIAISON_TSA_ALLOW_PRIVATE`: lets the server reach an authority on a private address, for a test authority only. Off by default.
+- The render service `pdf-render` checks and pictures uploaded PDFs. Without it, an uploaded PDF is refused with `PDF_RENDER_UNAVAILABLE`; agreements Liaison writes from a template or a brief need no render service. See [Run without the render service](../self-hosting/docker.md#run-without-the-render-service).
+
+## Draft an agreement
+
+Ask an agent, or use the app: an agreement starts as a draft from a template, a short brief, or an uploaded PDF (kind **other**, where a person says what the document is). Every agreement gets its number from its series: `PR-` for proposals, `DOC-` for an uploaded PDF, `AG-` for the rest, with the year.
+
+An agent never sets a price. A person sets it on the agreement's page. A proposal, a statement of work or a retainer without a price cannot be prepared. Prepare freezes the person's price into the document: a template's price clause prints it where its price field stands, and a text with no price field gets a **Price** section before its signature block. The signing page lists it too, as frozen with that version.
+
+Clauses an agent wrote are marked as drafts. They block the checks until a person reads them and saves the text. Prepare's refusal says how many there are and where ("the 16 clauses an agent wrote (1-16)"), and an agent's prepare is refused at once, before anything waits for approval.
+
+## Work in the app
+
+**Agreements** in the sidebar opens the list: **Needs you** first (drafts and documents waiting for a signature), then every agreement you may see, in the order of what needs someone first. The rail groups them by kind and under **Follow up** (**Waiting on a signature**, **Ending or renewing soon**). **New agreement** starts a draft for the client company you pick (so it reaches that company's portal and its signers), from a template or a blank document. An agent asked for a client's agreements finds them by the agreement's title or number, or by the client company's name among the companies you can read.
+
+An agreement's page has its actions on top and three parts: **Overview** (**Linked to**: its company, contact, deal, project and quote, each opening its own page; signers in order, dates, price, versions with their fingerprints), **Document** (the draft's text, or **Open the PDF** for the frozen file) and **Proof of signature** (the evidence, **Check the stored files**, **Download signed PDF**, **Download proof of signature** for the people who hold `agreements:evidence:devices`, and what the proof shows and does not, how long it is kept and what leaving Liaison changes). A link to an agreement in a conversation opens this page.
+
+A company's page has an **Agreements** section listing the company's agreements you may see; each opens its agreement. A project's page lists its agreements the same way, with their company and quote, and a deal shows how many agreements name it. Drafts are not listed there.
+
+**Edit** opens the editor. A clause an agent wrote carries the mark "Draft, written by an agent. Read it to clear this mark." until you press **I read it** or write it yourself, then **Save**. The rail holds the price (**Set price**, a person's own field), **What it is** for an uploaded PDF, the **Layout** (**Classic legal layout** numbers articles and pages itself), **Who can see this** and the checks. **Prepare for signature** is offered once every blocking check passes and the text is saved. Editing a sent agreement says first that it makes a new version and withdraws its open links; those links' pages then say that the document changed and that no new link was sent yet, and offer to ask you for the new version. The editor of an uploaded PDF shows the file it is, with no **Layout** to choose: a change to it is a new upload. The classic legal layout prints its own words (clause, page numbers) in the agreement's language. An agent writes the text in `source.body.blocks`, one heading, paragraph, clause (`article`) or list of written `items` per block; any other shape is refused before anything waits for approval, naming the field. In the classic legal layout a heading or a clause that starts with a typed number is refused at Prepare: the layout numbers them.
+
+**Prepare for signature** freezes the version and shows its fingerprint; then name the signers, the **Signing order**, the **Words to type before signing** and how long the link works, and **Send for signature**. Your own click sends it, within your permissions; an agent's send waits for your approval. When it is your turn to sign, Home lists it among what needs you, with **Read and sign**, and the agreement's page shows **Read and sign** for you, and for nobody else. A code to confirm it is mailed to you when you sign.
+
+## Check before sending
+
+**Prepare** runs the checks a document needs before it is sent:
+
+- a document tagged as a guarantee, real estate, family or employment document cannot be signed here;
+- a text that looks like a personal guarantee waits until a person changes its kind or says it is not one;
+- minutes of a meeting, a written consultation or a filing pass with a note: check with your lawyer first, since some of these acts need a higher signature level, which Liaison does not offer;
+- a proposal needs its price, a PDF needs a person's statement of what it is, and every agent clause needs a person's reading;
+- a retainer renewal needs its included hours (`hours_minutes`), its monthly price and its first day (`starts_on`): the refusal names what is missing.
+
+### Upload your own PDF
+
+Upload the file first (from an agent's client, `kernel__files_upload_url` then `kernel__files_upload_confirm`), then pass its file id when you create the agreement or save its draft. Liaison keeps a copy of the file on the agreement, so whoever may read the agreement reads the file, and nobody else: an agreement closed to the organization hides it too.
+
+**Prepare** freezes the file exactly as you uploaded it, byte for byte, after the server's own checks: the file is read by an isolated render service (see [Run with Docker](../self-hosting/docker.md)), refused when it holds active content or reads two ways, and pictured page by page for the signing page. A long check answers that the file is still being checked, and the version appears when the check ends. When the virus scanner is down or not set up, the file is kept and marked as not checked: sending it scans it again, a later scan runs every 15 minutes until the scanner answers, and until then the approval card says "Not checked for viruses". A file the scanner later finds is not sent, and its signing page no longer offers the download.
+
+## Keep templates with versions
+
+Saving a template makes a new version. An agreement copies the text of the version it was made from, so a later version never changes it. A template shows or hides a block on one field's equality only. An agent's template save waits for a person's approval.
+
+## Decide who can see an agreement
+
+Each agreement has an organization access (none, viewer, editor) and a list of named people. With **none**, only the people on the list can read the agreement, its drafts, versions, signatures and evidence, whatever role or permission anyone else holds, administrators included. The person who creates an agreement starts on its list as an editor. The list is never empty, a viewer cannot change it, and an agent's change waits for a person.
+
+In the editor, adding someone who cannot open the Agreements app saves the share and shows a notice saying so, so you know to give them access. A change that is refused shows the reason instead of failing silently.
+
+What comes from a closed agreement follows its list: Home items and notifications about it reach only the people on the list, a routine whose owner is not on the list does not run on its events, and what an agent writes after reading it can be read only by the people on the list.
+
+An approval about a closed agreement goes only to the person who asked, and its Home line and notification say "A restricted document needs your decision" without the title. When an agreement is closed while requests about it wait for people who are not on its list, those requests are withdrawn and the people on the list get one Home line saying so. A colleague who signs a closed agreement but is not on its list signs with their own link and reads it only there; the send card says so before anyone approves.
+
+Administrators see nothing of a closed agreement while anyone on its list is active. Once every person on the list has been deactivated for 7 days, an administrator with the user administration permission can add themselves with `POST /api/apps/agreements/agreements/:id/claim`. The claim is recorded in the audit log, everyone who was ever on the list gets a mail, and the agreement shows who claimed it and when. This is an access rule, not encryption: whoever runs the server can reach the data.
+
+The audit log shows what it recorded about a closed agreement to the people on its list only. The whole-organization export names a closed agreement by its number and status and leaves out its title, versions, signatures, evidence and list.
+
+## Send for signature
+
+**Send** takes the version **Prepare** froze, with its fingerprint, and the signers: contacts or email addresses, in order (one after the other) or all at once, with links that last 7, 14 or 30 days. A contact signs at the address the directory holds for them; a send that names a contact with another address is refused (name that signer by email instead, or correct the contact). An agent's send waits for a person's approval; nothing goes out if the version changed since **Prepare**, and the approved send goes only to the addresses its card showed. Under "one after the other", the next signer gets a link only once the signer before them signed. Two people who share one address are two signers: name each one, and each gets their own link and code and signs with their own name. Each mail says whose link or code it is, and on the client portal the person signed in sees, signs and downloads only their own. Any role that may draft agreements may send those it can see; the document is read for the signers as part of that send, and nothing else opens to the sender. The card an agent's send waits on names the document, its version and each signer. A colleague who signs gets a line on their Home and signs in their own session, with no mailed link; their **Read and sign** opens only once their turn has come.
+
+A send goes out whole, to all its signers (40 at most), or not at all. If it is cut off half way (the page closed, the server too slow to answer), the agreement still shows **sent** once its links exist, within 10 minutes at most, and an answer given in between is recorded. Sending it again sends nothing twice: it says the links already went out, and to whom, and names a signer whose mail failed (**Remind** mails a new link) or has not left yet. If the server stops after the links are made and before their mails leave, each mail that had not started goes out once, within minutes, with a fresh link. It goes on the card that was approved: the check that card made runs again, and the message goes with it (a message typed on the screen, with no card, does not). If a signer wrote to you since the card, or the address failed, nothing is mailed, and you are told on Home that the link did not go: **Remind** mails it when you decide so. Once a signer declined, the others' late mails wait until that signer is asked again. A mail being handed over at that very moment may have gone or not, so remind that signer if they got nothing. Other signers on a version already sent are refused: void it, or save a new version, first.
+
+Links that may be half a send (made one by one by an earlier release), or a draft that changed after its links went out, are never taken for a send: the agreement stays a draft, a signature given on it is kept but signs nothing, and the people who look after it get one Home line. Send it again to the same signers to say it is whole (the signatures it kept count from then on, and the next signer is asked), save a change to replace it, or void it. A version prepared while the one before was being sent withdraws that one's links: the agreement is a draft again and the new version is the one to send.
+
+A signer opens the link, reads the document, proves the code sent to their address and types their name. A link whose code was never proved can read and decline, never sign. Each signature is recorded once; the agreement shows **partly signed**, then **signed** when the last signer signed. A decline closes it as **declined**; signatures given before it stay on that version, and the pages of those who signed say that no copy will come. When the sender has left the organization, the person who approved the send hears what the signers do, else the admins (on a closed agreement, only the people on its list).
+
+A server signs only with a timestamp authority set up (see [Set up signing on your server](#set-up-signing-on-your-server)). On the hosted edition, signatures are off unless the operator turns them on (`LIAISON_MANAGED_SIGNING_ENABLED`).
+
+## Follow up a send
+
+- **Remind** sends each named signer whose link is still open a fresh link; the one mailed before stops working. A signer who answered, or who waits for their turn, gets nothing. A signer whose link was mailed again in the last 10 minutes keeps that link and gets no second mail: the answer names them.
+- **New link** gives one signer a new link, at the same or a corrected address, in the same turn: after their link expired or was withdrawn, or after a decline made without the emailed code. Signatures already given stand, and the link it replaces no longer counts: the agreement is signed once every signer signed on their current link. A new link to a corrected address is no longer tied to the contact. After a decline made with the code, send a new version instead. A link a new one already replaced offers no further new link. A signer whose link ran out before their turn can have a new one too. An address another signer of the same name already has in this send is refused. A withdrawn signer whose turn has not come waits for it: their link is mailed after the signer before them signs.
+- **In place of a withdrawn signer**: after one signer's link was withdrawn, an agent's `agreement_send` on the same version, with the withdrawn signer's link in `replaces` and one new signer, puts that person in their place: same version, same turn, their own name, link and code. The card says who is replaced and what that place asks (signature or acceptance, and the words to type). Anyone who already has a place in this send they did not answer is refused, even when their link ran out, and so is replacing a signer who was not withdrawn or who answered. Check with your lawyer whether a proxy may sign for the person named in your document.
+- **Void** withdraws every open link at once, with a reason, and any link being made at that moment. Signatures already given stay. It works on a send that was cut off too; while an answer is still being recorded, a void or a save waits a few minutes (`ANSWER_BEING_RECORDED`).
+
+A change request (`change_request_send`) answers one mail of the client: a send cut off half way and asked again takes up the change request it wrote, or sets it aside when the card now says something else; once its approval link is out, asking again names it and sends nothing (`CHANGE_REQUEST_ALREADY_SENT`), and says when nobody knows whether its reply left. Void it to start over.
+
+An agent's reminder, new link or void waits for a person's approval. **Agreement details** list every signing link with its signer, turn and state.
+
+Every day, a signed agreement that enters its notice period before its renewal or end date raises one notice, and a send whose every link expired with nobody signed becomes **expired**. Every ten minutes, a signature the app missed is recorded.
+
+## Keep the proof of a signature
+
+When the last signer signs, the app seals the version:
+
+- the **signed PDF** is the frozen document with signature pages added at the end: each signer, the capacity they stated, the words they typed when the sender asked for them, the date and time, the level (simple electronic signature) and the document's fingerprint. The pages are numbered on their own ("Signature page 1 of 2"), in the document's language, so the document's own page numbers stay true;
+- the **seal** is a fingerprint over the document's and the signed PDF's fingerprints and the record of every signature;
+- the **evidence file** is a zip of the signed PDF, the frozen document, the signature record, the seal, a signature certificate and a check page;
+- the **outside timestamp** comes from the timestamp authority. When the authority does not answer, the seal stands without it, the app asks again every ten minutes and mails each signer the stamped evidence file when it arrives. After 24 hours without it, one notice goes to the people who can read evidence.
+
+Each signer gets a copy by email: the signed PDF and their own copy of the evidence file, with the fingerprint and the seal written in the mail. A signer's copy lists only their own device; a copy for a colleague lists no device at all. A copy that fails to send is tried again, and after three failures one notice names the signer.
+
+A signer's last page, and their signing link opened again afterwards, says where their copy stands: waiting for the other signers, on its way, sent, not sent (the sender was told), or that none will come because not everyone signed. A typed name the signature pages cannot draw is refused at the code step, before the code is used, with a request to type it in Latin letters.
+
+A seal that fails is tried again every ten minutes; the version stays signed meanwhile, and one notice goes out after an hour. A stored document that no longer matches its fingerprint is never sealed: the app raises a mismatch notice instead.
+
+### Check a document without Liaison
+
+Anyone holding an evidence file (the staff file or a signer's copy) can check a PDF with no network and no Liaison account:
+
+1. Unzip the evidence file and open `check.html` in a browser.
+2. Choose or drop the PDF to check. The page says "This is the document they signed" when the file is the frozen document or the signed PDF, with its fingerprint, and "This is not the document they signed" otherwise, with both fingerprints.
+
+The page also shows the seal (compare it with the one in the signer's mail), says whether the timestamp names this seal, and on the staff file whether the signature record is the sealed one. A signer's copy leaves other people's devices out, so its record is not checked. The page does not check the timestamp authority's signature: it shows the `openssl ts -verify` line for that.
+
+`packages/evidence-check/verify-with-openssl.sh <evidence.zip> <tsa-chain.pem>` runs every check with openssl alone, the timestamp's signature included. `tsa-chain.pem` is the timestamp authority's published certificate chain (the one set as `LIAISON_TSA_CHAIN_FILE` or `LIAISON_TSA_CHAIN_PEM`); the zip does not carry it, so that the file cannot vouch for itself.
+
+Evidence is kept at least ten years from the seal, or until the contract's end plus the organization's years after the end when that is later. Nothing in the app deletes it, a set field never changes, and a signature's record is never updated once written, an empty field included.
+
+## Check a signed agreement
+
+Ask an agent, with `agreements:evidence:read`:
+
+- for an agreement's **evidence** (`agreement_evidence_get`): the fingerprints, the seal, the timestamp, each signature and whether each signer's copy was sent. Signers' IP addresses and browsers need `agreements:evidence:devices`, and so do the staff evidence file and the signers' copies, which list them: without that permission they are not found, by any route. The colleague copy, with no device, needs `agreements:evidence:read` only.
+- to **verify** it (`agreement_verify`): the app hashes the stored files again and recomputes the seal. A mismatch is recorded, shown and reported as an incident, and nothing is repaired: the signers' copies are the reference. The app also checks every sealed agreement once a week.
+
+## After signing
+
+A signed proposal, statement of work, retainer or time and materials agreement starts its project once, for the agreement's company, and the agreement names it. A second delivery of the signature, or the nightly retry, finds the same project. The project is made as the person who sent the agreement for signature. When the proposal has a timebox, Liaison asks Projects for time and budgets and that timebox; Projects turns time and budgets on only from a person's own turn, so today the project starts with them off and a person turns them on. The agreement records whether its project uses time and budgets, which a later change request follows. When the Scope check routine is on, signing also adds the client to its group. When the project's billing plan has an advance step, Invoicing drafts that advance for a person to issue; nothing is issued or sent.
+
+### Renew a retainer
+
+A retainer drafted for a company that already has a signed retainer renews it: the draft names that retainer's project, and the create answer says so (name another project with `project_id`). Give it the included hours a month (`hours_minutes`), and with its price the person also sets the hourly rate above them (`rate_minor`). Once it is signed it starts no new project: its hours, monthly price and rate apply to that project's retainer from the month of its start date, at the earliest the next month; the months before keep the old terms, so no month is billed twice. The first renewed month's timebox on the project takes the new hours. A renewal signed without its hours, price or first day renews nothing: the people who draft agreements get a Home line saying what it lacks.
+
+## Import a contract signed before Liaison
+
+Ask an agent to import it (`agreement_import`) with its PDF, its kind, title, company and the day it was signed. It is filed as **Imported, signed outside Liaison**: no version, no signature, no evidence and no signature level. Text read from the PDF is kept as unverified: an agent quotes a section of it with `agreement_passage_get` and the agreement's id, always marked unverified, and the conversation that read it is treated like one that read outside mail. Set its dates afterwards on the agreement.
+
+## Scopes
+
+| Scope | Lets you |
+|---|---|
+| `agreements:agreements:read` | Read agreements and templates |
+| `agreements:agreements:write` | Draft, change, price and prepare agreements |
+| `agreements:evidence:read` | Read signature records and evidence |
+| `agreements:evidence:devices` | See signers' device details |
+| `agreements:templates:write` | Save templates |
+| `agreements:approve` | Decide a card an agent's change is waiting on (who can see an agreement, a template save) |
+| `agreements:internal` | Used by the app itself |

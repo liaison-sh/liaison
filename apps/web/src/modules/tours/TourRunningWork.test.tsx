@@ -9,9 +9,9 @@
 // the person completes themselves while a routine runs (approving its draft)
 // keeps its buttons.
 import {
+  DEMO_SCENARIO_TOURS,
   type EffectiveBeat,
   effectiveBeats,
-  SCENARIO_TOURS,
   type TourProgress,
 } from "@liaison/shared"
 import { cleanup, render, screen, within } from "@solidjs/testing-library"
@@ -23,14 +23,15 @@ vi.mock("~/modules/shell/shell-tier", () => ({ shellTier: () => "desktop" }))
 vi.mock("~/framework/spa-navigate", () => ({ spaNavigate: vi.fn() }))
 
 const { resetTourStore } = await import("./tour-store")
-const { TourPanel } = await import("./TourPanel")
+const { TourPanel, ROUTINE_START_GRACE_MS } = await import("./TourPanel")
 
 function scenarioBeat(tourId: string, beatId: string) {
-  const tour = SCENARIO_TOURS.find((t) => t.id === tourId)
+  const tour = DEMO_SCENARIO_TOURS.find((t) => t.id === tourId)
   if (!tour) throw new Error(`no scenario ${tourId}`)
   const beats = effectiveBeats(tour, {
     installedApps: tour.beats.flatMap((b) => (b.optional?.whenApp ? [b.optional.whenApp] : [])),
     isDemo: true,
+    ...(tour.world ? { worldId: tour.world } : {}),
   })
   const beat = beats.find((b) => b.id === beatId)
   if (!beat) throw new Error(`no beat ${beatId} in ${tourId}`)
@@ -109,6 +110,30 @@ describe("a step waiting on work running on its own", () => {
       await closeTourMenu()
     })
   }
+
+  it("a routine whose run never shows up says it has not started and offers Skip this step", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] })
+    try {
+      const panel = renderBeat("kernel.scenario-sales", "researching")
+      expect(onCard(panel, "tour-skip-beat")).toBeNull()
+      await vi.advanceTimersByTimeAsync(ROUTINE_START_GRACE_MS + 2_000)
+      expect(within(panel).getByTestId("tour-working").textContent).toBe(
+        "The routine has not started. Skip this step to go on.",
+      )
+      expect(onCard(panel, "tour-skip-beat")).not.toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("a step only the person does (the proposal's price) never says their agent works on it", () => {
+    const panel = renderBeat("kernel.scenario-studio-sales", "set-price")
+    expect(within(panel).queryByTestId("tour-working")).toBeNull()
+    expect(panel.textContent).not.toContain("Your agent is working on it")
+    // Nothing an agent can play for them: no Do it for me, only I'll do it.
+    expect(onCard(panel, "tour-do-for-me")).toBeNull()
+    expect(onCard(panel, "tour-do-myself")).not.toBeNull()
+  })
 
   it("a routine's draft the person approves keeps its buttons", () => {
     const panel = renderBeat("kernel.scenario-support", "approve")

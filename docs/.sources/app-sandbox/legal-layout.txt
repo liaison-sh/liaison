@@ -1,0 +1,2 @@
+rich_text_render: legal layout compare leaves header, footer and contents out and checks each contents entry's page -> apps/api/src/modules/apps/sandbox/bridge/rich-text.ts (createRichTextMethods) ; apps/api/src/modules/documents/rich-text.ts (renderRichTextForFreeze)
+refusal codes BROKEN_REFERENCE, TYPED_REFERENCE, NUMBERED_CLAUSE, CHARACTER_NOT_DRAWABLE -> apps/api/src/modules/apps/tool-error-status.ts (APP_TOOL_ERROR_STATUS) ; apps/api/src/modules/documents/legal-layout.ts (LegalRefusal)

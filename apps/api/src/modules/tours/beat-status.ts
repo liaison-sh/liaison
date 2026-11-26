@@ -220,9 +220,10 @@ function routineRowStatus(
     if (pauseState?.resumingAt) {
       return { kind: "routine-running", routineName, startedAt: pauseState.resumingAt }
     }
-    // Paused on an approval it asked for: the run did its part and waits on
-    // the person, nothing failed. It carries on once the approval is decided.
-    return { kind: "pending" }
+    // Paused on an approval it asked for: it waits on the person, nothing
+    // failed. It carries on once the approval is decided. Which request it
+    // waits on is read by the caller (`waitedRequest`).
+    return { kind: "routine-waiting", routineName, requestId: null, toolName: null }
   }
   if (status.startsWith("skipped")) return { kind: "routine-skipped", routineName, status, error }
   return { kind: "routine-failed", routineName, error }
@@ -284,9 +285,47 @@ async function routineStatus(
   }
   if (!last) return { kind: "pending" }
   const view = routineRowStatus(last.status, last.routineName, last.error, last.pauseState)
+  if (view.kind === "routine-waiting") {
+    const waited = await waitedRequest(orgId, last.pauseState?.approvalIds ?? [])
+    return waited ? { ...view, ...waited } : view
+  }
   return view.kind === "routine-running" && view.startedAt === ""
     ? { ...view, startedAt: (last.startedAt ?? last.ranAt).toISOString() }
     : view
+}
+
+/**
+ * The request a paused run waits on that a person decides now: the oldest of
+ * its approvals still `pending` (a request's first step; the later steps of a
+ * request are `deferred` and go with it). Null when none is (all decided, or
+ * the resume already claimed them).
+ *
+ * Demo walk 2026-11-25: a sales run on Auto asked for the company and the
+ * contact first and paused there, before the quote and the reply. The step
+ * waiting for the reply only said "decide it in Home", offering nothing to
+ * press: Do it for me now approves this request, and the run carries on.
+ */
+async function waitedRequest(
+  orgId: string,
+  approvalIds: readonly string[],
+): Promise<{ requestId: string; toolName: string } | null> {
+  const ids = approvalIds.filter((id) => UUID_RE.test(id))
+  if (ids.length === 0) return null
+  const [row] = await withPrivilegedDb(orgId, "tour-status-waited-request", (tx) =>
+    tx
+      .select({ id: approvalRequests.id, toolName: approvalRequests.toolName })
+      .from(approvalRequests)
+      .where(
+        and(
+          eq(approvalRequests.orgId, orgId),
+          eq(approvalRequests.status, "pending"),
+          inArray(approvalRequests.id, ids),
+        ),
+      )
+      .orderBy(asc(approvalRequests.createdAt))
+      .limit(1),
+  )
+  return row ? { requestId: row.id, toolName: row.toolName } : null
 }
 
 /**
@@ -641,6 +680,11 @@ async function followAnsweredQuestion(
     : progress
 }
 
+/** A do step whose event is the routine's own work (`actor: "any"`), not a person's press. */
+function doneByRoutine(beat: EffectiveBeat): boolean {
+  return beat.kind === "do" && beat.event?.actor === "any" && !approvesSomething(beat)
+}
+
 /** A step that approves something: it waits on the person's press, never on a turn. */
 function approvesSomething(beat: EffectiveBeat): boolean {
   return beat.event?.entity === "approval_request" && beat.event.action === "update"
@@ -671,7 +715,26 @@ export async function computeBeatStatus(input: {
     // check, read as this step being done while its card still waited
     // (sales walk 2026-10-27: "the runner did not understand where we're
     // at"). Running, failed or skipped still say so: the card is not there yet.
-    return approvesSomething(beat) && run.kind === "routine-succeeded" ? { kind: "pending" } : run
+    if (approvesSomething(beat) && run.kind === "routine-succeeded") return { kind: "pending" }
+    // A step the routine itself completes (its event is the run's own work)
+    // that has not arrived when the run ended "succeeded": the run finished
+    // without doing it. "The routine has finished", with its check, read as
+    // done while the step never moved (a sales run that ended without staging
+    // its reply, demo walk 2026-11-25). The card says so and offers Skip.
+    if (run.kind === "routine-succeeded" && doneByRoutine(beat)) {
+      return { kind: "routine-incomplete", routineName: run.routineName }
+    }
+    // A run paused on an approval: every step waiting on the run says so. A
+    // step approving what it staged, or one showing what it made, read
+    // `pending`, and its card fell back to its own clock: "The routine has not
+    // started. Skip this step" while the run sat on its request in Home (the
+    // services sales tour's `bundle` and `approve`, walk 2026-11-25). Only a
+    // step the routine itself completes names the request, so its Do it for
+    // me approves it: approving is the person's own press on the others.
+    if (run.kind === "routine-waiting" && (approvesSomething(beat) || beat.kind !== "do")) {
+      return { ...run, requestId: null, toolName: null }
+    }
+    return run
   }
   if (waitsOn === "agent" && !approvesSomething(beat)) {
     const threads = await watchedThreads(orgId, beat, createdEntityIds(progress.beatStates))

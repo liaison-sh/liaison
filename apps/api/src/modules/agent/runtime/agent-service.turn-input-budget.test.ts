@@ -16,6 +16,7 @@ import {
   ROUTINE_RUN_PAUSE_ANSWER_ONLY_RESULT,
   ROUTINE_RUN_PAUSE_NOTE,
 } from "~/modules/agent/runtime/agent-service"
+import { runContextStore } from "~/modules/agent/runtime/run-context"
 import {
   TURN_BUDGET_ANSWER_ONLY_RESULT,
   TURN_BUDGET_CHECK_IN_NOTE,
@@ -292,7 +293,7 @@ describe("an interactive turn's input budget", () => {
     toolResults: [{ toolCallId: "s1", toolName: "kernel__tool_search", output: { tools: [] } }],
   }
 
-  it("a routine turn chains on a parked call's tokens, then pauses at the call with nothing to chain on", async () => {
+  it("a routine turn chains on a parked call's tokens, then pauses at the first step that parks nothing", async () => {
     const result = await startTurn("routine")
     await prepare(0)
     await capturedParams.onStepFinish(chainableStep("a1"))
@@ -316,8 +317,19 @@ describe("an interactive turn's input budget", () => {
       ],
     })
     expect((await prepare(3)).toolChoice).toBeUndefined()
+    // A parked call with no tokens of its own (the deal, the reply) stays in the
+    // chain: the tokens handed out earlier still stand (demo walk 2026-11-25).
     await capturedParams.onStepFinish(parkedStep)
-    const pause = await prepare(4)
+    expect((await prepare(4)).toolChoice).toBeUndefined()
+    expect(result.stepCtx.answerOnly).toBeNull()
+    expect(result.stepCtx.chainOnly).toBe(ROUTINE_CHAIN_ONLY_RESULT)
+    await capturedParams.onStepFinish(parkedStep)
+    // Other work after it: the pause falls due.
+    await capturedParams.onStepFinish({
+      usage: { inputTokens: 1000, outputTokens: 10 },
+      toolResults: [{ toolCallId: "r1", toolName: "tickets__get", output: { id: "t1" } }],
+    })
+    const pause = await prepare(5)
     expect(pause.toolChoice).toBeUndefined()
     expect(result.stepCtx.answerOnly).toBe(ROUTINE_RUN_PAUSE_ANSWER_ONLY_RESULT)
     expect(JSON.stringify(pause.messages ?? [])).toContain(
@@ -381,6 +393,61 @@ describe("an interactive turn's input budget", () => {
       toolResults: [{ toolCallId: "r1", toolName: "tickets__get", output: { id: "t1" } }],
     })
     await prepare(2)
+    expect(result.stepCtx.answerOnly).toBe(ROUTINE_RUN_PAUSE_ANSWER_ONLY_RESULT)
+    await endTurn(result)
+  }, 60_000)
+
+  // A follow-up routine stages drafts and runs on: no pause after a parked
+  // call, no chain-only step, and the loop does not stop there.
+  it("a follow-up routine turn that parks calls in two steps runs on without pausing", async () => {
+    const routineId = "00000000-0000-0000-0000-000000e70009"
+    const result = await runContextStore.run(
+      {
+        runId: "00000000-0000-0000-0000-000000e7000a",
+        parentRunId: null,
+        rootRunId: "00000000-0000-0000-0000-000000e7000a",
+        nestingDepth: 0,
+        background: true,
+        routineId,
+        routineFollowUp: true,
+      },
+      () => startTurn("routine"),
+    )
+    await prepare(0)
+    await capturedParams.onStepFinish({
+      usage: { inputTokens: 1000, outputTokens: 10 },
+      toolResults: [parkedStep.toolResults[0], { ...parkedStep.toolResults[0], toolCallId: "c2" }],
+    })
+    const second = await prepare(1)
+    expect(result.stepCtx.answerOnly).toBeNull()
+    expect(result.stepCtx.chainOnly).toBeNull()
+    expect(JSON.stringify(second.messages ?? [])).not.toContain(
+      JSON.stringify(ROUTINE_RUN_PAUSE_NOTE).slice(1, 60),
+    )
+    await capturedParams.onStepFinish(parkedStep)
+    await prepare(2)
+    expect(result.stepCtx.answerOnly).toBeNull()
+    expect(result.stepCtx.chainOnly).toBeNull()
+    expect(await stops([{}, {}])).toBe(false)
+    await endTurn(result)
+  }, 60_000)
+
+  it("a routine tick frame for another routine does not make this turn a follow-up", async () => {
+    const result = await runContextStore.run(
+      {
+        runId: "00000000-0000-0000-0000-000000e7000b",
+        parentRunId: null,
+        rootRunId: "00000000-0000-0000-0000-000000e7000b",
+        nestingDepth: 0,
+        background: true,
+        routineId: "00000000-0000-0000-0000-000000e7000c",
+        routineFollowUp: true,
+      },
+      () => startTurn("routine"),
+    )
+    await prepare(0)
+    await capturedParams.onStepFinish(parkedStep)
+    await prepare(1)
     expect(result.stepCtx.answerOnly).toBe(ROUTINE_RUN_PAUSE_ANSWER_ONLY_RESULT)
     await endTurn(result)
   }, 60_000)

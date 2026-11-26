@@ -247,8 +247,20 @@ export function isDeepLinkBoot(): boolean {
   return !NO_PROBE_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix))
 }
 
+/**
+ * The signing page (`/a`) and the client portal (`/portal`): pages for people outside the
+ * organization, with their own chunks and no member session. Nothing of the member app's
+ * session is restored, probed or refreshed there.
+ */
+export function isPublicPagePath(
+  path: string = typeof window === "undefined" ? "" : window.location.pathname,
+): boolean {
+  return path === "/a" || path === "/portal" || path.startsWith("/portal/")
+}
+
 export async function initializeAuth(): Promise<void> {
   bootstrapKernelApps()
+  if (isPublicPagePath()) return
   // A WRAPPED SHELL RESTORES WITHOUT THE FLAG (P6d-FX9). The shell holds the
   // refresh token natively, so a cold start with no `liaison:session` flag may
   // still have a session, and it is awaited here for the same reason the flag
@@ -291,6 +303,7 @@ export async function initializeAuth(): Promise<void> {
  * `Promise.all` and after it).
  */
 export async function completeRuntimeInit(): Promise<void> {
+  if (isPublicPagePath()) return
   if (hasSession()) {
     await Promise.all([
       applyPersistedLocale(),

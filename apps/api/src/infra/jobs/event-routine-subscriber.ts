@@ -2,8 +2,9 @@
 
 import { and, sql as drizzleSql, eq, inArray } from "drizzle-orm"
 import Redis from "ioredis"
+import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
-import { routines } from "~/db/schema/kernel"
+import { auditLog, routineRuns, routines } from "~/db/schema/kernel"
 import {
   type AppEvent,
   type EventSubscriptionDisposer,
@@ -16,6 +17,7 @@ import {
   eventHopOf,
   isMailSenderFilterActive,
   isMailSenderFilterEvent,
+  isOutboundMailEvent,
   isOwnerScopedEvent,
   isProjectTaskFilter,
   isProjectTaskFilterEvent,
@@ -243,6 +245,17 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
   const firedBy = (evt.metadata as { firedByRoutineId?: string } | null | undefined)
     ?.firedByRoutineId
   if (firedBy === sub.routineId) return
+  // Its own approved work too: a request the routine staged, executed once a person approved it,
+  // runs outside the routine's tick (queue-event.ts stamps `stagedByRoutineId`). A sales routine
+  // on new mail ran again on its own reply once that was approved and sent, and staged the
+  // company, the deal and the proposal a second time (demo walk 2026-11-25).
+  const stagedBy = (evt.metadata as { stagedByRoutineId?: string } | null | undefined)
+    ?.stagedByRoutineId
+  if (stagedBy === sub.routineId) return
+  // The org's own OUTGOING mail never starts a mail routine (`mail:message:create` is "a mail
+  // arrived"): another routine's approved send (a change request, a reply) fired a sales routine
+  // on new mail, which spent a turn and found nothing to do (demo walk 2026-11-26).
+  if (isOutboundMailEvent(evt)) return
   // CHAIN GUARD (0303): routines triggering one another (a routine's write firing another
   // routine, whose write fires a third...) stop at depth 5. queue-event stamps `metadata.hop`
   // (the firing run's hop + 1) on every event a routine run queues. The owner hears of it once an
@@ -374,12 +387,20 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
       }
     }
     // In flight from this enqueue until its run row lands: the reconciler
-    // must not fire a retry for an event whose first tick is still queued.
+    // must not fire a retry for an event whose first tick is still queued. The
+    // marker is taken only if absent, so the live delivery and a catch-up of the
+    // same event (catchUpMissedEvents) start one tick between them.
     if (triggerEvent.eventId) {
       const { markEventTickInFlight } = await import(
         "~/modules/agent/routines/routine-event-reconciler"
       )
-      await markEventTickInFlight(sub.routineId, triggerEvent.eventId)
+      if (!(await markEventTickInFlight(sub.routineId, triggerEvent.eventId))) {
+        log.debug(
+          { routineId: sub.routineId, eventId: triggerEvent.eventId },
+          "event-routine: a tick for this event is already queued; dropped",
+        )
+        return
+      }
     }
     await enqueueAppJob(
       "kernel",
@@ -497,17 +518,131 @@ function subscriptionSignature(sub: EventRoutineSub): string {
   return JSON.stringify([sub.orgId, sub.event, contacts, groups, table, task])
 }
 
-/** Register unless the same subscription is already in place here (decided in the routine's turn). */
-function ensureEventRoutineSubscription(sub: EventRoutineSub): Promise<void> {
+/**
+ * Register unless the same subscription is already in place here (decided in the
+ * routine's turn). True when this call put the subscription in place.
+ */
+function ensureEventRoutineSubscription(sub: EventRoutineSub): Promise<boolean> {
   return inRoutineTurn(sub.routineId, async () => {
     if (
       disposers.has(sub.routineId) &&
       signatures.get(sub.routineId)?.signature === subscriptionSignature(sub)
     ) {
-      return
+      return false
     }
     await registerInTurn(sub)
+    return disposers.has(sub.routineId)
   })
+}
+
+// ── Catch-up of a newly armed routine ───────────────────────────────────────
+//
+// A routine reaches this process's bus a little after its row commits: at once
+// through the announce, or up to a resync interval later when the announce is
+// lost. An event of its type published in that gap went to a bus without its
+// route, and the `once` handler never sees it again. So when the cell sync
+// arms a routine here that was armed (created, enabled or retriggered) only
+// moments ago, it reads the events of its type its org logged since then and
+// hands each to the routine as if delivered live: every guard applies, and the
+// in-flight marker (taken only if absent) keeps a live delivery and the
+// catch-up of one event, or the catch-ups of several processes, to one tick.
+// Bounded: one routine at a time, only a routine armed in the last
+// EVENT_ROUTINE_CATCH_UP_MS, never a sweep of old routines at boot.
+
+/** How recent a routine's arming must be for the sync to catch it up. */
+export const EVENT_ROUTINE_CATCH_UP_MS = 15 * 60_000
+const CATCH_UP_MAX_EVENTS = 100
+/** One process catches up an event: the others skip it (their live copy has none anyway). */
+const CATCH_UP_CLAIM_TTL_SEC = 60 * 60
+const catchUpClaimKey = (routineId: string, eventId: string) =>
+  `routine-event-catchup:${routineId}:${eventId}`
+
+/**
+ * Deliver to a routine just armed here the events of its type its org logged
+ * since `armedAt` that no tick or run has taken yet. Returns how many it handed
+ * on. Never throws: a failed catch-up leaves the event to the reconciler.
+ */
+export async function catchUpMissedEvents(
+  sub: EventRoutineSub,
+  armedAt: Date,
+  now: Date = new Date(),
+): Promise<number> {
+  if (now.getTime() - armedAt.getTime() > EVENT_ROUTINE_CATCH_UP_MS) return 0
+  const [app, entity, action] = sub.event.split(":")
+  if (!app || !entity || !action) return 0
+  try {
+    const rows = await withPrivilegedDb(sub.orgId, "event-routine-catch-up", async (tx) => {
+      const events = extractRows<{
+        event_id: string
+        timestamp: Date
+        entity_id: string | null
+        actor_id: string | null
+        actor_type: string | null
+        changes: unknown
+        metadata: unknown
+      }>(
+        await tx.execute(drizzleSql`
+          SELECT a.event_id::text AS event_id, a."timestamp", a.entity_id, a.actor_id::text AS actor_id,
+                 a.actor_type::text AS actor_type, a.changes, a.metadata
+          FROM ${auditLog} a
+          WHERE a.org_id = ${sub.orgId}::uuid AND a.app = ${app} AND a.entity_type = ${entity}
+            AND a.action = ${`${entity}.${action}`} AND a.event_id IS NOT NULL
+            AND a."timestamp" >= ${armedAt.toISOString()}::timestamptz
+            AND NOT EXISTS (
+              SELECT 1 FROM ${routineRuns} r
+              WHERE r.routine_id = ${sub.routineId}::uuid AND r.event_id = a.event_id
+            )
+          ORDER BY a."timestamp" ASC
+          LIMIT ${CATCH_UP_MAX_EVENTS}`),
+      )
+      return events
+    })
+    if (rows.length === 0) return 0
+    // As a live `once` dispatch does: the org's registries are filled before a handler runs.
+    const { awaitOrgApps } = await import("~/modules/apps/init")
+    await awaitOrgApps(sub.orgId)
+    let handed = 0
+    for (const r of rows) {
+      const claimed = await redis.set(
+        catchUpClaimKey(sub.routineId, r.event_id),
+        "1",
+        "EX",
+        CATCH_UP_CLAIM_TTL_SEC,
+        "NX",
+      )
+      if (claimed !== "OK") continue
+      const evt: AppEvent & { _eventId: string } = {
+        app,
+        entity,
+        action,
+        orgId: sub.orgId,
+        ...(r.entity_id ? { entityId: r.entity_id } : {}),
+        data: r.changes ?? undefined,
+        actorId: r.actor_id,
+        ...(r.actor_type ? { actorType: r.actor_type as NonNullable<AppEvent["actorType"]> } : {}),
+        metadata: r.metadata ?? undefined,
+        timestamp: new Date(r.timestamp).toISOString(),
+        _eventId: r.event_id,
+      }
+      await handleRoutineEvent(sub, evt)
+      handed++
+    }
+    if (handed > 0) {
+      log.info(
+        { routineId: sub.routineId, instanceId: INSTANCE_ID, events: handed },
+        "event-routine: caught up events from before it was armed here",
+      )
+    }
+    return handed
+  } catch (err) {
+    log.error({ err, routineId: sub.routineId }, "event-routine catch-up failed")
+    return 0
+  }
+}
+
+/** Arm a routine from the table here, and catch it up when this call armed it. */
+async function ensureAndCatchUp(sub: EventRoutineSub, armedAt: Date): Promise<void> {
+  if (await ensureEventRoutineSubscription(sub)) await catchUpMissedEvents(sub, armedAt)
 }
 
 // ── Cell-wide sync (P2) ─────────────────────────────────────────────────────
@@ -562,6 +697,7 @@ async function syncEventRoutine(routineId: string): Promise<void> {
         status: routines.status,
         event: routines.event,
         eventFilter: routines.eventFilter,
+        updatedAt: routines.updatedAt,
       })
       .from(routines)
       .where(eq(routines.id, routineId)),
@@ -573,12 +709,10 @@ async function syncEventRoutine(routineId: string): Promise<void> {
     SUBSCRIBED_STATUSES.includes(row.status) &&
     row.event
   ) {
-    await ensureEventRoutineSubscription({
-      routineId: row.id,
-      orgId: row.orgId,
-      event: row.event,
-      filter: row.eventFilter ?? null,
-    })
+    await ensureAndCatchUp(
+      { routineId: row.id, orgId: row.orgId, event: row.event, filter: row.eventFilter ?? null },
+      row.updatedAt,
+    )
   } else {
     await disposeSubscription(routineId)
   }
@@ -646,6 +780,7 @@ export async function resyncEventRoutineSubscriptions(): Promise<void> {
         orgId: routines.orgId,
         event: routines.event,
         eventFilter: routines.eventFilter,
+        updatedAt: routines.updatedAt,
       })
       .from(routines)
       .where(subscribedRoutinesWhere()),
@@ -654,12 +789,10 @@ export async function resyncEventRoutineSubscriptions(): Promise<void> {
   for (const r of rows) {
     if (!r.event) continue
     wanted.add(r.id)
-    await ensureEventRoutineSubscription({
-      routineId: r.id,
-      orgId: r.orgId,
-      event: r.event,
-      filter: r.eventFilter ?? null,
-    })
+    await ensureAndCatchUp(
+      { routineId: r.id, orgId: r.orgId, event: r.event, filter: r.eventFilter ?? null },
+      r.updatedAt,
+    )
   }
   for (const id of [...disposers.keys()]) {
     if (!wanted.has(id)) await disposeSubscription(id)

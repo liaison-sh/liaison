@@ -28,6 +28,7 @@ import { apiUrl } from "~/lib/env"
 import { log } from "~/lib/logger"
 import { onSessionTeardown } from "~/lib/session-lifecycle"
 import { setTokens } from "~/modules/auth/auth-store"
+import { _resetDemoWorld, forgetDemoWorld } from "~/modules/demo/demo-world"
 
 const demoLog = log.child({ module: "demo" })
 
@@ -151,6 +152,7 @@ function setWorkspace(next: DemoWorkspace | null): void {
 export function forgetDemoWorkspace(): void {
   stopPolling()
   setWorkspace(null)
+  forgetDemoWorld()
 }
 
 /**
@@ -927,6 +929,7 @@ export function _resetDemoStore(): void {
   setVerification(null)
   setBudget(null)
   setDoorSettings(null)
+  _resetDemoWorld()
   setNextSteps(null)
   setLastExhausted(null)
   exhaustedShown = false

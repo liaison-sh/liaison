@@ -1,0 +1,18 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the twelve token states > each frame says what happened, offers a next step, and names the sender only when known 1`] = `
+{
+  "attempts": "Maison AlphaToo many wrong codes: wait 15 minutesFor safety, this link is paused for 15 minutes. You can try again at <retry time>. Nothing has changed, and the link stays valid.Try again",
+  "declined": "Maison AlphaYou declined thisNothing was signed, and Léa Roux has been told. If you change your mind, a new link can be sent.Ask for a new link",
+  "down": "Secure linkThis cannot open right nowIt is on our side, not yours, and your link is still good. Nothing was lost. Please try again in a few minutes.Try again",
+  "ended": "Maison AlphaAccess has endedMaison Alpha has ended this access, so this link no longer opens. Copies you already received stay yours.Contact Maison Alpha",
+  "expired": "Maison AlphaThis link has endedIt has passed its end date, so nothing can be signed here now. Nothing was signed with it.Ask Maison Alpha for a new link",
+  "locked": "Maison AlphaToo many wrong codes: this link has stoppedFor safety, this link has stopped working. Nothing was signed with it. Only a new link from Maison Alpha can replace it.Ask Maison Alpha for a new link",
+  "notfound": "Secure linkThis link does not open anythingSome of it may be missing. Open it again from the original mail, without changing it. If it still does not work, reply to that mail.Try again",
+  "replaced": "Maison AlphaA newer version replaced this oneMaison Alpha changed the document, so this link no longer works. Your new link went to the same address.Send me the new link again",
+  "revoked": "Maison AlphaMaison Alpha withdrew this linkThe document may have changed, or may no longer be needed. Nothing was signed with it.Ask Léa Roux about it",
+  "signed": "Maison AlphaYou have already signedThere is nothing more to do here. The signed PDF and its proof of signature go to the invited address once everyone has signed.Email my copy again",
+  "used": "Maison AlphaThis link has been usedA link like this works once. If that was not you, please tell us straight away.Email my copy to the invited addressThat was not me",
+  "wrong": "Maison AlphaThis link is for someone elseIt was sent to j•••@client.example, and the code goes only there. If you are the right person, ask to be invited. Your request does not sign anything.Your work emailAsk to be invited",
+}
+`;

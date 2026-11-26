@@ -19,6 +19,7 @@ import { UUID_RE } from "~/lib/uuid"
 import { fileIsFromOutside } from "~/modules/files/origin"
 import {
   assertParentVisible,
+  assertParentWritable,
   buildStorageKey,
   currentOrgUsageBytes,
   FileServiceError,
@@ -226,6 +227,14 @@ export interface AttachFileDeps {
   scopes: string[]
   /** Test seam — defaults to the real S3 `copyObject`. */
   copyObject?: typeof defaultCopyObject
+  /**
+   * The caller already decided this person may add files to the destination, so the
+   * parent's `canWrite` check is skipped (and nothing else: scope and visibility still
+   * apply). Only for a caller whose transaction is not the person's row security: the
+   * Knowledge import attaches inside its privileged transaction, to a page it has just
+   * created for the person. A guard test pins the one caller.
+   */
+  destinationAuthorized?: true
 }
 
 export interface AttachedFile {
@@ -321,6 +330,9 @@ export async function attachFileToParent(
 
   // 5. Destination row must be visible to the caller.
   await assertParentVisible(deps.rlsTx, parent, target.entityId)
+  if (deps.destinationAuthorized !== true) {
+    await assertParentWritable(deps.rlsTx, parent, target.entityId)
+  }
   await lockLiveParent(deps.rlsTx, deps.orgId, target)
 
   // 6 + 7. Idempotency + quota in one privileged read.

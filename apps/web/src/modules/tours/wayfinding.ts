@@ -113,7 +113,7 @@ export const PATH_START: PathState = { reached: 0, seen: new Set() }
 
 /**
  * One look at the screen, moving the person along `path`: the deepest hop on
- * screen is the one to take, so every hop before it is passed;
+ * screen (a last hop by its `at`) is the one to take, so every hop before it is passed;
  * a hop seen and now gone while the element is on screen was taken (the agent
  * picked, the conversation opened); a rail hop is passed once the person is in
  * that app (`inApp`). The step's element on screen, on the step's page
@@ -136,7 +136,8 @@ export function advancePath(
   const seen = new Set(prev.seen)
   let reached = prev.reached
   path.forEach((hop, i) => {
-    if (ringableHop(hop) && onScreen(i)) {
+    // A last hop's `at` on screen: the person is there, every hop before it is behind them.
+    if ((ringableHop(hop) || hop.at !== undefined) && onScreen(i)) {
       seen.add(i)
       if (i > reached) reached = i
     }
@@ -167,7 +168,11 @@ export function advancePath(
     if (!taken) break
     reached += 1
   }
-  const there = wasThere || atTarget
+  // Seen on screen at all counts as got there, off the step's page too: the
+  // project's subtasks show on the project, not on the task the step opens
+  // from. Without it a person who went on from the list to a subtask kept
+  // "You're on the project" with nothing to take them back (walk 2026-11-25).
+  const there = wasThere || atTarget || targetOnScreen
   if (
     reached === prev.reached &&
     seen.size === prev.seen.size &&

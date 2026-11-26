@@ -11,6 +11,7 @@ import {
   approvalScopeLabel,
   localizeApprovalText,
   localizeRefPhrases,
+  toolActionPhrase,
 } from "./approval-copy"
 
 const fr = { t: translatorFor("fr"), locale: "fr" }
@@ -21,6 +22,9 @@ describe("ticket approval subtitles in the reader's language", () => {
     expect(localizeApprovalText("Reply to Jean Dupont", fr)).toBe("Réponse à Jean Dupont")
     expect(localizeApprovalText("Nudge Jean Dupont", fr)).toBe("Relance à Jean Dupont")
     expect(localizeApprovalText("Close", fr)).toBe("Clôture")
+    expect(localizeApprovalText("A restricted document needs your decision", fr)).toBe(
+      "Un document à accès restreint attend votre décision",
+    )
     expect(localizeApprovalText("Add internal note", fr)).toBe("Ajout d'une note interne")
     expect(localizeApprovalText("Edit internal note", fr)).toBe("Modification d'une note interne")
     expect(localizeApprovalText("Delete internal note", fr)).toBe("Suppression d'une note interne")
@@ -74,6 +78,47 @@ describe("ticket approval card words in the reader's language", () => {
 })
 
 // The deciding scope chip read "needs invoicing:approve": a raw scope string. It names the app.
+describe("the change request card in the reader's language", () => {
+  const card = [
+    "Reply to the client and send a change request",
+    "Nothing is sent if the client wrote after this card",
+    "Change request: Single sign-on for partners",
+    "Work: SSO login for partner accounts",
+    "Hours: 60 h (from past similar work)",
+    "Rate: 110.00 EUR per hour",
+    "Price: 6,600.00 EUR",
+    "The client approves it on a link with an emailed code: a recorded approval, not a signature.",
+    "Reply:\nHello,\nHere is the change request.",
+  ]
+
+  it("reads in French, never the reply template with the card's own words inside", () => {
+    expect(card.map((line) => localizeApprovalText(line, fr))).toEqual([
+      "Répondre au client et envoyer une demande de modification",
+      "Rien n'est envoyé si le client a écrit après cette carte",
+      "Demande de modification : Single sign-on for partners",
+      "Travail : SSO login for partner accounts",
+      "Heures : 60 h (source : past similar work)",
+      "Taux : 110.00 EUR de l'heure",
+      "Prix : 6,600.00 EUR",
+      "Le client l'approuve sur un lien avec un code envoyé par e-mail : une approbation enregistrée, pas une signature.",
+      "Réponse :\nHello,\nHere is the change request.",
+    ])
+  })
+
+  it("keeps the server's words for an English reader", () => {
+    expect(card.map((line) => localizeApprovalText(line, en))).toEqual(card)
+  })
+
+  it("names the action in the reader's language", () => {
+    expect(approvalKindLabel("agreements:change_request_send", "change_request_send", fr)).toBe(
+      "Contrats : envoyer une demande de modification",
+    )
+    expect(approvalKindLabel("agreements:change_request_send", "change_request_send", en)).toBe(
+      "Agreements: send a change request",
+    )
+  })
+})
+
 describe("approval scope chip in the reader's language", () => {
   it("names the app's approval, never the raw scope", () => {
     expect(approvalScopeLabel("invoicing:approve", en)).toBe("needs Invoicing approval")
@@ -128,5 +173,19 @@ describe("a sequenced step's earlier-step phrases in the reader's language", () 
         fr,
       ),
     ).toBe("x le PDF d'une étape précédente (renseigné quand cette étape s'exécute)")
+  })
+})
+
+// Walk 2026-11-25: a held step said "Your agent asks before it uses threads reply".
+describe("a tool's action in a sentence", () => {
+  it("reads the catalog's words, in the reader's language, whatever form the id takes", () => {
+    expect(toolActionPhrase("kernel:threads_reply", en.t)).toBe("post in a conversation")
+    expect(toolActionPhrase("kernel__threads_reply", en.t)).toBe("post in a conversation")
+    expect(toolActionPhrase("kernel:threads_reply", fr.t)).toBe("publier dans une conversation")
+  })
+
+  it("falls back to the tool's own words, never its raw id", () => {
+    expect(toolActionPhrase("kernel:web_search", en.t)).toBe("web search")
+    expect(toolActionPhrase("projects__create_widget", en.t)).toBe("projects create widget")
   })
 })

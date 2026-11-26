@@ -1,0 +1,232 @@
+{
+  "signin": {
+    "eyebrow": "Client portal",
+    "title": "Sign in to your client portal",
+    "titleOrg": "Sign in to {{org}}",
+    "email": "Your email address",
+    "submit": "Send me a sign-in link",
+    "sent": "If this address has access, a sign-in link is on its way. Check your inbox.",
+    "noOrg": "Open the link in your invitation or sign-in email to reach your portal.",
+    "ended": "Your access to this portal has ended. If you think this is a mistake, contact the people you work with.",
+    "oneClick": "Your link signs you in once. Click to continue.",
+    "continue": "Sign in",
+    "continueOrg": "Sign in to {{org}}",
+    "linkInvalid": "This link no longer works. Ask for a new one from the sign-in page.",
+    "totp": "Code from your authenticator app",
+    "totpSubmit": "Continue",
+    "totpInvalid": "That code did not work. Try again.",
+    "tooMany": "Too many attempts. Wait a moment, then try again.",
+    "enrol": "This portal asks for a second step. Add this key to your authenticator app, then enter the code it shows."
+  },
+  "notice": {
+    "ack": "I have read it",
+    "changed": "The notice changed since it was shown. Please read the new one.",
+    "failed": "That did not work. Try again."
+  },
+  "shell": {
+    "signOut": "Sign out",
+    "by": "Portal by Liaison",
+    "fallbackOrg": "Client portal"
+  },
+  "nav": {
+    "home": "Home",
+    "projects": "Projects",
+    "invoices": "Invoices",
+    "requests": "Requests",
+    "documents": "Documents"
+  },
+  "home": {
+    "hello": "Hello {{name}}",
+    "contact": "Your contact: {{name}}",
+    "upcoming": "Coming up for billing"
+  },
+  "project": {
+    "lead": "Project lead: {{name}}",
+    "steps": "Steps",
+    "noSteps": "No steps are listed yet.",
+    "stepDone": "Done",
+    "stepOpen": "In progress",
+    "stepShare": "About {{share}}% done",
+    "hoursTitle": "Hours",
+    "hours": {
+      "soFarOf": "Hours used: {{used}} of {{of}} h so far",
+      "soFar": "Hours used: {{used}} h so far",
+      "billed": "Hours billed: {{used}} h",
+      "period": "For {{month}}",
+      "byMilestone": "This project bills by milestone, so it has no billed hours."
+    }
+  },
+  "invoices": {
+    "issued": "Issued invoices",
+    "none": "No invoices yet.",
+    "pdf": "Download PDF",
+    "paidOn": "Paid on {{date}}",
+    "dueOn": "Due on {{date}}",
+    "issuedOn": "Issued on {{date}}",
+    "creditNote": "Credit note",
+    "corrects": "Credit note correcting {{number}}",
+    "howToPay": "Pay by bank transfer: the details are on each invoice."
+  },
+  "requests": {
+    "new": "New request",
+    "yours": "Your requests",
+    "none": "You have not sent a request yet.",
+    "subject": "Subject",
+    "text": "Your message",
+    "files": "Files (up to 8, 10 MB each)",
+    "send": "Send",
+    "sendAgain": "Send again",
+    "sent": "Your request was sent.",
+    "failed": "It was not sent. Your text is still here: send again.",
+    "fileRefused": "The file {{name}} was not accepted, so nothing was sent. Your text is still here.",
+    "reply": "Reply",
+    "replyPlaceholder": "Write a reply",
+    "you": "You",
+    "status": {
+      "open": "Open",
+      "answered": "Answered",
+      "closed": "Closed"
+    }
+  },
+  "documents": {
+    "files": "Files",
+    "signedPdf": "Signed PDF",
+    "yourCopy": "Your copy",
+    "read": "The document",
+    "page": "Page {{n}}",
+    "empty": "This document cannot be shown here. Ask your contact for a copy.",
+    "status": {
+      "waiting": "Waiting",
+      "signed": "Signed",
+      "accepted": "Accepted",
+      "declined": "Declined",
+      "expired": "Expired",
+      "withdrawn": "Withdrawn"
+    }
+  },
+  "approve": {
+    "title": {
+      "sign": "To sign",
+      "accept": "To accept",
+      "approve": "To approve"
+    },
+    "do": {
+      "sign": "Sign",
+      "accept": "Accept",
+      "approve": "Approve"
+    },
+    "decline": "Decline",
+    "declineConfirm": "Decline it",
+    "back": "Go back",
+    "reason": "Why (optional)",
+    "code": "The code we emailed you",
+    "typedName": "Your full name",
+    "codeSent": "We emailed a code to {{to}}.",
+    "codeNotSent": "The code could not be sent. Try again in a moment.",
+    "codeNotOnDemo": "This is a demo: no code mail is sent here, so this step cannot be finished. Nothing was signed or decided.",
+    "codeNotSentUntil": "The code could not be sent yet. You can ask again at {{time}}.",
+    "waitsOn": "Waiting on {{name}}",
+    "until": "Open until {{date}}",
+    "nameMismatch": "The name does not match. Type your full name as written.",
+    "alreadyDecided": "This was already decided, or it is no longer open.",
+    "failed": "That did not work. Check the code and try again.",
+    "done": {
+      "decided": "Done. The people you work with are told.",
+      "declined": "Declined. The people you work with are told."
+    }
+  },
+  "states": {
+    "loading": "Loading…",
+    "partFailed": "This part could not be shown right now. The rest of the page is up to date.",
+    "notAvailable": "This page is not available.",
+    "down": "The client portal is not available right now. Try again in a moment.",
+    "retry": "Try again"
+  },
+  "staff": {
+    "title": "Client portal",
+    "viewControls": "Access",
+    "viewPreview": "What they see",
+    "invite": "Invite someone",
+    "inviteSend": "Send the invitation",
+    "name": "Name",
+    "email": "Email",
+    "invited": "{{name}} was invited at {{email}}. They show as invited until they first sign in.",
+    "sameForAll": "Everyone invited sees the same thing, except what names them.",
+    "empty": "Nobody from this company has portal access yet.",
+    "endedState": "Portal access ended for this company. Invoices and signed documents are kept.",
+    "people": "People",
+    "hasSignedIn": "Has signed in",
+    "invitedState": "Invited",
+    "remove": "Remove",
+    "cancelInvite": "Cancel invitation",
+    "removed": "{{name}} no longer has portal access.",
+    "resetTotp": "Reset second step",
+    "totpReset": "{{name}} sets up their second step again at the next sign-in.",
+    "mergeKept": "Nobody on the portal sees more: {{name}} keeps what they saw before.",
+    "showWhole": "Show the whole company",
+    "shares": "What the company sees",
+    "open": "Open",
+    "closed": "Closed",
+    "close": "Close",
+    "openIt": "Open it",
+    "cancel": "Cancel",
+    "shareOpened": "{{what}} is now open on the portal.",
+    "shareClosed": "{{what}} is closed on the portal.",
+    "onlyThese": "Seen only by {{names}}",
+    "never": "Can never be shared: notes, discussions, agents, routines, cost rates, margin, other clients.",
+    "kind": {
+      "invoices": "Invoices",
+      "requests": "Requests",
+      "project_progress": "Progress",
+      "project_hours": "Hours",
+      "project_reports": "Reports",
+      "agreement": "Agreement",
+      "change_request": "Change request",
+      "file": "File",
+      "ticket": "Ticket"
+    },
+    "warn": {
+      "project_hours": "The client will see this project's hours as a total: billed hours, or a retainer's hours so far.",
+      "invoices": "The client will see every issued invoice and credit note of this company."
+    },
+    "signInOptions": "Second step at sign-in",
+    "requireTotp": "Require it",
+    "optionalTotp": "Make it optional",
+    "totpRequired": "People of this company now need a second step to sign in.",
+    "totpOptional": "The second step is now optional for people of this company.",
+    "end": "End access",
+    "endConfirm": "End access now",
+    "endReason": "Reason (optional)",
+    "endExplain": "Everyone of this company is signed out, open links are cancelled and shares are closed. Invoices and signed documents are kept.",
+    "ended": "Access ended: {{people}} signed out, {{links}} links cancelled, {{shares}} shares closed. Invoices and signed documents are kept.",
+    "restore": "Give access again",
+    "restored": "{{people}} can sign in again. No share was reopened.",
+    "log": "Access log",
+    "logReaders": "Only people given the access log permission can read it.",
+    "logReadersNamed": "Only {{names}} can read it.",
+    "logEmpty": "Nothing yet.",
+    "logAction": {
+      "sign_in": "Signed in",
+      "view": "Viewed",
+      "download": "Downloaded",
+      "sign": "Signed",
+      "accept": "Accepted",
+      "approve": "Approved",
+      "decline": "Declined",
+      "failure": "Failed sign-in",
+      "other": "Other"
+    },
+    "previewAs": "As",
+    "previewTrue": "This is what they see now, read the way the portal reads it.",
+    "previewNone": "They cannot sign in now, so they see nothing.",
+    "previewNothing": "Nothing shared.",
+    "previewPart": {
+      "projects": "Projects",
+      "invoices": "Invoices",
+      "upcoming": "Coming up for billing",
+      "requests": "Requests"
+    },
+    "loadFailed": "The client portal could not be read right now.",
+    "failed": "That did not work."
+  }
+}

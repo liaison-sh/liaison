@@ -26,6 +26,8 @@ const SRC = join(import.meta.dir, "..", "..", "..")
 
 // Content-rewriting UPDATEs that deliberately keep the row's existing tag.
 const EXEMPT_UPDATES: Record<string, string> = {
+  "apps/knowledge/import-kind.ts":
+    "an import rewrites, in the same run and outside any turn, only the ids of the files and page links in the text it has just created through createKnowledgeDocument (which set the tag): there is no taint to add, and the tag the page was created with stays",
   "apps/knowledge/sync-reconciler.ts":
     "an external source refresh rewrites title and body from upstream and deliberately leaves required_scopes alone: the reconciler runs outside any turn, so there is no taint to add, and a refresh must never narrow the tag the document already carries",
 }
@@ -34,8 +36,8 @@ const EXEMPT_UPDATES: Record<string, string> = {
 // cannot be read from the source text. Each needs a reason naming what unions
 // the tag, since the scan cannot see it.
 const EXEMPT_OPAQUE_UPDATES: Record<string, string> = {
-  "apps/knowledge/service.ts":
-    "updateKnowledgeDocument builds its SET from a fragment array whose last entry is always unionRequiredScopesSql(requiredScopes), so an update unions the writing turn's scopes and never narrows",
+  "apps/knowledge/versions.ts":
+    "writeWithVersion applies the SET that updateKnowledgeDocument (its one caller) builds from a fragment array whose last entry is always unionRequiredScopesSql(requiredScopes), so an update unions the writing turn's scopes and never narrows",
 }
 
 /** `kernel.agent_memory`, `"kernel"."agent_memory"`, `${kernelRel("agent_memory")}`. */

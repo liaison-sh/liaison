@@ -71,3 +71,20 @@ describe("renderMarkdown: tables", () => {
     expect(table?.parentElement?.style.overflowX).toBe("auto")
   })
 })
+
+describe("a checklist, read", () => {
+  const html = renderMarkdown("- [ ] Call the carrier\n- [x] Pack the order")
+
+  it("shows each item's state", () => {
+    const host = document.createElement("div")
+    host.innerHTML = html
+    expect(host.querySelectorAll("li.md-task .md-task-box")).toHaveLength(2)
+    expect(host.querySelectorAll(".md-task-box.md-task-done")).toHaveLength(1)
+  })
+
+  it("has nothing a reader could tick", () => {
+    const host = document.createElement("div")
+    host.innerHTML = html
+    expect(host.querySelector("input, button, [role=checkbox], [contenteditable]")).toBeNull()
+  })
+})

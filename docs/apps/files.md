@@ -32,7 +32,7 @@ An attachment of a transparent personal mailbox opens for the mailbox's owner on
 
 ## Remove a file
 
-Removing a file attached to an item takes write access to that item. Some items also limit it to the person who added the file and an administrator of the app: on a project task, that is the uploader or a holder of `projects:settings:admin`. See [Projects](projects.md#work-on-a-task).
+Removing a file attached to an item takes write access to that item. On a Knowledge document, adding or removing a file takes the right to edit that document: reading it is not enough. See [Knowledge](knowledge.md#images-and-files-in-a-document). Some items also limit it to the person who added the file and an administrator of the app: on a project task, that is the uploader or a holder of `projects:settings:admin`. See [Projects](projects.md#work-on-a-task).
 
 ## Have an agent work with files
 

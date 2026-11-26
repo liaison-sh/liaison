@@ -67,6 +67,7 @@
 //  * `ads` and `calls` are deliberately not part of the demo surface.
 
 import { randomBytes } from "node:crypto"
+import { type CommercialIdentity, DEMO_DEFAULT_WORLD, type DemoWorldId } from "@liaison/shared"
 import { and, eq } from "drizzle-orm"
 import type { ProvisioningConfig } from "~/cli/config/schema"
 import { writeApproveRepliesFromHome } from "~/cli/provisioners/ticket-inboxes"
@@ -83,6 +84,7 @@ import {
   visitorMarker,
 } from "~/modules/demo/demo-org"
 import { zeroDemoOrgPlatformCredit } from "~/modules/demo/demo-reset"
+import { orgClassOf, protectedOrgReason } from "~/modules/demo/org-class"
 import {
   pinAgentModel,
   type SeededAgent,
@@ -113,6 +115,7 @@ import {
   DEMO_WORLD,
   type DemoPerson,
   type DemoRole,
+  type DemoRoleAgent,
   type DemoWorld,
 } from "~/seed/world/fiction"
 import { demoModelPreference, demoModelPreferenceOverride } from "./model-preference"
@@ -133,12 +136,16 @@ function throwawayPassword(): string {
 export const DEMO_TIMEZONE = "Europe/Paris"
 export const DEMO_LOCALE = "en"
 
+/** The teams each desk role is granted (`DEMO_DESK_TEAMS` in the `products` world). */
+export type DemoDeskTeams = Readonly<Record<Exclude<DemoRole, "founder_admin">, readonly string[]>>
+
 /**
  * The mail domain a given demo org's people live on: one DNS label per org
- * under the reserved `.example` domain. Deterministic in the slug, so a re-seed
- * of the same org resolves the same people.
+ * under the world's reserved `.example` domain (`products`' by default).
+ * Deterministic in the slug, so a re-seed of the same org resolves the same
+ * people.
  */
-export function demoOrgEmailDomain(orgSlug: string): string {
+export function demoOrgEmailDomain(orgSlug: string, worldDomain = DEMO_EMAIL_DOMAIN): string {
   const label =
     orgSlug
       .toLowerCase()
@@ -146,18 +153,22 @@ export function demoOrgEmailDomain(orgSlug: string): string {
       .replace(/^-+|-+$/g, "")
       .slice(0, 40)
       .replace(/-+$/, "") || "org"
-  return `${label}.${DEMO_EMAIL_DOMAIN}`
+  return `${label}.${worldDomain}`
 }
 
 /**
  * A persona's address IN THIS ORG. Unique per org on purpose: see the note at
  * the top of this file about `login()` and multi-org emails.
  */
-export function demoPersonEmail(orgSlug: string, personKey: string): string {
-  return `${personKey}@${demoOrgEmailDomain(orgSlug)}`
+export function demoPersonEmail(
+  orgSlug: string,
+  personKey: string,
+  worldDomain = DEMO_EMAIL_DOMAIN,
+): string {
+  return `${personKey}@${demoOrgEmailDomain(orgSlug, worldDomain)}`
 }
 
-import { DEMO_APPS } from "./demo-apps"
+import { DEMO_APPS, DEMO_WORLD_APPS } from "./demo-apps"
 
 export { DEMO_APPS }
 
@@ -171,6 +182,7 @@ const ROLE_NAMES: Record<DemoRole, string> = {
   ops_lead: "operations",
   support: "support",
   fulfillment: "fulfillment",
+  engineering: "engineering",
   finance: "finance",
   sales: "sales",
 }
@@ -179,6 +191,7 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
   operations: "Runs the desk: support oversight, orders, shipping and the dealer queue",
   support: "Answers customer tickets and mail, and curates the knowledge base",
   fulfillment: "Prepares shipments and returns, and keeps stock accurate",
+  engineering: "Builds the product and fixes the bugs support hands over",
   finance: "Issues invoices and credit notes, and owns the month end close",
   sales: "Looks after dealers and education accounts, and writes the quotes",
 }
@@ -204,6 +217,11 @@ export interface SeedDemoOrgOptions {
    * seed, one field apart.
    */
   variant: DemoOrgVariant
+  /**
+   * The demo world this org holds, recorded on its marker (`demoWorldOf` reads it back) when it
+   * is not the default world: a marker naming none holds the default world. Defaults to that.
+   */
+  worldId?: DemoWorldId
   /**
    * THE ONE ACCOUNT THAT CAN SIGN IN. The person this org belongs to: for a
    * visitor org the caller who registered, for the reserved org the App Review
@@ -248,6 +266,15 @@ export interface SeedDemoOrgOptions {
   includeDomainData?: boolean
   /** Defaults to `DEMO_WORLD`. Injectable so a test can seed a smaller world. */
   world?: DemoWorld
+  /** The org's shared role agents. Defaults to the `products` world's `DEMO_ROLE_AGENTS`. */
+  roleAgents?: readonly DemoRoleAgent[]
+  /** The teams each desk role is granted. Defaults to the `products` world's `DEMO_DESK_TEAMS`. */
+  deskTeams?: DemoDeskTeams
+  /**
+   * The reserved `.example` domain the world's people live under, one label per
+   * org below it. Defaults to the `products` world's `DEMO_EMAIL_DOMAIN`.
+   */
+  emailDomain?: string
   /**
    * How long a `visitor` org's demo marker is valid for. Defaults to the demo
    * box's own `LIAISON_DEMO_VISITOR_TTL_HOURS`. Ignored for `reserved`, whose
@@ -354,6 +381,11 @@ function buildConfig(
     emailOf: (key: string) => string
     /** Role names the org already has: never provisioned (so never rewritten). */
     existingRoles?: ReadonlySet<string>
+    /**
+     * Write the world company's commercial identity on the org. Only for an org
+     * the seed owns: an existing org's identity is its owner's to state.
+     */
+    commercialIdentity?: boolean
   },
 ): { config: ProvisioningConfig; admin: DemoPerson } {
   const admin = opts.world.team.find((p) => p.role === "founder_admin")
@@ -382,6 +414,9 @@ function buildConfig(
       // other provisioning path already funded.
       credits: { currency: "EUR", initial: "0" },
     },
+    ...(opts.commercialIdentity
+      ? { email: { commercialIdentity: demoCommercialIdentity(opts.world.company) } }
+      : {}),
     admin: opts.owner
       ? { email: opts.owner.email, name: opts.owner.name, password: opts.owner.password }
       : {
@@ -401,6 +436,20 @@ function buildConfig(
       })),
   }
   return { config, admin }
+}
+
+/**
+ * What the world company's mail states about its sender (the commercial
+ * footer): its legal name and postal address, as a real company records them.
+ * Without them the mail app refuses to stage any business mail, so a seeded
+ * org that should behave like a company carries them.
+ */
+export function demoCommercialIdentity(company: DemoWorld["company"]): CommercialIdentity {
+  const country = new Intl.DisplayNames(["en"], { type: "region" }).of(company.country)
+  return {
+    legalName: company.legalName,
+    postalAddress: `${company.addressLine1}, ${company.postalCode} ${company.city}, ${country ?? company.country}`,
+  }
 }
 
 /** The ticket team dimension a desk's grant is written under. */
@@ -429,6 +478,7 @@ async function grantDeskTeams(
   orgId: string,
   adminUserId: string,
   team: readonly DemoPerson[],
+  deskTeams: DemoDeskTeams,
   log: (msg: string) => void,
 ): Promise<void> {
   const deskRoles = [...new Set(team.map((p) => p.role))].filter(
@@ -438,7 +488,7 @@ async function grantDeskTeams(
     orgId,
     adminUserId,
     DESK_TEAM_DIMENSION,
-    deskRoles.map((role) => [ROLE_NAMES[role], DEMO_DESK_TEAMS[role]] as const),
+    deskRoles.map((role) => [ROLE_NAMES[role], deskTeams[role]] as const),
     "seedDemoOrg",
     log,
   )
@@ -481,9 +531,13 @@ async function applyDemoModelPreference(agentId: string): Promise<void> {
  * (same columns, same `(orgId, handle)` conflict target), so a re-seed adopts
  * the agent already answering under the handle instead of duplicating it.
  */
-async function seedRoleAgents(orgId: string, log: (msg: string) => void): Promise<SeededAgent[]> {
+async function seedRoleAgents(
+  orgId: string,
+  roleAgents: readonly DemoRoleAgent[],
+  log: (msg: string) => void,
+): Promise<SeededAgent[]> {
   const seeded: SeededAgent[] = []
-  for (const def of DEMO_ROLE_AGENTS) {
+  for (const def of roleAgents) {
     // The box may pin every demo agent to one model (a QA box does, so its
     // spend is bounded); unset, the agent keeps the model the world names. The
     // factory writes the same value on insert AND on conflict.
@@ -531,6 +585,10 @@ export function demoMarkRefusal(input: {
  * seeder's own, so it is deleted and the run makes it again from nothing.
  * Returns true when it cleared one. An org that carries the marker is a normal
  * re-seed (its stale claim is released); one without a claim is never touched.
+ *
+ * A claim alone is not enough: a real org may have taken the slug since the run
+ * died. Only an org of class `demo` (this seeder creates its orgs with it) is
+ * deleted; any other is refused, its claim kept, and an operator decides.
  */
 async function clearInterruptedOrg(
   orgSlug: string,
@@ -543,13 +601,27 @@ async function clearInterruptedOrg(
     await releaseOrgSlugClaim(orgSlug)
     return false
   }
+  if ((await orgClassOf(orgId)) !== "demo") {
+    throw new Error(
+      `seedDemoOrg: refusing to seed '${orgSlug}': an interrupted seed's claim is on the slug, but ` +
+        `the organization under it is not of class demo, so it is not deleted. If it is that ` +
+        `seed's leftover (an older release made it without a class), delete it by hand, then ` +
+        `seed again; otherwise use another slug.`,
+    )
+  }
   const { purgeOrg } = await import("~/modules/org/purge/purge-org")
   await purgeOrg(orgId, {
     reason: "seed-interrupted-org",
-    // Re-checked before every destructive step: still claimed, still unmarked.
+    // Re-checked before every destructive step: still claimed, still unmarked,
+    // of class demo, and never a customer's or the operator's org.
     assertAllowed: async (id) => {
       await invalidateDemoMarker(id)
-      if (!(await hasOrgSlugClaim(orgSlug)) || (await loadDemoMarker(id))) {
+      if (
+        !(await hasOrgSlugClaim(orgSlug)) ||
+        (await loadDemoMarker(id)) ||
+        (await orgClassOf(id)) !== "demo" ||
+        (await protectedOrgReason(id))
+      ) {
         throw new Error(`seedDemoOrg: '${orgSlug}' is no longer an interrupted seed's org`)
       }
     },
@@ -568,7 +640,7 @@ export async function seedDemoOrg(opts: SeedDemoOrgOptions): Promise<SeedDemoOrg
   const locale = opts.locale ?? DEMO_LOCALE
   const timezone = opts.timezone ?? DEMO_TIMEZONE
   const orgName = opts.orgName ?? world.company.legalName
-  const appNames = opts.apps ?? DEMO_APPS
+  const appNames = opts.apps ?? DEMO_WORLD_APPS.products
   const log = opts.log ?? (() => {})
 
   // BEFORE ANY WRITE. A demo box may not hand out persona logins, and an
@@ -585,7 +657,7 @@ export async function seedDemoOrg(opts: SeedDemoOrgOptions): Promise<SeedDemoOrg
   }
 
   const emailOf = (key: string): string =>
-    (opts.personEmails?.[key] ?? demoPersonEmail(opts.orgSlug, key)).toLowerCase()
+    (opts.personEmails?.[key] ?? demoPersonEmail(opts.orgSlug, key, opts.emailDomain)).toLowerCase()
 
   // An org someone else made: read what it is, write nothing about it.
   const target = opts.existingOrg ? await readExistingOrg(opts.existingOrg, opts.orgSlug) : null
@@ -650,7 +722,7 @@ export async function seedDemoOrg(opts: SeedDemoOrgOptions): Promise<SeedDemoOrg
     owner: target ? { ...target.admin, password } : owner,
     password,
     emailOf,
-    ...(target ? { existingRoles: target.roleNames } : {}),
+    ...(target ? { existingRoles: target.roleNames } : { commercialIdentity: true }),
   })
 
   // org, then admin and roles, then people, through the org factory (the
@@ -666,7 +738,9 @@ export async function seedDemoOrg(opts: SeedDemoOrgOptions): Promise<SeedDemoOrg
   // written before the admin provisioner creates the first account. An org that
   // has a person in it is an org somebody can sign into, and demo mode's
   // restrictions are all keyed on the marker.
-  const markedOrgId = target ? target.orgId : await markNewDemoOrg(configWithoutUsers, opts, log)
+  const markedOrgId = target
+    ? target.orgId
+    : await markNewDemoOrg(configWithoutUsers, opts, createdOrg, log)
 
   await provisionAdminAndRoles(configWithoutUsers, "seedDemoOrg", log)
   await provisionPeople(configWithoutUsers, userEntries ?? [], "seedDemoOrg", log)
@@ -787,9 +861,18 @@ async function readExistingOrg(
 async function markNewDemoOrg(
   configWithoutUsers: Omit<ProvisioningConfig, "users">,
   opts: SeedDemoOrgOptions,
+  createdOrg: boolean,
   log: (msg: string) => void,
 ): Promise<string> {
-  const orgShell = await provisionOrgShell(configWithoutUsers, "seedDemoOrg", log)
+  // A new org is a demo org from its first row. One that exists keeps its class,
+  // which never changes: the adoption guard above took it only because it carries
+  // the marker, and Postgres lets only a demo org carry one (migration 0355).
+  const orgShell = await provisionOrgShell(
+    configWithoutUsers,
+    "seedDemoOrg",
+    log,
+    createdOrg ? { orgClass: "demo" } : {},
+  )
 
   // THE DEMO MARKER, as early as it can possibly be written: the org row now
   // exists (the org pass created it) and not one account exists to log into it.
@@ -819,12 +902,19 @@ async function markNewDemoOrg(
     createdThisRun: orgShell.created,
   })
   if (markRefusal) throw new Error(markRefusal)
-  const marker =
+  const variantMarker =
     existingMarker?.variant === opts.variant
       ? existingMarker
       : opts.variant === "reserved"
         ? reservedMarker()
         : visitorMarker(opts.visitorTtlHours ?? env.LIAISON_DEMO_VISITOR_TTL_HOURS)
+  // The world the org holds is on its marker, as the door writes it: a stand-in that answers
+  // for one world reads it there (year and self-hosted boxes seed a world with no door).
+  const worldId = opts.worldId ?? DEMO_DEFAULT_WORLD
+  const marker =
+    worldId === DEMO_DEFAULT_WORLD || variantMarker.worldId === worldId
+      ? variantMarker
+      : { ...variantMarker, worldId }
   await markOrgAsDemo(markedOrgId, marker)
   await releaseOrgSlugClaim(opts.orgSlug)
   log(`org '${opts.orgSlug}': marked as a ${opts.variant} demo org`)
@@ -969,6 +1059,7 @@ async function seedDemoOrgPeople(input: {
     orgId,
     admin.userId,
     world.team.filter((p) => !input.existingRoles.has(ROLE_NAMES[p.role])),
+    opts.deskTeams ?? DEMO_DESK_TEAMS,
     log,
   )
 
@@ -999,7 +1090,7 @@ async function seedDemoOrgPeople(input: {
     log(`org '${opts.orgSlug}': owner given their own personal agent`)
   }
 
-  seededAgents.push(...(await seedRoleAgents(orgId, log)))
+  seededAgents.push(...(await seedRoleAgents(orgId, opts.roleAgents ?? DEMO_ROLE_AGENTS, log)))
 
   for (const person of people) {
     if (adopted.has(person.email)) continue

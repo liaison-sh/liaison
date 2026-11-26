@@ -26,6 +26,7 @@ import { join, resolve } from "node:path"
 import { drizzle } from "drizzle-orm/postgres-js"
 import { migrate } from "drizzle-orm/postgres-js/migrator"
 import postgres from "postgres"
+import { withRoleCatalogLock } from "~/tests/helpers/role-catalog-lock"
 
 const ADMIN_URL =
   process.env.E2E_DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/liaison_test"
@@ -91,7 +92,10 @@ async function objectExists(sql: string, params: unknown[] = []): Promise<boolea
 
 test("L13: every mailbox migration applies to a database that already has 0038", async () => {
   // 1. Bring the scratch database to the 0038 high-water with the REAL migrator.
-  await migrate(drizzle(scratch), { migrationsFolder: tmpRoot })
+  // A replay writes cluster-wide role rows (ALTER ROLE liaison_admin).
+  await withRoleCatalogLock(ADMIN_URL, () =>
+    migrate(drizzle(scratch), { migrationsFolder: tmpRoot }),
+  )
   const atHighWater = await ledgerCount()
   expect(atHighWater, "the truncated run applied nothing").toBeGreaterThan(0)
 
@@ -105,7 +109,9 @@ test("L13: every mailbox migration applies to a database that already has 0038",
   ).toBe(false)
 
   // 2. The real migrator over the FULL journal.
-  await migrate(drizzle(scratch), { migrationsFolder: MIGRATIONS })
+  await withRoleCatalogLock(ADMIN_URL, () =>
+    migrate(drizzle(scratch), { migrationsFolder: MIGRATIONS }),
+  )
   const afterAll = await ledgerCount()
   const fullJournal = JSON.parse(
     readFileSync(join(MIGRATIONS, "meta", "_journal.json"), "utf8"),

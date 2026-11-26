@@ -1,0 +1,15 @@
+{
+  "entry": "job:copies-retry",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "copy_mails",
+        "{\"where\":{\"status\":{\"in\":[\"failed\",\"pending\"]}},\"limit\":500}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

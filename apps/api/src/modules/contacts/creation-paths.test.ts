@@ -88,12 +88,19 @@ describe("contact creation paths", () => {
       "modules/mail/sender-contacts.ts": [
         '{ audience: "owner", ownerUserId: account.ownerId as string }',
       ],
-      // POST /api/contacts/resolve: the caller's own unless they choose "org".
+      // POST /api/contacts/resolve: a person's own create is the organisation's unless they
+      // choose "private"; a restricted session's (a program's) is the caller's own.
       "modules/contacts/routes.ts": [
-        'audience === "org" ? { audience: "org" } : { audience: "owner", ownerUserId: userId }',
+        'forOrg ? { audience: "org" } : { audience: "owner", ownerUserId: userId }',
       ],
-      // contacts_write: the acting person's own (sharing is contacts_share).
-      "modules/agent/tools/contact-tools.ts": ['{ audience: "owner", ownerUserId: ctx.userId }'],
+      // contacts_write: a person's own call in the UI is the organisation's; an agent's, an
+      // app's or MCP's is the acting person's own (sharing is contacts_share).
+      "modules/agent/tools/contact-tools.ts": [
+        'isPersonsOwnCall(ctx) ? { audience: "org" } : { audience: "owner", ownerUserId: ctx.userId }',
+      ],
+      // A client portal invite (kernel:portal_invite): the admin invites a person of a company,
+      // so the contact is the organisation's, under that company.
+      "modules/portal/access.ts": ['{ audience: "org" }'],
       // Ticket intake (inbound mail, public form): link only, never create.
       "apps/tickets/inbound.ts": ['{ audience: "none" }'],
       "modules/webhooks/tickets-public.ts": ['{ audience: "none" }'],
@@ -147,7 +154,7 @@ describe("contact creation paths", () => {
     expect(ensure).toMatch(/INSERT INTO kernel\.contacts[^;]*VALUES \([^;]*'none',/)
   })
 
-  it("only the store and invoicing apps may add their customers to the organisation", () => {
+  it("only the store, payments and invoicing apps may add their customers to the organisation", () => {
     const declaring = readdirSync(BUNDLED)
       .filter((app) => {
         try {
@@ -160,7 +167,7 @@ describe("contact creation paths", () => {
         }
       })
       .sort()
-    expect(declaring).toEqual(["invoicing", "shopify"])
+    expect(declaring).toEqual(["invoicing", "shopify", "stripe"])
     for (const app of ["mail", "tickets", "calendar"]) {
       const manifest = JSON.parse(
         readFileSync(path.join(SRC, "apps", app, "app.manifest.json"), "utf8"),

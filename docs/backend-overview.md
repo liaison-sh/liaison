@@ -60,6 +60,7 @@ organizations ─┬─< users ──────────┬─< sessions
 - **`messages.mentions`** — JSONB array of parsed `@[label](type:id)` references, extracted at write time.
 - **`messages.authorType`** — enum: `"user" | "agent" | "system"`.
 - **`organizations.settings`** — JSONB bag for tunables: `fileSizeLimitMb`, `importFileSizeLimitMb` (import uploads, default 5120), `auditRetentionDays`, `rateLimitPerMinute`. The storage quota is not a setting: it is an operator cap, below.
+- **`organizations.class`**: `standard` or `demo`, written with the row (`ensureOrg({ class })`) and never changed. The demo purge and reset and the immutability trigger act on it, not on the jsonb marker (`settings.demo`); `org_billing_state` has a foreign key to `(id, class)` that holds only `standard`, so a demo org can have no billing row, and `/api/cloud/*` does not find one.
 - **`organizations.caps`** — the operator's per-org caps `{seats?, mailboxes?, storageGb?, jobsPerHour?}` (`modules/org/caps.ts`), set only with `liaison org caps` or the `limits` section of `liaison config apply`; a missing key is unlimited, the self-hosted default. Seats and mailboxes are counted and added under an org advisory lock (`SEAT_LIMIT_REACHED` / `MAILBOX_LIMIT_REACHED`, 409); storage is enforced by `files/service.ts`; jobs over `jobsPerHour` are delayed to the next hour bucket with room (`infra/jobs/org-job-cap.ts`). The per-UTC-day app caps (`appRunsPerDay`, `appBridgeCallsPerDay`, `appCpuMsPerDay`) are enforced from Redis day counters fed by the run-settled hook (`modules/apps/usage/`), per entry point: tools refused (429), background work held to the next UTC day; `kernel.app_usage_daily` is for reporting.
 - **`connectedAccounts`** — kernel-level OAuth2 and credential storage for app connections. Tokens encrypted at rest (AES-256-GCM via `ENCRYPTION_KEY`). Unique constraint on `(orgId, appName, connectionName, identifier)` for active accounts. Supports `oauth2` and `credentials` provider types.
 
@@ -449,7 +450,7 @@ interface AppContext {
 
 Manifest apps receive the same capabilities through the RPC bridge — the sandbox executor constructs the bridge from the same underlying services (RLS transaction, outbox, job queue, contact resolver).
 
-**Registries** — in-memory Maps populated at startup via `initAppsForOrg()`: `toolRegistry`, `webhookHandlers`, `dimensionDefRegistry`, `timelineDeclarations`, `viewRegistry`, `slotRegistry`, `contributionRegistry`, `entityRegistry`, `exportRegistry`, `skillRegistry`, `manifestRegistry`, `connectionConfigRegistry`, `declaredEmits`.
+**Registries** — in-memory Maps populated at startup via `initAppsForOrg()`: `toolRegistry`, `webhookHandlers`, `dimensionDefRegistry`, `timelineDeclarations`, `viewRegistry`, `slotRegistry`, `entityRegistry`, `exportRegistry`, `skillRegistry`, `manifestRegistry`, `connectionConfigRegistry`, `declaredEmits`.
 
 ---
 

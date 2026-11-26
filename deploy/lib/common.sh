@@ -31,10 +31,16 @@ require_tools() {
   [ -f "${DEPLOY_DIR}/.env" ] || die "${DEPLOY_DIR}/.env not found (run deploy/quickstart.sh once, or create it from deploy/.env.example)"
 }
 
-# Value of KEY in deploy/.env, empty when absent. Never printed by callers.
+# Value of KEY in deploy/.env, empty when absent, with one pair of surrounding
+# quotes removed as docker compose reads it (KEY='v' and KEY="v" are v). Never
+# printed by callers.
 env_get() {
-  awk -v k="$1" 'index($0, k "=") == 1 { v = substr($0, length(k) + 2) } END { print v }' \
-    "${DEPLOY_DIR}/.env"
+  awk -v k="$1" 'index($0, k "=") == 1 { v = substr($0, length(k) + 2) }
+    END {
+      n = length(v); f = substr(v, 1, 1)
+      if (n >= 2 && (f == "\047" || f == "\"") && substr(v, n, 1) == f) v = substr(v, 2, n - 2)
+      print v
+    }' "${DEPLOY_DIR}/.env"
 }
 
 # Portable in-place `KEY=value` (adds the line when KEY is absent). Keeps the

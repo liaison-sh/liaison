@@ -1,0 +1,7 @@
+A task on a live billing claim cannot move to another project or be merged; the refusal names the invoice or draft -> apps/api/src/apps/projects/service/claim-holds.ts (refuseClaimedTasks) ; apps/api/src/apps/projects/service/move-task.ts (moveTask) ; apps/api/src/apps/projects/service/tasks.ts (mergeTasks)
+A task left off the bill moves -> apps/api/src/apps/projects/service/claims-move.integration.test.ts (a task left off the bill moves)
+An advance outside a billing plan is refused on a daily or hourly project -> bundled-apps/invoicing/src/mutations/advances.ts (advanceDraftCreate)
+Undo, issue and corrections work on a project turned off -> apps/api/src/apps/projects/app.manifest.json (tools.reconcile_undo) ; apps/api/src/apps/projects/service/reconcile-create.ts (reconcileUndoStep) ; apps/api/src/apps/projects/service/money-off.integration.test.ts (a project turned off)
+Create on a project with dated hours files the month's sheet on the draft, marked partial when it is -> apps/api/src/apps/projects/handlers.ts (fileMonthSheet) ; apps/api/src/apps/projects/service/reconcile-create.ts (reconcileCreateStep)
+Projects hands Invoicing only the sheet it exported in that same step -> apps/api/src/apps/projects/handlers.ts (fileMonthSheet)
+The hourly check records a partial credit's billed figure from the credit notes -> apps/api/src/apps/projects/service/reconcile-sweep.ts (settlePartialCredits)

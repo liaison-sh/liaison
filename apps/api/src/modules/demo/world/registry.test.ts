@@ -11,15 +11,11 @@ import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { KERNEL_DECLARED_EMITS } from "~/infra/events/event-bus"
 import { declaredEmits } from "~/modules/apps/app-registries"
-import {
-  invalidateDemoMarker,
-  markOrgAsDemo,
-  reservedMarker,
-  visitorMarker,
-} from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker, visitorMarker } from "~/modules/demo/demo-org"
 import * as verification from "~/modules/demo/demo-verification"
 import { loadTourOrgContext, startTour, tourBeats } from "~/modules/tours/service"
 import * as minimal from "~/seed/tiers/minimal"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 
 let verified = false
@@ -116,7 +112,7 @@ beforeAll(async () => {
   priorKernelEmits = declaredEmits.get("kernel")
   declaredEmits.set("kernel", new Set(KERNEL_DECLARED_EMITS))
   demoOrg = (await createTestOrg()).id
-  await markOrgAsDemo(demoOrg, visitorMarker(24))
+  await markDemoOrgForTest(demoOrg, visitorMarker(24))
   plainOrg = (await minimal.secondOrg()).orgId
 })
 
@@ -164,6 +160,22 @@ describe("runWorldBeat", () => {
     expect(calls).toBe(0)
     expect(await marks(plainOrg)).toHaveLength(0)
     expect((await rowOf(plainOrg, plainOwner)).beat_id).toBe(WORLD_BEAT)
+  })
+
+  it("an injector bound to another world refuses: no injection, no mark, the beat stays", async () => {
+    restore?.()
+    restore = WorldRegistryTestAccess.override("chat-question", {
+      id: "chat-question",
+      world: "saas",
+      async injectWorldEvent() {
+        calls++
+      },
+    })
+    await onWorldBeat(demoOrg, owner)
+    expect(await runWorldBeatOnce(demoOrg, owner, TOUR_ID)).toBe("other_world")
+    expect(calls).toBe(0)
+    expect(await marks(demoOrg)).toHaveLength(0)
+    expect((await rowOf(demoOrg, owner)).beat_id).toBe(WORLD_BEAT)
   })
 
   it("runs the current world beat once and stays on it to be read; a second delivery runs nothing", async () => {
@@ -354,7 +366,7 @@ describe("demo-world consumer", () => {
 
   it("refuses the reserved review org: no injection, no mark", async () => {
     const reviewOrg = (await minimal.secondOrg()).orgId
-    await markOrgAsDemo(reviewOrg, reservedMarker())
+    await markDemoOrgForTest(reviewOrg, reservedMarker())
     invalidateDemoMarker()
     const reviewer = await addUser(reviewOrg)
     await onWorldBeat(reviewOrg, reviewer)

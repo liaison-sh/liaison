@@ -30,8 +30,8 @@
 // recently touched orgs that no live work holds (a request or socket,
 // `orgRuntimeHolds`; a write, job or agent turn, or a move in progress, from
 // the transfer state's accounting), through the same release as an idle one.
-// Held orgs are never released: the cap may be exceeded until they end, and
-// the minute sweep trims it then.
+// Held orgs are never released, by the cap or the idle sweep: the cap may be
+// exceeded until they end, and the minute sweep trims it then.
 //
 // A release first marks the org not set up, so a touch arriving meanwhile
 // waits for the release (`orgRuntimeReleases`, init.ts) and then sets it up
@@ -144,10 +144,19 @@ export async function releaseOrgRuntimes(
   return [...released]
 }
 
-/** The set-up orgs nothing has touched in this process for `idleMs`. */
-export function idleOrgRuntimes(idleMs: number, now: number = Date.now()): string[] {
+/**
+ * The set-up orgs nothing has touched in this process for `idleMs`, never one
+ * held by live work (`isHeld`, as for the cap): a request running past the
+ * idle window keeps its org set up until it ends.
+ */
+export function idleOrgRuntimes(
+  idleMs: number,
+  now: number = Date.now(),
+  isHeld: (orgId: string) => boolean = orgRuntimeHeld,
+): string[] {
   const idle: string[] = []
   for (const orgId of initializedOrgRuntimes) {
+    if (isHeld(orgId)) continue
     const last = orgRuntimeLastTouch.get(orgId)
     // Never touched through the ensure entry (set up some other way): from now.
     if (last === undefined) {

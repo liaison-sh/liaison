@@ -92,6 +92,8 @@ async function parkForApproval(
     lines: string[]
     payload: unknown
     editable_fields?: string[]
+    /** Told to the agent beside the pending approval. */
+    note?: string
   },
 ): Promise<unknown | null> {
   if (!ctx.requestApproval) {
@@ -116,7 +118,9 @@ async function parkForApproval(
   return {
     status: "pending_approval",
     approval_id: res.approval_id,
-    note: "Organization-wide knowledge writes require a human approval. Report this as pending, never as done.",
+    note:
+      input.note ??
+      "Organization-wide knowledge writes require a human approval. Report this as pending, never as done.",
   }
 }
 
@@ -124,8 +128,8 @@ const KNOWLEDGE_EXPORT_COLUMNS: Array<[string, string]> = [
   ["id", "id"],
   ["title", "title"],
   ["summary", "summary"],
-  ["scope", "scope"],
-  ["status", "status"],
+  ["scope", "document_scope"],
+  ["status", "review_status"],
   ["ownerUserId", "owner_user_id"],
   ["createdAt", "created_at"],
 ]
@@ -241,22 +245,38 @@ export async function create(
     // structured error back to the agent instead of queueing a doomed card.
     const validation = JSON.parse(await ctx.knowledge_create_validate(JSON.stringify(p))) as {
       error?: { code: string; message: string }
+      audience?: "private" | "restricted" | "org"
     }
     if (validation.error) return { error: validation.error }
-    const parked = await parkForApproval(ctx, {
-      tool_name: "knowledge:create",
-      summary: `Create organization knowledge document: ${truncateForCard(p.title) || "(untitled)"}`,
-      lines: [
-        `Title: ${truncateForCard(p.title) || "(untitled)"}`,
-        ...(typeof p.summary === "string" && p.summary
-          ? [`Summary: ${truncateForCard(p.summary)}`]
-          : []),
-        ...(typeof p.body === "string" && p.body ? [`Body: ${truncateForCard(p.body)}`] : []),
-        "Scope: organization (visible to the whole org)",
-      ],
-      payload: p,
-      editable_fields: ["title", "body"],
-    })
+    // A page nobody but its owner will read is like a personal note: no card. One
+    // for named people parks for one decider (resourceOwner, approval-audience.ts).
+    const restricted = validation.audience === "restricted"
+    const parked =
+      validation.audience === "private"
+        ? null
+        : await parkForApproval(ctx, {
+            tool_name: "knowledge:create",
+            summary: restricted
+              ? `Create a knowledge document for named people: ${truncateForCard(p.title) || "(untitled)"}`
+              : `Create organization knowledge document: ${truncateForCard(p.title) || "(untitled)"}`,
+            lines: [
+              `Title: ${truncateForCard(p.title) || "(untitled)"}`,
+              ...(typeof p.summary === "string" && p.summary
+                ? [`Summary: ${truncateForCard(p.summary)}`]
+                : []),
+              ...(typeof p.body === "string" && p.body ? [`Body: ${truncateForCard(p.body)}`] : []),
+              restricted
+                ? "Only the people this page is shared with see it"
+                : "Scope: organization (visible to the whole org)",
+            ],
+            payload: p,
+            editable_fields: ["title", "body"],
+            ...(restricted
+              ? {
+                  note: "A page for named people waits for one person who can read it, nobody else sees the request. Report this as pending, never as done.",
+                }
+              : {}),
+          })
     if (parked !== null) return parked
   }
   return JSON.parse(await ctx.knowledge_create(JSON.stringify(p)))
@@ -298,7 +318,8 @@ export async function update(
   return JSON.parse(await ctx.knowledge_update(JSON.stringify(p)))
 }
 
-// archive — retire a Knowledge document (reversible soft-archive). Gated behind
+// archive: move a Knowledge document to Trash (people see "Move to trash"); it is
+// deleted for good after 30 days unless restored. Gated behind
 // knowledge:documents:archive (enforced in the bridge + archiveKnowledgeDocument).
 // Lets the agent cleanly retire a wrong/superseded/duplicate doc instead of
 // fabricating an '[ARCHIVED]' stub.
@@ -307,15 +328,17 @@ export async function archive(
   ctx: KnowledgeCtx,
 ): Promise<unknown> {
   const p = params ?? {}
-  if (!ctx.approval) {
+  // A recognised ingestion's archive (a superseded copy the same connector wrote) is a machine
+  // write path, like its create: no agent proposes it and nobody watches the turn.
+  if (!ctx.approval && !(await ingestionCallerOf(ctx))) {
     const scope = await documentScopeOf(ctx, p.id)
     if (scope === "organization") {
       const parked = await parkForApproval(ctx, {
         tool_name: "knowledge:archive",
-        summary: `Archive organization knowledge document ${String(p.id ?? "")}`,
+        summary: `Move organization knowledge document ${String(p.id ?? "")} to Trash`,
         lines: [
           `Document: ${String(p.id ?? "")}`,
-          "Archiving hides it from the whole org (reversible via restore).",
+          "It goes to Trash and is deleted after 30 days. Anyone who can edit it can restore it until then.",
         ],
         payload: p,
       })
@@ -325,7 +348,7 @@ export async function archive(
   return JSON.parse(await ctx.knowledge_archive(JSON.stringify(p)))
 }
 
-// restore — un-archive a previously-archived document. No-op if already active.
+// restore: bring a document back from Trash (un-archive). No-op if already active.
 export async function restore(
   params: Record<string, unknown> | undefined,
   ctx: KnowledgeCtx,

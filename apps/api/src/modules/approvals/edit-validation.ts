@@ -7,6 +7,8 @@
 export type EditableWidget =
   | "text"
   | "richtext"
+  // A number (an integer or decimal param), checked as a finite number.
+  | "number"
   | "checkbox"
   | "checkbox-per-line"
   | "key-value-list"
@@ -26,6 +28,7 @@ export interface EditableField {
 const SUPPORTED_WIDGETS: ReadonlySet<EditableWidget> = new Set<EditableWidget>([
   "text",
   "richtext",
+  "number",
   "checkbox",
   "checkbox-per-line",
   "key-value-list",
@@ -110,6 +113,11 @@ function checkWidgetValue(
     case "richtext":
       if (typeof revVal !== "string") {
         return `field '${revKey}' expected string for widget ${field.widget}`
+      }
+      return null
+    case "number":
+      if (typeof revVal !== "number" || !Number.isFinite(revVal)) {
+        return `field '${revKey}' expected a number for widget number`
       }
       return null
     case "checkbox":

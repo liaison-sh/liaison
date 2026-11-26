@@ -13,9 +13,12 @@ import {
   users,
 } from "~/db/schema/kernel"
 import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
+import { RESTRICTED_SCOPE_PREFIX } from "~/modules/permissions/restricted-scope"
 
 export function hasScope(required: string, granted: string[]): boolean {
   if (!required) return false
+  // A restricted record's scope is held by its list, never by a grant.
+  if (required.startsWith(RESTRICTED_SCOPE_PREFIX)) return false
   const requiredParts = required.split(":")
   return granted.some((g) => {
     // Full wildcard grants everything.
@@ -157,8 +160,8 @@ export async function resolveEffectivePermissions(
  * and those the org's installed apps give every member (manifest
  * `everyMemberScopes`, recorded on `kernel.apps.every_member_scopes` at
  * registration), for an ACTIVE member of the org only; nothing for a suspended
- * or deactivated account, a person of another org, or an app removed from the
- * workspace. Not a role: no admin edit removes them. The caller still applies
+ * or deactivated account, an external user, a person of another org, or an app
+ * removed from the workspace. Not a role: no admin edit removes them. The caller still applies
  * the app-access restriction (S20) after the union, so a person kept out of a
  * restricted app loses these with the rest of the app's scopes; an Off app keeps
  * them in the token like its role grants, and its routes stay closed by the
@@ -176,7 +179,14 @@ export async function everyMemberScopeGrants(
     .select({ scopes: apps.everyMemberScopes })
     .from(users)
     .leftJoin(apps, and(eq(apps.orgId, users.orgId), ne(apps.status, "removed")))
-    .where(and(eq(users.id, userId), eq(users.orgId, orgId), eq(users.status, "active")))
+    .where(
+      and(
+        eq(users.id, userId),
+        eq(users.orgId, orgId),
+        eq(users.status, "active"),
+        eq(users.userType, "member"),
+      ),
+    )
   if (rows.length === 0) return []
   return [...KERNEL_EVERY_MEMBER_SCOPES, ...rows.flatMap((r) => r.scopes ?? [])].map((scope) => ({
     scope,
@@ -221,6 +231,7 @@ export async function mcpServerAccessGrants(
         eq(mcpConnections.ownershipScope, "org"),
         eq(users.id, args.userId),
         eq(users.status, "active"),
+        eq(users.userType, "member"),
         or(
           eq(mcpConnections.accessMode, "everyone"),
           exists(

@@ -478,6 +478,61 @@
   color: var(--color-text-tertiary);
 }
 
+/* A page's image or file (editor/file-view.ts), in the editor and the reader. A
+   picture fills the line it is on; any other file is a card with its name. */
+.liaison-file[data-kind="image"] {
+  display: block;
+  margin: 0.75em 0;
+}
+.liaison-file img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+}
+.liaison-file-card {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.25em 0;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.liaison-file-card:hover {
+  background: var(--color-surface-hover);
+}
+.liaison-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.liaison-file-size {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+.liaison-file-label,
+.liaison-file-uploading {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px dashed var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+.rich-editor .ProseMirror .liaison-file.ProseMirror-selectednode {
+  outline: 2px solid var(--color-accent-border);
+  border-radius: 8px;
+}
+
 /* Mention pills inside thread prose. An INLINE chip on the text line: it
    never sets a height or a line-height of its own, so the paragraph keeps its
    rhythm, and a long name wraps with the chip's look on both fragments. */
@@ -512,6 +567,31 @@
   background: color-mix(in srgb, var(--color-accent) 25%, transparent);
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+/* A link to another Knowledge page (editor/page-link-view.ts): the mention chip
+   with a page icon; a page the reader cannot open is a quiet grey label. */
+.page-link {
+  white-space: normal;
+}
+.page-link-icon {
+  display: inline;
+  vertical-align: -1.5px;
+  margin-right: 3px;
+}
+.page-link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+.page-link-muted {
+  display: inline;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  background: var(--color-surface-hover);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 /* Local path links (desktop): the prose link look, inside code as well, and
@@ -703,6 +783,22 @@
 :is(input[type="checkbox"], input[type="radio"]):not([data-touch-dense]) {
   width: 22px;
   height: 22px;
+}
+
+/* A result card's own targets that the floor above does not list: its
+   disclosures (a number's "How this number is worked out") and its links. In a
+   card they stand alone on their line, not inside a sentence, so they take the
+   same 44px floor. The summary keeps its native marker: padding, not flex,
+   centres its single line. */
+:is([data-shell-tier="tablet"], [data-shell-tier="phone"]) [data-tool-card] summary {
+  min-height: 44px;
+  padding-block: 14px;
+  box-sizing: border-box;
+}
+:is([data-shell-tier="tablet"], [data-shell-tier="phone"]) [data-tool-card] a[href] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }
 
 /*

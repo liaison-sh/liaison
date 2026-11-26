@@ -7,6 +7,7 @@ import { organizations } from "~/db/schema/kernel"
 import { initializedOrgRuntimes } from "~/modules/apps/app-registries"
 import { appSchemaDdlReuse } from "~/modules/apps/runtime"
 import { bootstrapRegister } from "~/modules/auth/auth"
+import { turnOnOrgFeatures } from "~/tests/helpers/org-features"
 import { truncateOrgTables } from "~/tests/route-test-setup"
 
 /**
@@ -40,7 +41,17 @@ export async function withFullAppSchemaDdl<T>(fn: () => Promise<T>): Promise<T> 
  * registration writes. `reuseAppSchemaDdl: false` forces the full DDL.
  */
 export async function createTestOrg(
-  opts: { email?: string; password?: string; reuseAppSchemaDdl?: boolean } = {},
+  opts: {
+    email?: string
+    password?: string
+    reuseAppSchemaDdl?: boolean
+    /**
+     * Turn on the switches inside apps a workspace starts without (companies, deals, client
+     * reports, recurring billing), as an admin would: the suites written before they were
+     * switches exercise them. `false` keeps the workspace as a new one starts: all off.
+     */
+    servicesFeatures?: boolean
+  } = {},
 ): Promise<{ id: string }> {
   await truncateOrgTables()
   // The kernel.apps row from prior orgs is gone after truncateOrgTables, but
@@ -58,7 +69,7 @@ export async function createTestOrg(
     )
   if (opts.reuseAppSchemaDdl === false) await withFullAppSchemaDdl(register)
   else await register()
-  return withSystemDb("test-create-org-lookup", async (db) => {
+  const org = await withSystemDb("test-create-org-lookup", async (db) => {
     const [row] = await db
       .select({ id: organizations.id })
       .from(organizations)
@@ -67,4 +78,6 @@ export async function createTestOrg(
     if (!row) throw new Error("createTestOrg: no organization found after bootstrap")
     return { id: row.id }
   })
+  if (opts.servicesFeatures !== false) await turnOnOrgFeatures(org.id)
+  return org
 }

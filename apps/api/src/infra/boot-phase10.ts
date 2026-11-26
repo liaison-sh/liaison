@@ -3,6 +3,7 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { createHash } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
+import { registerKnowledgeSearchEnrichment } from "~/apps/knowledge/search-enrichment"
 import {
   registerMailFragmentConsumer,
   registerMailSearchEnrichment,
@@ -25,9 +26,11 @@ import {
   supersedingApp,
 } from "~/modules/apps/catalog-derivations"
 import { registerRevokeOnDisconnectConsumer } from "~/modules/apps/connections/revoke"
+import { appSchemaApplied } from "~/modules/apps/ddl-stamp"
 import { registerDigestScheduledJobs } from "~/modules/attention/digest-jobs"
 import { registerStateMaterializerScheduledJob } from "~/modules/attention/state-materializer"
 import { registerTranslatorConsumer } from "~/modules/attention/translator"
+import { wireRestrictedAccessFollow } from "~/modules/client-actions/restricted-follow"
 import { demoSpendBootCheck, registerDemoPriceCheckSingleton } from "~/modules/demo/demo-alerts"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { registerReplayResumeSingleton } from "~/modules/demo/replay/resume"
@@ -50,6 +53,7 @@ import { registerMailProducerConsumer } from "~/modules/notifications/mail-produ
 import { wireAfterCommitResume } from "~/modules/org/transfer/after-commit"
 import { wireIncomingOrgPurge } from "~/modules/org/transfer/purge"
 import { registerOrgTransferResolver } from "~/modules/org/transfer-state/resolver"
+import type { EnsureResult, PortalViewTx } from "~/modules/portal/views"
 import {
   primeSearchSettings,
   registerReindexWorker,
@@ -255,6 +259,13 @@ function policyComment(stmt: string, fingerprint: string, versions?: CatalogVers
   return `${stamp}:catalog=${Buffer.from(JSON.stringify(versions)).toString("base64url")}`
 }
 
+/** Whether two catalogs name the same versions of the same apps. */
+function sameVersions(a: CatalogVersions | undefined, b: CatalogVersions): boolean {
+  if (!a) return false
+  const names = Object.keys(b)
+  return Object.keys(a).length === names.length && names.every((n) => a[n] === b[n])
+}
+
 /** A stored comment's stamp and catalog versions (none in a comment written before them). */
 function parsePolicyComment(
   comment: string | null,
@@ -380,7 +391,23 @@ async function applyFilesSelectPolicyOnce(
       await db.execute(drizzleSql.raw(policyFingerprintSql(kernelSchema))),
     )
     const stored = parsePolicyComment(live?.comment ?? null)
-    if (live && stored?.stamp === policyStamp(stmt, live.fingerprint)) return "unchanged"
+    if (live && stored?.stamp === policyStamp(stmt, live.fingerprint)) {
+      // The same policy from a newer catalog: the stored versions follow, or an older release
+      // still running in a rolling deploy would not be refused on the versions it is older than.
+      if (
+        build.versions &&
+        !sameVersions(stored.versions, build.versions) &&
+        !(stored.versions && (await supersedingApp(stored.versions, build.versions)))
+      ) {
+        await db.execute(
+          drizzleSql.raw(
+            `COMMENT ON POLICY files_select ON ${quoteIdent(kernelSchema)}.files IS ` +
+              quoteLiteral(policyComment(stmt, live.fingerprint, build.versions)),
+          ),
+        )
+      }
+      return "unchanged"
+    }
     if (build.versions && stored?.versions) {
       const newer = await supersedingApp(stored.versions, build.versions)
       if (newer) {
@@ -510,8 +537,49 @@ export function registerApprovalSummaryBackfill(): void {
  * acquire (`registerSearchDriftCheck`, `registerFilesSelectPolicyCheck`). So a process that has registered no org
  * leaves both as they are.
  */
+/**
+ * The portal views of every installed app, checked once at boot: a view whose
+ * definition, barrier, owner or grant was changed in the database is put back as
+ * the code holds it, and a missing one is made. Never throws.
+ *
+ * Only on an app schema a registration has fully applied (its DDL stamp): a view
+ * reads columns the app's manifest adds, and a schema a numbered migration made
+ * (the tickets app's, on a fresh database) lacks them until the app's first
+ * registration, which makes the views itself once its columns exist.
+ */
+export async function ensureInstalledAppPortalViews(): Promise<void> {
+  const { appsWithPortalViews } = await import("~/modules/portal/views")
+  for (const app of appsWithPortalViews()) {
+    try {
+      const out = await withSystemDb(`portal-views:${app}`, (tx) =>
+        ensureAppPortalViewsAtBoot(tx, app),
+      )
+      if (typeof out !== "string" && out.written.length > 0)
+        log.info({ app, views: out.written }, "Portal views restored")
+    } catch (err) {
+      log.error({ err, app }, "Portal views check at boot failed")
+    }
+  }
+}
+
+/** One app's boot check of its portal views, or why it waits for the app's registration. */
+export async function ensureAppPortalViewsAtBoot(
+  tx: PortalViewTx,
+  app: string,
+): Promise<EnsureResult | "not-installed" | "not-applied"> {
+  const { ensurePortalViews } = await import("~/modules/portal/views")
+  const schemaName = schemaRef(`app_${app}`)
+  const [row] = extractRowsOf<{ installed: boolean }>(
+    await tx.execute(drizzleSql`SELECT to_regnamespace(${schemaName}) IS NOT NULL AS installed`),
+  )
+  if (!row?.installed) return "not-installed"
+  if (!(await appSchemaApplied(tx, schemaName))) return "not-applied"
+  return ensurePortalViews(tx, app, "compare")
+}
+
 export async function runPhase10Boot(): Promise<void> {
   log.info("Phase 10 boot: start")
+  void ensureInstalledAppPortalViews()
 
   // Tickets' unified-search enrichment hook must be registered before the
   // indexer consumer below — a job processed before registration would build
@@ -519,6 +587,7 @@ export async function runPhase10Boot(): Promise<void> {
   // inside buildSearchDocument at upsert time, not re-checked later).
   registerTicketsSearchEnrichment()
   registerMailSearchEnrichment()
+  registerKnowledgeSearchEnrichment()
   // Register the rebuild worker BEFORE drift detection: drift may enqueue
   // `search-reindex-full`, which requires the handler to already exist.
   registerIndexerConsumer()
@@ -583,6 +652,8 @@ export async function runPhase10Boot(): Promise<void> {
   await registerStateMaterializerScheduledJob()
   // An app's stored attention list is recomputed after the app was woken.
   wireAttentionRefreshWakes()
+  // A restricted record's client actions and discussion follow its list.
+  wireRestrictedAccessFollow()
   log.info("Phase 10 boot: state materializer registered")
   await registerDigestScheduledJobs()
   log.info("Phase 10 boot: digest jobs registered")

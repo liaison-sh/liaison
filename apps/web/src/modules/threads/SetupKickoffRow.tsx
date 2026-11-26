@@ -6,21 +6,41 @@
  * the row), the key card when the workspace has no model key yet, and the demo
  * offer, the one place the offer appears. No modal, no banner, no alarm colour:
  * the agent carries the conversation from here.
+ *
+ * On Cloud (the managed edition) the card asks for one goal and leaves mail for
+ * last. Without a goal from the signup, three plain buttons each post "I want
+ * to start with ..." in this conversation: a message, never a dialog, and the
+ * buttons go once the person has written here. A self-hosted card is unchanged.
  */
+import { isKickoffGoal, KICKOFF_GOALS, type KickoffGoal } from "@liaison/shared"
 import { ExternalLink } from "lucide-solid"
-import { type Component, Show } from "solid-js"
+import { type Component, createSignal, For, onCleanup, Show } from "solid-js"
 import {
   readSetupState,
   SetupChecklistCard,
   type SetupStateView,
 } from "~/modules/agent/SetupChecklistCard"
+import { userFromToken } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import SecretRequestToolCard from "~/modules/secret-request/SecretRequestToolCard"
+import { useApi } from "~/modules/shell/ApiContext"
+import { addToast } from "~/modules/shell/toast-store"
+import { messageStore } from "~/modules/threads/message-store"
+import {
+  releaseHeldScopes,
+  sendFailureToast,
+  sendThreadMessage,
+} from "~/modules/threads/thread-send"
+import { Button } from "~/ui/Button"
 
 export interface SetupKickoffView {
   state: SetupStateView
   demoUrl: string | null
   secretRequestId: string | null
+  /** Cloud (the managed edition): goal first, mail last. */
+  managed: boolean
+  /** Cloud: the goal chosen at signup, or null. */
+  goal: KickoffGoal | null
 }
 
 /** The card's data out of a message's metadata, or null when it is not one. */
@@ -36,7 +56,13 @@ export function setupKickoffOf(metadata: unknown): SetupKickoffView | null {
     typeof meta.secretRequestId === "string" && meta.secretRequestId !== ""
       ? meta.secretRequestId
       : null
-  return { state, demoUrl, secretRequestId }
+  return {
+    state,
+    demoUrl,
+    secretRequestId,
+    managed: meta.managed === true,
+    goal: meta.managed === true && isKickoffGoal(meta.goal) ? meta.goal : null,
+  }
 }
 
 function hostOf(url: string): string {
@@ -47,10 +73,62 @@ function hostOf(url: string): string {
   }
 }
 
-export const SetupKickoffRow: Component<{ messageId: string; view: SetupKickoffView }> = (
-  props,
-) => {
+/** Someone wrote in this conversation: the goal is in their own words now. */
+function personWrote(threadId: string): boolean {
+  const thread = messageStore.threads[threadId]
+  if (!thread) return false
+  return thread.ids.some((id) => thread.byId[id]?.authorType === "user")
+}
+
+export const SetupKickoffRow: Component<{
+  messageId: string
+  threadId: string
+  view: SetupKickoffView
+}> = (props) => {
   const i18n = useI18n()
+  const api = useApi()
+  const [sending, setSending] = createSignal(false)
+  const [chosen, setChosen] = createSignal(false)
+  const heldTurnScopes = new Set<() => void>()
+  onCleanup(() => releaseHeldScopes(heldTurnScopes))
+
+  const intro = () => {
+    if (!props.view.managed) return i18n.t("first-run.kickoff.intro")
+    const goal = props.view.goal
+    return goal
+      ? i18n.t(`first-run.kickoff.introManagedGoal.${goal}`)
+      : i18n.t("first-run.kickoff.introManaged")
+  }
+  const askGoal = () =>
+    props.view.managed && !props.view.goal && !chosen() && !personWrote(props.threadId)
+
+  /** Post one line as the person in this conversation: a message, never a dialog. */
+  const say = async (text: string): Promise<boolean> => {
+    const user = userFromToken()
+    if (!user || sending()) return false
+    setSending(true)
+    try {
+      await sendThreadMessage(
+        api,
+        props.threadId,
+        text,
+        { id: user.userId, name: user.name },
+        {},
+        heldTurnScopes,
+      )
+      return true
+    } catch (err) {
+      addToast(sendFailureToast(err, i18n.t))
+      return false
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const choose = async (goal: KickoffGoal): Promise<void> => {
+    if (await say(i18n.t(`first-run.kickoff.goalMessage.${goal}`))) setChosen(true)
+  }
+
   return (
     <div
       data-testid="setup-kickoff-row"
@@ -60,8 +138,29 @@ export const SetupKickoffRow: Component<{ messageId: string; view: SetupKickoffV
       <h3 class="text-[14px] font-semibold text-text-primary">
         {i18n.t("first-run.kickoff.title")}
       </h3>
-      <p class="text-text-secondary">{i18n.t("first-run.kickoff.intro")}</p>
-      <SetupChecklistCard state={props.view.state} />
+      <p class="text-text-secondary">{intro()}</p>
+      <Show when={askGoal()}>
+        <div data-testid="setup-goal-choices" class="mt-1 flex flex-wrap gap-2">
+          <For each={KICKOFF_GOALS}>
+            {(goal) => (
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid={`setup-goal-${goal}`}
+                disabled={sending()}
+                onClick={() => void choose(goal)}
+              >
+                {i18n.t(`first-run.kickoff.goal.${goal}`)}
+              </Button>
+            )}
+          </For>
+        </div>
+      </Show>
+      <SetupChecklistCard
+        state={props.view.state}
+        starting={sending()}
+        onStart={(step) => void say(i18n.t("first-run.checklist.startMessage", { step }))}
+      />
       <Show when={props.view.secretRequestId}>
         {(id) => (
           <>

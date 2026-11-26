@@ -38,6 +38,19 @@ const EXCLUDED: Record<string, { fields: number; reason: string }> = {
   "projects/ProjectEditForm.tsx": { fields: 1, reason: "project description, not listed" },
   "dashboards/DashboardView.tsx": { fields: 1, reason: "dashboard description, not listed" },
   "contacts/ContactAddresses.tsx": { fields: 1, reason: "a postal address's note (contact data)" },
+  // The client portal: a person outside the organisation writes here, and no agent, tool or
+  // writing helper ever reaches them (public pages carry no agent at all).
+  "portal/Requests.tsx": { fields: 2, reason: "a client's own request and reply, on the portal" },
+  "portal/Approve.tsx": { fields: 1, reason: "a client's own note on a decision, on the portal" },
+  "client-action/ClientActionPage.tsx": {
+    fields: 1,
+    reason:
+      "a person outside declines on the public link page: no member session, no agent, so no member writing helpers",
+  },
+  // The page editor's own parts: the page that mounts them (knowledge/PageHeader.tsx)
+  // carries the wand and the mic; a page saves itself, so there is no Save.
+  "editor/PageTextEditor.tsx": { fields: 1, reason: "the page editor; its page has the helpers" },
+  "editor/SourceEditor.tsx": { fields: 1, reason: "the page editor's source mode, same page" },
   "settings/documents/RichTextEditor.tsx": {
     fields: 1,
     reason: "document template text with {{field}} placeholders (configuration)",
@@ -68,7 +81,6 @@ const FOOTER_PRIMARY: Record<string, string[]> = {
   "sessions/NewSessionDialog.tsx": ['"new-session-start"'],
   "projects/NewTaskDialog.tsx": ['"new-task-dialog.submit"'],
   "projects/ProjectsHome.tsx": ['"projects-home.new-project-confirm"'],
-  "knowledge/KnowledgeDocumentView.tsx": ['"knowledge-doc-save"'],
   // The step row's test id is a template: matched by its tail.
   "approvals/ApprovalCard.tsx": ["()}-save`}", '"approval-card-action-save"'],
 }

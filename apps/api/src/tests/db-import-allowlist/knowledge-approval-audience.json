@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "apps/knowledge/approval-audience.ts": "Who decides a gated knowledge write, asked by the approval routing (resource-owner.ts) before a card exists. Three reads, no write: whether the page's owner is an active user, the page's scope, access, owner, creator and whether anyone else holds a grant (never its title or text), and the requester's current permissions. They must read past row security: the requester may no longer see the page, and reading too little would route its card to the whole organization. Each is pinned to the approval's own org; the answer is a user id or null, and any failure is the requester."
+  }
+}

@@ -278,14 +278,25 @@ export const inFlightKey = (routineId: string, eventId: string) =>
 /**
  * The subscriber's half of "in flight from enqueue": the event's first tick is
  * queued, so no retry starts until its run row lands (the worker clears this)
- * or the stale timeout passes. Best effort: a lost marker costs a possible
- * early retry, never a lost event.
+ * or the stale timeout passes. Set only if absent: false means a tick for this
+ * event is already queued (a subscriber's catch-up of an event delivered before
+ * the routine was armed here, a retry, or the same event delivered twice), and
+ * the caller enqueues nothing. Best effort: a marker Redis could not write
+ * counts as taken (a possible early retry, never a lost event).
  */
-export async function markEventTickInFlight(routineId: string, eventId: string): Promise<void> {
+export async function markEventTickInFlight(routineId: string, eventId: string): Promise<boolean> {
   try {
-    await redis.set(inFlightKey(routineId, eventId), "0", "EX", RECONCILE_DEFAULTS.inFlightTtlSec)
+    const set = await redis.set(
+      inFlightKey(routineId, eventId),
+      "0",
+      "EX",
+      RECONCILE_DEFAULTS.inFlightTtlSec,
+      "NX",
+    )
+    return set === "OK"
   } catch (err) {
     log.warn({ err, routineId, eventId }, "Event tick in-flight marker not set")
+    return true
   }
 }
 

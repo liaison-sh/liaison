@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
- * THE POOL PLAN. Every process opens up to five Postgres pools (connection.ts):
- * main, request, privileged, jobs and privileged-jobs. Their sizes come from
+ * THE POOL PLAN. Every process opens up to six Postgres pools (connection.ts):
+ * main, request, privileged, jobs, privileged-jobs and, when the logins are
+ * split, portal (the client portal's own login, liaison_portal). Their sizes come from
  * one connection budget (DB_CELL_MAX_CONNECTIONS, the connections Liaison may
  * open on its database endpoint) and the process's role, so the whole topology
  * (every api and worker replica, two releases side by side during a rolling
@@ -16,7 +17,7 @@
  * friends, else 20), exactly what every release before the plan opened.
  */
 
-export type PoolName = "main" | "request" | "privileged" | "jobs" | "privilegedJobs"
+export type PoolName = "main" | "request" | "privileged" | "jobs" | "privilegedJobs" | "portal"
 
 export const POOL_NAMES: readonly PoolName[] = [
   "main",
@@ -24,6 +25,7 @@ export const POOL_NAMES: readonly PoolName[] = [
   "privileged",
   "jobs",
   "privilegedJobs",
+  "portal",
 ]
 
 /** Where a pool's size came from. */
@@ -72,6 +74,14 @@ export const API_JOBS_RESERVE = 1
  * recomputes it from the manifests and fails when the catalog changes it.
  */
 export const PINNED_JOBS_WANTED = 5
+/**
+ * The portal pool of an api (or `all`) process: client portal reads, one short
+ * transaction each, on the portal login. Split logins only (unsplit, the portal
+ * has no login and refuses). Carved out of the request floor, so a topology that
+ * fit before still fits; a worker serves no portal route and plans none.
+ */
+export const API_PORTAL_POOL = 2
+
 /** Kernel slots on top of which the privileged pool keeps room for nested reads (queue-classes.ts). */
 const PRIVILEGED_HEADROOM = 4
 /** Pool size of a `cli` or `oneshot` process. */
@@ -127,7 +137,7 @@ export interface PoolPlan {
   mode: "planned" | "legacy" | "fixed"
   role: PlanRole
   split: boolean
-  /** All five, by name. Unsplit, request = main and privilegedJobs = jobs (the same pools). */
+  /** All six, by name. Unsplit, request = main and privilegedJobs = jobs (the same pools), and portal is 0. */
   pools: Record<PoolName, number>
   source: Record<PoolName, PoolSource>
   /** The distinct pools this process opens. */
@@ -137,7 +147,7 @@ export interface PoolPlan {
   /** Pinned jobs-pool holders admitted at once (infra/jobs/pinned-jobs-gate.ts). */
   pinnedJobSlots: number
   /** Per-login connections of this process: what a pooler's per-login pool_size must cover. */
-  logins: { request: number; privileged: number }
+  logins: { request: number; privileged: number; portal: number }
   topology: { api: number; worker: number; all: number }
   /** One release's connections: Σ replicas × per-process. */
   steady: number
@@ -152,17 +162,19 @@ export interface PoolPlan {
 
 type Sizes = Record<PoolName, number>
 
-function physicalPools(split: boolean): PoolName[] {
-  return split ? [...POOL_NAMES] : ["main", "privileged", "jobs"]
+/** The pools a process opens: unsplit three; split all six, less a portal pool it plans none for. */
+function physicalPools(split: boolean, pools?: Sizes): PoolName[] {
+  if (!split) return ["main", "privileged", "jobs"]
+  return POOL_NAMES.filter((p) => p !== "portal" || (pools?.portal ?? 0) > 0)
 }
 
 function sum(pools: Sizes, split: boolean): number {
-  return physicalPools(split).reduce((n, p) => n + pools[p], 0)
+  return physicalPools(split, pools).reduce((n, p) => n + pools[p], 0)
 }
 
-/** Unsplit, the request pool is the main pool and privileged-jobs is jobs. */
+/** Unsplit, the request pool is the main pool, privileged-jobs is jobs, and there is no portal pool. */
 function aliasUnsplit(pools: Sizes, split: boolean): Sizes {
-  return split ? pools : { ...pools, request: pools.main, privilegedJobs: pools.jobs }
+  return split ? pools : { ...pools, request: pools.main, privilegedJobs: pools.jobs, portal: 0 }
 }
 
 /** Jobs-pool connections a role keeps outside the pinned holders. */
@@ -176,7 +188,7 @@ function pinnedSlots(jobs: number, split: boolean, reserve: number): number {
   return Math.min(jobs, n)
 }
 
-function legacySizes(o: PoolOverrides, split: boolean): Sizes {
+function legacySizes(o: PoolOverrides, split: boolean, role: PlanRole): Sizes {
   const pool = o.pool ?? LEGACY_DEFAULT
   const jobs = o.jobs ?? pool
   return aliasUnsplit(
@@ -186,6 +198,7 @@ function legacySizes(o: PoolOverrides, split: boolean): Sizes {
       privileged: o.privileged ?? pool,
       jobs,
       privilegedJobs: o.privilegedJobs ?? jobs,
+      portal: role === "worker" ? 0 : API_PORTAL_POOL,
     },
     split,
   )
@@ -193,7 +206,8 @@ function legacySizes(o: PoolOverrides, split: boolean): Sizes {
 
 /** Floors of a planned api or worker process (M1 table). Unsplit: request is the main pool, jobs takes both jobs pools. */
 function floors(role: "api" | "worker", split: boolean, kernel: KernelNeed): Sizes {
-  const request = role === "api" ? 6 : kernel.requestSlots
+  // Split, the api's request floor (6) gives the portal pool its share.
+  const request = role === "api" ? (split ? 6 - API_PORTAL_POOL : 6) : kernel.requestSlots
   const privileged = role === "api" ? API_PRIVILEGED_FLOOR : kernel.total + PRIVILEGED_HEADROOM
   // The api's jobs pool fits its event handlers plus its reserve; the worker's
   // starts small and takes the surplus first (planTopology).
@@ -204,7 +218,14 @@ function floors(role: "api" | "worker", split: boolean, kernel: KernelNeed): Siz
         ? 3
         : 4
   return aliasUnsplit(
-    { main: split ? MAIN_WHEN_SPLIT : request, request, privileged, jobs, privilegedJobs: 2 },
+    {
+      main: split ? MAIN_WHEN_SPLIT : request,
+      request,
+      privileged,
+      jobs,
+      privilegedJobs: 2,
+      portal: role === "api" ? API_PORTAL_POOL : 0,
+    },
     split,
   )
 }
@@ -285,16 +306,18 @@ function planAll(
       privileged: privMax,
       jobs: ALL_JOBS_MAX,
       privilegedJobs: ALL_JOBS_MAX,
+      portal: API_PORTAL_POOL,
     },
     split,
   )
   const s: Sizes = aliasUnsplit(
     {
       main: split ? MAIN_WHEN_SPLIT : 7,
-      request: 7,
+      request: split ? 7 - API_PORTAL_POOL : 7,
       privileged: Math.max(API_PRIVILEGED_FLOOR, kernel.total + PRIVILEGED_HEADROOM),
       jobs: split ? 3 : 4,
       privilegedJobs: 2,
+      portal: API_PORTAL_POOL,
     },
     split,
   )
@@ -330,6 +353,7 @@ function withOverrides(
     privileged: "planned",
     jobs: "planned",
     privilegedJobs: "planned",
+    portal: "planned",
   }
   const set = (p: PoolName, n: number | undefined) => {
     if (n === undefined) return
@@ -354,11 +378,15 @@ function withOverrides(
   return { pools, source }
 }
 
-function loginsOf(pools: Sizes, split: boolean): { request: number; privileged: number } {
-  if (!split) return { request: 0, privileged: sum(pools, split) }
+function loginsOf(
+  pools: Sizes,
+  split: boolean,
+): { request: number; privileged: number; portal: number } {
+  if (!split) return { request: 0, privileged: sum(pools, split), portal: 0 }
   return {
     request: pools.request + pools.jobs,
     privileged: pools.main + pools.privileged + pools.privilegedJobs,
+    portal: pools.portal,
   }
 }
 
@@ -383,6 +411,7 @@ export function planPools(input: PlanInput): PoolPlan {
       privileged: FIXED_POOL_SIZE,
       jobs: FIXED_POOL_SIZE,
       privilegedJobs: FIXED_POOL_SIZE,
+      portal: split ? FIXED_POOL_SIZE : 0,
     }
     const { pools, source } = withOverrides(fixed, overrides, split)
     const perProcess = sum(pools, split)
@@ -392,7 +421,7 @@ export function planPools(input: PlanInput): PoolPlan {
       split,
       pools,
       source,
-      physical: physicalPools(split),
+      physical: physicalPools(split, pools),
       perProcess,
       pinnedJobSlots: pinnedSlots(pools.jobs, split, jobsReserve(role)),
       logins: loginsOf(pools, split),
@@ -424,12 +453,12 @@ export function planPools(input: PlanInput): PoolPlan {
 
   if (input.cellMax === undefined) {
     mode = "legacy"
-    pools = legacySizes(overrides, split)
+    pools = legacySizes(overrides, split, role)
     source = Object.fromEntries(POOL_NAMES.map((p) => [p, "legacy"])) as Record<
       PoolName,
       PoolSource
     >
-    const other = legacySizes({}, split)
+    const other = legacySizes({}, split, role === "api" ? "worker" : "api")
     steady =
       role === "all"
         ? sum(pools, split)
@@ -467,7 +496,7 @@ export function planPools(input: PlanInput): PoolPlan {
     split,
     pools,
     source,
-    physical: physicalPools(split),
+    physical: physicalPools(split, pools),
     perProcess: sum(pools, split),
     pinnedJobSlots: pinnedSlots(pools.jobs, split, jobsReserve(role)),
     logins: loginsOf(pools, split),

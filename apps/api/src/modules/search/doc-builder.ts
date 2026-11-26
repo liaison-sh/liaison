@@ -34,11 +34,39 @@ export function toUnixSeconds(value: unknown): number | null {
   return null
 }
 
+/**
+ * A row of an entity declaring `aclFields` that lacks its org-wide field (absent or null): the
+ * query-side filter would then read the document as open to every holder of the read scope
+ * (`permission-filter.ts` fails open on a missing field), so such a row is never indexed.
+ */
+export function aclFieldsMissing(
+  reg: SearchableEntityRegistration,
+  row: Record<string, unknown>,
+): boolean {
+  const acl = reg.permissionFields?.aclFields
+  if (!acl) return false
+  const v = row[acl.orgWideField]
+  return v === undefined || v === null
+}
+
+export class SearchAclMissingError extends Error {
+  readonly code = "SEARCH_ACL_MISSING"
+  constructor(reg: SearchableEntityRegistration, entityId: string) {
+    super(
+      `search: ${reg.app}.${reg.entityType} ${entityId} was not indexed: its row lacks the access field '${reg.permissionFields?.aclFields?.orgWideField}' the entity declares`,
+    )
+  }
+}
+
 export async function buildSearchDocument(
   reg: SearchableEntityRegistration,
   orgId: string,
   row: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
+  // Refused, never indexed open: a row whose ACL columns were dropped (SEC-6).
+  if (aclFieldsMissing(reg, row)) {
+    throw new SearchAclMissingError(reg, String(row.id ?? ""))
+  }
   const idField = (row.id as string | undefined) ?? ""
   const doc: Record<string, unknown> = {
     id: documentId(orgId, reg.app, reg.entityType, idField),
@@ -76,7 +104,7 @@ export async function buildSearchDocument(
   // enrichment text appended with a newline separator. An entity with only
   // an enrichment hook and no indexFields.body still gets a body from the
   // hook alone.
-  const manifestBody = indexFields?.body ? ((row[indexFields.body] as string | null) ?? null) : null
+  let manifestBody = indexFields?.body ? ((row[indexFields.body] as string | null) ?? null) : null
   const hook = lookupSearchEnrichment(reg.app, reg.entityType)
   let enrichedBody: string | null = null
   let dedupeKey: string | null = null
@@ -90,6 +118,7 @@ export async function buildSearchDocument(
     } else if (result) {
       enrichedBody = result.bodyExtra ?? null
       dedupeKey = result.dedupeKey ?? null
+      if (result.body !== undefined) manifestBody = result.body
       if (result.handle !== undefined) doc.handle = result.handle
     }
   }

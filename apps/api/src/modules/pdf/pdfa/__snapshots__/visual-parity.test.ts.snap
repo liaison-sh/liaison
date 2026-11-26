@@ -14,7 +14,9 @@ Due:
 Incoterm:
  
 DAP
-Operation: Livraison de biens
+Operation:
+ 
+Livraison de biens
 FROM
 Maison Exemple SAS
 1 rue de Test, 75011 Paris
@@ -38,7 +40,7 @@ Unit price
  
 Tax %
  
-Amount
+Amount excl. VAT
 0
  
 2
@@ -47,7 +49,7 @@ Amount
  
 20.00%
  
-839.98
+699.98
 Contrôleur
 1
  
@@ -57,7 +59,7 @@ Contrôleur
  
 20.00%
  
-15.00
+12.50
 Câble
 Subtotal
  
@@ -88,7 +90,9 @@ Issued:
 Incoterm:
  
 DAP
-Operation: Livraison de biens
+Operation:
+ 
+Livraison de biens
 Credit note for invoice FA-2026-0042 of 2026-11-03
 FROM
 Maison Exemple SAS
@@ -113,7 +117,7 @@ Unit price
  
 Tax %
  
-Amount
+Amount excl. VAT
 0
  
 2
@@ -122,7 +126,7 @@ Amount
  
 20.00%
  
-839.98
+699.98
 Contrôleur
 1
  
@@ -132,7 +136,7 @@ Contrôleur
  
 20.00%
  
-15.00
+12.50
 Câble
 Subtotal
  

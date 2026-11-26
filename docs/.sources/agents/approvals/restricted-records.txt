@@ -1,0 +1,1 @@
+A request about a restricted record reads "A restricted document needs your decision" -> apps/api/src/modules/approvals/attention.ts (RESTRICTED_DECISION_TITLE) ; apps/web/src/modules/approvals/approval-copy.ts (TEMPLATES)

@@ -49,6 +49,7 @@ const HOST_SETTINGS: Record<string, string> = {
   GOOGLE_API_KEY: "platform model key, a host choice, nothing stored under it",
   MISTRAL_API_KEY: "platform model key, a host choice, nothing stored under it",
   CONTROL_PLANE_API_KEY: "managed-edition control plane credential",
+  LIAISON_MANAGED_SIGNING_ENABLED: "an on/off switch for managed signing, a host choice, no key",
   MONITOR_TOKEN: "this host's monitoring bearer token",
   MEILISEARCH_API_KEY: "this host's search service; the index is rebuilt on restore",
   OBJECT_STORAGE_ACCESS_KEY: "this host's object store login; objects are copied, not the store",

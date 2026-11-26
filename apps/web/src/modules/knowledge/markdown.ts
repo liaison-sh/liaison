@@ -23,11 +23,59 @@
  */
 
 import { editorMarkdown } from "@liaison/shared"
-import { Marked } from "marked"
+import { Marked, type MarkedExtension } from "marked"
 import { wrapMarkdownTables } from "~/lib/markdown-tables"
 import { sanitizeHtml } from "~/lib/sanitize"
+import { FILE_REF_AT_START } from "~/modules/editor/file-view"
+import { PAGE_REF_AT_START, pageRefStart } from "~/modules/editor/page-link-view"
 
-const marked = new Marked({ breaks: false, gfm: true }, editorMarkdown)
+/**
+ * A page's image or file (`![](liaison-file:<id>)`) is an empty
+ * `<span data-page-file="<id>">`: no address at all. The page mounts the file's
+ * view into it after the HTML is in place (hydrate-tokens.ts).
+ */
+const fileTokens: MarkedExtension = {
+  extensions: [
+    {
+      name: "liaisonFile",
+      level: "inline",
+      start: (src: string) => {
+        const at = src.search(/!\[[^\]]*\]\(liaison-file:/)
+        return at < 0 ? undefined : at
+      },
+      tokenizer(src: string) {
+        const match = FILE_REF_AT_START.exec(src)
+        return match ? { type: "liaisonFile", raw: match[0], id: match[1] } : undefined
+      },
+      renderer: (token) => `<span data-page-file="${String(token.id)}"></span>`,
+    },
+  ],
+}
+
+/**
+ * A link to another page (`[](knowledge:document:<id>)`, or a label an older text
+ * still holds) is an empty `<span data-page-link="<id>">`: the label is never
+ * rendered. The page draws the title this reader may see into it (hydrate-tokens.ts).
+ */
+const pageTokens: MarkedExtension = {
+  extensions: [
+    {
+      name: "pageLink",
+      level: "inline",
+      start: (src: string) => {
+        const at = pageRefStart(src)
+        return at < 0 ? undefined : at
+      },
+      tokenizer(src: string) {
+        const match = PAGE_REF_AT_START.exec(src)
+        return match ? { type: "pageLink", raw: match[0], id: match[1] } : undefined
+      },
+      renderer: (token) => `<span data-page-link="${String(token.id)}"></span>`,
+    },
+  ],
+}
+
+const marked = new Marked({ breaks: false, gfm: true }, editorMarkdown, fileTokens, pageTokens)
 
 /** Sanitized HTML; a wide table scrolls in its own box, as in a message. */
 export function renderMarkdown(body: string): string {

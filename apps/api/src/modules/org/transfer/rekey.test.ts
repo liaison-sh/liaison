@@ -130,6 +130,8 @@ const JWT_SECRET_USES: Record<string, string> = {
   "modules/export/org-archive/routes.ts":
     "archive download token: short-lived, the export is asked again on the target",
   "modules/apps/ui-bundle-token.ts": "UI bundle tokens: re-minted on the next page load",
+  "modules/client-actions/public-routes.ts":
+    "a staff signer's access token checked on the link page: refreshed on the target like any access token",
   "modules/apps/app-frame-host-route.ts":
     "framed app document tokens: at most an hour, re-minted on the next page load",
   "modules/apps/workers/run-token.ts":

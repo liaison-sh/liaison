@@ -96,7 +96,7 @@ export async function runTicketsBackfillAttachments(opts: {
       const users = extractRows<{ id: string }>(
         await tx.execute(drizzleSql`
           SELECT id FROM ${kernelRel("users")}
-          WHERE org_id = ${orgId} AND status = 'active'
+          WHERE org_id = ${orgId} AND status = 'active' AND user_type = 'member'
           ORDER BY created_at ASC LIMIT 1
         `),
       )

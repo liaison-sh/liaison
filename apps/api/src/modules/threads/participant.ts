@@ -47,11 +47,18 @@ export async function addParticipant(db: RlsClient, params: AddParticipantParams
     .limit(1)
   if (!actorParticipant) return null
 
-  // Verify target user belongs to the same org and is active
+  // Verify target user is an active member of the same org (never a client's portal account)
   const [targetUser] = await db
     .select({ id: users.id })
     .from(users)
-    .where(and(eq(users.id, targetUserId), eq(users.orgId, orgId), eq(users.status, "active")))
+    .where(
+      and(
+        eq(users.id, targetUserId),
+        eq(users.orgId, orgId),
+        eq(users.status, "active"),
+        eq(users.userType, "member"),
+      ),
+    )
     .limit(1)
   if (!targetUser) return null
 

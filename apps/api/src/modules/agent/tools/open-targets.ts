@@ -64,11 +64,13 @@ export interface OpenView {
 
 /** Tabs with a `:param` that is not a record, and why. */
 export const TABS_WHOSE_ID_IS_NOT_A_RECORD: ReadonlySet<string> = new Set([
+  "agreements:list", // a list's filter
   "boxtal:queue", // a work queue's name
   "invoicing:dashboard", // a dashboard's name
   "invoicing:documents", // a list's filter
   "monitoring:source", // a configured monitoring source, not a row of the app
   "monitoring:status", // a list's filter
+  "projects:reconcile", // a planned vs done card's page, opened from the link its read gives
 ])
 
 /**
@@ -106,6 +108,8 @@ export const KERNEL_OPEN_VIEWS: readonly OpenView[] = [
     type: "kernel:dashboard-table",
   }),
   kernelRecord("app-builder", "App builder", { kind: "tab", type: "kernel:app-builder" }),
+  // A staff signer's own Read and sign: the page mints its link in their session, never the agent.
+  kernelRecord("client_action", "Read and sign", { kind: "tab", type: "kernel:client_action" }),
   kernelTab("home", "Home"),
   kernelTab("work", "Work"),
   kernelTab("chats", "Chats"),
@@ -135,8 +139,10 @@ const RECORDS_INSIDE_A_TAB: Readonly<Record<string, readonly OpenView[]>> = {
 const KERNEL_READ_SCOPES: Readonly<Record<string, string>> = {
   thread: "kernel:threads:read",
   contact: "kernel:contacts:read",
+  company: "kernel:companies:read",
   routine: "kernel:routines:read",
   skill: "kernel:skills:read",
+  client_action: "kernel:client_actions:read",
 }
 
 interface ManifestViews {

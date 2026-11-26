@@ -1,0 +1,5 @@
+An agent never sets a price; a person sets it -> bundled-apps/agreements/src/agreements.ts (agreementPriceSet) ; bundled-apps/agreements/src/handlers.ts (agreementPriceSetHandler)
+A proposal has its own number series -> bundled-apps/agreements/src/agreements.ts (seriesOf)
+Send takes the frozen version; an agent's send waits for approval -> bundled-apps/agreements/src/send.ts (agreementSend)
+The draft is written from past work the reader can read in Knowledge -> apps/api/src/modules/agent/tools/document-tools.ts (handleDocumentsPrint)
+Verified notes -> apps/api/src/apps/knowledge/app.manifest.json (tools.verify)

@@ -18,8 +18,9 @@ import { createSession, refreshSession } from "~/modules/auth/auth"
 import { isUserAuthCurrent } from "~/modules/auth/auth-state"
 import { signAccessToken } from "~/modules/auth/jwt"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { refreshAccessToken, resolveConnectionFromToken } from "~/modules/mcp/connection-service"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -38,7 +39,7 @@ describe("an expired demo workspace refuses every credential it issued", () => {
     userId = u.id
     DemoModeTestAccess.set(true)
     // Credentials minted while the workspace was still alive.
-    await markOrgAsDemo(orgId, visitorMarker(72))
+    await markDemoOrgForTest(orgId, visitorMarker(72))
     invalidateDemoMarker()
     const pair = await createSession(userId, orgId)
     accessToken = pair.accessToken
@@ -52,7 +53,7 @@ describe("an expired demo workspace refuses every credential it issued", () => {
   })
 
   function expire(): Promise<void> {
-    return markOrgAsDemo(orgId, visitorMarker(72, new Date(Date.now() - 73 * HOUR))).then(() =>
+    return markDemoOrgForTest(orgId, visitorMarker(72, new Date(Date.now() - 73 * HOUR))).then(() =>
       invalidateDemoMarker(),
     )
   }

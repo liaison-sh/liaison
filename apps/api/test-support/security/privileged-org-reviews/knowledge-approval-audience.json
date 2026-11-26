@@ -1,0 +1,7 @@
+{
+  "reviewedOutsideRoutes": {
+    "apps/api/src/apps/knowledge/approval-audience.ts#activeUser": "approval routing: the org is the one resolveApprovalResourceOwner was asked for (resource-owner.ts, which the registry entry \"knowledge.page\" of runtime.ts is called by and nothing else): executeTool passes the call's own opts.orgId, the cascade the approval row's org. The user id comes from a page read in that org and is matched on id AND org_id; it answers only whether that user is active",
+    "apps/api/src/apps/knowledge/approval-audience.ts#knowledgeApprovalOwner": "approval routing: the org is the one resolveApprovalResourceOwner was asked for (executeTool's opts.orgId, or the approval row's org in the cascade). The page id is the tool call's own parameter, so it is matched on id AND org_id; the read answers the page's audience and owner id, never its title or text, and a page of another org is no page",
+    "apps/api/src/apps/knowledge/approval-audience.ts#asRequester": "approval routing: the org is the one resolveApprovalResourceOwner was asked for (executeTool's opts.orgId, or the approval row's org in the cascade), and the user the one who raises that approval there; loadEffectivePermissions pins both. Every page read after it runs under that person's own row security"
+  }
+}

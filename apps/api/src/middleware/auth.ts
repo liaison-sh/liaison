@@ -34,57 +34,13 @@ export function authMiddleware(secret: string) {
     try {
       const payload = await verifyAccessToken(token, secret)
 
-      // Token-class isolation: MCP connection tokens (15-min, minted from an
-      // mcp_connections row) carry `mcpConnectionId` and are ONLY valid on the
-      // /mcp transport via mcpAuthMiddleware. They must never authenticate the
-      // general REST surface — otherwise a leaked or post-revoke MCP token
-      // would have full REST access until TTL expiry (the revoke→401 guarantee
-      // is enforced at MCP mint/refresh, not on this path).
-      if (payload.mcpConnectionId) {
+      const refused = await memberTokenRefusal(payload)
+      if (refused) {
+        if (refused.invalidate) invalidateAuthCache(payload.userId)
         rootLogger.warn(
-          { method: c.req.method, path: c.req.path, reason: "mcp_token_on_rest" },
+          { method: c.req.method, path: c.req.path, reason: refused.reason },
           "auth failure",
         )
-        throw new HTTPException(401, { message: "Unauthorized" })
-      }
-
-      // A token of a session that has ended (sign-out, password change,
-      // revocation) is refused at once, not when it expires. A memory lookup
-      // (session-revocation.ts); tokens without a session id are unaffected.
-      if (payload.sid && isSessionRevoked(payload.sid)) {
-        rootLogger.warn(
-          { method: c.req.method, path: c.req.path, reason: "session_revoked" },
-          "auth failure",
-        )
-        throw new HTTPException(401, { message: "Unauthorized" })
-      }
-
-      const authInfo = await getUserAuthState(payload.userId, payload.orgId, {
-        expectedAuthVersion: payload.authVersion,
-        expectedPermissionVersion: payload.permissionVersion,
-      })
-
-      if (!authInfo) {
-        rootLogger.warn(
-          { method: c.req.method, path: c.req.path, reason: "user_not_found" },
-          "auth failure",
-        )
-        throw new HTTPException(401, { message: "Unauthorized" })
-      }
-
-      if (
-        authInfo.status !== "active" ||
-        authInfo.authVersion !== payload.authVersion ||
-        authInfo.permissionVersion !== payload.permissionVersion
-      ) {
-        invalidateAuthCache(payload.userId)
-        const reason =
-          authInfo.status !== "active"
-            ? `user_${authInfo.status}`
-            : authInfo.authVersion !== payload.authVersion
-              ? "auth_version_mismatch"
-              : "permission_version_mismatch"
-        rootLogger.warn({ method: c.req.method, path: c.req.path, reason }, "auth failure")
         throw new HTTPException(401, { message: "Unauthorized" })
       }
 
@@ -179,4 +135,39 @@ export function authMiddleware(secret: string) {
       unhold()
     }
   })
+}
+
+/**
+ * The checks every member token passes on the REST surface, past its signature: not an MCP
+ * connection token, not a token of a session that ended, and a user who still exists, is
+ * active and holds the token's auth and permission versions. Null when the token holds;
+ * otherwise the reason, logged by the caller. The member door and a staff signer's session
+ * check both run it, so neither can accept a token the other refuses.
+ */
+export async function memberTokenRefusal(
+  payload: Awaited<ReturnType<typeof verifyAccessToken>>,
+): Promise<{ reason: string; invalidate: boolean } | null> {
+  // Token-class isolation: MCP connection tokens (15-min, minted from an
+  // mcp_connections row) carry `mcpConnectionId` and are ONLY valid on the
+  // /mcp transport via mcpAuthMiddleware. They must never authenticate the
+  // general REST surface — otherwise a leaked or post-revoke MCP token
+  // would have full REST access until TTL expiry (the revoke→401 guarantee
+  // is enforced at MCP mint/refresh, not on this path).
+  if (payload.mcpConnectionId) return { reason: "mcp_token_on_rest", invalidate: false }
+  // A token of a session that has ended (sign-out, password change,
+  // revocation) is refused at once, not when it expires. A memory lookup
+  // (session-revocation.ts); tokens without a session id are unaffected.
+  if (payload.sid && isSessionRevoked(payload.sid))
+    return { reason: "session_revoked", invalidate: false }
+  const authInfo = await getUserAuthState(payload.userId, payload.orgId, {
+    expectedAuthVersion: payload.authVersion,
+    expectedPermissionVersion: payload.permissionVersion,
+  })
+  if (!authInfo) return { reason: "user_not_found", invalidate: false }
+  if (authInfo.status !== "active") return { reason: `user_${authInfo.status}`, invalidate: true }
+  if (authInfo.authVersion !== payload.authVersion)
+    return { reason: "auth_version_mismatch", invalidate: true }
+  if (authInfo.permissionVersion !== payload.permissionVersion)
+    return { reason: "permission_version_mismatch", invalidate: true }
+  return null
 }

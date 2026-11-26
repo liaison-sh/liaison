@@ -124,6 +124,12 @@ const THREAD_SCOPED_ENTITIES = new Set([
 // `org_app` is an admin turning an app On/Off or changing who may use it
 // (S18–S20): it carries only the app name, status and access mode, and every
 // member's shell resyncs its manifest feed on it.
+/** `<app>:<entity>` of the frames about Knowledge folders (hasKnowledgeFolderAccess). */
+const KNOWLEDGE_FOLDER_ENTITIES = new Set([
+  "knowledge:collection",
+  "knowledge:collection_membership",
+])
+
 const ORG_WIDE_ENTITIES = new Set(["presence", "credit", "loadtest", "org_app"])
 /**
  * `kernel` entities only their `data.ownerUserId` receives (C4, D40, S18): a
@@ -172,7 +178,40 @@ const PERMISSION_ENTITIES = new Set([
  */
 const FILE_EVENT_SOCKET_FIELDS = ["id", "app", "entityType", "entityId"] as const
 
+/**
+ * A COMPANY EVENT NAMES THE COMPANY, NEVER ITS ROW.
+ *
+ * `kernel:company` frames carry the company id and, for the delivery check
+ * only, its audience (`{orgWide, userIds}`: everyone, or the creator and the
+ * people it is shared with, set by `modules/contacts/companies.ts`). The
+ * name, domain, sharing lists and counts never cross the socket; a client
+ * refetches the company through the API, where RLS decides. The audience is
+ * kept in the buffered frame for the replay check and removed per client on
+ * the way out (`stripCompanyAudience`).
+ */
+function projectCompanyEventForSocket(payload: EventPayload): EventPayload {
+  const data = payload.data
+  const source = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {}
+  const kept: Record<string, unknown> = {}
+  if (typeof source.id === "string") kept.id = source.id
+  if (typeof source.audience === "object" && source.audience !== null) {
+    kept.audience = source.audience
+  }
+  return { ...payload, data: kept }
+}
+
+function stripCompanyAudience(payload: EventPayload): EventPayload {
+  if (payload.app !== "kernel" || payload.entity !== "company") return payload
+  const data = payload.data as Record<string, unknown> | undefined
+  if (!data || !("audience" in data)) return payload
+  const { audience: _audience, ...rest } = data
+  return { ...payload, data: rest }
+}
+
 export function projectFileEventForSocket(payload: EventPayload): EventPayload {
+  if (payload.app === "kernel" && payload.entity === "company") {
+    return projectCompanyEventForSocket(payload)
+  }
   if (payload.app !== "kernel" || payload.entity !== "file") return payload
   const data = payload.data
   const source = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {}
@@ -1028,10 +1067,14 @@ export class WebSocketManager {
       if (!this.hasOwnReadStateAccess(client, payload)) continue
       if (!this.hasOwnNodeSessionAccess(client, payload)) continue
       if (!this.hasPersonalRoutineAccess(client, payload)) continue
+      if (!this.hasCompanyAudienceAccess(client, payload)) continue
       if (!this.hasDashboardVisibilityAccess(client, payload)) continue
+      if (!this.hasKnowledgeFolderAccess(client, payload)) continue
       if (!this.wantsNodeSessionEvent(client, payload)) continue
       if (!this.hasDimensionAccess(client.dimensionGrants, payload)) continue
-      const out = this.projectWithheldMetadata(client, this.redactSubRunSummary(client, payload))
+      const out = stripCompanyAudience(
+        this.projectWithheldMetadata(client, this.redactSubRunSummary(client, payload)),
+      )
       try {
         client.ws.send(out === payload ? msg : JSON.stringify({ type: "event", payload: out }))
       } catch (err) {
@@ -1145,10 +1188,14 @@ export class WebSocketManager {
       if (!this.hasOwnReadStateAccess(client, payload)) continue
       if (!this.hasOwnNodeSessionAccess(client, payload)) continue
       if (!this.hasPersonalRoutineAccess(client, payload)) continue
+      if (!this.hasCompanyAudienceAccess(client, payload)) continue
       if (!this.hasDashboardVisibilityAccess(client, payload)) continue
+      if (!this.hasKnowledgeFolderAccess(client, payload)) continue
       if (!this.wantsNodeSessionEvent(client, payload)) continue
       if (!this.hasDimensionAccess(client.dimensionGrants, payload)) continue
-      const out = this.projectWithheldMetadata(client, this.redactSubRunSummary(client, payload))
+      const out = stripCompanyAudience(
+        this.projectWithheldMetadata(client, this.redactSubRunSummary(client, payload)),
+      )
       const clientMsg =
         out === payload
           ? msg
@@ -1248,7 +1295,8 @@ export class WebSocketManager {
         // A frame buffered before the file-event cut still carries the full
         // file metadata: cut it on the way out as well.
         const parsed =
-          raw?.payload?.app === "kernel" && raw.payload.entity === "file"
+          raw?.payload?.app === "kernel" &&
+          (raw.payload.entity === "file" || raw.payload.entity === "company")
             ? { ...raw, payload: projectFileEventForSocket(raw.payload) }
             : raw
         const event = parsed === raw ? decoded : JSON.stringify(parsed)
@@ -1291,11 +1339,13 @@ export class WebSocketManager {
             this.hasOwnReadStateAccess(replayClient, parsed.payload) &&
             this.hasOwnNodeSessionAccess(replayClient, parsed.payload) &&
             this.hasPersonalRoutineAccess(replayClient, parsed.payload) &&
+            this.hasCompanyAudienceAccess(replayClient, parsed.payload) &&
             this.hasDashboardVisibilityAccess(replayClient, parsed.payload) &&
+            this.hasKnowledgeFolderAccess(replayClient, parsed.payload) &&
             this.hasDimensionAccess(dimensionGrants, parsed.payload)
           ) {
             // The buffer holds the unredacted frame, so replay redacts per member too.
-            const out = this.redactSubRunSummary(replayClient, parsed.payload)
+            const out = stripCompanyAudience(this.redactSubRunSummary(replayClient, parsed.payload))
             ws.send(out === parsed.payload ? event : JSON.stringify({ ...parsed, payload: out }))
             sent++
           }
@@ -1373,6 +1423,13 @@ export class WebSocketManager {
       return hasScope("kernel:imports:read", scopes)
     }
 
+    // A company frame rides on the companies read scope (the default resolver
+    // would want `kernel:company[s]`, and "companies" is no plain plural).
+    // Who among those readers gets it is `hasCompanyAudienceAccess`.
+    if (app === "kernel" && entity === "company") {
+      return hasScope("kernel:companies:read", scopes)
+    }
+
     // `knowledge:synced_source` events (create / update / archive). The RLS
     // policy on `app_knowledge.synced_sources` requires
     // `knowledge:documents:read` for SELECT (with an additional owner filter
@@ -1385,6 +1442,14 @@ export class WebSocketManager {
         hasScope("knowledge:documents:read", scopes) ||
         hasScope("knowledge:documents:admin", scopes)
       )
+    }
+
+    // A Knowledge folder and the pages filed in it: RLS on both tables asks
+    // `knowledge:documents:read`, and no member holds a scope named after either
+    // entity. Whose folder it is, is the visibility filter's question
+    // (`hasKnowledgeFolderAccess`).
+    if (KNOWLEDGE_FOLDER_ENTITIES.has(`${app}:${entity}`)) {
+      return hasScope("knowledge:documents:read", scopes)
     }
 
     // F2 — tickets sub-entities. The default resolver below expects a scope of
@@ -1537,6 +1602,23 @@ export class WebSocketManager {
    * routine itself does. Only a frame that says `visibility: "shared"` goes
    * to every routines reader; one that says nothing is personal (fail closed).
    */
+  /**
+   * A company shared with nobody is its creator's and its grantees' business:
+   * its frame reaches only the users its audience names, not another member
+   * and not an admin holding `*` (sharing has no admin bypass). A company
+   * shared through a role reaches its role holders on their next read, not
+   * live. A frame without an audience reaches no one (fail closed).
+   */
+  private hasCompanyAudienceAccess(client: { userId: string }, payload: EventPayload): boolean {
+    if (payload.app !== "kernel" || payload.entity !== "company") return true
+    const audience = (payload.data as { audience?: unknown } | undefined)?.audience as
+      | { orgWide?: unknown; userIds?: unknown }
+      | undefined
+    if (!audience || typeof audience !== "object") return false
+    if (audience.orgWide === true) return true
+    return Array.isArray(audience.userIds) && audience.userIds.includes(client.userId)
+  }
+
   private hasPersonalRoutineAccess(client: { userId: string }, payload: EventPayload): boolean {
     if (payload.app !== "kernel" || payload.entity !== "routine" || payload.action !== "create") {
       return true
@@ -1582,6 +1664,22 @@ export class WebSocketManager {
     }
     if (data?.visibility === "org" || data?.previousVisibility === "org") return true
     return typeof data?.ownerUserId === "string" && data.ownerUserId === client.userId
+  }
+
+  /**
+   * A Knowledge folder's frames follow its row's SELECT policy: a shared folder's
+   * (`orgWide`) reach every reader, a personal one's the owner it names in
+   * `userIds`, no admin. `wasOrgWide` reaches those who saw it until this change,
+   * so they drop it. The frame carries ids only. One naming nobody (a previous
+   * release's) reaches no one (fail closed).
+   */
+  private hasKnowledgeFolderAccess(client: { userId: string }, payload: EventPayload): boolean {
+    if (!KNOWLEDGE_FOLDER_ENTITIES.has(`${payload.app}:${payload.entity}`)) return true
+    const data = payload.data as
+      | { orgWide?: unknown; wasOrgWide?: unknown; userIds?: unknown }
+      | undefined
+    if (data?.orgWide === true || data?.wasOrgWide === true) return true
+    return Array.isArray(data?.userIds) && data.userIds.includes(client.userId)
   }
 
   private hasOwnNodeSessionAccess(client: { userId: string }, payload: EventPayload): boolean {

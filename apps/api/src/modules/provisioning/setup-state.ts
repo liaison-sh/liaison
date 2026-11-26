@@ -154,6 +154,7 @@ async function readKernelCounts(orgId: string): Promise<Counts> {
         and(
           eq(users.orgId, orgId),
           eq(users.status, "active"),
+          eq(users.userType, "member"),
           notLike(users.email, IMPORT_PLACEHOLDER_EMAIL),
         ),
       )

@@ -171,6 +171,41 @@ describe("an anchor a following chat pushed up", () => {
     expect(read()).toBeNull()
   })
 
+  it("is brought back once when the step waits on it (a parked approval)", () => {
+    // The card the agent's turn parked, then its closing summary pushed it up
+    // the docked chat: the step says "read its card", so it comes back once.
+    const list = boxed(document.createElement("div"), rect(300, 600, 340, 400))
+    list.style.overflowY = "auto"
+    const card = boxed(document.createElement("div"), rect(500, 610, 320, 120))
+    card.dataset.testid = "approval-card"
+    let scrolls = 0
+    card.scrollIntoView = () => {
+      scrolls += 1
+      boxed(card, rect(450, 610, 320, 120))
+    }
+    list.append(card)
+    document.body.append(list)
+    let read: () => AnchorBox | null = () => null
+    createRoot((d) => {
+      dispose = d
+      read = createAnchorTracker(
+        () => "approval-card",
+        () => false,
+        () => false,
+        () => true,
+      )
+    })
+    expect(read()).toMatchObject({ top: 500 })
+    boxed(card, rect(100, 610, 320, 120))
+    window.dispatchEvent(new Event("resize"))
+    expect(scrolls).toBe(1)
+    expect(read()).toMatchObject({ top: 450 })
+    // Pushed up again: left there, once was enough.
+    boxed(card, rect(100, 610, 320, 120))
+    window.dispatchEvent(new Event("resize"))
+    expect(scrolls).toBe(1)
+  })
+
   it("is still scrolled down to when the chat leaves it below the fold", () => {
     const list = boxed(document.createElement("div"), rect(300, 600, 340, 400))
     list.style.overflowY = "auto"

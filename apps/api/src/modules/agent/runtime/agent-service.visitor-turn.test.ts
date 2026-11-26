@@ -34,7 +34,8 @@ import { toolRegistry } from "~/modules/apps/app-registries"
 import { registerDemoAlertMailer } from "~/modules/demo/demo-alerts"
 import { DemoBudgetTestAccess } from "~/modules/demo/demo-budget"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker } from "~/modules/demo/demo-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 const ORG_ID = "00000000-0000-0000-0000-000000f30001"
@@ -172,7 +173,7 @@ describe("a demo visitor's turn", () => {
     } as never)
     await sql`INSERT INTO kernel.skills (org_id, name, description, body, enabled, auto_attach, created_by_actor_type)
       VALUES (${ORG_ID}, 'vtfocus-playbook', 'How to work the focus app', ${`${FOCUS_SKILL_MARKER} ${"step ".repeat(Math.round((TURN_SYSTEM_PROMPT_TOKEN_CAP * 0.75 * 4) / 5))}`}, true, ${JSON.stringify({ apps: [FOCUS_APP] })}::jsonb, 'user')`
-    await markOrgAsDemo(ORG_ID, {
+    await markDemoOrgForTest(ORG_ID, {
       variant: "visitor",
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 24 * 3600_000).toISOString(),

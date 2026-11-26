@@ -369,7 +369,8 @@ describe("approvals authority e2e", () => {
       issuer.token,
       "knowledge:create",
       {
-        documentScope: "personal",
+        // An organization page: a personal one's gated write is its owner's alone to decide.
+        documentScope: "organization",
         title: "Authority e2e doc",
         body: "v1",
         sensitivity: "internal",

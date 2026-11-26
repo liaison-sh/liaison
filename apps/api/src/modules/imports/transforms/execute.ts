@@ -200,7 +200,8 @@ function checkedState(value: unknown, where: string): unknown {
 
 export interface UploadFileInfo {
   name: string
-  kind: "csv" | "json" | "jsonl" | "xml" | "xlsx" | "text"
+  /** `listing`: the entry names a file rule asked for (`as: "listing"`), handed first. */
+  kind: "csv" | "json" | "jsonl" | "xml" | "xlsx" | "text" | "listing"
 }
 
 /** What the host does with a finished call's output (the runner persists it). */

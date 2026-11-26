@@ -1,0 +1,6 @@
+{
+  "key": {
+    "kernel.homeKind.send_unfinished.one": "contrat dont l'envoi ne s'est pas terminé",
+    "kernel.homeKind.send_unfinished.other": "contrats dont l'envoi ne s'est pas terminé"
+  }
+}

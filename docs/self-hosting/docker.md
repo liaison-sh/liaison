@@ -46,7 +46,16 @@ To run Compose yourself, name the project and file: `docker compose -p liaison -
 | `objectstore` | `chrislusf/seaweedfs:4.48` | S3-compatible file storage | 1 GB |
 | `objectstore-init` | SeaweedFS | Creates the bucket once, then exits | |
 | `data-init` | `busybox` | Prepares the app's data directory, then exits | |
-| `sandbox` | the app's image | Runs the sandboxed apps (workerd under gVisor), on its own network: [The app sandbox service](sandbox.md) | 2 GB |
+| `sandbox` | the app's image | Runs the sandboxed apps (workerd under gVisor), on its own network: [The app sandbox service](sandbox.md). Its host firewall step comes back at every boot before Docker starts ([At boot](sandbox.md#at-boot)) | 2 GB |
+| `pdf-render` | the app's image | Reads uploaded PDFs for agreements: file checks, page pictures, the signed copy of an upload. No network, no secret, no data volume, read-only, its own user | 3 GB |
+
+### Run without the render service
+
+`pdf-render` has no network at all and talks to the app over one socket on a volume that holds only that socket (`LIAISON_PDF_RENDER_SOCKET`, default `/run/pdf-render/render.sock`): once it listens, the service makes that folder read-only, so it can write nowhere but its own `/tmp`. A crafted file that took over the PDF reader there reaches no database, no Redis and no other process. If you cannot run it, everything keeps working except uploaded PDFs: an upload is refused with `PDF_RENDER_UNAVAILABLE`. Documents Liaison writes itself never need it.
+
+To check that the running service is isolated, run `deploy/pdf-render-check.sh` with the options you give `docker compose` (for example `deploy/pdf-render-check.sh -p liaison --env-file /srv/liaison.env`). From inside `pdf-render` it tries to reach Postgres, Redis and the internet, to see or read another process, to write outside `/tmp`, and looks for a secret in its environment; from the app it sends an inflate bomb and a looped file. Every line says `PASS` or `FAIL`, and it ends with `pdf-render: isolated` only when all of them pass.
+
+Meilisearch runs with its usage analytics off (`MEILI_NO_ANALYTICS`), so the search service sends nothing to its vendor.
 
 All services share an internal network, and only the app publishes a port: `${APP_BIND}:${APP_PORT}`, which defaults to `127.0.0.1:3000`: it speaks plain HTTP and is meant to sit behind a TLS reverse proxy on the same host. Set `APP_BIND=0.0.0.0` only when the proxy runs on another host on a trusted network.
 
@@ -126,6 +135,10 @@ Sign-in is passwordless, so people cannot sign in without working mail.
 
 Send from an address on a domain you own, and authorize your mail provider for that domain with SPF, DKIM and DMARC records (your provider gives the exact records). Mail from a domain that is not yours, or not authenticated, is rejected or lands in spam, and then nobody can sign in.
 
+### Commercial mail and the opt-out link
+
+A commercial mail that an agent drafts or you write to a prospect carries a link to stop commercial messages and the `List-Unsubscribe` headers (see [Opt-outs](../sales/opt-outs.md)). The link is built on `BASE_URL`, so the address must be reachable from the recipient's side: a recipient who cannot open it cannot opt out. Both mailbox paths carry the headers, with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`: a Gmail mailbox and an IMAP/SMTP mailbox. No mailbox path sends a commercial mail without them. Set the organization's legal name and postal address in **Settings > Organization > Commercial identity** first: until both are set, no commercial mail goes.
+
 ### Mail encryption
 
 How personal mailboxes are encrypted at rest. See [Mail encryption](../security.md#mail-encryption). Set these in `deploy/.env`; compose passes both to the app.
@@ -146,6 +159,7 @@ Only read when `LIAISON_DEMO_MODE` is on.
 | `LIAISON_DEMO_STEP_OUTPUT_TOKENS` | `16000` | What one step of a visitor's agent may write on the instance's key. What a step reads is not capped |
 | `LIAISON_DEMO_WAREHOUSE` | `false` | `true` seeds the company's read-only warehouse into demo workspaces. Needs `LIAISON_DEMO_WAREHOUSE_DATABASE_URL`, the warehouse's own login; without it every seed fails |
 | `LIAISON_PRIVATE_DEMO_BOX` | `false` | `true` declares a demo-mode box private: a test box reached only through a tunnel, with no visitors. There `liaison seed` may replace its own demo org (`--replace`) and give the seeded people passwords (`--passwords`), which a public demo refuses. It counts only when `BASE_URL` is a loopback address (`localhost`, `127.x.x.x`, `::1`): a box with a public hostname stays public whatever this says. Never set it on a demo visitors use |
+| `LIAISON_TEST_SHOPIFY_ADMIN_URL` | unset | Test boxes only. Sends the Shopify app's Admin API requests (connecting, disconnecting, jobs, reads), with the store's token, to a fake Shopify at this address instead of the store. It must be one bare address on the box itself: a loopback address, a one-word service name or `host.docker.internal`. It works only on a box with `LIAISON_PRIVATE_DEMO_BOX=true` and a loopback `BASE_URL`, never on the managed edition; set anywhere else, the server refuses to start. Never set it on a real instance |
 
 ### Agent web reads
 
@@ -160,6 +174,35 @@ Agents search and fetch the web without an approval. These limits bound what one
 | `LIAISON_WEB_READS_CONSECUTIVE` | `12` | Searches and fetches in a row, with no other tool between |
 | `LIAISON_WEB_FETCH_HOSTS_PER_TURN` | `10` | Different sites fetched in one turn |
 | `LIAISON_WEB_READS_PER_THREAD_HOUR` | `60` | Searches and fetches per conversation in any hour |
+
+### Tool search model
+
+When an agent looks for a tool, it ranks the tools it may use by words. With meaning turned on, it also ranks them by meaning, so "Marc left, cut his access" finds the tool that deactivates a user. A small embedding model, Snowflake arctic-embed-m-v2.0 (Apache-2.0), runs on the CPU in one embedding process per host, the `embedder` service. Every `app`, `api` and `worker` process of the host asks it over a local Unix socket. It has no network port, and no text leaves the server.
+
+Meaning is off by default on a self-hosted server. The managed edition has it on by default.
+
+Turn it on:
+
+1. In `deploy/.env`, set `LIAISON_TOOL_MEANING=on` and `COMPOSE_PROFILES=meaning`.
+2. Run `docker compose up -d`. It starts the `embedder` service and restarts the processes that read the new setting.
+
+What to expect:
+
+- The embedding process uses about 1.1 GB of memory (up to 1.4 GB while it loads), once for the host, however many `api` processes run. Its cap is 2 GB. The other processes use no more memory for it.
+- At its first start it fetches the model's files (about 330 MB) into `LIAISON_MODEL_CACHE_DIR`, at one pinned revision, and checks each file against its pinned SHA-256 before using it. It opens its socket once the model is loaded.
+- Each process computes one vector per tool in the background after its first search, about 15 to 45 seconds.
+- Until then, and whenever the embedding process is not running, is loading or answers slower than `LIAISON_EMBEDDER_DEADLINE_MS`, the search ranks by words alone. The process that searched logs one line when the embedding process stops answering, and one when it answers again.
+- A rolling deploy (`deploy/rolling-deploy.sh`) adds the profiles in `COMPOSE_PROFILES` to its own and starts the `embedder` service when it is not running. It never restarts it: restart it on its own with `docker compose restart embedder`.
+- With no outside network, copy the files of `Snowflake/snowflake-arctic-embed-m-v2.0` at the pinned revision into `LIAISON_MODEL_CACHE_DIR`; they are checked the same way.
+
+Outside Docker, start the embedding process with `bun run embedder` from `apps/api`, with the same environment as the server.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `LIAISON_TOOL_MEANING` | unset: `off` self-hosted, `on` managed | `on` also ranks tools by meaning, through the `embedder` service; `off` ranks by words alone and asks no embedding process |
+| `LIAISON_MODEL_CACHE_DIR` | `/var/lib/liaison/models` (host `./data/models`) | Where the model's files are fetched, checked and read |
+| `LIAISON_EMBEDDER_SOCKET` | `/var/lib/liaison/run/embedder.sock` (host `./data/run`) | The embedding process's Unix socket. Outside Docker, unset: `liaison/embedder.sock` under `XDG_RUNTIME_DIR`, else under the temporary folder |
+| `LIAISON_EMBEDDER_DEADLINE_MS` | `150` | How long a search waits for the embedding process before it ranks by words alone |
 
 ### Model keys
 
@@ -195,6 +238,7 @@ All optional. Compose passes each of them to the app from `deploy/.env`.
 | `OBJECT_STORAGE_BROWSER_DIRECT`, `OBJECT_STORAGE_PUBLIC_URL` | Browsers upload to and download from that store directly |
 | `RATE_LIMIT_DEFAULT`, `RATE_LIMIT_PER_USER` | Requests per minute per IP, and per signed-in person |
 | `NOTIFICATIONS_DEFAULT_QUIET_HOURS` | `on` (default): people who never set work hours get quiet hours from 20:00 to 08:00 on weekdays and all weekend. `off`: they are notified at any time. See [Notifications](../notifications.md) |
+| `LIAISON_MANAGED_SIGNING_ENABLED` | `1` lets a hosted (managed) server offer agreement signatures; off by default there. A self-hosted server ignores it. See [Prepare agreements](../apps/agreements.md) |
 | `LIAISON_TEAM_ENDPOINT` | Where this server shares what an admin opts into with the Liaison team. Unset: the team's endpoint; empty: sharing is not available. See [Share with the Liaison team](liaison-team.md) |
 | `CONTROL_PLANE_URL`, `CONTROL_PLANE_API_KEY` | Both or neither. They do not make the server managed: set without `LIAISON_EDITION`, the server runs self-hosted and logs a warning saying what to set |
 | `LIAISON_REQUIRE_APP_SIGNATURE`, `LIAISON_TRUSTED_APP_PUBLISHERS` | Runtime app installs: signatures are required by default, and the trusted publisher is one cosign certificate-identity regex matched against the whole identity. The image ships cosign; verifying needs outbound HTTPS to Sigstore (`tuf-repo-cdn.sigstore.dev`) |
@@ -337,12 +381,14 @@ The call goes to an internal listener that every process starts, separate from `
 | `LIAISON_INTERNAL_PORT` | `0` | The port of the internal listener. `0` takes any free port. |
 | `LIAISON_INTERNAL_HOST` | the hostname | The name other processes reach this one by. Unset, it is the container's hostname. If that name does not resolve, `127.0.0.1` is used. |
 | `LIAISON_INTERNAL_BIND` | the address of `LIAISON_INTERNAL_HOST` | The address the listener binds. Unset, it is the address the advertised name resolves to on this machine, never every interface. |
+| `LIAISON_SANDBOX_SUBNET` | `10.73.250.0/24` in the compose file | The sandbox network. When the hostname resolves to an address in it, the listener binds and advertises the container's address on its other network instead. |
 
 The listener reads at most 2 MiB per mailbox answer and 8 MiB plus 64 KiB per app call, and checks the signature before it reads the content. An app call is forwarded only with a valid run token, and each process forwards at most 2,000 app calls per client address every 10 seconds.
 
 Every app container must reach every other app container on its internal port:
 
 - In one compose network, nothing to do: the containers reach each other by hostname, and each listener binds only its address on that network.
+- The app processes are also on the sandbox network. Inside a container the hostname can resolve to its sandbox address, which the other processes cannot reach. The listener never binds there: it takes the container's address on the `internal` network and advertises that address. The compose file passes `LIAISON_SANDBOX_SUBNET` for this, from the same setting that builds the sandbox network.
 - On separate hosts, set `LIAISON_INTERNAL_PORT` to a fixed port, set `LIAISON_INTERNAL_HOST` to an address on the private network, and open that port on the private network only. Never publish it.
 - If that address is not on the container itself (a port mapped through Docker on each host), the listener cannot bind it and the process stops at start. Set `LIAISON_INTERNAL_BIND=0.0.0.0` and firewall the port so only the other app hosts reach it.
 

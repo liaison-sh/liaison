@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { createHash } from "node:crypto"
-import { DEMO_ORG_VARIANTS } from "@liaison/shared"
 import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 
@@ -97,6 +96,26 @@ function renderColumnType(typeName: string, fieldDef: unknown): string {
     }
   }
   return base
+}
+
+/**
+ * The fields of a manifest's schema whose type the DDL generator has no column for. Registration
+ * throws on the first one when it builds the table (generateTableDdl, generateAlterTableDdl), so a
+ * manifest carrying one installs and never registers; this lists them all without building SQL.
+ */
+export function unknownFieldTypeErrors(manifest: {
+  schema?: Record<string, { fields?: Record<string, unknown> }>
+}): string[] {
+  const errors: string[] = []
+  for (const [table, spec] of Object.entries(manifest?.schema ?? {})) {
+    for (const [field, def] of Object.entries(spec?.fields ?? {})) {
+      const typeName =
+        typeof def === "string" ? def.replace("?", "") : (def as { type?: unknown })?.type
+      if (typeof typeName !== "string" || !renderColumnType(typeName, def))
+        errors.push(`schema.${table}.fields.${field}: unknown field type "${String(typeName)}"`)
+    }
+  }
+  return errors
 }
 
 function snake(s: string): string {
@@ -380,6 +399,9 @@ export interface ImmutableTableSpec {
    *  identity columns fixed); the row stays undeletable within the retention period. Default:
    *  every column is write-once. */
   writeOnceColumns?: string[]
+  /** When set, no UPDATE at all: a column recorded empty stays empty (a signature's evidence,
+   *  complete when inserted). Cannot be combined with `writeOnceColumns`. */
+  insertOnly?: boolean
 }
 
 export const IMMUTABLE_TRIGGER_NAME = "kernel_immutable"
@@ -388,15 +410,22 @@ export const IMMUTABLE_TRIGGER_NAME = "kernel_immutable"
  * Transaction-local setting the org purge (`modules/org/purge/`) sets to the org it is
  * deleting. The immutability trigger honours it for a DELETE, run as `liaison_admin`, of a row
  * whose `org_id` equals the setting, in an org whose stored row is being deleted
- * (`deleting_at` set) or carries a demo marker (`settings.demo`). Any session can write a
+ * (`deleting_at` set) or is of class `demo` (`organizations.class`). Any session can write a
  * custom setting, so the setting alone grants nothing: the role and the stored org row are the
  * checks. The value keeps its first name so the trigger bodies of two releases read the same
  * setting during a deploy.
  */
 export const ORG_PURGE_SETTING = "liaison.demo_purge_org"
 
-/** Text only the current trigger body carries: the purge checks it before deleting. */
+/** The trigger body's branch for an org whose deletion has started. */
 export const IMMUTABLE_TRIGGER_DELETING_BRANCH = "o.deleting_at IS NOT NULL"
+
+/**
+ * The trigger body's branch for a demo org, and the text only the current body carries: what
+ * `ensureImmutableTriggersCurrent` checks. The bodies before it read the jsonb marker here,
+ * which one bad write to a customer's settings could forge.
+ */
+export const IMMUTABLE_TRIGGER_CLASS_BRANCH = "o.class = 'demo'"
 
 /**
  * Kernel-authored trigger for an immutable table. UPDATE may only FILL a column that is still
@@ -410,9 +439,9 @@ export const IMMUTABLE_TRIGGER_DELETING_BRANCH = "o.deleting_at IS NOT NULL"
  * (`liaison_admin`; a request's `liaison_rls` / `liaison_request` role and a SECURITY DEFINER
  * function's `liaison_definer` never match), the setting naming that row's org, and that org's
  * stored row saying it may go: either its deletion has started (`deleting_at` set, an
- * operator's `liaison org delete`), or it carries a demo marker (the demo reaper and the
- * nightly content reset of a disposable workspace): an object whose `variant` is one the
- * marker schema allows (`DEMO_ORG_VARIANTS`), so a hand-written `{"demo":{}}` is not a marker.
+ * operator's `liaison org delete`, the demo reaper), or its class is `demo` (the nightly content
+ * reset of the reserved demo workspace). The class is written when the org is created; the jsonb
+ * demo marker (`settings.demo`) opens nothing here.
  * The org lookup is schema-qualified like every other kernel reference here; a missing kernel
  * table makes the DELETE error, never pass. UPDATE is never relaxed.
  */
@@ -431,6 +460,19 @@ export function generateImmutableTriggerDdl(
   const only = spec.writeOnceColumns?.map((c) => validateIdentifier(c))
   if (only && only.length === 0)
     throw new Error(`immutable.writeOnceColumns for "${tableName}" must not be empty`)
+  if (spec.insertOnly === true && only)
+    throw new Error(
+      `immutable.insertOnly for "${tableName}" cannot be combined with writeOnceColumns`,
+    )
+  // An insert-only row refuses every UPDATE, a NULL filled later included.
+  const insertOnlyLine =
+    spec.insertOnly === true
+      ? [
+          "  IF TG_OP = 'UPDATE' THEN",
+          "    RAISE EXCEPTION 'immutable_row: % rows are never updated once recorded', TG_TABLE_NAME USING ERRCODE = 'P0001';",
+          "  END IF;",
+        ]
+      : []
   const columnFilter = only ? ` AND o.key IN (${only.map((c) => `'${c}'`).join(", ")})` : ""
   const body = [
     "DECLARE k text;",
@@ -444,8 +486,7 @@ export function generateImmutableTriggerDdl(
     `     AND current_setting('${ORG_PURGE_SETTING}', true) = to_jsonb(OLD)->>'org_id' THEN`,
     `    IF EXISTS (SELECT 1 FROM ${quoteIdent(schemaRef("kernel"))}.organizations o WHERE o.id = (to_jsonb(OLD)->>'org_id')::uuid`,
     `               AND (${IMMUTABLE_TRIGGER_DELETING_BRANCH}`,
-    "                    OR (jsonb_typeof(o.settings->'demo') = 'object'",
-    `                        AND o.settings->'demo'->>'variant' IN (${DEMO_ORG_VARIANTS.map((v) => `'${v}'`).join(", ")})))) THEN`,
+    `                    OR ${IMMUTABLE_TRIGGER_CLASS_BRANCH})) THEN`,
     "      RETURN OLD;",
     "    END IF;",
     "  END IF;",
@@ -455,6 +496,7 @@ export function generateImmutableTriggerDdl(
     "    END IF;",
     "    RETURN OLD;",
     "  END IF;",
+    ...insertOnlyLine,
     "  FOR k IN SELECT o.key FROM jsonb_each(to_jsonb(OLD)) o JOIN jsonb_each(to_jsonb(NEW)) n USING (key)",
     `           WHERE o.value <> 'null'::jsonb AND o.value IS DISTINCT FROM n.value AND o.key <> 'updated_at'${columnFilter} LOOP`,
     "    RAISE EXCEPTION 'immutable_row: %.% is immutable once set', TG_TABLE_NAME, k USING ERRCODE = 'P0001';",
@@ -489,6 +531,7 @@ export function immutableSpecFromTriggerBody(body: string): ImmutableTableSpec |
     retentionYears: Number(retention[2]),
     anchor: retention[1],
     ...(writeOnceColumns && writeOnceColumns.length > 0 ? { writeOnceColumns } : {}),
+    ...(body.includes("rows are never updated once recorded") ? { insertOnly: true } : {}),
   }
 }
 
@@ -579,6 +622,22 @@ export function generateNotNullTightenDdl(
     `UPDATE ${table} SET ${col} = ${value} WHERE ${col} IS NULL`,
     `ALTER TABLE ${table} ALTER COLUMN ${col} SET NOT NULL`,
   ]
+}
+
+/**
+ * The statement that lets a live column go NULL when a later app version makes its field
+ * nullable. Additive (expand-safe): code still running from the earlier version keeps writing
+ * the value, and every existing row keeps its own. Metadata only, no table rewrite. Returns null
+ * when the manifest still declares the field NOT NULL.
+ */
+export function generateNotNullLoosenDdl(
+  schemaName: string,
+  tableName: string,
+  fieldName: string,
+  fieldDef: any,
+): string | null {
+  if (!isFieldNullable(fieldDef)) return null
+  return `ALTER TABLE ${quoteIdent(schemaName)}.${quoteIdent(tableName)} ALTER COLUMN ${quoteIdent(snake(fieldName))} DROP NOT NULL`
 }
 
 function deepSortKeys(obj: unknown): unknown {

@@ -16,6 +16,11 @@ import { sendCompose, sendReply } from "~/modules/mail/service"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
+/** A JSON value as a jsonb literal for insertSql. */
+const jsonb = (value: unknown) => ({
+  raw: `'${JSON.stringify(value).replaceAll("'", "''")}'::jsonb`,
+})
+
 const orgId = "00000000-0000-0000-0000-0000005e8201"
 const userId = "00000000-0000-0000-0000-0000005e8202"
 const connectedAccountId = "00000000-0000-0000-0000-0000005e8204"
@@ -42,12 +47,12 @@ describe("sending from a mailbox whose connection is gone", () => {
   beforeAll(async () => {
     await acquireTestLock()
     await initSandboxPool()
-    const now = { raw: "now()" }
+    const once = { onConflictDoNothing: true }
     await sql.unsafe(
       insertSql(
         "kernel.organizations",
         { id: orgId, name: "Mail Gone Org", slug: "mail-gone-org" },
-        { onConflictDoNothing: true },
+        once,
       ),
     )
     await sql.unsafe(
@@ -63,14 +68,14 @@ describe("sending from a mailbox whose connection is gone", () => {
           auth_version: 1,
           permission_version: 1,
         },
-        { onConflictDoNothing: true },
+        once,
       ),
     )
     await sql.unsafe(
       insertSql(
         "kernel.user_scope_grants",
         SCOPES.map((scope) => ({ user_id: userId, org_id: orgId, scope })),
-        { onConflictDoNothing: true },
+        once,
       ),
     )
     await sql.unsafe(
@@ -80,9 +85,9 @@ describe("sending from a mailbox whose connection is gone", () => {
           user_id: userId,
           org_id: orgId,
           dimension_key: "mail:inbox",
-          dimension_values: JSON.stringify([accountId]),
+          dimension_values: jsonb([accountId]),
         },
-        { onConflictDoNothing: true },
+        once,
       ),
     )
     await ensureAppsForOrg(orgId)
@@ -101,7 +106,7 @@ describe("sending from a mailbox whose connection is gone", () => {
           display_name: "Support",
           sync_status: "active",
         },
-        { onConflictDoNothing: true },
+        once,
       ),
     )
     await sql.unsafe(
@@ -117,13 +122,13 @@ describe("sending from a mailbox whose connection is gone", () => {
           subject: "Order question",
           snippet: "When does it ship?",
           status: "open",
-          labels: JSON.stringify(["INBOX"]),
+          labels: jsonb(["INBOX"]),
           is_read: false,
           is_starred: false,
-          last_message_at: now,
+          last_message_at: { raw: "now()" },
           message_count: 1,
         },
-        { onConflictDoNothing: true },
+        once,
       ),
     )
     await sql.unsafe(
@@ -137,26 +142,26 @@ describe("sending from a mailbox whose connection is gone", () => {
           external_message_id: "<gone-1@example.com>",
           external_provider_id: "imap-1",
           in_reply_to: null,
-          message_references: "[]",
-          from_address: JSON.stringify({ name: "Casey Customer", email: "casey@example.com" }),
-          to_addresses: JSON.stringify([{ email: MAILBOX }]),
-          cc_addresses: "[]",
-          bcc_addresses: "[]",
+          message_references: jsonb([]),
+          from_address: jsonb({ name: "Casey Customer", email: "casey@example.com" }),
+          to_addresses: jsonb([{ email: MAILBOX }]),
+          cc_addresses: jsonb([]),
+          bcc_addresses: jsonb([]),
           subject: "Order question",
           text_body: "When does it ship?",
           html_body: null,
           snippet: "When does it ship?",
           is_read: false,
           is_starred: false,
-          labels: JSON.stringify(["INBOX"]),
+          labels: jsonb(["INBOX"]),
           direction: "inbound",
-          sent_at: now,
-          synced_at: now,
-          raw_headers: "{}",
+          sent_at: { raw: "now()" },
+          synced_at: { raw: "now()" },
+          raw_headers: jsonb({}),
           owner_type: "org",
           owner_id: null,
         },
-        { onConflictDoNothing: true },
+        once,
       ),
     )
   })
@@ -190,21 +195,19 @@ describe("sending from a mailbox whose connection is gone", () => {
     expect(err?.message).toContain("Reconnect it in Settings → Connections")
   }
 
-  it("the person's reply (mail:reply) answers connection_not_connected, naming the mailbox", async () => {
-    // A not-connected state is the tool's answer, not a failure (execute-tool
-    // isNotConnectedToolErrorCode): the error rides back as the result.
-    const result = await executeTool({
+  it("the person's reply (mail:reply) is refused connection_not_connected, naming the mailbox", async () => {
+    // A send that found its mailbox gone did nothing: a refusal (422), never a 200 answer.
+    const err = (await executeTool({
       toolName: "mail:reply",
       orgId,
       actor,
       params: { conversationId, textBody: "It ships tomorrow." },
       origin: "human-ui",
-    })
-    const answer = (result.data as { error?: { code?: string; message?: string } }).error
-    expect(answer?.code).toBe("connection_not_connected")
-    expect(answer?.message).toContain(MAILBOX)
-    expect(answer?.message).toContain("nothing was sent")
-    expect(answer?.message).toContain("Reconnect it in Settings → Connections")
+    }).then(
+      () => null,
+      (e: unknown) => e,
+    )) as Typed | null
+    expectNotConnected(err)
   })
 
   it("the web's reply send (mail service sendReply) answers the same", async () => {

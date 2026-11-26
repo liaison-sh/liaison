@@ -1,0 +1,1 @@
+editableFields unit: hours on an integer number widget, money on a text or number widget, any other pairing refused -> apps/api/src/modules/apps/contract.ts (validateAppManifest) ; apps/api/src/modules/apps/manifest-schema.ts (editableFields) ; packages/shared/src/types/approvals.ts (ApprovalEditableField)

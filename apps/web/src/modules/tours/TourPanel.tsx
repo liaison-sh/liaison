@@ -15,6 +15,7 @@ import {
 import { Check, ChevronDown, ChevronUp, Ellipsis, X } from "lucide-solid"
 import {
   type Component,
+  createEffect,
   createMemo,
   createSignal,
   For,
@@ -28,11 +29,13 @@ import {
 } from "solid-js"
 import { spaNavigate } from "~/framework/spa-navigate"
 import { cn } from "~/lib/cn"
+import { toolActionPhrase } from "~/modules/approvals/approval-copy"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { pluralFormFor } from "~/modules/projects/plural"
 import { refusalCodeInThread } from "~/modules/threads/turn-refusal"
 import { Button } from "~/ui/Button"
 import { PopupMenu } from "~/ui/PopupMenu"
+import { createBeatFigures } from "./beat-figures"
 import { tourBeatGate, tourCompletedAction, tourRefusalGate } from "./beat-gates"
 import { tourCopyVars } from "./copy-vars"
 import { createPanelLayout } from "./panel-layout"
@@ -109,13 +112,15 @@ const MODEL_SETUP_ROUTE = "/settings/ai-models"
 
 /** The routine run a step waits on, as the server's step status says it. */
 interface RoutineRunView {
-  phase: "running" | "succeeded" | "failed" | "skipped"
+  phase: "running" | "succeeded" | "incomplete" | "waiting" | "failed" | "skipped"
   routineName: string | null
   /** When the run began (ms, the server's clock); null when unknown or not running. */
   startedAt: number | null
   error: string | null
   /** The run row's status (`skipped_no_credits`, …); null unless skipped. */
   status: string | null
+  /** Waiting on a request the person can approve now (Do it for me approves it). */
+  asks?: boolean
 }
 
 /** The routine line of a step status (`TourBeatStatus`), or null for any other status. */
@@ -139,6 +144,23 @@ export function routineRunOf(status: TourBeatStatus | undefined): RoutineRunView
         error: null,
         status: null,
       }
+    case "routine-incomplete":
+      return {
+        phase: "incomplete",
+        routineName: status.routineName,
+        startedAt: null,
+        error: null,
+        status: null,
+      }
+    case "routine-waiting":
+      return {
+        phase: "waiting",
+        routineName: status.routineName,
+        startedAt: null,
+        error: null,
+        status: null,
+        asks: status.requestId !== null,
+      }
     case "routine-failed":
       return {
         phase: "failed",
@@ -160,21 +182,14 @@ export function routineRunOf(status: TourBeatStatus | undefined): RoutineRunView
   }
 }
 
-/** A tool's name as a person reads it (`web_search` → "web search", `projects__create` → "projects create"). */
-export function toolLabel(toolName: string): string {
-  // The workspace's own tools read without their prefix ("web search", not
-  // "kernel web search"); an app's keep its name ("projects create").
-  return toolName
-    .replace(/^kernel(:|__)/, "")
-    .replace(/[_:]+/g, " ")
-    .trim()
-}
-
 /** How long a run has taken, as m:ss. */
 export function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000))
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`
 }
+
+/** How long a step waits for its routine's run to show up before saying it has not started. */
+export const ROUTINE_START_GRACE_MS = 90_000
 
 /** What the working line says, by what the beat waits on. */
 const WORKING_KEY = {
@@ -219,6 +234,9 @@ function standsBy(step: TourStep): boolean {
  */
 export function watchOnly(beat: EffectiveBeat): boolean {
   if (beat.kind !== "do") return false
+  // The person's own act (`actor: "user"`, a price only they set): no agent or routine does it,
+  // so the card waits on them, never says their agent is working on it (demo walk 2026-11-26).
+  if (beat.event?.actor === "user") return false
   const steps = beat.autoplay ?? []
   return steps.length > 0 && steps.every(standsBy)
 }
@@ -403,8 +421,10 @@ export const TourPanel: Component<TourPanelProps> = (props) => {
   })
   /** The ⋯ menu holding the less used actions (Take me there, Play, Pause, Skip). */
   const [menuOpen, setMenuOpen] = createSignal(false)
-  /** Step copy in the person's language, with the names it may carry (their own agent's). */
-  const copy = (key: string) => i18n.t(key, tourCopyVars())
+  /** The figures the step's copy names, read from the tool the screen reads (`beat.figures`). */
+  const figures = createBeatFigures(() => props.beat)
+  /** Step copy in the person's language, with the names and figures it may carry. */
+  const copy = (key: string) => i18n.t(key, { ...tourCopyVars(), ...figures() })
   /** The approval waits out its undo window: what the step says meanwhile. */
   const undo = () => (props.undoing ? (props.beat.undo ?? null) : null)
   const stepNumber = () => Math.min(props.progress.beatIndex + 1, props.progress.beatCount)
@@ -503,6 +523,17 @@ export const TourPanel: Component<TourPanelProps> = (props) => {
     const s = props.progress.beatStatus
     return !passed() && !arrived() && s?.kind === "held-for-approval" ? s : null
   }
+  /**
+   * The routine this do step waits on paused on a request of its own (it asked
+   * for the company before the quote and the reply): Do it for me approves that
+   * request, as Approve on its card would, and the run carries on. A step that
+   * approves what the routine staged is the person's own press, never this.
+   */
+  const routineAsks = () => {
+    const s = props.progress.beatStatus
+    if (passed() || arrived() || props.beat.kind !== "do") return null
+    return s?.kind === "routine-waiting" && s.requestId !== null ? s : null
+  }
   const status = (): StatusLine | null => {
     if (passed() || arrived() || undo() || held()) return null
     const a = autoplay()
@@ -534,6 +565,29 @@ export const TourPanel: Component<TourPanelProps> = (props) => {
     }
     return null
   }
+
+  /**
+   * A step a routine does whose run never showed up: after a grace the line says the routine has
+   * not started and Skip this step is on the card, instead of a spinner that waits for ever.
+   */
+  const waitsOnUnstartedRoutine = () =>
+    waitsOn() === "routine" && status() === "working" && !routineLine()
+  const [unstartedSince, setUnstartedSince] = createSignal<number | null>(null)
+  const [unstartedNow, setUnstartedNow] = createSignal(Date.now())
+  createEffect(on(waitsOnUnstartedRoutine, (waits) => setUnstartedSince(waits ? Date.now() : null)))
+  createEffect(() => {
+    if (unstartedSince() === null) return
+    const timer = setInterval(() => setUnstartedNow(Date.now()), 1000)
+    onCleanup(() => clearInterval(timer))
+  })
+  const routineNotStarted = () => {
+    const since = unstartedSince()
+    return since !== null && unstartedNow() - since >= ROUTINE_START_GRACE_MS
+  }
+
+  /** The routine's run ended without doing this step: it will not arrive from that run. */
+  const routineEndedShort = () =>
+    !passed() && !arrived() && props.progress.beatStatus?.kind === "routine-incomplete"
 
   /** The hop to take now, while the step's element is away: one line, "n/m". */
   const hop = () => {
@@ -651,6 +705,14 @@ export const TourPanel: Component<TourPanelProps> = (props) => {
               />
             )}
           </For>
+          {/* The step in words beside the dashes: "Step 1 of 6". */}
+          <span
+            aria-hidden="true"
+            data-testid="tour-step-label"
+            class="ml-1 shrink-0 whitespace-nowrap text-[11px] tabular-nums text-text-tertiary"
+          >
+            {stepLabel()}
+          </span>
         </span>
         <span class="flex-1" />
         <Show when={layout.canFold()}>
@@ -709,7 +771,9 @@ export const TourPanel: Component<TourPanelProps> = (props) => {
               </Show>
               <span>
                 {held()
-                  ? i18n.t("tours.engine.heldBody", { tool: toolLabel(held()?.toolName ?? "") })
+                  ? i18n.t("tours.engine.heldBody", {
+                      tool: toolActionPhrase(held()?.toolName ?? "", i18n.t),
+                    })
                   : copy(undo()?.body ?? props.beat.body)}
               </span>
             </p>
@@ -762,7 +826,9 @@ export const TourPanel: Component<TourPanelProps> = (props) => {
             <span>
               {i18n.t(
                 line() === "working"
-                  ? WORKING_KEY[waitsOn() ?? "agent"]
+                  ? routineNotStarted()
+                    ? "tours.engine.routineNotStarted"
+                    : WORKING_KEY[waitsOn() ?? "agent"]
                   : line() === "agentFailed" && props.beat.kind === "show"
                     ? "tours.engine.agentNoAnswer"
                     : STATUS_KEY[line()],
@@ -825,6 +891,20 @@ export const TourPanel: Component<TourPanelProps> = (props) => {
               </Button>
             )}
           </Match>
+          {/* The routine waits on a request it asked for: Do it for me approves that request. */}
+          <Match when={routineAsks()?.requestId}>
+            {(requestId) => (
+              <Button
+                size="sm"
+                data-testid="tour-do-for-me"
+                data-request-id={requestId()}
+                disabled={!props.onApproveHeld || props.heldApproved?.(requestId()) === true}
+                onClick={() => props.onApproveHeld?.(requestId())}
+              >
+                {i18n.t("tours.engine.doItForMe")}
+              </Button>
+            )}
+          </Match>
           <Match when={arrived()}>{nextButton(() => false)}</Match>
           {/* Waiting out the undo window: nothing to press here, Undo is on the toast. */}
           <Match when={undo()}>{null}</Match>
@@ -834,6 +914,8 @@ export const TourPanel: Component<TourPanelProps> = (props) => {
             {doMyselfButton()}
             <Show when={skipBeatInline()}>{skipBeatButton()}</Show>
           </Match>
+          {/* A routine that never started, or ended without doing this step: skip it to go on. */}
+          <Match when={routineNotStarted() || routineEndedShort()}>{skipBeatButton()}</Match>
           {/* The agent, a routine or a replay does it: Next, once it is done. */}
           <Match when={waitsOnRunningWork(props.beat)}>{nextButton(() => true)}</Match>
           {/* ONE state: the agent or the tour is on it (working, or a step the
@@ -1005,6 +1087,19 @@ const RoutineRunLine: Component<{ run: RoutineRunView }> = (props) => {
         return name
           ? i18n.t("tours.engine.routineDone", { name })
           : i18n.t("tours.engine.routineDoneUnnamed")
+      case "incomplete":
+        return name
+          ? i18n.t("tours.engine.routineIncomplete", { name })
+          : i18n.t("tours.engine.routineIncompleteUnnamed")
+      case "waiting":
+        if (props.run.asks) {
+          return name
+            ? i18n.t("tours.engine.routineWaitingAsks", { name })
+            : i18n.t("tours.engine.routineWaitingAsksUnnamed")
+        }
+        return name
+          ? i18n.t("tours.engine.routineWaiting", { name })
+          : i18n.t("tours.engine.routineWaitingUnnamed")
       case "failed":
         if (error) {
           return name
@@ -1034,7 +1129,11 @@ const RoutineRunLine: Component<{ run: RoutineRunView }> = (props) => {
         "flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-[12.5px] leading-snug",
         props.run.phase === "running" && "text-text-tertiary",
         props.run.phase === "succeeded" && "text-success",
-        (props.run.phase === "failed" || props.run.phase === "skipped") && "text-text-secondary",
+        (props.run.phase === "failed" ||
+          props.run.phase === "incomplete" ||
+          props.run.phase === "skipped" ||
+          props.run.phase === "waiting") &&
+          "text-text-secondary",
       )}
     >
       <Show when={props.run.phase === "running"}>

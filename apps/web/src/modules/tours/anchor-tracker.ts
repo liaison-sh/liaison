@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { type Accessor, createEffect, createSignal, on, onCleanup } from "solid-js"
+import { type Accessor, createEffect, createSignal, on, onCleanup, untrack } from "solid-js"
 import { isCoveredByLayer } from "./placement"
 import {
   resolveLatestFromTurn,
@@ -110,13 +110,15 @@ export function createAnchorTracker(
   all: Accessor<boolean> = () => false,
   /** A turn's anchor follows the agent's later turns in that conversation (`resolveLatestFromTurn`). */
   latest: Accessor<boolean> = () => false,
+  /** A pushed-up anchor is brought back once (`createElementTracker`). */
+  bringBack: Accessor<boolean> = () => false,
 ): Accessor<AnchorBox | null> {
   return createElementTracker(() => {
     const id = testid()
     if (!id) return undefined
     if (all()) return () => resolveVisibleAnchors(id)
     return latest() ? () => resolveLatestFromTurn(id) : () => resolveVisibleAnchor(id)
-  })
+  }, bringBack)
 }
 
 /** The box around every part of `els` that shows, clipped as the first one is. */
@@ -158,9 +160,17 @@ function groupPart(
  */
 export function createElementTracker(
   target: Accessor<(() => HTMLElement | readonly HTMLElement[] | null) | undefined>,
+  /**
+   * True while the anchor is something the person must act on now (the
+   * approval card a step waits on): pushed up by the words the agent wrote
+   * after it, it is brought back once, instead of left above the fold.
+   */
+  bringBack: Accessor<boolean> = () => false,
 ): Accessor<AnchorBox | null> {
   const [box, setBox] = createSignal<AnchorBox | null>(null, { equals: sameBox })
   let scrolledFor: HTMLElement | null = null
+  /** The element a pushed-up anchor was brought back to, once. */
+  let broughtBack: HTMLElement | null = null
   /** This anchor was on screen once already (any element of it, this target). */
   let shown = false
 
@@ -200,8 +210,21 @@ export function createElementTracker(
     // message pushed up, or the card again once its Undo window passed): the
     // same following chat, left alone too. Only an anchor never seen yet is
     // scrolled back up to.
+    // A card the step waits on is the exception: the agent's closing summary
+    // pushed it up and the step said "read its card" with no card in sight
+    // (walk 2026-11-25). It is brought back once; the chat follows on below.
     const pushedUp = offScreen && shown && sized && !group && rect.bottom <= clipOf(el).top
-    if (
+    const bringBackNow =
+      pushedUp &&
+      broughtBack !== el &&
+      untrack(bringBack) &&
+      typeof el.scrollIntoView === "function"
+    if (bringBackNow) {
+      broughtBack = el
+      scrolledFor = el
+      el.scrollIntoView({ block: "center", inline: "nearest" })
+      rect = el.getBoundingClientRect()
+    } else if (
       (offScreen || cutBelow) &&
       !pushedUp &&
       scrolledFor !== el &&

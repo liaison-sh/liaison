@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { timingSafeEqual } from "node:crypto"
+import type { KickoffGoal } from "@liaison/shared"
 import { and, eq } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { organizations, users } from "~/db/schema/kernel"
@@ -48,6 +49,8 @@ export class EmailProviderUnavailableError extends Error {
 
 /** Challenge lifetime — the emailed link + code both expire after this window. */
 const CHALLENGE_TTL_SECONDS = 10 * 60
+/** A portal sign-in link's lifetime (the client portal's sign-in mail). */
+export const PORTAL_CHALLENGE_TTL_SECONDS = 15 * 60
 /** Max wrong-code guesses before the challenge is burned (link path is single-use anyway). */
 const MAX_CODE_ATTEMPTS = 5
 /** TOTP first-factor challenge lifetime, matching the password-login path. */
@@ -90,6 +93,8 @@ interface ChallengeRecord {
   host?: string
   /** A sign-in link handed to the owner by the operator: verified only after a "Continue". */
   handoff?: boolean
+  /** A client portal sign-in link: no code, verified by the portal's route only. */
+  door?: "portal"
 }
 
 export interface MintChallengeOptions {
@@ -97,6 +102,8 @@ export interface MintChallengeOptions {
   host?: string
   /** A handoff challenge: no code, and the page asks for "Continue" before signing in. */
   handoff?: boolean
+  /** A client portal sign-in link: no code, its own lifetime, the portal's route only. */
+  portal?: boolean
 }
 
 export interface MintedChallenge {
@@ -149,6 +156,8 @@ export async function resolveUser(email: string, orgSlug?: string): Promise<Reso
   }
   const normalized = email.toLowerCase()
 
+  // Member doors only: a client's row (user_type external) signs in through the
+  // portal, so it is neither a candidate here nor part of the ambiguity count.
   if (orgSlug) {
     const [org] = await withSystemDb("magic-link-org-lookup", (db) =>
       db
@@ -162,14 +171,20 @@ export async function resolveUser(email: string, orgSlug?: string): Promise<Reso
       db
         .select(cols)
         .from(users)
-        .where(and(eq(users.email, normalized), eq(users.orgId, org.id)))
+        .where(
+          and(eq(users.email, normalized), eq(users.orgId, org.id), eq(users.userType, "member")),
+        )
         .limit(1),
     )
     return user ?? null
   }
 
   const matches = await withSystemDb("magic-link-email-lookup", (db) =>
-    db.select(cols).from(users).where(eq(users.email, normalized)).limit(2),
+    db
+      .select(cols)
+      .from(users)
+      .where(and(eq(users.email, normalized), eq(users.userType, "member")))
+      .limit(2),
   )
   // Ambiguous (email in >1 org without an orgSlug) → unresolvable.
   if (matches.length !== 1) return null
@@ -298,8 +313,9 @@ export async function mintChallenge(
   opts: MintChallengeOptions = {},
 ): Promise<MintedChallenge> {
   const challengeId = generateToken(16)
-  const code = opts.handoff ? null : generateNumericCode(6)
+  const code = opts.handoff || opts.portal ? null : generateNumericCode(6)
   const linkToken = generateToken(32)
+  const ttlSeconds = opts.portal ? PORTAL_CHALLENGE_TTL_SECONDS : CHALLENGE_TTL_SECONDS
   const record: ChallengeRecord = {
     userId: user.id,
     orgId: user.orgId,
@@ -308,6 +324,7 @@ export async function mintChallenge(
     linkTokenHash: hashToken(linkToken),
     ...(opts.host !== undefined ? { host: opts.host } : {}),
     ...(opts.handoff ? { handoff: true } : {}),
+    ...(opts.portal ? { door: "portal" as const } : {}),
   }
 
   // Invalidate any prior in-flight challenge for this user (single active challenge).
@@ -315,18 +332,13 @@ export async function mintChallenge(
   if (priorId) {
     await redis.del(`${CHALLENGE_PREFIX}:${priorId}`, `${ATTEMPTS_PREFIX}:${priorId}`)
   }
-  await redis.set(
-    `${CHALLENGE_PREFIX}:${challengeId}`,
-    JSON.stringify(record),
-    "EX",
-    CHALLENGE_TTL_SECONDS,
-  )
-  await redis.set(`${USER_POINTER_PREFIX}:${user.id}`, challengeId, "EX", CHALLENGE_TTL_SECONDS)
+  await redis.set(`${CHALLENGE_PREFIX}:${challengeId}`, JSON.stringify(record), "EX", ttlSeconds)
+  await redis.set(`${USER_POINTER_PREFIX}:${user.id}`, challengeId, "EX", ttlSeconds)
   return {
     challengeId,
     linkToken,
     code,
-    expiresAt: new Date(Date.now() + CHALLENGE_TTL_SECONDS * 1000),
+    expiresAt: new Date(Date.now() + ttlSeconds * 1000),
   }
 }
 
@@ -359,6 +371,8 @@ export async function verifyMagicLink(input: {
   host?: string
   /** The person clicked "Continue" on a handoff link. */
   confirm?: boolean
+  /** The goal a signup chose: read for a handoff only, for its first setup only. */
+  goal?: KickoffGoal
 }): Promise<MagicLinkVerifyResult> {
   const { challengeId, code, token } = input
   const challengeKey = `${CHALLENGE_PREFIX}:${challengeId}`
@@ -378,6 +392,8 @@ export async function verifyMagicLink(input: {
     log.warn({ userId: record.userId }, "Magic-link challenge presented on another host")
     throw new AuthServiceError("Invalid or expired code", 401)
   }
+  // A portal sign-in link is verified by the portal's route only, and left intact here.
+  if (record.door === "portal") throw new AuthServiceError("Invalid or expired code", 401)
   // A handoff has no code: the code path is refused outright.
   if (record.handoff && token === undefined) {
     throw new AuthServiceError("Invalid or expired code", 401)
@@ -464,7 +480,53 @@ export async function verifyMagicLink(input: {
     return { totpRequired: true, challengeToken }
   }
 
-  return createSession(user.id, user.orgId)
+  // The goal rides only on a handoff (a new Cloud workspace's first sign-in,
+  // minted by the operator). It can only shape a setup kickoff that is still
+  // due; it never touches an existing session or the workspace itself.
+  const kickoffGoal = record.handoff && input.goal !== undefined ? input.goal : undefined
+  return createSession(
+    user.id,
+    user.orgId,
+    undefined,
+    undefined,
+    kickoffGoal ? { kickoffGoal } : undefined,
+  )
+}
+
+/**
+ * Spends a portal sign-in link: its challenge must be a portal one, the token
+ * must match, and it is used once (deleted on the match). Answers whose it was;
+ * any mismatch throws the one uniform 401 and leaves the challenge as it was.
+ */
+export async function consumePortalChallenge(input: {
+  challengeId: string
+  token: string
+  host?: string
+}): Promise<{ userId: string; orgId: string }> {
+  const challengeKey = `${CHALLENGE_PREFIX}:${input.challengeId}`
+  const raw = await redis.get(challengeKey)
+  if (!raw) throw new AuthServiceError("Invalid or expired code", 401)
+  let record: ChallengeRecord
+  try {
+    record = JSON.parse(raw) as ChallengeRecord
+  } catch {
+    throw new AuthServiceError("Invalid or expired code", 401)
+  }
+  if (record.door !== "portal") throw new AuthServiceError("Invalid or expired code", 401)
+  if (record.host !== undefined && input.host !== record.host) {
+    throw new AuthServiceError("Invalid or expired code", 401)
+  }
+  if (!hashesEqual(hashToken(input.token), record.linkTokenHash)) {
+    throw new AuthServiceError("Invalid or expired code", 401)
+  }
+  // One use: only the caller whose delete removed the key goes on.
+  const removed = await redis.del(challengeKey)
+  if (removed !== 1) throw new AuthServiceError("Invalid or expired code", 401)
+  await redis.del(
+    `${ATTEMPTS_PREFIX}:${input.challengeId}`,
+    `${USER_POINTER_PREFIX}:${record.userId}`,
+  )
+  return { userId: record.userId, orgId: record.orgId }
 }
 
 /** What a handoff page shows before "Continue": the workspace and the account. */

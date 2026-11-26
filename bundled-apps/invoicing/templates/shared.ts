@@ -59,6 +59,8 @@ export interface DocumentData {
   original_invoice_date?: string | null
   /** The operation type in words ("Livraison de biens"), printed in the header meta block. */
   operation_label?: string | null
+  /** goods, services or mixed: a document of services alone prints no Incoterm. */
+  operation_category?: string | null
   /** The seller opted to pay VAT on debits: the literal French option mention prints under the legal mention. */
   vat_on_debits?: boolean | null
   /** The store order this document bills ("#1149") — the HUMAN Shopify order
@@ -142,6 +144,12 @@ export interface DocumentRenderInput {
   line_items: LineItem[]
   legal_mention: string
   requires_hs_code: boolean
+  /**
+   * Set by the host, never by the app: the Specimen line of a document rendered in a demo
+   * workspace, in each language the host ships. Absent everywhere else, and then nothing of
+   * the footer changes.
+   */
+  specimen?: Partial<Record<string, string>> | null
 }
 
 // ── Currency exponents (ISO 4217 minor-unit digits) ──────────────────────
@@ -821,7 +829,8 @@ function drawTableHeader(state: LayoutState): void {
       color: GRAY_DARK,
     })
   }
-  drawRight(ctx, "Amount", TABLE_COLS.amount.rightX, {
+  // The column holds each line excluding VAT; the VAT is in the totals below.
+  drawRight(ctx, state.showTax ? "Amount excl. VAT" : "Amount", TABLE_COLS.amount.rightX, {
     y: labelY,
     size: 8.5,
     bold: true,
@@ -942,7 +951,10 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
 
   const metaLines: Array<[string, string]> = [["Issued", formatDateLike(input.document.issued_at)]]
   if (input.document.due_at) metaLines.push(["Due", formatDateLike(input.document.due_at)])
-  metaLines.push(["Incoterm", input.document.incoterm])
+  // An Incoterm says who carries goods: a document of services alone has none.
+  if (input.document.operation_category !== "services") {
+    metaLines.push(["Incoterm", input.document.incoterm])
+  }
   // Store order reference — sits in the meta block next to the document number so
   // a reader can go from invoice to order (and back) without opening the admin.
   const operation = input.document.operation_label?.trim()
@@ -961,7 +973,10 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
   if (customerRef) metaLines.push(["Customer ref", customerRef])
   for (const [label, value] of metaLines) {
     const ctxLabel = ctxOf(state)
-    drawRight(ctxLabel, `${label}:`, rightX - 70, { y: ry, size: 8.5, color: GRAY_LABEL })
+    // Labels share a column 70 pt left of the margin; a value wider than that pushes its own
+    // label left so the two never run into each other ("Provision of services").
+    const labelRight = Math.min(rightX - 70, rightX - textWidth(value, 8.5) - 6)
+    drawRight(ctxLabel, `${label}:`, labelRight, { y: ry, size: 8.5, color: GRAY_LABEL })
     const ctxVal = ctxOf(state)
     drawRight(ctxVal, value, rightX, { y: ry, size: 8.5, color: GRAY_DARK })
     ry -= 13
@@ -1010,7 +1025,7 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
  *  whatever the source; pass anything else through untouched. */
 function formatDateLike(value: string): string {
   const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(value))
-  return m ? m[1] : String(value)
+  return m?.[1] ?? String(value)
 }
 
 /** Two addresses are "the same address" when they differ only in whitespace or case, so a
@@ -1021,6 +1036,17 @@ function sameAddress(a: string | null | undefined, b: string | null | undefined)
   const norm = (v: string | null | undefined) =>
     (v ?? "").replace(/\s+/g, " ").trim().toLocaleLowerCase()
   return norm(a) === norm(b)
+}
+
+/** True when an address's last line is already the country ("...\n69001 Lyon\nFR"), so the
+ *  block does not print it a second time. */
+function addressEndsWith(address: string | null | undefined, country: string): boolean {
+  const last = (address ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l !== "")
+    .at(-1)
+  return !!last && last.toLocaleLowerCase() === country.trim().toLocaleLowerCase()
 }
 
 function drawParties(state: LayoutState, input: DocumentRenderInput): void {
@@ -1088,7 +1114,7 @@ function drawParties(state: LayoutState, input: DocumentRenderInput): void {
         y -= 12
       }
     }
-    if (party.country) {
+    if (party.country && !addressEndsWith(party.address, party.country)) {
       const c1: DrawCtx = { ...ctxLabel, cursor: { y } }
       draw(c1, party.country, { x, y, size: 9, color: GRAY_MUTED })
       y -= 12
@@ -1228,7 +1254,7 @@ function drawItemsTable(state: LayoutState, input: DocumentRenderInput): void {
     }
     drawRight(
       ctxIndex,
-      formatMoney(line.total_minor, input.document.currency).replace(
+      formatMoney(line.subtotal_minor, input.document.currency).replace(
         ` ${input.document.currency}`,
         "",
       ),
@@ -1484,10 +1510,25 @@ const FOOTER_GAP = 12
 /** Lines the footer identity may take before it shrinks: they stay under MARGIN_BOTTOM (70pt). */
 const FOOTER_MAX_LINES = 2
 const FOOTER_MIN_SIZE = 5.5
+/**
+ * Baseline of the Specimen line: above the identity text's top line (two lines at most, from
+ * the footer baseline at 40pt) and below the body, which never runs under MARGIN_BOTTOM (70pt).
+ */
+const SPECIMEN_Y = 58
+const SPECIMEN_SIZE = 7.5
+
+/** The Specimen line in the issuer's language (English when that one is missing), or null. */
+function specimenLine(input: DocumentRenderInput): string | null {
+  const s = input.specimen
+  if (!s || typeof s !== "object") return null
+  const text = s[input.issuer.default_language] ?? s.en
+  return typeof text === "string" && text.trim() ? text.trim() : null
+}
 
 function drawFooters(state: LayoutState, input: DocumentRenderInput): void {
   const total = state.pages.length
   const footerY = 40
+  const specimen = specimenLine(input)
   for (const [i, page] of state.pages.entries()) {
     const ctx: DrawCtx = {
       pdf: state.pdf,
@@ -1530,5 +1571,14 @@ function drawFooters(state: LayoutState, input: DocumentRenderInput): void {
       size: 7.5,
       color: GRAY_LABEL,
     })
+    if (specimen) {
+      draw({ ...ctx, cursor: { y: SPECIMEN_Y } }, specimen, {
+        x: MARGIN_X,
+        y: SPECIMEN_Y,
+        size: SPECIMEN_SIZE,
+        bold: true,
+        color: GRAY_DARK,
+      })
+    }
   }
 }

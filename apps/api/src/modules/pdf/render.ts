@@ -34,6 +34,7 @@ import type { XmpExtension } from "./pdfa/xmp"
 import { enqueue, PdfRenderError } from "./pool"
 import { getTemplate } from "./registry"
 import { loadAppTemplates } from "./registry-rehydrate"
+import { attachmentsWithSpecimen, renderIsDemo, withSpecimen } from "./specimen"
 
 const K = () => sql.raw(schemaRef("kernel"))
 
@@ -186,6 +187,14 @@ export async function renderPdf(
     throw new PdfRenderError("template_not_found", `no template registered for ${template_kind}`)
   }
 
+  // The Specimen mark (modules/pdf/specimen.ts): in a demo workspace every
+  // template gets the host's `specimen` value and an embedded CII invoice gets
+  // its note; elsewhere the key is absent whatever the app passed.
+  const demo = await renderIsDemo(orgId)
+  const templateData = withSpecimen(data, demo)
+  const attachments =
+    demo && input.attachments ? attachmentsWithSpecimen(input.attachments) : input.attachments
+
   // Run through the pool — saturation, deadline, and template runtime errors
   // bubble up as PdfRenderError.
   const getObjectBuffer = deps.getObjectBuffer ?? defaultGetObjectBuffer
@@ -193,7 +202,7 @@ export async function renderPdf(
     orgId,
     appId: callingAppId,
     source,
-    data,
+    data: templateData,
     ...(input.nestedParentKey ? { nestedParentKey: input.nestedParentKey } : {}),
     replay: {
       resolveImage: makeResolveImage(orgId, callingAppId, getObjectBuffer),
@@ -201,7 +210,7 @@ export async function renderPdf(
         ? {
             pdfa: {
               level: "3b" as const,
-              attachments: input.attachments ?? [],
+              attachments: attachments ?? [],
               xmpExtensions: input.xmpExtensions ?? [],
             },
           }

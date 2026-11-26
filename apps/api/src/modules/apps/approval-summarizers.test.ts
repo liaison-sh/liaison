@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "bun:test"
 import { approvalSummarizerRegistry } from "~/modules/apps/app-registries"
 import {
   generateApprovalSummary,
+  genericApprovalSummary,
   registerApprovalSummarizer,
   templateApprovalSummarizer,
 } from "~/modules/apps/approval-summarizers"
@@ -199,5 +200,49 @@ describe("approval summarizer registry", () => {
     )
     const result = await summarize({}, {} as any)
     expect(result.title).toBe("Update inbox")
+  })
+})
+
+// Walk 2026-11-25: a sales routine's contact write, deferred into its bundle through the stable
+// entry, read "Workspace: call tool" on Home, as the request's title and as its step.
+describe("a call through kernel:call_tool", () => {
+  const call = {
+    name: "kernel__contacts_write",
+    arguments: { name: "Hélène Marchand", email: "helene@example.com" },
+  }
+
+  it("is summed up as the tool it calls, by that tool's summarizer", async () => {
+    registerApprovalSummarizer(ORG, "kernel", "contacts_write", async (params) => ({
+      kind: "kernel.contacts_write",
+      title: `Create the contact ${(params as { name: string }).name}`,
+      lines: [],
+    }))
+    const result = await generateApprovalSummary(
+      ORG,
+      "kernel",
+      "call_tool",
+      call,
+      {} as any,
+      "kernel:call_tool",
+    )
+    expect(result.title).toBe("Create the contact Hélène Marchand")
+    // The card is still the entry's: its payload is the entry's.
+    expect(result.kind).toBe("kernel:call_tool")
+  })
+
+  it("never reads 'call tool' without a summarizer either", async () => {
+    const generated = await generateApprovalSummary(
+      ORG,
+      "kernel",
+      "call_tool",
+      call,
+      {} as any,
+      "kernel:call_tool",
+    )
+    const generic = genericApprovalSummary("kernel:call_tool", call)
+    for (const title of [generated.title, generic.title]) {
+      expect(title.toLowerCase()).not.toContain("call tool")
+      expect(title.toLowerCase()).toContain("contact")
+    }
   })
 })

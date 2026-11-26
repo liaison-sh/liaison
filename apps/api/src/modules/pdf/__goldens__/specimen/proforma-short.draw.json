@@ -1,0 +1,477 @@
+[
+  {
+    "op": "setMetadata",
+    "title": "PROFORMA INVOICE",
+    "producer": "Liaison Invoicing",
+    "creator": "Liaison Invoicing"
+  },
+  { "op": "embedFont", "ref": "Helvetica", "standardFont": "Helvetica" },
+  { "op": "embedFont", "ref": "HelveticaBold", "standardFont": "HelveticaBold" },
+  { "op": "embedFont", "ref": "HelveticaOblique", "standardFont": "HelveticaOblique" },
+  { "op": "addPage", "width": 595, "height": 842 },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Example Works Ltd",
+    "x": 50,
+    "y": 784,
+    "size": 16,
+    "font": "HelveticaBold",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "PROFORMA INVOICE",
+    "x": 340.53999999999996,
+    "y": 784,
+    "size": 20,
+    "font": "HelveticaBold",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "DOC-2026-0001",
+    "x": 467.972,
+    "y": 766,
+    "size": 10.5,
+    "font": "Helvetica",
+    "color": { "r": 0.45, "g": 0.45, "b": 0.45 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Issued:",
+    "x": 447.596,
+    "y": 748,
+    "size": 8.5,
+    "font": "Helvetica",
+    "color": { "r": 0.45, "g": 0.45, "b": 0.45 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "2026-05-15",
+    "x": 501.531,
+    "y": 748,
+    "size": 8.5,
+    "font": "Helvetica",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Due:",
+    "x": 457.048,
+    "y": 735,
+    "size": 8.5,
+    "font": "Helvetica",
+    "color": { "r": 0.45, "g": 0.45, "b": 0.45 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "2026-06-14",
+    "x": 501.531,
+    "y": 735,
+    "size": 8.5,
+    "font": "Helvetica",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Incoterm:",
+    "x": 439.572,
+    "y": 722,
+    "size": 8.5,
+    "font": "Helvetica",
+    "color": { "r": 0.45, "g": 0.45, "b": 0.45 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "DAP",
+    "x": 527.524,
+    "y": 722,
+    "size": 8.5,
+    "font": "Helvetica",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "FROM",
+    "x": 50,
+    "y": 701,
+    "size": 7.5,
+    "font": "HelveticaBold",
+    "color": { "r": 0.45, "g": 0.45, "b": 0.45 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Example Works Ltd",
+    "x": 50,
+    "y": 687,
+    "size": 10,
+    "font": "HelveticaBold",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "1 Example Street, Example Town",
+    "x": 50,
+    "y": 674,
+    "size": 9,
+    "font": "Helvetica",
+    "color": { "r": 0.35, "g": 0.35, "b": 0.35 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "GB",
+    "x": 50,
+    "y": 662,
+    "size": 9,
+    "font": "Helvetica",
+    "color": { "r": 0.35, "g": 0.35, "b": 0.35 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "VAT: GB123456789",
+    "x": 50,
+    "y": 650,
+    "size": 9,
+    "font": "Helvetica",
+    "color": { "r": 0.35, "g": 0.35, "b": 0.35 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "BILL TO",
+    "x": 320,
+    "y": 701,
+    "size": 7.5,
+    "font": "HelveticaBold",
+    "color": { "r": 0.45, "g": 0.45, "b": 0.45 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Example Client SARL",
+    "x": 320,
+    "y": 687,
+    "size": 10,
+    "font": "HelveticaBold",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "2 Client Avenue, 69001 Lyon",
+    "x": 320,
+    "y": 674,
+    "size": 9,
+    "font": "Helvetica",
+    "color": { "r": 0.35, "g": 0.35, "b": 0.35 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "FR",
+    "x": 320,
+    "y": 662,
+    "size": 9,
+    "font": "Helvetica",
+    "color": { "r": 0.35, "g": 0.35, "b": 0.35 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "VAT: FR98765432109",
+    "x": 320,
+    "y": 650,
+    "size": 9,
+    "font": "Helvetica",
+    "color": { "r": 0.35, "g": 0.35, "b": 0.35 }
+  },
+  {
+    "op": "drawRectangle",
+    "page": 0,
+    "x": 50,
+    "y": 614,
+    "width": 495,
+    "height": 18,
+    "color": { "r": 0.95, "g": 0.95, "b": 0.96 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "#",
+    "x": 50,
+    "y": 619,
+    "size": 8.5,
+    "font": "HelveticaBold",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Description",
+    "x": 72,
+    "y": 619,
+    "size": 8.5,
+    "font": "HelveticaBold",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Qty",
+    "x": 335.8305,
+    "y": 619,
+    "size": 8.5,
+    "font": "HelveticaBold",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Unit price",
+    "x": 385.798,
+    "y": 619,
+    "size": 8.5,
+    "font": "HelveticaBold",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Tax %",
+    "x": 440.435,
+    "y": 619,
+    "size": 8.5,
+    "font": "HelveticaBold",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Amount excl. VAT",
+    "x": 472.2655,
+    "y": 619,
+    "size": 8.5,
+    "font": "HelveticaBold",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "1",
+    "x": 50,
+    "y": 606,
+    "size": 9,
+    "font": "Helvetica",
+    "color": { "r": 0, "g": 0, "b": 0 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "1",
+    "x": 344.996,
+    "y": 606,
+    "size": 9,
+    "font": "Helvetica",
+    "color": { "r": 0, "g": 0, "b": 0 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "100.00",
+    "x": 397.478,
+    "y": 606,
+    "size": 9,
+    "font": "Helvetica",
+    "color": { "r": 0, "g": 0, "b": 0 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "20.00%",
+    "x": 434.481,
+    "y": 606,
+    "size": 9,
+    "font": "Helvetica",
+    "color": { "r": 0, "g": 0, "b": 0 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "100.00",
+    "x": 517.478,
+    "y": 606,
+    "size": 9,
+    "font": "Helvetica",
+    "color": { "r": 0, "g": 0, "b": 0 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Design and build work, part 1 of the agreed scope",
+    "x": 72,
+    "y": 606,
+    "size": 9,
+    "font": "Helvetica",
+    "color": { "r": 0, "g": 0, "b": 0 }
+  },
+  {
+    "op": "drawLine",
+    "page": 0,
+    "start": { "x": 50, "y": 590 },
+    "end": { "x": 545, "y": 590 },
+    "thickness": 0.5,
+    "color": { "r": 0.9, "g": 0.9, "b": 0.9 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Subtotal",
+    "x": 345,
+    "y": 572,
+    "size": 10,
+    "font": "Helvetica",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "100.00 EUR",
+    "x": 490.53,
+    "y": 572,
+    "size": 10,
+    "font": "Helvetica",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Tax (20.00%)",
+    "x": 345,
+    "y": 556,
+    "size": 10,
+    "font": "Helvetica",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "20.00 EUR",
+    "x": 496.09000000000003,
+    "y": 556,
+    "size": 10,
+    "font": "Helvetica",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawLine",
+    "page": 0,
+    "start": { "x": 345, "y": 536 },
+    "end": { "x": 545, "y": 536 },
+    "thickness": 1,
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Total due",
+    "x": 345,
+    "y": 520,
+    "size": 11,
+    "font": "HelveticaBold",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "120.00 EUR",
+    "x": 485.08299999999997,
+    "y": 520,
+    "size": 11,
+    "font": "HelveticaBold",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawRectangle",
+    "page": 0,
+    "x": 50,
+    "y": 435,
+    "width": 260,
+    "height": 58,
+    "borderColor": { "r": 0.75, "g": 0.75, "b": 0.75 },
+    "borderWidth": 0.75
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Payment details",
+    "x": 60,
+    "y": 479,
+    "size": 9,
+    "font": "HelveticaBold",
+    "color": { "r": 0.13, "g": 0.13, "b": 0.13 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "IBAN: FR7630006000011234567890189",
+    "x": 60,
+    "y": 465,
+    "size": 9,
+    "font": "Helvetica",
+    "color": { "r": 0.35, "g": 0.35, "b": 0.35 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "SWIFT/BIC: BNPAFRPP",
+    "x": 60,
+    "y": 453,
+    "size": 9,
+    "font": "Helvetica",
+    "color": { "r": 0.35, "g": 0.35, "b": 0.35 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Bank: Example Bank",
+    "x": 60,
+    "y": 441,
+    "size": 9,
+    "font": "Helvetica",
+    "color": { "r": 0.35, "g": 0.35, "b": 0.35 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Example Works Ltd · VAT GB123456789",
+    "x": 50,
+    "y": 40,
+    "size": 7.5,
+    "font": "Helvetica",
+    "color": { "r": 0.45, "g": 0.45, "b": 0.45 }
+  },
+  {
+    "op": "drawText",
+    "page": 0,
+    "text": "Page 1 of 1",
+    "x": 506.6375,
+    "y": 40,
+    "size": 7.5,
+    "font": "Helvetica",
+    "color": { "r": 0.45, "g": 0.45, "b": 0.45 }
+  }
+]

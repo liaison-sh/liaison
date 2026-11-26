@@ -201,7 +201,9 @@
 //         dimension constraint; the notified audience is narrowed to holders of all of them, and
 //         decide and edit re-check all of them. The requester holds the taint (6c), so they may
 //         decide it, and the feed folds it out of other approvers' default view as peer noise. A
-//         gated write keeps its own deciding scope plus 8c.
+//         gated write keeps its own deciding scope plus 8c, and so does a `conditionalGate` write
+//         (its handler parks some calls itself and runs them on any approval of the call: a
+//         credit note decided by a contacts read scope was issued by a reader, 2026-11).
 //
 // A WEB READ NEVER PARKS; GUARDRAILS BOUND WHAT IT CARRIES (2026-10-29, owner ruling: "web search
 // is a SEARCH, so it's 100% a read"). Rule 6i held web_fetch and web_search once the turn read org
@@ -469,8 +471,10 @@
 import { isAnnotatedReadOnly } from "~/apps/mcp-manager/default-policy"
 import type { McpToolAnnotations } from "~/apps/mcp-manager/types"
 import { resolveRequiredScopes } from "~/modules/agent/scopes/required-scopes"
+import { isExactOnlyScope } from "~/modules/agent/scopes/scope-coverage"
 import { approvalResourceOwnerRegistry, entityRegistry } from "~/modules/apps/app-registries"
 import { connectionToolNamespace, isValidSlug } from "~/modules/mcp-client/naming"
+import { isRestrictedScope, RESTRICTED_SCOPE_PREFIX } from "~/modules/permissions/restricted-scope"
 
 // The three enforcing sinks, named so a tool registration's `writesToTable` imports the exact
 // string instead of retyping it.
@@ -521,6 +525,11 @@ export const SINK_KERNEL_SCOPE_REQUESTS = "kernel.scope_requests"
 export const SINK_KERNEL_USER_PREFERENCES = "kernel.user_preferences"
 export const SINK_KERNEL_ATTENTION_SUBSCRIPTIONS = "kernel.attention_subscriptions"
 export const SINK_KERNEL_USER_THREAD_STATE = "kernel.user_thread_state"
+//
+// Away days (kernel.away_ranges, `set_away`): dates, weekdays and member ids, no free text and
+// never a reason, so nothing scoped a turn read can be carried in one. Who may write which
+// person's range is the tool's own rule (outside text and non-person turns park it).
+export const SINK_KERNEL_AWAY_RANGES = "kernel.away_ranges"
 
 export const TAINT_CONTROL_PLANE_SINKS: ReadonlySet<string> = new Set([
   SINK_KERNEL_AGENT_RUNS,
@@ -529,6 +538,7 @@ export const TAINT_CONTROL_PLANE_SINKS: ReadonlySet<string> = new Set([
   SINK_KERNEL_USER_PREFERENCES,
   SINK_KERNEL_ATTENTION_SUBSCRIPTIONS,
   SINK_KERNEL_USER_THREAD_STATE,
+  SINK_KERNEL_AWAY_RANGES,
 ])
 
 // LOW-SENSITIVITY SINKS (owner decision, 2026-09-30). Project tasks, their checklist items and
@@ -546,6 +556,34 @@ export const TAINT_LOW_SENSITIVITY_SINKS: ReadonlySet<string> = new Set([
   SINK_APP_PROJECTS_TASK_CHECKLIST_ITEMS,
   SINK_APP_PROJECTS_TASK_DEPENDENCIES,
 ])
+
+// CONTROL-PLANE ROWS THAT CARRY FREE TEXT. A scope request's reason and a sub-agent role's text
+// (whenToUse, system prompt) are read by the admins who decide or edit them, and an admin holding
+// `*` does not hold an exact-only scope or a record closed to the organization. So the
+// control-plane allowance covers them only for a taint every role can share: after a read
+// narrower than any role (`taintNarrowerThanRoles`), the write is judged by its readers like any
+// other sink. An ordinary taint keeps the allowance, and a call refused before it ran (a missing
+// access) taints nothing, so asking for the access one lacks still works.
+export const TAINT_CONTROL_PLANE_TEXT_SINKS: ReadonlySet<string> = new Set([
+  SINK_KERNEL_SUB_AGENT_DEFINITIONS,
+  SINK_KERNEL_SCOPE_REQUESTS,
+])
+
+/**
+ * A taint narrower than any role: it holds a restricted record's scope (`restricted:`, a record
+ * closed to the organization, read only by its list) or an exact-only scope (a margin, a cost
+ * rate, a timesheet, a bare marker such as `clevel`: held only by its exact grant, never by a
+ * wildcard). The low-sensitivity allowance above was decided for ordinary work data that most of
+ * the org reads anyway; it never covers such a taint, since a task title or checklist line copied
+ * from a record shared with two people is read by everyone on the project (2026-11-19). The write
+ * is then judged by its readers like every other sink: it runs when they all hold the taint, and
+ * parks for the requester otherwise (rule 8b).
+ */
+export function taintNarrowerThanRoles(taintScopes: readonly string[]): boolean {
+  return taintScopes.some(
+    (s) => isRestrictedScope(s) || (!UNKNOWN_TURN_TAINT.includes(s) && isExactOnlyScope(s)),
+  )
+}
 
 // What a tool call refused by scope taint returns in place of the tool's normal result. The
 // call was admitted to the catalog and refused mid-execution, so it is a runtime error shape of
@@ -684,6 +722,12 @@ export function taintSourceApps(taintScopes: readonly string[]): string[] {
   const apps = new Set<string>()
   for (const scope of taintScopes) {
     if (UNKNOWN_TURN_TAINT.includes(scope)) continue
+    // A restricted record's scope names its app in its kind (`restricted:agreements.agreement:<id>`).
+    if (scope.startsWith(RESTRICTED_SCOPE_PREFIX)) {
+      const app = scope.slice(RESTRICTED_SCOPE_PREFIX.length).split(".")[0]
+      if (app) apps.add(app)
+      continue
+    }
     const [app, resource] = scope.split(":")
     // A kernel scope names its resource (contacts, agent memory), which is what a person reads.
     const name = app === "kernel" ? resource : app
@@ -712,10 +756,26 @@ export function taintSurfaceLabel(
   for (const target of targetTables) {
     if (!target) continue
     const bare = target.includes(".") ? target.slice(target.lastIndexOf(".") + 1) : target
-    const entity = entities.find((e) => e.tableName === bare)
+    const onTable = entities.filter((e) => e.tableName === bare)
+    // Several entities over one table (a document and its PDF): the one named for the table.
+    const entity = onTable.find((e) => e.name === bare || `${e.name}s` === bare) ?? onTable[0]
     if (entity) return `this ${entity.name.replace(/_/g, " ")}`
   }
-  return targetTables.find((t): t is string => !!t) ?? "where it is written"
+  const table = targetTables.find((t): t is string => !!t)
+  return table ? tableInWords(table) : "where it is written"
+}
+
+/**
+ * A table no manifest entity names, in the words a person reads: its record kind and its app
+ * (`app_projects.days_off` is "days off in projects"), never the table's own name.
+ */
+function tableInWords(table: string): string {
+  const dot = table.lastIndexOf(".")
+  const schema = dot === -1 ? "" : table.slice(0, dot)
+  const kind = (dot === -1 ? table : table.slice(dot + 1)).replace(/_/g, " ").trim()
+  const app = schema.startsWith("app_") ? schema.slice(4).replace(/_/g, " ") : ""
+  if (!kind) return "where it is written"
+  return app ? `${kind} in ${app}` : kind
 }
 
 /** {@link taintSurfaceLabel} for a registered tool, from the live registry of its org. */
@@ -864,6 +924,29 @@ export type TaintOriginRows = Readonly<Record<string, readonly string[]>>
 export type TaintOriginStore = {
   originRows: () => TaintOriginRows
   recordOriginRows: (table: string, rowIds: readonly string[]) => void
+  /** Adds scopes a read's result carried (a tool's `resultTaintWhen`) to the turn's set. */
+  recordInjected: (requiredScopes: string[]) => void
+  /** The same, remembered as read just now, so a window that stamps read times can stamp them. */
+  recordResultScopes: (requiredScopes: string[]) => void
+}
+
+/** How deep `resultHoldsField` looks; a part nested deeper counts as held (fail closed). */
+const RESULT_FIELD_DEPTH = 8
+
+/**
+ * Does a successful result hold one of `fields` with a value (not null), at any depth? A tool's
+ * `resultTaintWhen` asks this of what it returned: the parts it names are classified by a
+ * narrower read scope than the tool's own. A result nested past the walk counts as holding one.
+ */
+export function resultHoldsField(result: unknown, fields: readonly string[], depth = 0): boolean {
+  if (result === null || typeof result !== "object") return false
+  if (depth > RESULT_FIELD_DEPTH) return true
+  if (Array.isArray(result)) return result.some((item) => resultHoldsField(item, fields, depth + 1))
+  const row = result as Record<string, unknown>
+  for (const field of fields) {
+    if (Object.hasOwn(row, field) && row[field] !== null && row[field] !== undefined) return true
+  }
+  return Object.values(row).some((child) => resultHoldsField(child, fields, depth + 1))
 }
 
 /**
@@ -895,8 +978,13 @@ export function checkScopeTaint(
   if (
     accumulatedRequiredScopes.length === 0 ||
     TAINT_ENFORCING_SINKS.has(writeTargetTable) ||
-    TAINT_CONTROL_PLANE_SINKS.has(writeTargetTable) ||
-    TAINT_LOW_SENSITIVITY_SINKS.has(writeTargetTable)
+    (TAINT_CONTROL_PLANE_SINKS.has(writeTargetTable) &&
+      !(
+        TAINT_CONTROL_PLANE_TEXT_SINKS.has(writeTargetTable) &&
+        taintNarrowerThanRoles(accumulatedRequiredScopes)
+      )) ||
+    (TAINT_LOW_SENSITIVITY_SINKS.has(writeTargetTable) &&
+      !taintNarrowerThanRoles(accumulatedRequiredScopes))
   ) {
     return { allowed: true }
   }

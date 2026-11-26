@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "modules/client-actions/unsent-links.ts": "The job that mails links whose server stopped before their mail: it runs for no person and for every org, lists the ids of open links never mailed (id and org only), and mails each through remailClientAction in that org."
+  }
+}

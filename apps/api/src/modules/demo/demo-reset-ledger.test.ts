@@ -20,10 +20,11 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { env } from "~/lib/env"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, reservedMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, reservedMarker } from "~/modules/demo/demo-org"
 import { KERNEL_RESET_RULES, resetDemoOrgContent, runDemoReset } from "~/modules/demo/demo-reset"
 import { demoOrgTokensUsed } from "~/modules/demo/demo-spend"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const MODEL = "ledger-model"
@@ -33,8 +34,10 @@ describe("the nightly reset and the ceiling's ledger", () => {
 
   beforeAll(async () => {
     await acquireTestLock()
-    reservedOrgId = (await ensureOrg({ slug: "ledger-reserved", name: "Ledger Reserved" })).orgId
-    await markOrgAsDemo(reservedOrgId, reservedMarker())
+    reservedOrgId = (
+      await ensureOrg({ slug: "ledger-reserved", name: "Ledger Reserved", class: "demo" })
+    ).orgId
+    await markDemoOrgForTest(reservedOrgId, reservedMarker())
   })
 
   afterAll(async () => {

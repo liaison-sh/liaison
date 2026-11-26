@@ -48,13 +48,20 @@ import {
   prepareEinvoiceGate,
 } from "./einvoicing/issue-gate"
 import { documentLegalMention } from "./einvoicing/mentions"
+import {
+  mergeEinvoicingWarnings,
+  SellerIncompleteRefusal,
+  sellerGapFor,
+  sellerWarning,
+} from "./einvoicing/seller"
 import { type EinvCtx, stageSendAfterIssue } from "./einvoicing/transmit"
 import { FacturxBuildError, type FacturxInput } from "./facturx/cii"
 import { facturxEligible, facturxInputFrom } from "./facturx/input"
-import type { TimeSurface } from "./issue-date"
+import { DEFAULT_ZONE, issuerTimezoneUnset, type TimeSurface } from "./issue-date"
 import { hasLegalOriginal, recordLegalOriginal } from "./legal-originals/record"
 import { documentRollup, lineAmounts } from "./money"
 import { numberingSequence } from "./numbering"
+import { dueOn, paymentTermsOf } from "./payment-terms"
 import { classify, operationLabel } from "./tax"
 
 export type DocumentType = "invoice" | "quote" | "proforma" | "purchase_order" | "credit_note"
@@ -81,6 +88,8 @@ export interface IssuerProfile {
   timezone?: string | null
   /** Defaults the `vat_on_debits` flag recorded on each issued document. */
   vat_on_debits_default?: boolean | null
+  /** Days a customer has to pay, for an invoice with no due date of its own (`payment-terms.ts`). */
+  default_payment_terms_days?: number | string | null
   /** Structured seller address and e-invoicing routing (Factur-X BT-34..BT-40). */
   siret?: string | null
   routing_address?: string | null
@@ -168,22 +177,43 @@ function blank(v: string | null | undefined): boolean {
  */
 export function counterpartyCompletenessError(
   counterparty: Pick<Counterparty, "legal_name" | "country" | "address" | "email">,
-): { code: string; message: string } | null {
+): {
+  code: string
+  message: string
+  /** For an agent: the draft parameters to set, and the field of a create-and-issue
+   *  `counterparty` each one is. The message stays in a person's words. */
+  body: { missing_params: string[]; counterparty_fields: string[]; set_with: string }
+} | null {
   const missing = REQUIRED_COUNTERPARTY_FIELDS.filter((f) => blank(counterparty[f]))
   if (missing.length === 0) return null
+  const said = missing.map((f) => `the customer's ${COUNTERPARTY_FIELD_SAID[f]}`)
+  const list = said.length === 1 ? said[0] : `${said.slice(0, -1).join(", ")} and ${said.at(-1)}`
   return {
     code: "counterparty_incomplete",
-    message:
-      `cannot issue a document without a complete recipient: ${missing.join(", ")} ` +
-      `${missing.length === 1 ? "is" : "are"} missing. An issued document is a legal record, ` +
-      `so the recipient name, postal address, email and country are all required. Set them on ` +
-      `the draft (drafts_update counterparty_name / counterparty_address / counterparty_email / ` +
-      `counterparty_country) or pass a complete \`counterparty\` to the create-and-issue tool, ` +
-      `e.g. counterparty: {"legal_name": "Acme SAS", "country": "FR", "address": ` +
-      `"12 rue de la Paix, 75002 Paris, France", "email": "billing@acme.example"} (country is the ` +
-      `ISO 3166 alpha-2 code). Ask the person for any of these you do not know; never make them up. ` +
-      `Nothing was issued.`,
+    message: `This document cannot be issued yet: ${list} ${missing.length === 1 ? "is" : "are"} missing. Add ${missing.length === 1 ? "it" : "them"} to the customer or the draft, then issue again. Ask the customer for any you do not know; never make them up. Nothing was issued.`,
+    body: {
+      missing_params: missing.map((f) => COUNTERPARTY_FIELD_PARAM[f]),
+      counterparty_fields: [...missing],
+      set_with:
+        "drafts_update with the missing_params on the draft, or a complete counterparty (counterparty_fields; country is the ISO 3166 alpha-2 code) on a create-and-issue tool",
+    },
   }
+}
+
+/** The draft parameter (drafts_update) that sets each required recipient field. */
+const COUNTERPARTY_FIELD_PARAM: Record<(typeof REQUIRED_COUNTERPARTY_FIELDS)[number], string> = {
+  legal_name: "counterparty_name",
+  country: "counterparty_country",
+  address: "counterparty_address",
+  email: "counterparty_email",
+}
+
+/** How a person reads each required recipient field. */
+const COUNTERPARTY_FIELD_SAID: Record<(typeof REQUIRED_COUNTERPARTY_FIELDS)[number], string> = {
+  legal_name: "name",
+  country: "country",
+  address: "postal address",
+  email: "email address",
 }
 
 /**
@@ -214,9 +244,11 @@ export class CounterpartyIncompleteError extends Error {
  *   - `goods`    (default) physical products; customs enrichment applies on exports.
  *   - `software` digital items (license keys, downloads) — never customs goods,
  *                rendered in their own "Software" group on the PDF.
+ *   - `service`  work done for the buyer (consulting, a retainer): a service in the operation
+ *                category and the tax classification, never customs goods.
  *   - `shipping` carriage lines — never customs goods, rendered last.
  */
-export type LineKind = "goods" | "software" | "shipping"
+export type LineKind = "goods" | "software" | "service" | "shipping"
 
 export interface DraftLineInput {
   position?: number
@@ -265,6 +297,21 @@ export interface DraftLine {
   external_id: string | null
 }
 
+/**
+ * What a document says about the work it bills, carried from a draft onto the invoice that
+ * replaces it at issue: the project, the role in a billing plan, the service period, who approved
+ * the draft and when, and the last day it should issue. A plain draft carries none of them.
+ */
+export interface SourceColumns {
+  billing_project_id?: string | null
+  invoice_role?: "standard" | "advance" | "final" | null
+  service_period_start?: string | null
+  service_period_end?: string | null
+  approved_by?: string | null
+  approved_at?: string | null
+  latest_issue_on?: string | null
+}
+
 export interface Draft {
   currency: string
   incoterm: string
@@ -277,6 +324,13 @@ export interface Draft {
    *  top-level column with no legacy JSON home, so `documents.notes` is the single source. */
   notes?: string | null
   lines: DraftLine[]
+  /** What the document bills, carried from the draft it replaces (the project, the role in a
+   *  billing plan, the service period, the approval, the last issue day). Only set values are
+   *  written, so a plain draft issues exactly as before. */
+  source?: SourceColumns
+  /** The client company the draft was made for, stamped from its billing source (a schedule, a
+   *  billing plan's quote, a project). It wins over the contact's company at issue. */
+  company_id?: string | null
 }
 
 /**
@@ -287,6 +341,17 @@ export interface Draft {
  * Null/absent for agent- and manually-created documents (whole-order scope).
  */
 export type DocumentScope = "goods" | "software"
+
+/** The document would issue at another amount than the one a person approved. Nothing is written. */
+export class AmountChangedRefusal extends Error {
+  readonly error: { code: "amount_changed"; message: string }
+  constructor(approved: bigint, now: bigint) {
+    const message = `The invoice was approved at ${approved} and would issue at ${now} (minor units, VAT included), so it was not issued and no number was used.`
+    super(message)
+    this.name = "AmountChangedRefusal"
+    this.error = { code: "amount_changed", message }
+  }
+}
 
 export interface IssueInput {
   type: DocumentType
@@ -334,13 +399,27 @@ export interface IssueInput {
    *  is reserved for a value read straight off a Shopify webhook payload with no human step in
    *  between (the order-paid auto-flow). */
   po_number_source?: "shopify_sync" | "person"
+  /** What it bills was paid on the document it replaces: without a due date of its own it has none. */
+  already_paid?: boolean
+  /** What a person approved this document to total, in minor units: it issues at that amount or
+   *  not at all (`AmountChangedRefusal`, before any number is taken). */
+  expected_total_minor?: bigint | string | null
+  /** Change-log entries the issued document carries over from the draft it replaces. */
+  lifecycle_carry?: Array<Record<string, unknown>>
+  /** "batch": issued with no person (a month-end run issuing by itself), so an e-invoice waits
+   *  for the daily send card instead of its own send approval. */
+  einvoice_send?: "stage" | "batch" | "held"
   /** Writes that must commit with the document (the draft it replaces, the invoice a credit
    *  note credits): appended to the issuing batch. `{ $ref: "document" }` is the new document's
    *  id, `{ $seq: "formatted" }` its number. */
   commit_with?: IssueBatchOp[]
-  /** A dedup key for the document (`documents.external_ref`, unique), e.g. the automatic credit
-   *  note of one Shopify refund. */
-  external_ref?: string
+  /** Writes that must commit with the document but land before it in the batch (a draft giving
+   *  up the unique key the new document takes). */
+  commit_before?: IssueBatchOp[]
+  /** A dedup key for the document (`documents.external_ref`, unique): the automatic credit note
+   *  of one Shopify or Stripe refund, or a month-end run's period key (the draft hands its own
+   *  over, after clearing it on the draft, so the period stays billed once). */
+  external_ref?: string | null
 }
 
 export interface IssueResult {
@@ -392,8 +471,14 @@ export type IssueBatchOp =
       data?: Record<string, unknown>
       append?: Record<string, unknown[]>
       merge?: Record<string, Record<string, unknown>>
+      expect?: { minRows?: number; maxRows?: number }
     }
-  | { delete: string; id: string | { $ref: string } }
+  | {
+      delete: string
+      id: string | { $ref: string }
+      expect?: { minRows?: number; maxRows?: number }
+    }
+  | { updateMany: string; where: Record<string, unknown>; data: Record<string, unknown> }
 
 export interface IssueBatchSequence {
   key: string
@@ -535,8 +620,6 @@ export interface IssueCtx {
 }
 
 export interface DocumentInsert {
-  /** Dedup key (unique when set). */
-  external_ref?: string
   type: string
   scope: DocumentScope | null
   status: string
@@ -624,6 +707,10 @@ export interface DocumentInsert {
   notes: string | null
   /** Credit notes only: the original invoice, as a real column. */
   original_document_id?: string | null
+  /** The client company the document is made out to, stamped here at issue from the
+   *  counterparty contact's company and never followed afterwards (the client portal
+   *  reads it). NULL when the contact has no company or cannot be read. */
+  company_id?: string | null
   /** Credit notes only: the original's stored regime, its reasons, and whether the credit note
    *  is an internal cancellation (original refused or rejected). */
   regime?: Regime
@@ -632,6 +719,10 @@ export interface DocumentInsert {
   /** The e-invoicing snapshot written by the issue gate (regime, buyer, billing, category). */
   einvoice?: Partial<RegimeSnapshotColumns>
   lifecycle_log: Array<Record<string, unknown>>
+  /** The unique source key of the document, when one produced it (a dedup key, unique when set). */
+  /** What the document bills, carried from its draft (see Draft.source). */
+  source?: SourceColumns
+  external_ref?: string | null
 }
 export interface DocumentRow extends DocumentInsert {
   id: string
@@ -715,6 +806,9 @@ function serialiseDocumentInsert(row: DocumentInsert): Record<string, unknown> {
     year_of_issue: row.year_of_issue,
     issuer_profile_id: row.issuer_profile_id,
     counterparty_contact_id: row.counterparty_contact_id,
+    // The client company stamped at issue: written whenever it is known, so the company's money
+    // and its portal see the document. Omitted, the column keeps its NULL default.
+    ...(row.company_id ? { company_id: row.company_id } : {}),
     counterparty_name: row.counterparty_name,
     counterparty_address: row.counterparty_address,
     counterparty_shipping_address: row.counterparty_shipping_address,
@@ -751,8 +845,17 @@ function serialiseDocumentInsert(row: DocumentInsert): Record<string, unknown> {
       : {}),
     ...(row.einvoice ?? {}),
     ...(row.external_ref ? { external_ref: row.external_ref } : {}),
+    ...setSourceColumns(row.source),
     lifecycle_log: row.lifecycle_log,
   }
+}
+
+/** The source columns that hold a value: an unset one keeps the column's default. */
+function setSourceColumns(source: SourceColumns | undefined): Record<string, unknown> {
+  if (!source) return {}
+  return Object.fromEntries(
+    Object.entries(source).filter(([, v]) => v !== null && v !== undefined && v !== ""),
+  )
 }
 
 /** The link / regime columns of a credit note. The regime is the ORIGINAL's stored regime (never
@@ -1017,7 +1120,120 @@ export async function enrichLineCustoms(
   return { hs_code, country_of_origin, customs_description, fetchFailure }
 }
 
-export async function issueDocument(ctx: IssueCtx, input: IssueInput): Promise<IssueResult> {
+/** Documents in these statuses were never issued: a profile holding only them is at its first issue. */
+const NEVER_ISSUED_STATUSES: ReadonlySet<string> = new Set(["draft", "pending_approval"])
+
+/**
+ * True at the first issue on an issuer profile nobody gave a time zone, in an organization that
+ * has none either: the one moment the zone is asked (the line is raised once, after the number is
+ * taken). A profile with a zone, an organization with a zone, or a profile with issued documents
+ * (no backfill) is never asked.
+ */
+async function timezoneAskDue(ctx: IssueCtx, issuer: IssuerProfile): Promise<boolean> {
+  if (!issuerTimezoneUnset(issuer)) return false
+  const org = await ctx.time.civil({ timezone: DEFAULT_ZONE })
+  if (org.zone !== DEFAULT_ZONE) return false
+
+  const rows = (await ctx.db.findMany("documents", {
+    where: { issuer_profile_id: issuer.id },
+    select: ["id", "status"],
+    limit: 200,
+  })) as Array<{ status?: string | null }>
+  return rows.every((r) => NEVER_ISSUED_STATUSES.has(String(r.status ?? "draft")))
+}
+
+const CONTACT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * The company of the counterparty contact as the kernel knows it now, read through its
+ * identifiers only (a read that does not mark the turn as having read outside text).
+ * Null when there is no contact, no company, or the read is refused.
+ */
+export async function companyOfContact(
+  ctx: Pick<IssueCtx, "executeTool">,
+  contactId: string | null | undefined,
+): Promise<string | null> {
+  return (await readContactCompany(ctx, contactId)) ?? null
+}
+
+/**
+ * The contact's company, told apart from not knowing it: a company id, null when the kernel says
+ * the contact has none (or there is no contact), undefined when the read failed or was refused.
+ */
+async function readContactCompany(
+  ctx: Pick<IssueCtx, "executeTool">,
+  contactId: string | null | undefined,
+): Promise<string | null | undefined> {
+  if (!contactId) return null
+  if (!CONTACT_ID.test(contactId) || !ctx.executeTool) return undefined
+  try {
+    const env = await ctx.executeTool("kernel:contacts_identity", { contactId })
+    if (env.status !== "completed") return undefined
+    const contact = (env.result as { contact?: { companyId?: unknown } } | null)?.contact
+    if (!contact) return undefined
+    const id = contact.companyId
+    if (id === null || id === undefined || id === "") return null
+    return typeof id === "string" && CONTACT_ID.test(id) ? id : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The client company an issued document is made out to, which is what the client portal and the
+ * company page read. The counterparty contact's own company decides: the document carries the
+ * name, address and VAT id of that contact, so it belongs to that contact's company whatever the
+ * schedule, quote or project it came from says. The company stamped on the draft from its source,
+ * else the project's client company, is used only when the contact has no company, or when it
+ * agrees. When the contact's company cannot be read, no source company is used. A purchase order
+ * is made out to a supplier: it never takes a client company from its source.
+ */
+export async function documentCompany(
+  ctx: Pick<IssueCtx, "executeTool">,
+  doc: {
+    type: DocumentType
+    contactId: string | null | undefined
+    stamped?: unknown
+    billingProjectId?: string | null
+  },
+): Promise<string | null> {
+  const ofContact = await readContactCompany(ctx, doc.contactId)
+  if (ofContact) return ofContact
+  if (ofContact === undefined || doc.type === "purchase_order") return null
+  const stamped =
+    typeof doc.stamped === "string" && CONTACT_ID.test(doc.stamped) ? doc.stamped : null
+  return stamped ?? (await companyOfProject(ctx, doc.billingProjectId))
+}
+
+/**
+ * The client company of the project a document bills, through projects' own read (the project's
+ * basis and company, nothing about its work). Null when there is no project, no company, or the
+ * read is refused.
+ */
+export async function companyOfProject(
+  ctx: Pick<IssueCtx, "executeTool">,
+  projectId: string | null | undefined,
+): Promise<string | null> {
+  if (!projectId || !CONTACT_ID.test(projectId) || !ctx.executeTool) return null
+  try {
+    const env = await ctx.executeTool("projects:milestone_status_read", { projectId, taskIds: [] })
+    if (env.status !== "completed") return null
+    const id = (env.result as { companyId?: unknown } | null)?.companyId
+    return typeof id === "string" && CONTACT_ID.test(id) ? id : null
+  } catch {
+    return null
+  }
+}
+
+export async function issueDocument(
+  ctx: IssueCtx,
+  input: IssueInput,
+  opts: {
+    /** Called once the number is committed, before anything else runs (the approved run
+     *  records its effect there, approval-protocol.ts). */
+    onCommitted?: (issued: { document_id: string; number: string }) => Promise<void>
+  } = {},
+): Promise<IssueResult> {
   const prepared = await prepareIssue(ctx, input)
   // 6) Number, document, lines and the caller's own writes commit in ONE batch: a sandboxed run
   //    holds no transaction across its calls, so a run that fails or is killed after this point
@@ -1032,10 +1248,12 @@ export async function issueDocument(ctx: IssueCtx, input: IssueInput): Promise<I
   ) {
     throw new Error(`numbering failed for "${prepared.sequence.key}": ${JSON.stringify(committed)}`)
   }
+  const documentId = String(committed.rows.document?.id)
+  await opts.onCommitted?.({ document_id: documentId, number: allocated.formatted })
   return prepared.finish({
     value: allocated.value,
     formatted: allocated.formatted,
-    documentId: String(committed.rows.document?.id),
+    documentId,
   })
 }
 
@@ -1118,7 +1336,14 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
       // The payment state AT ISSUE is recorded for every invoice (BT-23 x1 / x2 reads it, never
       // the later payment_status: a Factur-X first rendered after a mark-paid must still say due).
       payment_state:
-        input.payment_state ?? (type === "invoice" ? (input.settlement ? "paid" : "due") : null),
+        input.payment_state ??
+        (type === "invoice"
+          ? input.settlement
+            ? "paid"
+            : draft.source?.invoice_role === "final"
+              ? "final_after_deposit"
+              : "due"
+          : null),
       original: type === "credit_note" ? (input.original ?? null) : null,
       origin: input.origin ?? "manual",
     },
@@ -1126,7 +1351,16 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   )
   const gateRefusal = gate.evaluation.refusal
   if (gateRefusal && gateRefusal.mode === "enforce") throw new EinvoiceGateRefusal(gateRefusal)
-  const einvoicingWarning = gateRefusal ? gateWarning(gateRefusal) : undefined
+  // 0c) The seller's half of a legal original: an e-invoice whose issuer profile cannot sign its
+  //     Factur-X is refused here, before numbering, in enforce mode. In warn mode it is issued
+  //     with a plain PDF (no Factur-X is attempted) and the warning names the issuer fields.
+  const sellerGap = sellerGapFor(type, gate.evaluation, issuer)
+  if (sellerGap && gate.mode === "enforce") throw new SellerIncompleteRefusal(sellerGap)
+  const einvoicingWarning =
+    mergeEinvoicingWarnings(
+      gateRefusal ? gateWarning(gateRefusal) : null,
+      sellerGap ? sellerWarning(sellerGap) : null,
+    ) ?? undefined
   if (gate.derivedKind && counterparty.contact_id) {
     await ensureDerivedIdentity(ctx.db, {
       contact_id: counterparty.contact_id,
@@ -1205,6 +1439,11 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
 
   // 3) Money rollup via D5.
   const rollup = documentRollup(snapshotLines)
+  const expected = input.expected_total_minor
+  if (expected !== undefined && expected !== null && expected !== "") {
+    if (BigInt(expected) !== rollup.grand_total_minor)
+      throw new AmountChangedRefusal(BigInt(expected), rollup.grand_total_minor)
+  }
   const fxDate = fxIssueDate(draft.issued_at)
   const fxSnapshot =
     draft.currency && draft.currency !== "EUR"
@@ -1233,9 +1472,40 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     year_of_issue: draft.year_of_issue,
   })
 
+  const askTimezone = await timezoneAskDue(ctx, issuer)
+
+  // An invoice with no date of its own is due by the customer's terms, else the issuer's, counted
+  // from the day it is issued. One already settled owes nothing, and no other type is payable.
+  const dueGiven =
+    draft.due_at ||
+    (type === "invoice" && !input.settlement && !input.already_paid
+      ? dueOn(
+          draft.issued_at,
+          (
+            await paymentTermsOf(ctx.db, {
+              issuer,
+              contactId: counterparty.contact_id,
+              externalRefs: draft.external_refs,
+            })
+          ).days,
+        )
+      : null)
+  // Whatever gave it, an invoice is never due before the day it is issued.
+  const issuedDay = draft.issued_at.slice(0, 10)
+  const dueAt =
+    type === "invoice" && dueGiven && String(dueGiven).slice(0, 10) < issuedDay
+      ? issuedDay
+      : dueGiven
+
   // 5) The document row, numbered by the batch.
   const nowIso = new Date().toISOString()
   const userId = await ctx.getUserId()
+  const companyId = await documentCompany(ctx, {
+    type,
+    contactId: counterparty.contact_id,
+    stamped: draft.company_id,
+    billingProjectId: draft.source?.billing_project_id,
+  })
   const documentInsert: DocumentInsert = {
     type,
     scope: input.scope ?? null,
@@ -1245,6 +1515,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     year_of_issue: draft.year_of_issue,
     issuer_profile_id: issuer.id,
     counterparty_contact_id: counterparty.contact_id,
+    company_id: companyId,
     counterparty_name: counterparty.legal_name ?? null,
     counterparty_address: counterparty.address ?? null,
     counterparty_shipping_address: counterparty.shipping_address ?? null,
@@ -1259,7 +1530,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     tax_treatment: classification.treatment,
     incoterm: draft.incoterm,
     issued_at: draft.issued_at,
-    due_at: draft.due_at,
+    due_at: dueAt,
     // Born-settled (Shopify order-paid): only payment_status/paid_at are set — status stays
     // "issued" so the invoice remains a live, shippable document.
     ...(input.settlement ? { payment_status: "paid", paid_at: input.settlement.paid_at } : {}),
@@ -1271,7 +1542,6 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
         ? draft.external_refs.shopify_order_id
         : null,
     shopify_order_number: readOrderNumber(draft.external_refs),
-    ...(input.external_ref ? { external_ref: input.external_ref } : {}),
     shipment_ref:
       typeof draft.external_refs.shipment_ref === "string"
         ? draft.external_refs.shipment_ref
@@ -1295,7 +1565,10 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
           }),
         }
       : creditNoteOriginalColumns(type, issuer, input.original ?? null)),
+    ...(input.external_ref ? { external_ref: input.external_ref } : {}),
+    ...(draft.source ? { source: draft.source } : {}),
     lifecycle_log: [
+      ...(input.lifecycle_carry ?? []),
       { event: "issued", actor: userId, ts: nowIso },
       // Warn mode: the gate's refusal is recorded, calmly, on the document it did not block.
       ...(gateRefusal
@@ -1306,6 +1579,17 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
               ts: nowIso,
               code: gateRefusal.code,
               missing: gateRefusal.missing.map((m) => m.field),
+            },
+          ]
+        : []),
+      ...(sellerGap
+        ? [
+            {
+              event: "einvoice_gate_warning",
+              actor: userId,
+              ts: nowIso,
+              code: sellerGap.code,
+              missing: sellerGap.body.missing_fields.map((f) => `issuer.${f}`),
             },
           ]
         : []),
@@ -1335,6 +1619,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   }
   // The writes of step 6 (see issueDocument): the document, its lines, the caller's own.
   const ops: IssueBatchOp[] = [
+    ...(input.commit_before ?? []),
     {
       insert: "documents",
       as: "document",
@@ -1398,6 +1683,19 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
           },
         })
       }
+      if (askTimezone) {
+        // One Home line to the holders of the settings scope; a zone set on the profile resolves it.
+        await ctx.emit({
+          entity: "issuer_profile",
+          action: "timezone_unset",
+          entityId: issuer.id,
+          data: {
+            issuer_profile_id: issuer.id,
+            legal_name: issuer.legal_name,
+            document_id: documentId,
+          },
+        })
+      }
       const issuedPoNumber = readRefString(draft.external_refs, "po_number")
       if (issuedPoNumber) {
         await ctx.emit({
@@ -1452,7 +1750,8 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
       >
       let facturx: FacturxInput | null = null
       let buildError: FacturxBuildError | null = null
-      if (facturxEligible(type, docForFacturx)) {
+      // Warn mode with an incomplete issuer: a plain PDF, never a failed e-invoice file.
+      if (facturxEligible(type, docForFacturx) && !sellerGap) {
         try {
           facturx = facturxInputFrom({
             type: type as "invoice" | "credit_note",
@@ -1590,7 +1889,9 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     let einvoiceSend: { approval_id: string } | null = null
     if (pdfStatus === "ready" && pdfFileId && ctx.requestApproval) {
       try {
-        const staged = await stageSendAfterIssue(ctx as unknown as EinvCtx, documentId)
+        const staged = await stageSendAfterIssue(ctx as unknown as EinvCtx, documentId, {
+          send: input.einvoice_send ?? "stage",
+        })
         if (staged) einvoiceSend = { approval_id: staged }
       } catch (err) {
         newLog.push({
@@ -1704,6 +2005,7 @@ export function buildTemplateData(params: {
       // The stored e-invoicing snapshot: at issue time it rides on `document.einvoice`, on a
       // re-render it is the persisted columns. Never recomputed from current data.
       operation_label: operationLabel(snapshot.operation_category, issuer.default_language),
+      operation_category: snapshot.operation_category ?? null,
       vat_on_debits: snapshot.vat_on_debits === true,
       // The human Shopify order reference, rendered as an "Order" line in the
       // header meta so the order can be read straight off the invoice PDF. The

@@ -14,6 +14,9 @@
 
 export const CROSS_APP_INGESTIONS: Readonly<Record<string, readonly string[]>> = {
   calls: ["knowledge:create"],
+  // A signed agreement's text, one closed document per signed version (agreements'
+  // `onAgreementSigned`), and the archive of the copy a later signed version supersedes.
+  agreements: ["knowledge:create", "knowledge:archive"],
 }
 
 /** The caller app when THIS dispatch is a recognised ingestion, else "". `declared` is the

@@ -58,9 +58,10 @@ import {
   snapshot,
 } from "~/modules/demo/demo-budget"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { microEurOfUsd, visitorRequestInputMicroEur } from "~/modules/demo/demo-spend-ceiling"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { markDemoOrgForTest } from "~/tests/helpers/demo-org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 type EnvKey = keyof typeof env
@@ -93,7 +94,7 @@ describe("a demo visitor's paid calls outside a turn", () => {
     savedKey = process.env.OPENROUTER_API_KEY
     process.env.OPENROUTER_API_KEY = BOX_KEY
     org = (await ensureOrg({ slug: "visitor-side-calls", name: "Visitor" })).orgId
-    await markOrgAsDemo(org, visitorMarker(24))
+    await markDemoOrgForTest(org, visitorMarker(24))
     DemoBudgetTestAccess.setVerifiedIdentity(async (o) => identities.get(o) ?? null)
   })
   afterAll(async () => {

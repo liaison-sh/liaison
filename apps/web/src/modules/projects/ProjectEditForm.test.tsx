@@ -3,7 +3,8 @@
 // emptied = null (ungrouped), and the org's existing groups offered as
 // suggestions.
 import { fireEvent, render, screen } from "@solidjs/testing-library"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { setEnabledOrgFeatures } from "~/framework/org-features"
 
 const state = vi.hoisted(() => ({
   updateProjectFields: vi.fn(async (..._args: unknown[]) => ({})),
@@ -111,5 +112,95 @@ describe("ProjectEditForm group", () => {
   it("caps the field at 60 characters", () => {
     render(() => <ProjectEditForm api={api} project={project(null)} onDone={() => {}} />)
     expect((screen.getByTestId("project-edit.group") as HTMLInputElement).maxLength).toBe(60)
+  })
+})
+
+describe("ProjectEditForm client", () => {
+  beforeEach(() => {
+    state.updateProjectFields.mockClear()
+    state.projects = []
+    state.archived = []
+    // The Client field is a company: shown while an admin has turned Companies on.
+    setEnabledOrgFeatures([{ app: "contacts", feature: "companies" }])
+  })
+  afterEach(() => setEnabledOrgFeatures([]))
+
+  it("has no Client field while Companies is off for the workspace", () => {
+    setEnabledOrgFeatures([])
+    render(() => (
+      <ProjectEditForm api={{} as ApiClient} project={project(null)} onDone={() => {}} />
+    ))
+    expect(screen.queryByTestId("project-edit.client-search")).toBeNull()
+  })
+
+  it("the Client field sets and clears the project's company", async () => {
+    const companies = {
+      getEnvelope: vi.fn(async (path: string) => ({
+        data: path.includes("query=arl") ? [{ id: "c-arlon", name: "Maison Arlon" }] : [],
+      })),
+      get: vi.fn(async (path: string) => {
+        if (path === "/contacts/companies/c-arlon") return { id: "c-arlon", name: "Maison Arlon" }
+        throw new Error("not found")
+      }),
+    } as unknown as ApiClient
+
+    // Set: search, pick, save.
+    const first = render(() => (
+      <ProjectEditForm api={companies} project={project(null)} onDone={() => {}} />
+    ))
+    fireEvent.input(screen.getByTestId("project-edit.client-search"), { target: { value: "arl" } })
+    fireEvent.click(await screen.findByTestId("project-edit.client-option-c-arlon"))
+    expect(screen.getByTestId("project-edit.client-name").textContent).toBe("Maison Arlon")
+    fireEvent.click(screen.getByTestId("project-edit.save"))
+    await vi.waitFor(() =>
+      expect(state.updateProjectFields).toHaveBeenCalledWith(companies, "p1", {
+        companyId: "c-arlon",
+      }),
+    )
+    first.unmount()
+    state.updateProjectFields.mockClear()
+
+    // Clear: the current client is named, Clear, save sends null.
+    render(() => (
+      <ProjectEditForm
+        api={companies}
+        project={{ ...project(null), companyId: "c-arlon" }}
+        onDone={() => {}}
+      />
+    ))
+    await vi.waitFor(() =>
+      expect(screen.getByTestId("project-edit.client-name").textContent).toBe("Maison Arlon"),
+    )
+    fireEvent.click(screen.getByTestId("project-edit.client-clear"))
+    expect(screen.getByTestId("project-edit.client-search")).toBeTruthy()
+    fireEvent.click(screen.getByTestId("project-edit.save"))
+    await vi.waitFor(() =>
+      expect(state.updateProjectFields).toHaveBeenCalledWith(companies, "p1", { companyId: null }),
+    )
+  })
+
+  it("an unchanged client is not sent, and a company the editor cannot see is named as such", async () => {
+    const hidden = {
+      getEnvelope: vi.fn(async () => ({ data: [] })),
+      get: vi.fn(async () => {
+        throw new Error("not found")
+      }),
+    } as unknown as ApiClient
+    const onDone = vi.fn()
+    render(() => (
+      <ProjectEditForm
+        api={hidden}
+        project={{ ...project(null), companyId: "c-secret" }}
+        onDone={onDone}
+      />
+    ))
+    await vi.waitFor(() =>
+      expect(screen.getByTestId("project-edit.client-name").textContent).toBe(
+        "A company you cannot see",
+      ),
+    )
+    fireEvent.click(screen.getByTestId("project-edit.save"))
+    await vi.waitFor(() => expect(onDone).toHaveBeenCalled())
+    expect(state.updateProjectFields).not.toHaveBeenCalled()
   })
 })

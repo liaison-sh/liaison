@@ -88,8 +88,10 @@ interface SeamDocRow {
 async function insertIssuerProfile(): Promise<string> {
   const id = randomUUID()
   await sql`INSERT INTO app_invoicing.issuer_profiles
-    (id, org_id, legal_name, country, vat_id, default_currency, shopify_shop_id)
-    VALUES (${id}, ${ORG}, 'PO Seam Issuer SAS', 'FR', 'FR41903000008', 'EUR', ${SHOP_DOMAIN})`
+    (id, org_id, legal_name, country, vat_id, default_currency, shopify_shop_id,
+     siren, address_line1, postcode, city, country_code)
+    VALUES (${id}, ${ORG}, 'PO Seam Issuer SAS', 'FR', 'FR41903000008', 'EUR', ${SHOP_DOMAIN},
+     '903000008', '1 rue de Test', '75001', 'Paris', 'FR')`
   return id
 }
 

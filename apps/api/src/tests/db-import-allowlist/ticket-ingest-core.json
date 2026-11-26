@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "modules/tickets/ingest-core.ts": "The core of a ticket from outside the org (the public ticket route and a client's portal request): creates it as the system actor, appends a client's reply, stages and reparents the files they attach. The sender holds no scope, and each route decides first what may be set and which ticket is theirs."
+  }
+}

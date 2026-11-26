@@ -55,6 +55,16 @@ export interface RoutineSeed {
   /** Requested ceiling, clamped to what the owner holds before it is written. */
   scopes: string[]
   prompt: string
+  /**
+   * The product template it was made from, recorded as enabling the template
+   * records it: a kernel template carries no app name.
+   */
+  template?: { appName: string; templateKey: string }
+  /**
+   * The template's follow-up mark (`followUp`): its run stages drafts and ends, never waiting
+   * for their decisions. Copied as enabling the template copies it.
+   */
+  followUp?: boolean
 }
 
 /**
@@ -93,7 +103,15 @@ export async function seedRoutine(
     ...(spec.reportThreadId !== undefined ? { reportThreadId: spec.reportThreadId } : {}),
     ...(spec.flow !== undefined ? { flow: spec.flow } : {}),
     prompt: spec.prompt,
+    ...(spec.template
+      ? {
+          appName: spec.template.appName === "kernel" ? null : spec.template.appName,
+          templateKey: spec.template.templateKey,
+          sourceKind: spec.template.appName === "kernel" ? "kernel" : "app",
+        }
+      : {}),
     scopes: granted,
+    followUp: spec.followUp === true,
     // Shared, not personal: the whole org sees it under Shared.
     visibility: "shared" as const,
     enabled: input.enabled ?? false,
@@ -122,7 +140,11 @@ export async function seedRoutine(
 
 /**
  * Switch a seeded routine on and open its event subscription, the way the
- * routines route does.
+ * routines route does: here, and in every other process of the cell through
+ * the announce. The process that publishes the routine's event (the outbox
+ * leader, often another process) holds the `once` handler, so a subscription
+ * opened only here left the routine deaf until the next resync, up to a minute
+ * later, and an event in that gap never reached it.
  */
 export async function enableEventRoutine(orgId: string, routineId: string): Promise<void> {
   const [row] = await withPrivilegedDb(orgId, "seed-enable-routine", (tx) =>
@@ -133,10 +155,13 @@ export async function enableEventRoutine(orgId: string, routineId: string): Prom
       .returning({ id: routines.id, event: routines.event, eventFilter: routines.eventFilter }),
   )
   if (!row) throw new Error(`routines seed: routine ${routineId} not found`)
-  const { subscribeActiveEventRoutines } = await import("~/infra/jobs/event-routine-subscriber")
+  const { subscribeActiveEventRoutines, announceEventRoutineChange } = await import(
+    "~/infra/jobs/event-routine-subscriber"
+  )
   await subscribeActiveEventRoutines([
     { id: row.id, orgId, event: row.event, filter: row.eventFilter },
   ])
+  await announceEventRoutineChange(row.id, orgId)
 }
 
 export interface SubAgentRoleSeed {

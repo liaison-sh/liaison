@@ -159,6 +159,43 @@ describe("a run that has not issued yet", () => {
     expect(v.runId).toBe(run.id)
   })
 
+  it("a late run whose every row left needs a fix lists those rows with why and where to fix them", () => {
+    // A late run with no row ready has no card (it would approve nothing): the page itself is the
+    // way out, so it names each row to fix, never "open a row" over an empty list.
+    const rows = [
+      row({
+        item_id: "a",
+        state: "needs_fix",
+        customer: "Iris Arlon",
+        draft_id: "da",
+        document_id: "da",
+        flags: ["No billing address"],
+      }),
+      row({ item_id: "b", state: "left_out", draft_id: "db", document_id: "db" }),
+      row({ item_id: "c", state: "needs_fix", draft_id: null, document_id: "dc" }),
+    ]
+    const v = runDetailView({ ...run, status: "late", approved_by: null }, rows, null)
+    expect(v.toDecide).toEqual([])
+    expect(v.needsFix).toEqual([
+      {
+        itemId: "a",
+        customer: "Iris Arlon",
+        why: "No billing address",
+        fixHref: "/invoicing/editor/da",
+      },
+      {
+        itemId: "c",
+        customer: "Maison Arlon",
+        why: "It needs a fix before it can issue.",
+        fixHref: "/invoicing/editor/dc",
+      },
+    ])
+    // A run with nothing to fix lists nothing.
+    expect(
+      runDetailView({ ...run, status: "late" }, [row({ state: "left_out" })], null).needsFix,
+    ).toEqual([])
+  })
+
   it("a row's due date, operation type and period are said before it is approved", () => {
     const facts = rowFacts({
       ...row({ state: "ready", number: null }),

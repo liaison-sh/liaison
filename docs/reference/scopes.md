@@ -236,7 +236,6 @@ Your team's shared documents, policies and curated source links.
 | Scope | Declared by | Description |
 | --- | --- | --- |
 | `knowledge:approve` | approver scope | Decide (approve, edit, or deny) knowledge approvals raised by its gated tools |
-| `knowledge:attachments:download` | role member |  |
 | `knowledge:attachments:upload` | role member |  |
 | `knowledge:cache:manage` | role admin |  |
 | `knowledge:collections:manage` | role member; tools add_to_collection, collection_create, collection_delete, collection_update, remove_from_collection |  |

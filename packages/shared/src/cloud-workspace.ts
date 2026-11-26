@@ -24,7 +24,6 @@ export const DEFAULT_CLOUD_DOMAIN = "liaison.sh"
 // Undeclared at runtime anywhere else, which `typeof` tolerates.
 declare const __LIAISON_CLOUD_DOMAIN__: string | null | undefined
 
-
 /** One DNS label: what a workspace name can be. */
 const SLUG_SHAPE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
 
@@ -57,7 +56,6 @@ export function buildCloudDomain(): string | null {
     typeof __LIAISON_CLOUD_DOMAIN__ === "undefined" ? undefined : __LIAISON_CLOUD_DOMAIN__,
   )
 }
-
 
 /** Whether `slug` is a workspace name as the Cloud screen takes it. */
 export function isValidWorkspaceSlug(slug: string): boolean {

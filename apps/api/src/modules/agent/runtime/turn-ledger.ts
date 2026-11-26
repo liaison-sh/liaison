@@ -34,6 +34,7 @@ import {
 } from "~/db/schema/kernel"
 import { INSTANCE_ID } from "~/infra/instance-id"
 import { rootLogger } from "~/lib/logger"
+import { pgSafe } from "~/lib/pg-safe-text"
 import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 
 const log = rootLogger.child({ module: "turn-ledger" })
@@ -144,8 +145,11 @@ export async function appendStep(
   orgId: string,
   turnId: string,
   runner: string,
-  payload: TurnStepPayload,
+  rawPayload: TurnStepPayload,
 ): Promise<FencedWrite> {
+  // A step's messages are the model's own output: a character jsonb refuses
+  // (U+0000) would fail the journal write and freeze the turn (`pg-safe-text.ts`).
+  const payload = pgSafe(rawPayload)
   const started = performance.now()
   const bytes = JSON.stringify(payload).length
   const result = await withPrivilegedDb(orgId, "turn-ledger:append-step", async (tx) => {

@@ -18,6 +18,10 @@ C-Level option -> packages/shared/src/i18n/locales/en/knowledge.json:109
 People with access, Add people… -> packages/shared/src/i18n/locales/en/kernel.json:4129
 Viewer / Editor -> packages/shared/src/i18n/locales/en/kernel.json:4130
 Roles with access, Add roles… -> packages/shared/src/i18n/locales/en/kernel.json:4134
+Shared with me bucket -> apps/api/src/apps/knowledge/collections.ts:555
+Search snippet -> apps/api/src/apps/knowledge/search-snippet.ts:33
+Snippet words marked -> apps/web/src/modules/knowledge/highlight.ts:12
+You can't open this page -> apps/web/src/modules/knowledge/KnowledgeDocumentView.tsx:766
 Save share -> apps/web/src/modules/sharing/ShareDialog.tsx:572
 No admin bypass, restricted doc writable by owner or editor share -> apps/api/src/apps/knowledge/service.ts:355
 Search uses a sharing ACL projection -> apps/api/src/apps/knowledge/service.ts:875
@@ -98,7 +102,3 @@ Verify/refresh ask the app; gone or unshared -> stale; app unreachable leaves th
 Reads go through the person's own connection -> apps/api/src/modules/apps/knowledge-sync-dispatch.ts (wakeAppExport tenant.userId) ; bundled-apps/google-drive/src/items.ts (personClient)
 get reads a remote hit's text -> apps/api/src/modules/apps/sandbox/bridge/knowledge.ts (knowledge_get remote branch)
 The same app, kind, owner and ref find their source again (reactivated), whatever else its config holds -> apps/api/src/apps/knowledge/synced-sources.ts (findAppSource, doCreateSyncedSource)
-Shared with me bucket -> apps/api/src/apps/knowledge/collections.ts:555
-Search snippet -> apps/api/src/apps/knowledge/search-snippet.ts:33
-Snippet words marked -> apps/web/src/modules/knowledge/highlight.ts:12
-You can't open this page -> apps/web/src/modules/knowledge/KnowledgeDocumentView.tsx:766

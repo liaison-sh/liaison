@@ -4143,7 +4143,7 @@
     "approvalDecidedNamed": {
       "approved": "Approuvée : {{title}} ({{handle}})",
       "rejected": "Refusée : {{title}} ({{handle}})",
-      "expired": "Expirée sans décision : {{title}} ({{handle}})"
+      "expired": "Expirée sans décision, rien n'a été fait : {{title}} ({{handle}})"
     },
     "awayNamed": "{{name}} vous a indiqué absent {{dates}}",
     "routedReminder": "En attente d'une décision depuis plus de {{hours}} heures : {{title}}",

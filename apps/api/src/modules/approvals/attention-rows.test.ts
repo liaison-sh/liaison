@@ -433,12 +433,48 @@ describe("the line that says a request was decided", () => {
     expect(told?.metadata?.decisionTitle).toBeUndefined()
   })
 
+  it("says who and how much of one that expired undone, and marks it left undone", async () => {
+    const summary = {
+      title: "Issue the retainer invoice, 2027-03",
+      lines: [
+        "Customer: Harbour Press",
+        "Total: 5,940.00 EUR",
+        "Due date: 30 days",
+        "Issued by: X",
+      ],
+    }
+    const { rows } = await decisionRow(
+      { status: "expired", requestedBy: people.sara, summary },
+      people.sara as string,
+    )
+    expect(rows[0]?.metadata?.leftUndone).toBe(true)
+    expect(rows[0]?.metadata?.summaryLines).toEqual(summary.lines.slice(0, 3))
+  })
+
+  it("leaves an internal expiry, and a decided request, as news", async () => {
+    const internal = await decisionRow(
+      {
+        status: "expired",
+        requestedBy: people.sara,
+        summary: { title: "Set a label", lines: ["Label: idea"], impact: "internal" },
+      },
+      people.sara as string,
+    )
+    expect(internal.rows[0]?.metadata?.leftUndone).toBeUndefined()
+    expect(internal.rows[0]?.metadata?.summaryLines).toBeUndefined()
+    const approved = await decisionRow(
+      { status: "approved", requestedBy: people.sara, summary: { title: "Issue", lines: ["A"] } },
+      people.sara as string,
+    )
+    expect(approved.rows[0]?.metadata?.leftUndone).toBeUndefined()
+  })
+
   it("names nothing of a restricted record", async () => {
     const { rows } = await decisionRow(
       {
         status: "expired",
         requestedBy: people.sara,
-        title: "Email the board minutes",
+        summary: { title: "Email the board minutes", lines: ["To: the board minutes list"] },
         proposingTurnScopes: [`restricted:${randomUUID()}`],
       },
       people.sara as string,

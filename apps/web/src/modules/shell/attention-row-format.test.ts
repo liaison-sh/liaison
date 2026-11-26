@@ -271,10 +271,14 @@ describe("attention row format — a decided request", () => {
       kernelAttentionTitle(row(status, "Issue the invoice"), flat(locale))
     expect(said("approved", "en")).toBe("Approved: Issue the invoice (request-7)")
     expect(said("denied", "en")).toBe("Rejected: Issue the invoice (request-7)")
-    expect(said("expired", "en")).toBe("Expired without a decision: Issue the invoice (request-7)")
+    expect(said("expired", "en")).toBe(
+      "Expired without a decision, not done: Issue the invoice (request-7)",
+    )
     expect(said("approved", "fr")).toBe("Approuvée : Issue the invoice (request-7)")
     expect(said("denied", "fr")).toBe("Refusée : Issue the invoice (request-7)")
-    expect(said("expired", "fr")).toBe("Expirée sans décision : Issue the invoice (request-7)")
+    expect(said("expired", "fr")).toBe(
+      "Expirée sans décision, rien n'a été fait : Issue the invoice (request-7)",
+    )
   })
 
   test("a row that names nothing keeps its handle, in the reader's language", () => {

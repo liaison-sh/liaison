@@ -38,3 +38,9 @@ Settings page sections -> apps/web/src/modules/settings/NotificationSettings.tsx
 A kind the table does not name falls back to the work group -> packages/shared/src/notifications/groups.ts:207
 The work group defaults to feed and digest, no phone or computer -> packages/shared/src/notifications/groups.ts:242
 The new-ticket item is not urgent, its urgency stays under 70 -> apps/api/src/apps/tickets/app.manifest.json:3241
+An expiry also reaches the people asked to decide -> apps/api/src/modules/attention/kernel-translations.ts:235
+Expired undone = expired with an external action -> apps/api/src/modules/approvals/attention-rows.ts:73
+The line names the card's first lines -> apps/api/src/modules/attention/event-provider.ts:130
+Expired without a decision, not done label -> packages/shared/src/i18n/locales/en/kernel.json:4144
+It stays in the alerts -> apps/web/src/modules/shell/attention-groups.ts:127
+Ask agent to draft on a feed line -> apps/web/src/modules/shell/AttentionRowExtras.tsx:63

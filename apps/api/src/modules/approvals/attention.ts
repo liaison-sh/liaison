@@ -274,7 +274,7 @@ export async function readCurrentScopes(tx: RlsClient): Promise<string[]> {
  *      field: nothing risky may read as safe.
  * Cheap in-memory lookup, and it must never take the feed down.
  */
-function resolveApprovalImpact(
+export function resolveApprovalImpact(
   orgId: string,
   appName: string,
   toolShortName: string,

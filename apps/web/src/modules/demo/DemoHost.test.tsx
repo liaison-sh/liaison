@@ -81,8 +81,21 @@ function storeWorkspace(state: DemoProvisioningState, expiresAt: string | null):
 }
 
 /**
+ * The `data` a catch-all stub answers: the scenario queue is a list, as the
+ * server sends it (the banner reads it); anything else gets `fallback`.
+ */
+function dataFor(url: string, fallback: unknown): unknown {
+  return url.includes("/demo/scenarios") ? [] : fallback
+}
+
+function urlOf(input: RequestInfo | URL): string {
+  return typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+}
+
+/**
  * Answer the two server reads the demo host makes, by path: the readiness
- * status and the org's usable models. Everything else gets an empty `data`.
+ * status and the org's usable models. Everything else gets an empty `data`
+ * (the scenario queue an empty list).
  */
 function serverAnswers(answers: {
   status?: { state: DemoProvisioningState; expiresAt?: string }
@@ -94,7 +107,7 @@ function serverAnswers(answers: {
   vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
     seen.push(url)
-    let data: unknown = {}
+    let data: unknown = dataFor(url, {})
     if (url.includes("/demo/orgs/") && url.endsWith("/status") && answers.status) {
       data = answers.status
     } else if (url.includes("/demo/world")) {
@@ -140,8 +153,8 @@ beforeEach(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn(
-      async () =>
-        new Response(JSON.stringify({ data: {} }), {
+      async (input: RequestInfo | URL) =>
+        new Response(JSON.stringify({ data: dataFor(urlOf(input), {}) }), {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
@@ -346,7 +359,7 @@ describe("the model key form", () => {
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
       seen.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined })
-      return new Response(JSON.stringify({ data: { provider: "anthropic" } }), {
+      return new Response(JSON.stringify({ data: dataFor(url, { provider: "anthropic" }) }), {
         status: 200,
         headers: { "content-type": "application/json" },
       })

@@ -120,8 +120,15 @@ export async function getEventAttentionItems(
     if (named?.reminder && request) {
       // The app it is about: a person that app was taken from sees neither card nor reminder.
       r.metadata = { ...(r.metadata ?? {}), toolName: request.toolName }
-    } else if (named && request?.title) {
-      r.metadata = { ...(r.metadata ?? {}), decisionTitle: request.title }
+    } else if (named && request) {
+      // What it was about: its title, and for one that expired undone, who and how much (its
+      // card's lines), so the line can be acted on without opening it (approvals/attention-rows.ts).
+      r.metadata = {
+        ...(r.metadata ?? {}),
+        ...(request.title ? { decisionTitle: request.title } : {}),
+        ...(request.leftUndone ? { leftUndone: true } : {}),
+        ...(request.leftUndone && request.lines.length > 0 ? { summaryLines: request.lines } : {}),
+      }
     }
     const meta = resolveReferenceMetadataFromManifests(r.app, r.entity_type, orgId)
     const tabType = meta?.tabType ?? `${r.app}:${r.entity_type}`

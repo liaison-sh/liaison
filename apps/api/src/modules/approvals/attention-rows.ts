@@ -6,7 +6,9 @@
 // for a decision", routed-reminders.ts) and the line that says how it ended (`approval_decision`).
 // The row is written once and the request goes on, so the feed asks the request each time, with
 // the reader's own visibility: a reminder is only worth a row while this person can still decide
-// it, and a decision names what it was about.
+// it, and a decision names what it was about. A request that expired with no decision did not do
+// what it asked: when that would have reached outside the organisation (an invoice issued, a reply
+// sent), its line says who and how much, from the card's own lines, and stays in the way on Home.
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
@@ -16,7 +18,9 @@ import {
   FEED_STATUS_SQL,
   isCallersDecision,
   readCurrentScopes,
+  resolveApprovalImpact,
 } from "~/modules/approvals/attention"
+import { splitToolName } from "~/modules/approvals/event-data"
 import { withViewerNames } from "~/modules/apps/approval-record-names"
 import { isRestrictedScope } from "~/modules/permissions/restricted-scope"
 
@@ -32,11 +36,21 @@ export interface RequestNow {
   title: string | null
   /** The tool it asks for: whose app the row is about. */
   toolName: string
+  /**
+   * Its card's lines (who it was for, the amount), in the reader's words, at most three. Empty for
+   * a request about a restricted record, like the title.
+   */
+  lines: string[]
+  /**
+   * It expired with no decision and its action would have reached outside the organisation: what
+   * it asked was never done, and nothing will do it unless someone asks again.
+   */
+  leftUndone: boolean
 }
 
 type Row = CallersDecisionRow & {
   open: boolean
-  summary: { title?: unknown } | null
+  summary: { title?: unknown; lines?: unknown; impact?: "external" | "internal" } | null
   current_payload: Record<string, unknown> | null
   proposing_turn_scopes: string[] | null
 }
@@ -45,6 +59,21 @@ type Row = CallersDecisionRow & {
 function ownTitle(r: Row): string | null {
   const title = r.summary?.title
   return typeof title === "string" && title.trim() !== "" && title !== r.tool_name ? title : null
+}
+
+/** The card's lines worth a decision row: words only, the first three. */
+function ownLines(r: Row): string[] {
+  const lines = r.summary?.lines
+  return Array.isArray(lines)
+    ? lines.filter((l): l is string => typeof l === "string" && l.trim() !== "").slice(0, 3)
+    : []
+}
+
+/** Expired undecided, on an action that leaves the organisation (fail-safe: undeclared is). */
+function leftUndone(orgId: string, r: Row): boolean {
+  if (r.status !== "expired") return false
+  const { appName, toolShortName } = splitToolName(r.tool_name)
+  return resolveApprovalImpact(orgId, appName, toolShortName, r.summary?.impact) === "external"
 }
 
 /** The requests of `ids` the reader can see, as they are now. One read; none when nothing names one. */
@@ -72,13 +101,18 @@ export async function readRequestsNow(
   )
   const rows = await withViewerNames(tx, orgId, stored)
   return new Map(
-    rows.map((r) => [
-      r.id,
-      {
-        theirs: r.open === true && isCallersDecision(r, readerId, scopes),
-        title: (r.proposing_turn_scopes ?? []).some(isRestrictedScope) ? null : ownTitle(r),
-        toolName: r.tool_name,
-      },
-    ]),
+    rows.map((r) => {
+      const restricted = (r.proposing_turn_scopes ?? []).some(isRestrictedScope)
+      return [
+        r.id,
+        {
+          theirs: r.open === true && isCallersDecision(r, readerId, scopes),
+          title: restricted ? null : ownTitle(r),
+          toolName: r.tool_name,
+          lines: restricted ? [] : ownLines(r),
+          leftUndone: leftUndone(orgId, r),
+        },
+      ]
+    }),
   )
 }

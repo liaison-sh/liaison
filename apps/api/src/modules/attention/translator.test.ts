@@ -652,6 +652,35 @@ describe("processTranslationEvent — edge cases", () => {
     expect(inserted.map((r) => [r.kind, r.userId])).toEqual([["approval_decision", USER_C]])
   })
 
+  it("approval_request:update with status=expired also tells the people who were asked to decide", async () => {
+    const { inserted, deps } = makeDeps()
+    await mod.processTranslationEvent(
+      {
+        app: "kernel",
+        entity: "approval_request",
+        action: "update",
+        orgId: ORG,
+        actorId: USER_C,
+        actorType: "system",
+        entityId: "ap-5",
+        timestamp: "2026-05-12T12:00:00.000Z",
+        data: {
+          status: "expired",
+          handle: "request-11",
+          requestedBy: { id: USER_C },
+          notifyUserIds: [USER_A, USER_C],
+        },
+      } as AppEvent,
+      deps,
+    )
+    // The requester is also a decider here: the batch insert keeps one row per person and request.
+    const decisions = mod.dedupeAttentionRowsForBatchInsert(
+      inserted.filter((r) => r.kind === "approval_decision"),
+    )
+    expect(decisions.map((r) => r.userId).sort()).toEqual([USER_A, USER_C].sort())
+    expect(decisions.every((r) => r.summary === "Approval request-11 expired")).toBe(true)
+  })
+
   it("approval_request:update carrying lastFailure emits NO separate attention row (failure rides the card inline)", async () => {
     // Unified surface: a post-approval handler failure reverts the request to
     // pending and stamps `lastFailure` on the event. That failure is now carried

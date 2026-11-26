@@ -307,6 +307,20 @@ describe("a request that expired without a decision", () => {
     expect(sections.needs.alerts.map((i) => i.id).sort()).toEqual(["no", "yes"])
   })
 
+  it("stays in the way, with who and how much, when what it asked was left undone", () => {
+    const undone = expired("retainer", {
+      summary: "Approval request-75 expired",
+      metadata: {
+        decisionTitle: "Issue the retainer invoice, 2027-03",
+        leftUndone: true,
+        summaryLines: ["Customer: Harbour Press", "Total: 5,940.00 EUR"],
+      },
+    })
+    const sections = buildHomeSections([undone, expired("quiet")], { viewer: member })
+    expect(sections.needs.alerts.map((i) => i.id)).toEqual(["retainer"])
+    expect(sections.agents.notifications.map((i) => i.id)).toEqual(["quiet"])
+  })
+
   it("stays in the way when it is scored urgent", () => {
     const sections = buildHomeSections([expired("late", { urgency: 80 })], { viewer: member })
     expect(sections.needs.alerts.map((i) => i.id)).toEqual(["late"])

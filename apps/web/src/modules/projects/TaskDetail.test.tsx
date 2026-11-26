@@ -206,6 +206,23 @@ describe("TaskDetail", () => {
       expect(line.getAttribute("data-agent")).toBeNull()
     })
 
+    it("lays the handle, author, copy link and delete out as one header row above the title", async () => {
+      const api = apiFor({ ...task(), createdByName: "Ada Fabrikam", createdByAgentLabel: null })
+      const { getByTestId } = render(() => (
+        <ApiContext.Provider value={api}>
+          <TaskDetail entityId="t1" />
+        </ApiContext.Provider>
+      ))
+      await waitFor(() => expect(getByTestId("task-detail.header-row")).toBeTruthy())
+      const row = getByTestId("task-detail.header-row")
+      expect(row.className).toContain("flex-wrap")
+      expect(row.contains(getByTestId("task-detail.created-by"))).toBe(true)
+      const actions = getByTestId("task-detail.header-actions")
+      expect(row.contains(actions)).toBe(true)
+      expect(actions.contains(getByTestId("task-detail.copy-link"))).toBe(true)
+      expect(actions.contains(getByTestId("task-detail.delete"))).toBe(true)
+    })
+
     it("names the agent when an agent created it", async () => {
       const api = apiFor({
         ...task(),

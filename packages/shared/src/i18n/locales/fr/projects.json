@@ -93,7 +93,7 @@
   "thisStatus": "ce statut",
   "tasksStillUseThisStatusMove": "tâches utilisent encore ce statut. Déplacez-les d'abord.",
   "moveTasksTo": "Déplacer les tâches vers",
-  "active": "ACTIVES ·",
+  "active": "ACTIFS ·",
   "assignedToMe": "Qui me sont attribuées",
   "recentlyInvolved": "Mon activité récente",
   "recentlyInvolvedHint": "Les tâches que vous avez commentées, modifiées, créées, où l'on vous a mentionné ou qui vous ont été attribuées ces {{days}} derniers jours",

@@ -3617,9 +3617,9 @@ export const FR: Record<string, string> = {
     "Personne n'est choisi et il n'y a pas d'administrateur : les incidents interrompent toutes les personnes qui peuvent les voir.",
   "How each kind reaches you": "Comment chaque type vous parvient",
   "Interrupt: your phone and computer alert you. Inbox only: it waits quietly in your inbox. Off: muted everywhere, phone, computer and email; it still shows in your inbox, already read.":
-    "Interrompre : votre téléphone et votre ordinateur vous alertent. Boîte de réception seulement : il attend sans bruit dans votre boîte de réception. Désactivée : en sourdine partout, téléphone, ordinateur et mail ; il reste visible dans votre boîte de réception, déjà lu.",
+    "Interrompre : votre téléphone et votre ordinateur vous alertent. En silence : il attend sans bruit dans votre boîte de réception. Désactivée : en sourdine partout, téléphone, ordinateur et mail ; il reste visible dans votre boîte de réception, déjà lu.",
   Interrupt: "Interrompre",
-  "Inbox only": "Boîte de réception seulement",
+  "Inbox only": "En silence",
   "Muted conversations": "Conversations en sourdine",
   "A muted conversation never alerts you, not even for a mention. It stays in your conversation list.":
     "Une conversation en sourdine ne vous alerte jamais, même pour une mention. Elle reste dans votre liste de conversations.",
@@ -4145,7 +4145,7 @@ export const FR: Record<string, string> = {
   "tasks still use this status. Move them first.":
     "tâches utilisent encore ce statut. Déplacez-les d'abord.",
   "Move tasks to": "Déplacer les tâches vers",
-  "ACTIVE ·": "ACTIVES ·",
+  "ACTIVE ·": "ACTIFS ·",
   Title: "Titre",
   Project: "Projet",
   "SUBTASKS ·": "SOUS-TÂCHES ·",

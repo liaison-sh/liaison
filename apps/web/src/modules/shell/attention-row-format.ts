@@ -464,6 +464,19 @@ export function kernelAttentionTitle(
       m = /^(.+): open it in Liaison to read and sign$/s.exec(s)
       return m ? t(`${k}.staffTurn`, { title: m[1] ?? "" }) : s
     }
+    case "admin_action": {
+      // mailbox-keys/attention.ts: a personal mailbox that cannot sync, by its encryption state.
+      const state = item.metadata?.encryptionState
+      if (typeof state !== "string" || typeof item.metadata?.mailAccountId !== "string") return s
+      m = /^Mailbox (\S+) /.exec(s)
+      if (!m) return s
+      return t(
+        state === "blocked"
+          ? "kernel.attentionTitle.mailboxBlocked"
+          : "kernel.attentionTitle.mailboxNotSyncing",
+        { email: m[1] ?? "" },
+      )
+    }
     case "system_alert":
       // attention/kernel-translations.ts RESTRICTED_REQUESTS_WITHDRAWN.
       return s ===

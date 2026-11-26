@@ -38,6 +38,7 @@ import { ensureUser } from "~/modules/provisioning/ensure-user"
 import {
   computeSetupState,
   connectionNextStep,
+  MANAGED_ITEM_KEYS,
   SETUP_ITEM_KEYS,
   type SetupConnection,
   type SetupState,
@@ -129,6 +130,11 @@ describe("computeSetupState: the Liaison team item", () => {
       const state = await computeSetupState(orgId)
       expect(state.items.map((i) => i.key)).not.toContain("aiKey")
       expect(state.next).not.toBe("aiKey")
+      // The card says the mailbox comes last: the list agrees (team and knowledge first).
+      expect(state.items.map((i) => i.key).slice(0, 7)).toEqual([...MANAGED_ITEM_KEYS])
+      expect(state.items.map((i) => i.key).indexOf("mail")).toBeGreaterThan(
+        state.items.map((i) => i.key).indexOf("knowledge"),
+      )
     } finally {
       _setEdition(null)
     }

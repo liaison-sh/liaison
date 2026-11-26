@@ -54,7 +54,7 @@ import {
   resetMessageStore,
   type ToolCallState,
 } from "~/modules/threads/message-store"
-import ToolCallRow, { groupToolCalls, StackedToolCallGroup } from "./ToolCallRow"
+import ToolCallRow, { callAppLabel, groupToolCalls, StackedToolCallGroup } from "./ToolCallRow"
 
 /** A read of one app, as the server's `tool_call` and `tool_result` frames describe it. */
 const read = (
@@ -210,6 +210,21 @@ describe("ToolCallRow", () => {
       />
     ))
     expect(screen.getByText("Search Threads")).toBeInTheDocument()
+  })
+
+  it("a kernel tool the catalog names reads as what it does, not its id (first setup)", () => {
+    render(() => (
+      <ToolCallRow
+        toolCall={{
+          toolCallId: "tc1",
+          toolName: "kernel__skill_read",
+          status: "completed",
+          args: {},
+        }}
+      />
+    ))
+    expect(screen.getByText("Read a guide")).toBeInTheDocument()
+    expect(screen.queryByText("Skill Read")).toBeNull()
   })
 
   it("renders completed status with green dot", () => {
@@ -482,6 +497,11 @@ describe("ToolCallRow", () => {
       render(() => <TurnCalls calls={calls} />)
       expect(screen.getByTestId("tool-rollup-title")).toHaveTextContent("Read 2 of 3 apps")
       expect(screen.getByTestId("tool-rollup-summary")).toHaveTextContent("Billing did not answer")
+    })
+
+    it("the platform's own reads name Liaison, not the internal kernel", () => {
+      expect(callAppLabel(read("r1", "kernel", "Kernel"))).toBe("Liaison")
+      expect(callAppLabel(read("r2", "invoicing", "Invoicing"))).toBe("Invoicing")
     })
 
     it("an app whose refused call was made again and answered did answer", () => {

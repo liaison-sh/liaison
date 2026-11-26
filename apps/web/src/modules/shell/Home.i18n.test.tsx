@@ -101,9 +101,9 @@ describe("the attention feed chrome follows the reader's language", () => {
       renderHome("fr")
       expect(screen.getByTestId("home-greeting").textContent).toContain("Bonjour")
       const status = screen.getByTestId("home-status").textContent ?? ""
-      expect(status).toContain("REQUIERT VOTRE ATTENTION")
-      expect(status).not.toContain("NEEDS YOU NOW")
-      expect(status).toContain("MIS À JOUR")
+      expect(status).toContain("requiert votre attention")
+      expect(status).not.toContain("needs you now")
+      expect(status).toContain("mis à jour")
     } finally {
       vi.useRealTimers()
     }
@@ -116,8 +116,8 @@ describe("the attention feed chrome follows the reader's language", () => {
     })
     renderHome("fr")
     const status = screen.getByTestId("home-status").textContent ?? ""
-    expect(status).toContain("RIEN NE VOUS ATTEND")
-    expect(status).toContain("DANS VOS AUTRES TÂCHES")
+    expect(status).toContain("Rien ne vous attend")
+    expect(status).toContain("dans vos autres tâches")
   })
 
   // D21: the card holds the alerts only (conversations left Home), so its
@@ -319,6 +319,6 @@ describe("the attention feed chrome follows the reader's language", () => {
       errors: [],
     })
     renderHome("en")
-    expect(screen.getByTestId("home-status").textContent).toContain("NEEDS YOU NOW")
+    expect(screen.getByTestId("home-status").textContent).toContain("needs you now")
   })
 })

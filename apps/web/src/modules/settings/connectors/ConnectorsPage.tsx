@@ -310,6 +310,7 @@ const McpServersBlock: Component = () => {
           <Button
             size="sm"
             variant="outline"
+            class="shrink-0 whitespace-nowrap"
             data-testid="connectors-mcp-add"
             onClick={() => setAdding(true)}
           >

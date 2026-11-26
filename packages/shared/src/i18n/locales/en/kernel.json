@@ -376,7 +376,7 @@
     "modelUnavailable": "{{model}} (not available in this workspace)",
     "runsOnLiaisonAndNode": "Runs on: Liaison, and your computer {{node}}"
   },
-  "allClear": "ALL CLEAR",
+  "allClear": "All clear",
   "anEmailTheMoment": "an email the moment",
   "app": {
     "name": "Liaison"
@@ -1992,11 +1992,11 @@
   },
   "homeStatusAreaMany": "AREAS",
   "homeStatusAreaOne": "AREA",
-  "homeStatusNeedYouNowMany": "NEED YOU NOW",
-  "homeStatusNeedYouNowOne": "NEEDS YOU NOW",
-  "homeStatusNothingUrgent": "NOTHING NEEDS YOU NOW",
+  "homeStatusNeedYouNowMany": "need you now",
+  "homeStatusNeedYouNowOne": "needs you now",
+  "homeStatusNothingUrgent": "Nothing needs you now",
   "homeStatusQueuedIn": "QUEUED IN",
-  "homeStatusUpdated": "UPDATED",
+  "homeStatusUpdated": "updated",
   "homeTimeJustNow": "just now",
   "in": "in",
   "integrations": "Integrations",
@@ -2853,7 +2853,39 @@
       "ratePerHourLine": "Rate: {{rate}} per hour",
       "priceLine": "Price: {{price}}",
       "changeRequestClientApproves": "The client approves it on a link with an emailed code: a recorded approval, not a signature.",
-      "replyBody": "Reply:\n{{body}}"
+      "replyBody": "Reply:\n{{body}}",
+      "updateSkillNamed": "Update skill: {{name}}",
+      "skillCreated": "Skill created: {{date}}",
+      "nameChange": "name → {{value}}",
+      "descriptionChange": "description → {{value}}",
+      "bodyChars": "body ({{n}} chars)",
+      "bodyStarts": "starts: {{text}}",
+      "domainChange": "Domain: {{from}} -> {{to}}",
+      "domainLine": "Domain: {{value}}",
+      "domainGeneral": "general (none set)",
+      "requiredScopesChange": "requiredScopes → [{{scopes}}]",
+      "mergeSurvivor": "Survivor (kept): {{contact}}",
+      "mergeDeleted": "Deleted (merged away): {{contact}}",
+      "mergeIrreversible": "This is IRREVERSIBLE: the deleted record is permanently removed and all of its mail conversations are reassigned to the survivor.",
+      "mergeResolved": "Resolved field values on the survivor: {{fields}}.",
+      "createDiscountCode": "Create discount code: {{code}}",
+      "createAutomaticDiscount": "Create automatic discount: {{title}}",
+      "titleLine": "Title: {{value}}",
+      "codeLine": "Code: {{value}}",
+      "discountPercentOff": "Discount: {{pct}}% off",
+      "discountFixedAmount": "Discount: fixed amount {{amount}}",
+      "minimumNone": "Minimum purchase: none",
+      "minimumItems": "Minimum purchase: at least {{n}} item(s)",
+      "minimumSubtotal": "Minimum purchase: order subtotal of at least {{amount}} (store currency)",
+      "availableAll": "Available to: all customers",
+      "availableAllMarkets": "Available to: all customers, in every market",
+      "availableSelected": "Available to: selected customers only",
+      "combinesNone": "Combines with: no other discounts",
+      "usageLimitPerCode": "Usage limit: {{n}} use(s) per code",
+      "usageLimitNone": "Usage limit: NONE (unlimited uses)",
+      "oncePerCustomer": "Limit: once per customer",
+      "startsLine": "Starts: {{when}}",
+      "endsLine": "Ends: {{when}}"
     },
     "refFromStep": "the {{what}} from step {{n}}",
     "refFromEarlierStep": "the {{what}} from an earlier step",
@@ -3653,7 +3685,38 @@
       "collection": "collection",
       "incident": "incident",
       "invoice": "invoice",
-      "order": "order"
+      "order": "order",
+      "product": "product",
+      "customer": "customer",
+      "finding": "social mention",
+      "shipment": "shipment",
+      "company": "company",
+      "user": "person",
+      "deal": "deal"
+    },
+    "entityTypeChips": {
+      "document": "Documents",
+      "task": "Tasks",
+      "ticket": "Tickets",
+      "project": "Projects",
+      "contact": "Contacts",
+      "thread": "Conversations",
+      "message": "Messages",
+      "conversation": "Conversations",
+      "file": "Files",
+      "event": "Events",
+      "skill": "Skills",
+      "collection": "Collections",
+      "incident": "Incidents",
+      "invoice": "Invoices",
+      "order": "Orders",
+      "product": "Products",
+      "customer": "Customers",
+      "finding": "Social mentions",
+      "shipment": "Shipments",
+      "company": "Companies",
+      "user": "People",
+      "deal": "Deals"
     }
   },
   "auth": {
@@ -3983,14 +4046,20 @@
       "create": "create ticket",
       "assign": "assign",
       "setStatus": "set status",
-      "convertToMail": "convert to mail"
+      "convertToMail": "convert to mail",
+      "inboxes_create": "create inbox",
+      "inboxes_update": "update inbox",
+      "idSegment_set": "set ticket number prefix",
+      "approveFromHome_set": "change approve from Home",
+      "apiKeys_create": "create API key"
     },
     "mail": {
       "reply": "reply",
       "forward": "forward",
       "compose": "compose",
       "archive": "archive",
-      "convertToTicket": "convert to ticket"
+      "convertToTicket": "convert to ticket",
+      "suppression_remove": "remove from suppression list"
     },
     "knowledge": {
       "create": "create document",
@@ -4012,7 +4081,10 @@
       "createProject": "create project",
       "status_add": "add status column",
       "status_update": "update status column",
-      "status_delete": "delete status column"
+      "status_delete": "delete status column",
+      "deals_update": "update deal",
+      "checklist_remove_item": "remove checklist item",
+      "client_report_send": "send client report"
     },
     "invoicing": {
       "invoice_issue": "issue invoice",
@@ -4029,7 +4101,38 @@
       "documents_mark_paid": "mark document paid",
       "documents_record_refund": "record document refund",
       "documents_convert_to_invoice": "convert document to invoice",
-      "order_reissue_apply": "reissue order documents"
+      "order_reissue_apply": "reissue order documents",
+      "recurring_run_issue": "issue month-end run",
+      "recurring_run_unapprove": "withdraw month-end run approval",
+      "recurring_item_issue": "issue recurring invoice",
+      "received_einvoice_set_status": "set received e-invoice status",
+      "einvoice_send": "send e-invoice",
+      "einvoice_book_batch": "book e-invoices",
+      "einvoice_send_batch": "send e-invoices",
+      "milestone_draft_create": "draft milestone invoice",
+      "advance_refund_prepare": "prepare advance refund",
+      "credit_note_from_reconcile": "issue credit note from reconciliation",
+      "deferred_tax_override": "override deferred tax",
+      "recurring_schedule_create": "create recurring schedule",
+      "recurring_schedule_update": "update recurring schedule",
+      "recurring_schedule_pause": "pause recurring schedule",
+      "issuer_stream_set": "set issuer stream",
+      "issuer_emails_confirm": "confirm issuer emails",
+      "invoice_from_stripe_payment": "invoice Stripe payment",
+      "payment_link_to_invoice": "link payment to invoice",
+      "drafts_create": "create draft",
+      "drafts_update": "update draft",
+      "drafts_discard": "discard draft",
+      "quote_set_outcome": "record quote outcome",
+      "settings_issuer_profile_create": "create issuer profile",
+      "settings_issuer_profile_update": "update issuer profile",
+      "settings_issuer_profile_delete": "delete issuer profile",
+      "documents_update": "update document",
+      "counterparty_identity_set": "set counterparty identity",
+      "counterparty_territory_set": "set counterparty territory",
+      "einvoicing_settings_set": "change e-invoicing settings",
+      "einvoicing_backfill_identities": "backfill counterparty identities",
+      "einvoicing_backfill_legacy_originals": "backfill legacy originals"
     },
     "mcp-manager": {
       "add_connection": "connect MCP server"
@@ -4041,20 +4144,27 @@
     },
     "google-drive": {
       "upload": "upload file",
-      "import": "import file"
+      "import": "import file",
+      "choose_shared_drives": "choose shared drives"
     },
     "boxtal": {
       "create_shipment": "create shipment",
       "cancel_shipment": "cancel shipment",
-      "claim_open": "open claim"
+      "claim_open": "open claim",
+      "settings_sender_address_set": "set sender address",
+      "prep_set_address_choice": "choose shipping address",
+      "settle_orphan_create": "settle unlinked shipment"
     },
     "pennylane": {
-      "supplier_invoice_upload": "upload supplier invoice"
+      "supplier_invoice_upload": "upload supplier invoice",
+      "webhooks_setup": "set up webhooks",
+      "supplier_invoices_list": "list supplier invoices"
     },
     "social": {
       "reply_to_finding": "reply to post",
       "send_dm": "send direct message",
-      "like_item": "like post"
+      "like_item": "like post",
+      "webhooks_setup": "set up webhooks"
     },
     "agreements": {
       "agreement_update": "update an agreement",
@@ -4062,7 +4172,82 @@
       "change_request_send": "send a change request",
       "agreement_reminder_send": "remind the signers",
       "agreement_new_link": "send a new signing link",
-      "agreement_void": "void an agreement"
+      "agreement_void": "void an agreement",
+      "template_save": "save agreement template"
+    },
+    "ads": {
+      "create_campaign": "create Meta campaign",
+      "create_adset": "create Meta ad set",
+      "create_ad": "create Meta ad",
+      "create_creative": "create ad creative",
+      "upload_image": "upload ad image",
+      "update_budget": "change Meta budget",
+      "set_status": "change Meta status",
+      "create_custom_audience": "create custom audience",
+      "create_lookalike_audience": "create lookalike audience",
+      "add_users_to_audience": "add people to audience",
+      "pause": "pause Meta ads",
+      "google_pause": "pause Google ads",
+      "google_create_campaign": "create Google campaign",
+      "google_create_adgroup": "create Google ad group",
+      "google_create_ad": "create Google ad",
+      "google_update_budget": "change Google budget",
+      "google_set_status": "change Google status",
+      "google_add_negative_keywords": "add negative keywords",
+      "google_create_conversion_action": "create conversion action",
+      "manual_spend_add": "record manual spend",
+      "dealer_profile_upsert": "save dealer profile"
+    },
+    "api-connector": {
+      "connector_write": "write through connector"
+    },
+    "shopify": {
+      "refunds_create": "create refund",
+      "draft_orders_create": "create draft order",
+      "draft_orders_complete": "complete draft order",
+      "fulfillments_create": "create fulfillment",
+      "fulfillments_cancel": "cancel fulfillment",
+      "fulfillments_update_tracking": "update tracking",
+      "products_create": "create product",
+      "products_update": "update product",
+      "products_delete": "delete product",
+      "products_merge": "merge products",
+      "variants_create": "create variant",
+      "variants_update": "update variant",
+      "variants_delete": "delete variant",
+      "inventory_adjust": "adjust inventory",
+      "inventory_set_on_hand": "set stock on hand",
+      "discounts_create": "create discount",
+      "discounts_bulk_create": "create discount codes",
+      "discounts_update": "update discount",
+      "discounts_delete": "delete discount",
+      "discounts_set_status": "change discount status",
+      "returns_request": "request return",
+      "returns_approve": "approve return",
+      "returns_decline": "decline return",
+      "returns_refund": "refund return",
+      "returns_close": "close return",
+      "customers_update": "update customer",
+      "customers_email_marketing_consent_update": "change email marketing consent",
+      "customers_sms_marketing_consent_update": "change SMS marketing consent",
+      "apply_seed_suggestion": "apply setup suggestion",
+      "connection_disconnect": "disconnect store",
+      "staff_overrides_upsert": "save staff override",
+      "staff_overrides_delete": "delete staff override",
+      "order_update": "update order",
+      "order_cancel": "cancel order",
+      "draft_orders_update": "update draft order",
+      "draft_orders_delete": "delete draft order",
+      "draft_orders_send": "send draft order",
+      "products_publish": "publish product",
+      "products_unpublish": "unpublish product",
+      "customers_tag": "tag customer",
+      "metafields_set": "set metafield",
+      "metafields_delete": "delete metafield"
+    },
+    "stripe": {
+      "refunds_create": "create refund",
+      "subscription_cancel": "cancel subscription"
     }
   },
   "agentNotice": {
@@ -4174,7 +4359,9 @@
       "wrongCodes": "{{name}} entered a wrong code on your request three times in a row",
       "sendFailed": "{{title}}: the link to {{name}} did not send",
       "staffTurn": "{{title}}: open it in Liaison to read and sign"
-    }
+    },
+    "mailboxBlocked": "Mailbox {{email}} stopped syncing: its encryption keys cannot be used. Open Settings > Mail to reset them.",
+    "mailboxNotSyncing": "Mailbox {{email}} is not syncing yet: set up mailbox encryption in Settings > Mail to start receiving mail."
   },
   "approvalDecisionLine": {
     "withdrawn": "Withdrawn by the requester.",
@@ -6940,7 +7127,18 @@
     "superseded": "Replaced by a newer card",
     "unreachable": "Nothing ran: this card cannot reach the server here.",
     "waitingApproval": "Waiting for approval. Nothing ran yet.",
-    "working": "Working…"
+    "working": "Working…",
+    "title": {
+      "call_tool": "Use a tool",
+      "config_apps": "Change apps",
+      "config_export": "Read the workspace setup",
+      "config_knowledge": "Change knowledge",
+      "config_users": "Change people",
+      "memory_view": "Read memory",
+      "setup_state": "Check the setup",
+      "skill_read": "Read a guide",
+      "tool_search": "Find a tool"
+    }
   },
   "entityDiscussion": {
     "empty": "No messages yet.",
@@ -6950,7 +7148,7 @@
     "retry": "Retry",
     "loading": "Opening the discussion…"
   },
-  "homeStatusOtherWork": "IN YOUR OTHER WORK",
+  "homeStatusOtherWork": "in your other work",
   "homeDecisions": {
     "notNow": "Not now",
     "setAside": "Set aside until Monday. It comes back then.",
@@ -7648,6 +7846,110 @@
     "corporateTemplates": {
       "label": "Corporate templates",
       "description": "Adds the corporate legal starter templates (board and shareholder documents) to the template list."
+    }
+  },
+  "appSummaries": {
+    "calendar": "Month and week calendar that syncs both ways with Google Calendar.",
+    "contacts": "One directory of the people and companies you work with.",
+    "knowledge": "Your team's shared documents, policies and curated source links.",
+    "mail": "Read, write and reply to email from Gmail or any IMAP/SMTP mailbox.",
+    "mcp-manager": "Connect external MCP servers and control which of their tools agents may use.",
+    "projects": "Projects and tasks with owners, statuses, due dates and discussions.",
+    "tickets": "Track customer requests, returns and warranty cases to resolution.",
+    "ads": "Manage Meta and Google ad campaigns, with every spending change approved by a person.",
+    "agreements": "Agreements: drafts, versions, templates and simple electronic signatures.",
+    "api-connector": "Connect an ERP, CRM or any HTTP API from an adapter document, with agent tools and a customer card.",
+    "boxtal": "Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and customs documents.",
+    "calls": "Turn call transcripts into searchable knowledge linked to contacts and deals.",
+    "database": "Read-only access to your deployment's own database for troubleshooting and support.",
+    "github": "Read repositories, commits, pull requests and issues on GitHub, read-only.",
+    "gitlab": "Sync GitLab manuals into Knowledge and read projects, merge requests and issues.",
+    "google-drive": "Search, read and import Google Drive files, and upload new reports.",
+    "invoicing": "Invoices, quotes, proformas, purchase orders and credit notes.",
+    "monitoring": "Turn production alerts into deduplicated incidents to acknowledge and resolve.",
+    "pennylane": "Pennylane: accounting connector for Pennylane, with invoices, balances, cash position and runway.",
+    "shopify": "Shopify orders, customers, products, refunds, fulfilments and returns.",
+    "social": "Watch Facebook, Instagram and YouTube activity and answer with approved replies.",
+    "stripe": "Stripe: customers, subscriptions, invoices and payments from your Stripe account, read through a restricted key."
+  },
+  "routineTemplates": {
+    "projects": {
+      "client-reports": {
+        "title": "Client reports",
+        "description": "Friday afternoon: one client report draft per project whose reports are shared with its client, for a person to approve."
+      },
+      "assign-on-status": {
+        "title": "Assign on status",
+        "description": "When a task reaches a status, assign it and tell the assignee."
+      },
+      "remind-if-still": {
+        "title": "Remind if still",
+        "description": "Remind the assignee when a task stays in a status too long."
+      },
+      "sla-to-reach": {
+        "title": "Status deadline",
+        "description": "Tell the owner when a new task has not reached a status in time."
+      },
+      "notify-on-status": {
+        "title": "Notify on status",
+        "description": "Tell people when a task reaches a status."
+      }
+    },
+    "ads": {
+      "low-roas-autopause": {
+        "title": "Low ROAS pause",
+        "description": "Monday: per active ad set/ad group, blended 7d ROAS (Shopify net rev / spend), Meta AND Google. Below threshold PROPOSES gated pauses; budget raises stay gated. Blended/lagging caveats."
+      },
+      "monthly-deep-review": {
+        "title": "Monthly deep review",
+        "description": "Monthly deep review: creative fatigue signals, dealer-adjusted DTC-split geo, and a budget reallocation STAGED as a gated approval (never auto-executed) with an experiment design block."
+      },
+      "weekly-account-review": {
+        "title": "Weekly account review",
+        "description": "Monday cross-platform review: Meta + Google spend, blended MER (both variants via metrics_run), open experiments, anomalies, zombie ACTIVE detection. Skip-and-notes an absent platform."
+      }
+    },
+    "agreements": {
+      "scope-check": {
+        "title": "Scope check",
+        "description": "When a client under a signed agreement writes, check the request against the signed text."
+      }
+    },
+    "invoicing": {
+      "month-end-check": {
+        "title": "Month-end check",
+        "description": "When a month-end run is drafted, say what other records show about its customers."
+      }
+    },
+    "social": {
+      "morning-digest": {
+        "title": "Morning digest",
+        "description": "Every morning, summarize new social findings and draft replies where it makes sense."
+      },
+      "triage-event": {
+        "title": "Triage on arrival",
+        "description": "Triage each new social finding the moment it is discovered."
+      },
+      "triage-cron": {
+        "title": "Triage sweep",
+        "description": "Fallback: sweep untriaged findings every 15 minutes in case an event was missed."
+      }
+    },
+    "stripe": {
+      "failed-payments": {
+        "title": "Failed payments",
+        "description": "Every morning, draft a payment reminder for each failed card payment that needs one."
+      }
+    },
+    "kernel": {
+      "morning-brief": {
+        "title": "Morning brief",
+        "description": "Morning brief: overnight mail, drafts waiting for your approval and tasks due, every weekday morning."
+      },
+      "deal-followups": {
+        "title": "Deal follow-ups",
+        "description": "Deal follow-ups: every weekday, a follow-up draft for each open deal gone quiet, for the deal's owner to approve."
+      }
     }
   }
 }

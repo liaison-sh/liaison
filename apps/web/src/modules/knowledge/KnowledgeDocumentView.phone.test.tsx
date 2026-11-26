@@ -12,7 +12,7 @@ import { resetKnowledgeStore } from "./knowledge-store"
 
 vi.mock("~/modules/auth/auth-store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/modules/auth/auth-store")>()),
-  hasScope: (scope: string) => scope === "knowledge:attachments:download",
+  hasScope: (scope: string) => scope === "knowledge:documents:read",
 }))
 
 function makeApi() {

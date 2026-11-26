@@ -709,7 +709,7 @@
         "tableName": "documents",
         "schemaRef": "app_knowledge",
         "joinOn": "id",
-        "readScope": "knowledge:attachments:download",
+        "readScope": "knowledge:documents:read",
         "writeScope": "knowledge:documents:update",
         "canWrite": "can_edit_document"
       }
@@ -1798,7 +1798,6 @@
         "knowledge:documents:archive",
         "knowledge:links:create",
         "knowledge:sources:read",
-        "knowledge:attachments:download",
         "knowledge:attachments:upload"
       ]
     },

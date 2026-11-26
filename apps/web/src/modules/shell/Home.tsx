@@ -244,9 +244,11 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
   // time-limited one (a node permission prompt, anything expiring within the
   // hour) never does and takes the top slot; `now()` re-evaluates the window.
   const alertEntries = createMemo(() => clusterAlerts(urgentStrip(), now()))
-  // The card's badge counts ITEMS, not rows: "3 alerts" must not read as "1"
-  // just because they clustered.
-  const messagesCount = createMemo(() => urgentStrip().length)
+  // The card's badge counts ROWS, the unit of everything in Needs you: the
+  // sidebar's Alerts row and the Home badge count a cluster once, so the card
+  // does too ("Alerts 1" beside "ALERTS 12" read as a contradiction). The
+  // cluster's own row still says how many it holds ("12 tickets approaching SLA").
+  const messagesCount = createMemo(() => alertEntries().length)
   // Stopped sends: in the alerts card with their reason, never in a count.
   const uncountedRows = createMemo(() => sections().needs.uncounted)
 

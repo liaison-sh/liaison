@@ -12,8 +12,8 @@ import KnowledgeDocumentView from "./KnowledgeDocumentView"
 import { resetKnowledgeStore, setKnowledgeStoreDocument } from "./knowledge-store"
 import { resetPageFiles } from "./page-files"
 
-// The viewer's scopes: the attachments section follows knowledge:attachments:download.
-const scopes = vi.hoisted(() => new Set(["knowledge:attachments:download"]))
+// The viewer's scopes: the attachments section follows the page's read scope.
+const scopes = vi.hoisted(() => new Set(["knowledge:documents:read"]))
 vi.mock("~/modules/auth/auth-store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/modules/auth/auth-store")>()),
   hasScope: (scope: string) => scopes.has(scope),
@@ -150,7 +150,7 @@ afterEach(async () => {
   _resetPageDrafts(null)
   resetKnowledgeStore()
   resetPageFiles()
-  scopes.add("knowledge:attachments:download")
+  scopes.add("knowledge:documents:read")
 })
 
 describe("KnowledgeDocumentView: a reader", () => {
@@ -432,8 +432,8 @@ describe("KnowledgeDocumentView: around the text", () => {
     expect(await screen.findByTestId("knowledge-attachment-list")).toBeInTheDocument()
   })
 
-  it("a viewer without the attachments scope gets no section and asks for no files", async () => {
-    scopes.delete("knowledge:attachments:download")
+  it("a viewer without the page read scope gets no section and asks for no files", async () => {
+    scopes.delete("knowledge:documents:read")
     const api = makeApi()
     renderView(api)
     await screen.findByTestId("knowledge-doc-title")

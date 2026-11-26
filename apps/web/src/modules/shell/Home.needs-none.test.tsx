@@ -89,8 +89,8 @@ describe("Home when nothing needs you", () => {
     attentionStore._setForTest({ items: [queueItem("q-1"), queueItem("q-2")], errors: [] })
     render(() => <Home entityId="home" />)
     const status = screen.getByTestId("home-status").textContent ?? ""
-    expect(status).toContain("NOTHING NEEDS YOU NOW")
-    expect(status).toMatch(/2\s*IN YOUR OTHER WORK/)
+    expect(status).toContain("Nothing needs you now")
+    expect(status).toMatch(/2\s*in your other work/)
     const none = screen.getByTestId("home-needs-none")
     expect(none.textContent).toContain("Needs you")
     expect(screen.getByTestId("home-needs-none-count").textContent).toBe("0")

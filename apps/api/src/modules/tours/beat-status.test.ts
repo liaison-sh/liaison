@@ -260,7 +260,14 @@ describe("a step waiting on a routine", () => {
     // A run paused on the approval it asked for waits on the person, never "failed".
     await sql`DELETE FROM kernel.routine_runs WHERE org_id = ${orgId}`
     await runRow("waiting_approval", null, 5_000)
-    expect(await status(at("approve-draft"))).toEqual({ kind: "pending" })
+    // It says the run waits on an approval (never "has not started"), and names no request:
+    // approving it is the person's own press.
+    expect(await status(at("approve-draft"))).toEqual({
+      kind: "routine-waiting",
+      routineName: "Draft a reply to new tickets",
+      requestId: null,
+      toolName: null,
+    })
     // A step waiting for the routine to do something says the run waits on an
     // approval, never that it has not started.
     expect(await status(at("routine-note"))).toEqual({
@@ -305,7 +312,7 @@ describe("a show step waiting on a routine, naming no run", () => {
     await sql`INSERT INTO kernel.routine_runs (org_id, routine_id, status, ran_at, event_entity_id, pause_state)
       VALUES (${orgId}, ${routineId}, 'waiting_approval', now(), ${ticket},
         ${JSON.stringify({ approvalIds: ["a-1"], resumeCount: 0 })}::jsonb)`
-    expect((await shown(at("routine-drafted"))).kind).toBe("pending")
+    expect((await shown(at("routine-drafted"))).kind).toBe("routine-waiting")
     await sql`UPDATE kernel.routine_runs
       SET pause_state = pause_state || ${JSON.stringify({ resumingAt, approvalIds: [] })}::jsonb
       WHERE org_id = ${orgId}`
@@ -318,7 +325,7 @@ describe("a show step waiting on a routine, naming no run", () => {
     await sql`UPDATE kernel.routine_runs
       SET pause_state = ${JSON.stringify({ approvalIds: ["a-2"], resumeCount: 1 })}::jsonb
       WHERE org_id = ${orgId}`
-    expect((await shown(at("routine-drafted"))).kind).toBe("pending")
+    expect((await shown(at("routine-drafted"))).kind).toBe("routine-waiting")
   })
 })
 

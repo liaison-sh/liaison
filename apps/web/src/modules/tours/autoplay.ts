@@ -101,7 +101,7 @@ type RunOptions = Required<Omit<AutoplayOptions, "cursor" | "openConversation">>
   Pick<AutoplayOptions, "openConversation">
 
 /** A step's target with its created-entity pin resolved; null when the pinned beat created nothing. */
-interface Target {
+export interface Target {
   testid: string
   where?: AnchorPin
 }
@@ -142,9 +142,34 @@ async function find(target: Target, opts: RunOptions, ready?: (el: HTMLElement) 
   for (;;) {
     const el = visible(target)
     if (el && (!ready || ready(el))) return el
+    // Folded away (Home's group of one run's requests): open what holds it, as a hand would.
+    if (!el) {
+      const holder = closedHolderOf(target)
+      if (holder) ghostClick(holder)
+    }
     if (Date.now() >= deadline) return null
     await sleep(FIND_POLL_MS, opts.signal)
   }
+}
+
+/**
+ * A collapsed group on screen that holds the target out of sight: an element
+ * with `aria-expanded="false"` whose `data-tour-holds` lists `attr=value`
+ * tokens, one of them the target's pin. Home folds the requests one run
+ * staged into one row ("2 approvals from Routine … Show all"), and a step that
+ * rang one of them waited, spinning, for a row that was never rendered (demo
+ * walk 2026-11-25).
+ */
+export function closedHolderOf(target: Target, root: ParentNode = document): HTMLElement | null {
+  const pin = target.where
+  if (!pin) return null
+  const values = typeof pin.value === "string" ? [pin.value] : [...pin.value]
+  const wanted = new Set(values.map((v) => `${pin.attr}=${v}`))
+  for (const el of root.querySelectorAll<HTMLElement>('[data-tour-holds][aria-expanded="false"]')) {
+    const held = (el.getAttribute("data-tour-holds") ?? "").split(/\s+/)
+    if (held.some((token) => wanted.has(token)) && el.isConnected) return el
+  }
+  return null
 }
 
 function center(el: HTMLElement): { clientX: number; clientY: number } {

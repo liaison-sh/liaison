@@ -724,13 +724,15 @@ export async function computeBeatStatus(input: {
     if (run.kind === "routine-succeeded" && doneByRoutine(beat)) {
       return { kind: "routine-incomplete", routineName: run.routineName }
     }
-    // A run paused on an approval: a step approving what it staged, or one
-    // showing what it made, waits on the person as before. A step that waits
-    // for the routine to DO something says the run waits on an approval: it
-    // said "The routine has not started" while the run sat on a request in
-    // Home (a sales run that asked for the company first, walk 2026-11-25).
+    // A run paused on an approval: every step waiting on the run says so. A
+    // step approving what it staged, or one showing what it made, read
+    // `pending`, and its card fell back to its own clock: "The routine has not
+    // started. Skip this step" while the run sat on its request in Home (the
+    // services sales tour's `bundle` and `approve`, walk 2026-11-25). Only a
+    // step the routine itself completes names the request, so its Do it for
+    // me approves it: approving is the person's own press on the others.
     if (run.kind === "routine-waiting" && (approvesSomething(beat) || beat.kind !== "do")) {
-      return { kind: "pending" }
+      return { ...run, requestId: null, toolName: null }
     }
     return run
   }

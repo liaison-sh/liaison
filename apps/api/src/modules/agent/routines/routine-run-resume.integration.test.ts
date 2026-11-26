@@ -396,7 +396,9 @@ describe("a routine run waits for its held call and resumes with the result", ()
     expect(reports[0]!.content).toBe("Could not read the site: the fetch was refused.")
   })
 
-  it("gated calls of two tools in one turn: only the last decision resumes, once", async () => {
+  it("gated calls of two tools in one turn: one request, one decision, one resume", async () => {
+    // A routine run's work is one request whatever tool each step runs (demo walk 2026-11-25:
+    // a reply staged beside the chained request could be approved, and sent, first).
     const conversation = await minimal.thread(orgId, userId)
     const routine = await makeRoutine(conversation)
     const { result, approvalIds } = await tickWithGates(
@@ -405,21 +407,26 @@ describe("a routine run waits for its held call and resumes with the result", ()
       ["fetch", "lookup"],
     )
     const runId = result.runId!
-    expect(new Set(approvalIds).size).toBe(2)
-    expect((await runRow(runId)).pauseState?.approvalIds).toHaveLength(2)
+    const [head, step] = approvalIds as [string, string]
+    const rows =
+      await sql`SELECT id, status, bundle_id FROM kernel.approval_requests WHERE id IN (${head}, ${step})`
+    expect(new Map(rows.map((r) => [r.id as string, r.status as string]))).toEqual(
+      new Map([
+        [head, "pending"],
+        [step, "deferred"],
+      ]),
+    )
+    expect(new Set(rows.map((r) => r.bundle_id as string))).toEqual(new Set([head]))
+    expect((await runRow(runId)).pauseState?.approvalIds).toEqual([head, step])
 
-    await decide(approvalIds[0]!, "approve")
-    const first = await resume(approvalIds[0]!)
-    expect(first.result.status).toBe("no_run")
-    expect((await runRow(runId)).status).toBe("waiting_approval")
-
-    await decide(approvalIds[1]!, "approve")
-    const second = await resume(approvalIds[1]!, async ({ threadId }) => {
+    await decide(head, "approve")
+    expect(decisionJobs(head)).toHaveLength(0)
+    const resumed = await resume(step, async ({ threadId }) => {
       await agentReply(threadId, "Both pages read; CRM updated.")
     })
-    expect(second.content).toContain(PAGE("https://one.example"))
-    expect(second.content).toContain(PAGE("https://two.example"))
-    expect(second.result.status).toBe("succeeded")
+    expect(resumed.content).toContain(PAGE("https://one.example"))
+    expect(resumed.content).toContain(PAGE("https://two.example"))
+    expect(resumed.result.status).toBe("succeeded")
     expect(await reportsIn(conversation)).toHaveLength(1)
   })
 

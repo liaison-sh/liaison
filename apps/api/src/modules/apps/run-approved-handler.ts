@@ -247,6 +247,8 @@ export async function runApprovedToolHandler(args: RunApprovedToolHandlerArgs): 
     turnScopeAccumulator: reentryScopeAccumulator,
     ...(args.agentId ? { agentId: args.agentId } : {}),
     ...(args.askId ? { askId: args.askId } : {}),
+    // A routine's request: its events say so, and the routine is not fired by its own work.
+    ...(args.originRoutineId ? { approvedForRoutineId: args.originRoutineId } : {}),
   }
 
   // EXECUTE under the app-aliased actor — the SAME RLS context the direct tool path uses

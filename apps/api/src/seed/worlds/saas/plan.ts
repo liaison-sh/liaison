@@ -92,6 +92,9 @@ export interface SaasPlanResult {
 /** The pipeline's key: deals read `SALES-<n>`. */
 export const SAAS_PIPELINE_KEY = "SALES"
 
+/** The pipeline's project name: the seed names it, and the sales routine's prompt cites it. */
+export const SAAS_PIPELINE_NAME = "Sales"
+
 const slug = (name: string) =>
   name
     .normalize("NFD")

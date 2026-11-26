@@ -178,10 +178,22 @@ export function isRolledUpRead(toolCall: ToolCallState): boolean {
   )
 }
 
+/**
+ * A tool row's title: what the tool does in the reader's language where the catalog has it
+ * (`kernel.toolCard.title.<tool>`, the kernel tools a first setup shows), else its name in words.
+ */
+export function toolTitle(toolName: string, t: (key: string) => string): string {
+  const bare = toolName.replace(/^kernel(__|:)/, "")
+  const key = `kernel.toolCard.title.${bare}`
+  return bare !== toolName && catalogHasKey(key) ? t(key) : formatToolName(toolName)
+}
+
 /** The app a call reads, as its row names it: the registry's label, else the app id in words. */
 export function callAppLabel(toolCall: ToolCallState): string {
-  if (toolCall.appLabel) return toolCall.appLabel
   const app = appAndTool(toolCall.toolName)?.app
+  // The platform's own tools: the product's name, not the internal "kernel".
+  if (app === "kernel") return "Liaison"
+  if (toolCall.appLabel) return toolCall.appLabel
   return app ? formatToolName(app) : formatToolName(toolCall.toolName)
 }
 
@@ -273,7 +285,7 @@ function SingleToolCallRow(props: ToolCallRowProps) {
             class={`h-1.5 w-1.5 shrink-0 rounded-full ${statusStyle(props.toolCall.status)}`}
           />
           <span class="shrink-0 font-medium text-text-secondary">
-            {formatToolName(props.toolCall.toolName)}
+            {toolTitle(props.toolCall.toolName, i18n.t)}
           </span>
           <Show when={props.toolCall.summary}>
             {(summary) => (
@@ -555,6 +567,7 @@ function StackedToolCallGroup(props: ToolCallGroupProps) {
 }
 
 function NamedToolCallGroup(props: ToolCallGroupProps) {
+  const i18n = useI18n()
   const [expanded, setExpanded] = createSignal(false)
   // A GROUP HOLDING A PENDING APPROVAL OPENS. The card renders inside its own
   // row, and a collapsed "Enable App ×2" hid the cards the person had to
@@ -602,7 +615,7 @@ function NamedToolCallGroup(props: ToolCallGroupProps) {
       >
         <span class={`h-1.5 w-1.5 shrink-0 rounded-full ${statusStyle(groupStatus())}`} />
         <span class="font-medium text-text-secondary">
-          {formatToolName(props.toolCalls[0].toolName)}
+          {toolTitle(props.toolCalls[0].toolName, i18n.t)}
         </span>
         <span class="rounded-full bg-surface-hover px-1.5 py-px text-[10px] font-medium text-text-tertiary">
           ×{props.toolCalls.length}

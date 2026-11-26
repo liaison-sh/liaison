@@ -6932,7 +6932,18 @@
     "superseded": "Replaced by a newer card",
     "unreachable": "Nothing ran: this card cannot reach the server here.",
     "waitingApproval": "Waiting for approval. Nothing ran yet.",
-    "working": "Working…"
+    "working": "Working…",
+    "title": {
+      "call_tool": "Use a tool",
+      "config_apps": "Change apps",
+      "config_export": "Read the workspace setup",
+      "config_knowledge": "Change knowledge",
+      "config_users": "Change people",
+      "memory_view": "Read memory",
+      "setup_state": "Check the setup",
+      "skill_read": "Read a guide",
+      "tool_search": "Find a tool"
+    }
   },
   "entityDiscussion": {
     "empty": "No messages yet.",

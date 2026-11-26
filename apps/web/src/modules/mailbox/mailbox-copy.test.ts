@@ -19,7 +19,7 @@ import fr from "../../../../../packages/shared/src/i18n/locales/fr/kernel.json"
 
 /** Spec section 1, verbatim. A copy edit to the claim has to change the spec too. */
 const SPEC_ZERO_ACCESS_CLAIM =
-  "Your personal mailbox is stored with zero-access encryption. Liaison's servers and your organisation's admins cannot decrypt it. Mail arriving from the public internet is encrypted the moment it reaches us. It is not end to end encrypted between you and the sender, because standard email is not. Encryption protects the contents from being read. It does not prove who put a message in your mailbox, and it does not hide who you correspond with or when."
+  "Your personal mailbox is stored with zero-access encryption. Liaison's servers and your organization's admins cannot decrypt it. Mail arriving from the public internet is encrypted the moment it reaches us. It is not end to end encrypted between you and the sender, because standard email is not. Encryption protects the contents from being read. It does not prove who put a message in your mailbox, and it does not hide who you correspond with or when."
 
 function leaves(node: unknown, path: string, out: Array<[string, string]>): void {
   if (typeof node === "string") out.push([path, node])

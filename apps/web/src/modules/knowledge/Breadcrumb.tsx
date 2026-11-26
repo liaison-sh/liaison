@@ -17,12 +17,15 @@ const Breadcrumb: Component<{ docId: string }> = (props) => {
     const place = findDocumentPlace(knowledgeStore.collectionsTree, props.docId)
     if (!place) return null
     const me = userFromToken()?.userId ?? null
-    const personal = me !== null && place.top.ownerUserId === me
+    const withMe = place.top.kind === "shared_with_me"
+    const personal = withMe || (me !== null && place.top.ownerUserId === me)
     const names = place.top.virtual
       ? [
           place.top.kind === "personal_notes" || place.top.id === "__personal_notes__"
             ? i18n.t("knowledge.personalNotes")
-            : i18n.t("knowledge.unfiled"),
+            : withMe
+              ? i18n.t("knowledge.sharedWithMe")
+              : i18n.t("knowledge.unfiled"),
         ]
       : place.folders.map((f) => f.name)
     return {

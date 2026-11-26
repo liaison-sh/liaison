@@ -161,7 +161,7 @@
       "title": "Check who can do this",
       "body": "Only a super admin of your Google Workspace (or an admin allowed to manage API controls) can mark an app as Trusted, and Google asks for it because this server's Google client has not been through Google's verification. If you are not one, send your admin the message below. If it is already done, go straight to the last step."
     },
-    "adminMessage": "Hello, I would like to connect my work Google account to Liaison ({{baseUrl}}), the workspace where our team handles mail, tickets and documents. Google asks an admin to allow it first. In admin.google.com, open Security, then Access and data control, then API controls, and click Manage App Access. Under Configured apps, click Configure new app, enter the client ID below, click Search and click Liaison. Keep the whole organisation as the scope (or choose our team's organisational unit), click Continue, choose Trusted, click Continue, then Finish.\n{{clients}}\nTrusted only lets people in our domain who choose to connect give Liaison access to their own account, and it can be revoked at any time on the same page. Thank you.",
+    "adminMessage": "Hello, I would like to connect my work Google account to Liaison ({{baseUrl}}), the workspace where our team handles mail, tickets and documents. Google asks an admin to allow it first. In admin.google.com, open Security, then Access and data control, then API controls, and click Manage App Access. Under Configured apps, click Configure new app, enter the client ID below, click Search and click Liaison. Keep the whole organization as the scope (or choose our team's organizational unit), click Continue, choose Trusted, click Continue, then Finish.\n{{clients}}\nTrusted only lets people in our domain who choose to connect give Liaison access to their own account, and it can be revoked at any time on the same page. Thank you.",
     "open": {
       "title": "Open the third-party app settings",
       "body": "In admin.google.com, open Security, then Access and data control, then API controls, and click Manage App Access: this is where Google lists the apps people in the domain may connect."
@@ -173,7 +173,7 @@
     },
     "scope": {
       "title": "Choose who it applies to",
-      "body": "For Scope, keep the top organisational unit to apply it to everyone, or choose the organisational units of the people who will connect (only they can then connect their accounts). Then click Continue."
+      "body": "For Scope, keep the top organizational unit to apply it to everyone, or choose the organizational units of the people who will connect (only they can then connect their accounts). Then click Continue."
     },
     "trust": {
       "title": "Mark it Trusted",

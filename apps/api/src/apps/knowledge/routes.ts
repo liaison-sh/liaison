@@ -37,6 +37,7 @@ import { requestForceOnOpenSync } from "~/apps/knowledge/force-on-open"
 import { searchLocalKnowledge } from "~/apps/knowledge/local-search"
 import { autosaveOptions, mountPageRoutes } from "~/apps/knowledge/page-routes"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
+import { SNIPPET_SOURCE_CHARS, snippetOf } from "~/apps/knowledge/search-snippet"
 import {
   archiveKnowledgeDocument,
   assertCanReadDocumentRow,
@@ -459,19 +460,21 @@ knowledgeRoutes.post("/search", zValidator("json", knowledgeFederatedSearchSchem
                   dropArchivedKnowledgeHits(tx, actor.orgId, indexed, actor),
                 ),
             })
-            const { hits, syncedAppByDocId } = await withRequestRls(c, async (tx) => {
-              const hits = kept
-              // Tag document hits that are mirrored from an external synced
-              // source so the UI can mark their provenance. One JOIN over just
-              // the returned doc ids (RLS-scoped via tx); a doc whose source
-              // row is invisible simply stays unbadged.
-              const docHitIds = hits
-                .filter((h) => h.type === "document")
-                .map((h) => h.sourceEntityId)
-              let syncedAppByDocId = new Map<string, string>()
-              if (docHitIds.length > 0) {
-                const syncedRows = extractRows<{ id: string; app_name: string }>(
-                  await tx.execute(sql`
+            const { hits, syncedAppByDocId, snippetByDocId } = await withRequestRls(
+              c,
+              async (tx) => {
+                const hits = kept
+                // Tag document hits that are mirrored from an external synced
+                // source so the UI can mark their provenance. One JOIN over just
+                // the returned doc ids (RLS-scoped via tx); a doc whose source
+                // row is invisible simply stays unbadged.
+                const docHitIds = hits
+                  .filter((h) => h.type === "document")
+                  .map((h) => h.sourceEntityId)
+                let syncedAppByDocId = new Map<string, string>()
+                if (docHitIds.length > 0) {
+                  const syncedRows = extractRows<{ id: string; app_name: string }>(
+                    await tx.execute(sql`
                     SELECT d.id, ss.app_name
                     FROM ${knowledgeRel("documents")} d
                     JOIN ${knowledgeRel("synced_sources")} ss ON ss.id = d.synced_source_id
@@ -481,12 +484,36 @@ knowledgeRoutes.post("/search", zValidator("json", knowledgeFederatedSearchSchem
                         sql`,`,
                       )})
                   `),
-                )
-                syncedAppByDocId = new Map(syncedRows.map((r) => [r.id, r.app_name]))
-              }
-              return { hits, syncedAppByDocId }
+                  )
+                  syncedAppByDocId = new Map(syncedRows.map((r) => [r.id, r.app_name]))
+                }
+                // The line under each page's title: its text around the query, read
+                // under the reader's row security like the hit itself.
+                const snippetByDocId = new Map<string, string>()
+                if (docHitIds.length > 0) {
+                  const bodies = extractRows<{ id: string; body: string | null }>(
+                    await tx.execute(sql`
+                    SELECT d.id::text AS id, left(d.body, ${SNIPPET_SOURCE_CHARS}) AS body
+                    FROM ${knowledgeRel("documents")} d
+                    WHERE d.id IN (${sql.join(
+                      docHitIds.map((i) => sql`${i}::uuid`),
+                      sql`,`,
+                    )})
+                  `),
+                  )
+                  for (const r of bodies) {
+                    const snippet = snippetOf(r.body ?? "", q)
+                    if (snippet) snippetByDocId.set(r.id, snippet)
+                  }
+                }
+                return { hits, syncedAppByDocId, snippetByDocId }
+              },
+            )
+            const enrichedHits = attachSyncedSourceApp(hits, syncedAppByDocId).map((h) => {
+              const snippet =
+                h.type === "document" ? snippetByDocId.get(h.sourceEntityId) : undefined
+              return snippet ? { ...h, snippet } : h
             })
-            const enrichedHits = attachSyncedSourceApp(hits, syncedAppByDocId)
             return {
               hits: enrichedHits,
               status: {

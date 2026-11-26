@@ -37,9 +37,11 @@ The sidebar has two trees: **Personal** for your own notes and **Shared with org
 
 The open document is marked in the tree, its folders open, and a breadcrumb above its title says where it is (for example **Shared with org / Policies**). When someone else adds, renames, moves or deletes something you can see, your tree follows within a few seconds. If an action is refused, a message says why; nothing is changed.
 
-Documents in no folder you can see are under **Unfiled**. Click **Unfiled** at the bottom of the sidebar to list them, and click it again, or **Knowledge** above the list, to go back. Press Enter in the sidebar's search box to see every result.
+Documents in no folder you can see are under **Unfiled**. Click **Unfiled** at the bottom of the sidebar to list them, and click it again, or **Knowledge** above the list, to go back. A document someone shared with you (and not with the whole organization) is under **Shared with me**, in your **Personal** tree, instead. Search results show the line of each document that matches, the words you typed marked. Press Enter in the sidebar's search box to see every result.
 
-A personal folder is yours alone: nobody else sees it, admins included. It does not change who can read a document: one you share from a personal folder is under **Unfiled** for the others. A subfolder is seen by whoever sees the folder it is in. A shared folder that holds something of another person stays shared.
+If you open a link to a document you cannot read (it was deleted, or it is not shared with you), the tab says **You can't open this page**: ask the person who sent you the link to share it. **Close** closes the tab.
+
+A personal folder is yours alone: nobody else sees it, admins included. It does not change who can read a document: one you share from a personal folder is under **Unfiled** for the others, or under **Shared with me** for the people you shared it with alone. A subfolder is seen by whoever sees the folder it is in. A shared folder that holds something of another person stays shared.
 
 Deleting a folder moves its documents and subfolders to the folder above it. At the top, its documents become unfiled. No document is deleted. When a person's account is erased, their personal folders are archived without their names.
 

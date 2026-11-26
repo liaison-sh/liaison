@@ -1,0 +1,10 @@
+{
+  "key": {
+    "knowledge.noAccess.title": "Vous ne pouvez pas ouvrir cette page",
+    "knowledge.noAccess.body": "Elle a peut-être été supprimée, ou elle n'est pas partagée avec vous. Demandez à la personne qui vous a envoyé le lien de la partager avec vous.",
+    "knowledge.noAccess.close": "Fermer",
+    "knowledge.noAccess.tabLabel": "Page que vous ne pouvez pas ouvrir",
+    "contacts.sharing.visibility.organisationHint": "Dans les contacts de l'organisation : tous les membres le voient",
+    "knowledge.sharedWithMe": "Partagé avec moi"
+  }
+}

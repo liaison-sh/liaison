@@ -255,7 +255,9 @@ const CollectionRow: Component<{ node: CollectionTreeNode; depth?: number }> = (
       ? i18n.t("knowledge.personalNotes")
       : props.node.kind === "unfiled" || props.node.id === "__unfiled__"
         ? i18n.t("knowledge.unfiled")
-        : props.node.name
+        : props.node.kind === "shared_with_me"
+          ? i18n.t("knowledge.sharedWithMe")
+          : props.node.name
   return (
     <>
       <button

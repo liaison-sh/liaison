@@ -254,7 +254,7 @@ export interface CollectionTreeNode {
   id: string
   /** A folder, or one of the two virtual buckets. The client names a virtual
    *  node itself, in its reader's language; `name` is the server's English. */
-  kind?: "folder" | "personal_notes" | "unfiled"
+  kind?: "folder" | "personal_notes" | "unfiled" | "shared_with_me"
   name: string
   parentId: string | null
   /** UUID of the personal owner of this collection. Null when shared with

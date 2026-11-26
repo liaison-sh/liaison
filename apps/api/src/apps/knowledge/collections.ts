@@ -363,7 +363,7 @@ export interface CollectionTreeNode {
    * itself, in its reader's language; their English `name` is for clients that
    * do not know `kind`.
    */
-  kind: "folder" | "personal_notes" | "unfiled"
+  kind: "folder" | "personal_notes" | "unfiled" | "shared_with_me"
   name: string
   parentId: string | null
   /** UUID of the user who owns this collection (personal). Null when the
@@ -493,13 +493,19 @@ export async function listKnowledgeCollectionTree(
   // A folder's page is the folder's own text: not one of its pages, nor Unfiled.
   const folderPages = new Set(flat.flatMap((c) => (c.indexDocumentId ? [c.indexDocumentId] : [])))
 
-  // Two virtual buckets, both of pages in no live folder this reader sees:
-  //   - personal notes: personal documents (which belong to no folder by
-  //     validation) and the reader's own pages nobody else can read.
-  //   - unfiled: every other one, a page shared by someone who keeps it in a
+  // Three virtual buckets, all of pages in no live folder this reader sees:
+  //   - shared with me: someone else's page the organization cannot read, which
+  //     reached this reader by a share (a personal page included);
+  //   - personal notes: the reader's own personal documents (which belong to no
+  //     folder by validation) and own pages nobody else can read;
+  //   - unfiled: every other one, an organization page someone keeps in a
   //     personal folder included.
   const personalNotes: typeof pages = []
   const unfiled: typeof pages = []
+  const sharedWithMe: typeof pages = []
+  const someoneElses = (page: (typeof pages)[number]) =>
+    (page.owner_user_id ?? page.created_by) !== actor.userId &&
+    (page.personal || page.org_access === "none")
   for (const page of pages) {
     const folders = (placesOf.get(page.id) ?? []).flatMap((id) => byId.get(id) ?? [])
     for (const node of folders) {
@@ -512,7 +518,8 @@ export async function listKnowledgeCollectionTree(
       })
     }
     if (folderPages.has(page.id)) continue
-    if (page.personal || (folders.length === 0 && page.only_mine)) personalNotes.push(page)
+    if (folders.length === 0 && someoneElses(page)) sharedWithMe.push(page)
+    else if (page.personal || (folders.length === 0 && page.only_mine)) personalNotes.push(page)
     else if (folders.length === 0) unfiled.push(page)
   }
   const newestFirst = (list: typeof pages) =>
@@ -541,6 +548,18 @@ export async function listKnowledgeCollectionTree(
       virtual: true,
       children: [],
       documents: newestFirst(personalNotes),
+    })
+  }
+  if (sharedWithMe.length > 0) {
+    roots.push({
+      id: "__shared_with_me__",
+      kind: "shared_with_me",
+      name: "Shared with me",
+      parentId: null,
+      ownerUserId: null,
+      virtual: true,
+      children: [],
+      documents: newestFirst(sharedWithMe),
     })
   }
   if (unfiled.length > 0) {

@@ -50,6 +50,11 @@ export default defineConfig(({ mode }) => ({
   // own: a blob has no path for a sibling chunk to resolve against, and a
   // sibling fetched at runtime would not have been verified anyway.
   worker: { format: "iife" },
+  // The native apps' Cloud screen domain (packages/shared/src/cloud-workspace.ts).
+  // Unset: liaison.sh. Empty: no Cloud screen, the address field comes first.
+  define: {
+    __LIAISON_CLOUD_DOMAIN__: JSON.stringify(process.env.LIAISON_CLOUD_DOMAIN ?? null),
+  },
   // The plugin is typed structurally rather than against rollup's own types, so
   // it is cast in here.
   // webBuildId runs last: it hashes what the build finally emits (lib/web-build.ts).

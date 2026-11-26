@@ -1,0 +1,16 @@
+{
+  "key": {
+    "kernel.desktopUi.cloud.prompt": "Connectez-vous à votre espace de travail Liaison Cloud.",
+    "kernel.desktopUi.cloud.workspace": "Votre espace de travail",
+    "kernel.desktopUi.cloud.placeholder": "votreentreprise",
+    "kernel.desktopUi.cloud.action": "Continuer",
+    "kernel.desktopUi.cloud.invalidWorkspace": "Ce nom d'espace de travail n'est pas valide.",
+    "kernel.desktopUi.cloud.notFound": "Cet espace de travail est introuvable. Vérifiez le nom et réessayez.",
+    "kernel.desktopUi.cloud.unreachable": "Impossible de joindre cet espace de travail. Vérifiez le nom et votre connexion, puis réessayez.",
+    "kernel.desktopUi.cloud.deepLinkConfirm": "Se connecter à cet espace de travail Liaison Cloud ?",
+    "kernel.desktopUi.cloud.forgot": "Vous l'avez oublié ? Recevoir mes espaces de travail par e-mail",
+    "kernel.desktopUi.cloud.selfHosted": "Utiliser un serveur auto-hébergé",
+    "kernel.desktopUi.cloud.createWorkspace": "Créer un espace de travail",
+    "kernel.desktopUi.connect.useCloud": "Utiliser Liaison Cloud"
+  }
+}

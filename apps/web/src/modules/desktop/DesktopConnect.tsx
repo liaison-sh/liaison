@@ -39,6 +39,9 @@ export const CONNECT_INVALID_ADDRESS = "kernel.desktopUi.connect.invalidAddress"
 /** Asked before a `liaison://connect` link is applied. */
 export const DEEP_LINK_CONFIRM_PROMPT = "kernel.desktopUi.connect.deepLinkConfirm"
 
+/** Back to the Liaison Cloud screen. */
+export const CONNECT_USE_CLOUD = "kernel.desktopUi.connect.useCloud"
+
 /** The field's own label. */
 export const SERVER_ADDRESS_LABEL = "kernel.desktopUi.connect.serverAddress"
 
@@ -95,6 +98,8 @@ export interface DesktopConnectProps {
    * window): the first run's step has nowhere to go back to.
    */
   onCancel?: () => void
+  /** Switches back to the Liaison Cloud screen, when the build has one. */
+  onUseCloud?: () => void
 }
 
 const DesktopConnect: Component<DesktopConnectProps> = (props) => {
@@ -182,6 +187,18 @@ const DesktopConnect: Component<DesktopConnectProps> = (props) => {
           )}
         </Show>
         <p class="text-center text-[12.5px] text-text-tertiary">{i18n.t(CONNECT_HELPER)}</p>
+        <Show when={props.onUseCloud}>
+          {(useCloud) => (
+            <button
+              type="button"
+              data-testid="desktop-connect-use-cloud"
+              class="text-[12.5px] text-accent-muted transition-colors duration-150 hover:text-accent"
+              onClick={() => useCloud()()}
+            >
+              {i18n.t(CONNECT_USE_CLOUD)}
+            </button>
+          )}
+        </Show>
         <Show when={showNote()}>
           <div data-testid="windows-shell-note" class="flex flex-col items-center gap-1">
             <p class="text-center text-[12px] text-text-tertiary">

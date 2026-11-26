@@ -25,9 +25,13 @@ On Linux, the AppImage updates itself when it sits in a folder you can write to,
 
 ## Connect the desktop app to your organization
 
-1. Open the app. At **Enter your Liaison org URL:**, type your Liaison address, for example `https://liaison.resonantaudiolabs.example`.
-2. Click **Connect**. You can also open a connect link instead; the app shows the address and asks **Connect to this Liaison org?** before it uses it.
+1. Open the app. It asks for **Your workspace** on Liaison Cloud: type your workspace name, for example `acme` for `acme.liaison.sh`, and click **Continue**. Pasting the whole address works too.
+2. On your own server instead, click **Use a self-hosted server**. At **Enter your Liaison org URL:**, type your Liaison address, for example `https://liaison.resonantaudiolabs.example`, and click **Connect**. **Use Liaison Cloud** goes back.
 3. Sign in as you do in the browser: enter your email, then the 6-digit code.
+
+Forgot your workspace name? **Forgot it? Email me my workspaces** opens the Liaison Cloud sign-in page in your browser, which emails it to you. **Create a workspace** opens the signup page. If the app says **That workspace was not found. Check the name and try again.**, check the spelling.
+
+You can also open a connect link instead; the app shows the workspace or address and asks before it uses it (**Connect to this Liaison Cloud workspace?** or **Connect to this Liaison org?**).
 
 To use another organization, use **Change server**. **Remove this server** signs you out of it and the app forgets it.
 
@@ -54,7 +58,7 @@ See [Connect a computer](../computers/connect.md) and [Agent sessions](../comput
 
 The phone app is a shell around the same web app, for iPhone and Android.
 
-1. Open the app. At **Enter your Liaison org URL:**, type your address and tap **Connect**.
+1. Open the app. At **Your workspace**, type your Liaison Cloud workspace name and tap **Continue**. On your own server, tap **Use a self-hosted server**, then at **Enter your Liaison org URL:** type your address and tap **Connect**. **Forgot it? Email me my workspaces** opens the Liaison Cloud sign-in page in your browser.
 2. Sign in with your email and the 6-digit code, a password, or a sign-in provider your organization set up.
 
 The phone app does not create accounts. An admin invites you first (see [Invite and manage users](../admin/users.md)).

@@ -199,6 +199,11 @@ async function buildBootBundle(dirs: string[]): Promise<void> {
       target: "browser",
       format: "iife",
       minify: true,
+      // The Cloud screen's domain, the same variable apps/web's build reads
+      // (packages/shared/src/cloud-workspace.ts). Unset: liaison.sh. Empty: off.
+      define: {
+        __LIAISON_CLOUD_DOMAIN__: JSON.stringify(process.env.LIAISON_CLOUD_DOMAIN ?? null),
+      },
     })
     if (!result.success) {
       for (const log of result.logs) console.log(`  ${log}`)

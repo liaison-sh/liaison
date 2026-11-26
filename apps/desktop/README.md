@@ -43,6 +43,19 @@ writes a placeholder `dist/overlay.js` when the first step was skipped, and
 says so as a `cargo:warning` and in the running app's console, rather than
 failing with a bare `include_str!` path.
 
+### The first screen: Liaison Cloud (`LIAISON_CLOUD_DOMAIN`)
+
+A first launch with no server saved opens on a "Your workspace" field under one cloud domain:
+`acme` becomes `https://acme.liaison.sh`. "Use a self-hosted server" opens the plain address
+field. The domain is set when apps/web is built, by `LIAISON_CLOUD_DOMAIN` in the build's
+environment (`packages/shared/src/cloud-workspace.ts`):
+
+- unset: `liaison.sh`;
+- a domain (`LIAISON_CLOUD_DOMAIN=cloud.example.com`): a fork's own cloud;
+- empty (`LIAISON_CLOUD_DOMAIN=`): no Cloud screen, the address field is the first screen.
+
+An install that already has a server saved opens it as before.
+
 ### The sidecar is never reused stale
 
 `bun prepare-sidecar.ts` rebuilds the sidecar whenever what it is built from

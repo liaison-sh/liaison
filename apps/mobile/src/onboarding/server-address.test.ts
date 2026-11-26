@@ -3,10 +3,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import path from "node:path"
-import { FIRST_LAUNCH_UNREACHABLE } from "./mobile-copy"
+import { FIRST_LAUNCH_UNREACHABLE, firstLaunchCopy } from "./mobile-copy"
 import {
   applyBranding,
   BRANDING_PATH,
+  CLOUD_INPUT_ID,
   createFirstLaunch,
   FIRST_LAUNCH_ID,
   fetchRuntimeBranding,
@@ -371,5 +372,195 @@ describe("runtime branding", () => {
       }
     }
     expect(offenders).toEqual([])
+  })
+})
+
+describe("the Cloud screen, the first screen when the build names a cloud", () => {
+  const EN = firstLaunchCopy("en")
+  const FR = firstLaunchCopy("fr")
+  const byTestId = (id: string) => document.querySelector(`[data-testid="${id}"]`) as HTMLElement
+  const workspaceField = () => document.getElementById(CLOUD_INPUT_ID) as HTMLInputElement
+  const submit = () => byTestId("first-launch-submit").click()
+  // The overlay sits on documentElement, which the body reset above misses.
+  const clearOverlays = () => {
+    for (const overlay of document.querySelectorAll(`#${FIRST_LAUNCH_ID}`)) overlay.remove()
+  }
+  beforeEach(clearOverlays)
+  afterEach(clearOverlays)
+
+  function cloudLaunch(
+    options: { language?: string; fetchImpl?: typeof fetch; opened?: string[] } = {},
+  ) {
+    const storage = memoryStorage(null)
+    const fetcher = fakeFetch(200, { data: BRANDING })
+    const opened = options.opened ?? []
+    const launch = createFirstLaunch({
+      storage,
+      document,
+      fetchImpl: options.fetchImpl ?? fetcher.impl,
+      cloudDomain: "liaison.sh",
+      language: options.language ?? "en-US",
+      openUrl: (url) => opened.push(url),
+    })
+    return { storage, fetcher, launch, opened }
+  }
+
+  it("asks for a workspace under the fixed domain and binds https://<name>.liaison.sh", async () => {
+    const { storage, fetcher, launch } = cloudLaunch()
+    const started = launch.start()
+    await tick()
+    expect(byTestId("first-launch-cloud")).toBeTruthy()
+    expect(byTestId("first-launch-workspace-suffix").textContent).toBe(".liaison.sh")
+    expect(document.body.parentElement?.textContent).toContain(EN.cloudWorkspaceLabel)
+    workspaceField().value = "  Acme "
+    submit()
+    expect(await started).toBe("https://acme.liaison.sh")
+    // The same reachability check as an address: the branding route of that host.
+    expect(fetcher.calls[0]).toBe(`https://acme.liaison.sh${BRANDING_PATH}`)
+    expect(storage.read()).toBe("https://acme.liaison.sh")
+  })
+
+  it("takes a pasted host or full URL of the workspace", async () => {
+    const { launch } = cloudLaunch()
+    const started = launch.start()
+    await tick()
+    workspaceField().value = "https://acme.liaison.sh/login"
+    submit()
+    expect(await started).toBe("https://acme.liaison.sh")
+  })
+
+  it("refuses a name that is not one, in place, and stores nothing", async () => {
+    const { storage, launch } = cloudLaunch()
+    const started = launch.start()
+    await tick()
+    workspaceField().value = "acme.example.com"
+    submit()
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe(EN.cloudInvalid)
+    expect(storage.read()).toBeNull()
+    workspaceField().value = "acme"
+    submit()
+    expect(await started).toBe("https://acme.liaison.sh")
+  })
+
+  it("a workspace that does not answer is not found, and the Cloud screen asks again", async () => {
+    let reachable = false
+    const fetchImpl = (async () => {
+      if (!reachable) return new Response("nope", { status: 404 })
+      return new Response(JSON.stringify({ data: BRANDING }), { status: 200 })
+    }) as unknown as typeof fetch
+    const { storage, launch } = cloudLaunch({ fetchImpl })
+    const started = launch.start()
+    await tick()
+    workspaceField().value = "nobody"
+    submit()
+    await tick()
+    expect(storage.read()).toBeNull()
+    expect(byTestId("first-launch-cloud")).toBeTruthy()
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe(EN.cloudNotFound)
+    reachable = true
+    workspaceField().value = "acme"
+    submit()
+    expect(await started).toBe("https://acme.liaison.sh")
+  })
+
+  it("the self-hosted link opens the address screen, unchanged, and there is a way back", async () => {
+    const { launch } = cloudLaunch()
+    const started = launch.start()
+    await tick()
+    byTestId("first-launch-self-hosted").click()
+    expect(byTestId("first-launch-cloud")).toBeNull()
+    const address = document.querySelector("input") as HTMLInputElement
+    expect(address.placeholder).toBe("liaison.example.com")
+    byTestId("first-launch-use-cloud").click()
+    expect(byTestId("first-launch-cloud")).toBeTruthy()
+    byTestId("first-launch-self-hosted").click()
+    ;(document.querySelector("input") as HTMLInputElement).value = "acme.example.com"
+    submit()
+    expect(await started).toBe("https://acme.example.com")
+  })
+
+  it("the forgotten workspace link opens the cloud's login page, in French for a French phone", async () => {
+    const en = cloudLaunch()
+    void en.launch.start()
+    await tick()
+    byTestId("first-launch-forgot").click()
+    expect(en.opened).toEqual(["https://liaison.sh/login"])
+    document.documentElement.querySelector(`#${FIRST_LAUNCH_ID}`)?.remove()
+
+    const fr = cloudLaunch({ language: "fr-FR" })
+    void fr.launch.start()
+    await tick()
+    expect(byTestId("first-launch-forgot").textContent).toBe(FR.cloudForgot)
+    expect(byTestId("first-launch-submit").textContent).toBe(FR.cloudAction)
+    byTestId("first-launch-forgot").click()
+    expect(fr.opened).toEqual(["https://liaison.sh/fr/login"])
+    document.documentElement.querySelector(`#${FIRST_LAUNCH_ID}`)?.remove()
+  })
+
+  it("a connect link to a cloud workspace prefills the name and waits for the click", async () => {
+    const { storage, launch } = cloudLaunch()
+    const started = launch.start()
+    await tick()
+    launch.offerAddress("https://acme.liaison.sh")
+    expect(workspaceField().value).toBe("acme")
+    expect(document.body.parentElement?.textContent).toContain(EN.cloudDeepLinkConfirm)
+    expect(storage.read()).toBeNull()
+    submit()
+    expect(await started).toBe("https://acme.liaison.sh")
+  })
+
+  it("a connect link to another server opens the address screen with it, never applied", async () => {
+    const { storage, launch } = cloudLaunch()
+    const started = launch.start()
+    await tick()
+    launch.offerAddress("https://liaison.example.com")
+    expect(byTestId("first-launch-address")).toBeTruthy()
+    expect((document.querySelector("input") as HTMLInputElement).value).toBe(
+      "https://liaison.example.com",
+    )
+    expect(storage.read()).toBeNull()
+    submit()
+    expect(await started).toBe("https://liaison.example.com")
+  })
+
+  it("a build with no cloud opens on the address screen", async () => {
+    const storage = memoryStorage(null)
+    const fetcher = fakeFetch(200, { data: BRANDING })
+    void createFirstLaunch({
+      storage,
+      document,
+      fetchImpl: fetcher.impl,
+      cloudDomain: null,
+    }).start()
+    await tick()
+    expect(byTestId("first-launch-address")).toBeTruthy()
+    expect(byTestId("first-launch-use-cloud")).toBeNull()
+    document.documentElement.querySelector(`#${FIRST_LAUNCH_ID}`)?.remove()
+  })
+
+  // App Review 3.1.1: the phone app creates no account and sells nothing, so
+  // its first screen names no signup, pricing or plan, in either language.
+  it("shows no signup, pricing or plan link, in English or in French", async () => {
+    const FORBIDDEN =
+      /sign ?up|signup|create|pricing|price|plan\b|subscri|inscri|cr[ée]er|tarif|abonnement|offre/i
+    for (const language of ["en-US", "fr-FR"]) {
+      const opened: string[] = []
+      const { launch } = cloudLaunch({ language, opened })
+      void launch.start()
+      await tick()
+      const overlay = document.getElementById(FIRST_LAUNCH_ID) as HTMLElement
+      expect(overlay.textContent ?? "").not.toMatch(FORBIDDEN)
+      for (const anchor of overlay.querySelectorAll("a")) {
+        expect(anchor.getAttribute("href") ?? "").not.toMatch(FORBIDDEN)
+      }
+      for (const control of overlay.querySelectorAll("button")) {
+        ;(control as HTMLButtonElement).click()
+      }
+      for (const url of opened) expect(url).not.toMatch(FORBIDDEN)
+      document.documentElement.querySelector(`#${FIRST_LAUNCH_ID}`)?.remove()
+    }
+    for (const copy of [EN, FR]) {
+      for (const text of Object.values(copy)) expect(text).not.toMatch(FORBIDDEN)
+    }
   })
 })

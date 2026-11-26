@@ -4466,7 +4466,21 @@
       "deepLinkConfirm": "Se connecter à cette organisation Liaison ?",
       "serverAddress": "URL de l'organisation Liaison",
       "windowsShellNotice": "Pour lancer des commandes sur cet ordinateur, l'agent a besoin de bash. Sous Windows, installez Git Bash ou activez WSL, puis relancez la session.",
-      "windowsShellNoticeDismiss": "Ne plus afficher"
+      "windowsShellNoticeDismiss": "Ne plus afficher",
+      "useCloud": "Utiliser Liaison Cloud"
+    },
+    "cloud": {
+      "prompt": "Connectez-vous à votre espace de travail Liaison Cloud.",
+      "workspace": "Votre espace de travail",
+      "placeholder": "votreentreprise",
+      "action": "Continuer",
+      "invalidWorkspace": "Ce nom d'espace de travail n'est pas valide.",
+      "notFound": "Cet espace de travail est introuvable. Vérifiez le nom et réessayez.",
+      "unreachable": "Impossible de joindre cet espace de travail. Vérifiez le nom et votre connexion, puis réessayez.",
+      "deepLinkConfirm": "Se connecter à cet espace de travail Liaison Cloud ?",
+      "forgot": "Vous l'avez oublié ? Recevoir mes espaces de travail par e-mail",
+      "selfHosted": "Utiliser un serveur auto-hébergé",
+      "createWorkspace": "Créer un espace de travail"
     },
     "device": {
       "loginPrompt": "Identifiez-vous pour terminer la connexion",

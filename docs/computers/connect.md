@@ -13,7 +13,7 @@ You turn a computer on once, from the desktop app on that computer. After that i
 
 ## Connect the app to your Liaison
 
-1. Open the Liaison desktop app. On first launch it asks **Enter your Liaison org URL:**.
+1. Open the Liaison desktop app. On first launch it asks for **Your workspace** on Liaison Cloud: type the workspace name and click **Continue**. On your own server, click **Use a self-hosted server**: the app asks **Enter your Liaison org URL:**.
 2. Type the address and click **Connect**. If the address is not valid, the app says **That is not a valid Liaison URL.**
 3. The app shows **Sign in to finish connecting** with **Your code** and **Open the approval page**. Click it. Your browser opens on your Liaison.
 4. Approve the device. The app says **Waiting for you to approve this device** until you do. If you typed the wrong server, click **Use a different server**.

@@ -5,12 +5,14 @@
  * moment it was posted; the card reads this instead, so a step done since
  * (a goal, a knowledge page, an invitation) shows as done without the agent
  * posting a new card. Derived from rows each time (provisioning/setup-state.ts),
- * never stored. Any member may read it, as the agent's `setup_state` tool:
+ * never stored. It takes the agent's `setup_state` tool's scope
+ * (kernel:threads:read; the card is read inside a thread, which takes it too):
  * keys, booleans and a timestamp, no names and no counts.
  */
 import { Hono } from "hono"
 import type { AppEnv } from "~/app"
 import { success } from "~/lib/response"
+import { requireScope } from "~/middleware/require-scope"
 import { computeSetupState, type SetupItemKey } from "~/modules/provisioning/setup-state"
 
 export interface FirstRunChecklist {
@@ -21,7 +23,7 @@ export interface FirstRunChecklist {
 
 export const firstRunChecklistRoutes = new Hono<AppEnv>()
 
-firstRunChecklistRoutes.get("/checklist", async (c) => {
+firstRunChecklistRoutes.get("/checklist", requireScope("kernel:threads:read"), async (c) => {
   const state = await computeSetupState(c.get("orgId"))
   const body: FirstRunChecklist = {
     items: state.items.map(({ key, done, optional }) => ({ key, done, optional })),

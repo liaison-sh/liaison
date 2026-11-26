@@ -4,14 +4,23 @@
 // calls: their scopes decide, nothing here is gated).
 //
 //   GET    /                       list (kernel:apps:build)
+//   POST   /        {base_name, title, template?, files?}   a new draft, version 1
+//   PUT    /:id/files {files, mode?, message, title?}     the draft's next version
+//   GET    /:id/status             the draft, its app as it runs now and its publishes
 //   GET    /:id[?n=]               one draft and a version, with its preview frame URL
 //   GET    /:id/versions           kept versions
 //   POST   /:id/check   {n?}       build + type check (check.ts)
 //   POST   /:id/preview {n?, entry, params?, freshStore?}   read-only preview run (preview.ts)
 //   POST   /:id/restore {n}        version n's files as the next version
 //   POST   /:id/discard
-//   POST   /:id/publish {n?}       kernel:apps:admin AND kernel:apps:build: prepare
-//                                  (build + pin) and install the pinned bytes at once
+//   POST   /:id/publish {n?}       kernel:apps:build AND kernel:apps:admin: prepare
+//                                  (build + pin) and install the pinned bytes at once.
+//                                  From a restricted (device-flow) session, e.g. the
+//                                  remote CLI: nothing is installed; the call runs
+//                                  kernel:apps_build_publish (kernel:apps:build), which
+//                                  parks the same approval card as MCP (202, the
+//                                  approval's id); a holder of kernel:apps:admin
+//                                  decides it in the app.
 //   GET    /:id/:n/ui.js           the version's built interface, as text, for the
 //                                  page to hand to the frame (kernel:apps:build)
 //   GET    /:id/:n/frame?t=        the frame document the interface runs in: opaque
@@ -32,6 +41,7 @@ import { zValidator } from "~/lib/validate"
 import { requireScope } from "~/middleware/require-scope"
 import { checkDraft } from "~/modules/app-builder/check"
 import {
+  createDraft,
   discardDraft,
   draftAppName,
   getBuildArtifact,
@@ -40,11 +50,16 @@ import {
   listDraftVersions,
   restoreDraftVersion,
   type TxRunner,
+  updateDraftFiles,
 } from "~/modules/app-builder/drafts"
+import { activeCustomApp, publishHistory } from "~/modules/app-builder/installed"
 import { previewDraft } from "~/modules/app-builder/preview"
 import { executePublish, preparePublish } from "~/modules/app-builder/publish"
-import { builderToolError } from "~/modules/app-builder/tools"
+import { DRAFT_TEMPLATES, templateFiles } from "~/modules/app-builder/templates"
+import { builderToolError, patchFiles } from "~/modules/app-builder/tools"
 import { appFrameResponse, appFrameRuntime } from "~/modules/apps/app-frame"
+import { executeTool } from "~/modules/apps/execute-tool"
+import { restToolCall } from "~/modules/apps/rest-tool-call"
 import { boundHost, signUiBundleToken, verifyUiBundleToken } from "~/modules/apps/ui-bundle-token"
 import { PermissionDeniedError } from "~/modules/permissions/errors"
 import { hasScope } from "~/modules/permissions/permissions"
@@ -55,6 +70,19 @@ const ADMIN = "kernel:apps:admin"
 const idParam = z.object({ id: z.string().uuid() })
 const versionParam = z.object({ id: z.string().uuid(), n: z.coerce.number().int().min(1) })
 const nBody = z.object({ n: z.number().int().min(1).optional() })
+const fileMap = z.record(z.string(), z.string().nullable())
+const createBody = z.object({
+  base_name: z.string().regex(/^[a-z][a-z0-9-]{1,40}$/),
+  title: z.string().trim().min(1).max(200),
+  template: z.enum(DRAFT_TEMPLATES).optional(),
+  files: fileMap.optional(),
+})
+const updateBody = z.object({
+  files: fileMap,
+  mode: z.enum(["patch", "full"]).optional(),
+  message: z.string().max(500),
+  title: z.string().trim().min(1).max(200).optional(),
+})
 const previewBody = z.object({
   n: z.number().int().min(1).optional(),
   entry: z.object({ kind: z.enum(["tool", "job", "webhook"]), name: z.string().min(1).max(100) }),
@@ -92,6 +120,92 @@ export const builderRoutes = new Hono<AppEnv>()
   .get("/drafts", requireScope(BUILD), async (c) => {
     const drafts = await withRequestRls(c, (tx) => listDrafts(tx))
     return success(c, drafts)
+  })
+  // A person's own edit (no agent turn, so no turn taint), the tool's same checks.
+  .post("/drafts", requireScope(BUILD), zValidator("json", createBody), async (c) => {
+    const caller = { orgId: c.get("orgId"), userId: c.get("userId") }
+    const body = c.req.valid("json")
+    try {
+      const appName = draftAppName(caller.orgId, body.base_name)
+      const files = body.files
+        ? patchFiles({}, body.files, "full")
+        : templateFiles(body.template ?? "store-crud", appName, body.title)
+      const { draft, version } = await withRequestRls(c, (tx) =>
+        createDraft(tx, caller, {
+          baseName: body.base_name,
+          title: body.title,
+          files,
+          message: body.files
+            ? "Created"
+            : `Created from the ${body.template ?? "store-crud"} template`,
+        }),
+      )
+      return success(
+        c,
+        { draftId: draft.id, appName, n: version.n, files: version.files },
+        undefined,
+        201,
+      )
+    } catch (err) {
+      return refuse(c, err)
+    }
+  })
+  .put(
+    "/drafts/:id/files",
+    requireScope(BUILD),
+    zValidator("param", idParam),
+    zValidator("json", updateBody),
+    async (c) => {
+      const caller = { orgId: c.get("orgId"), userId: c.get("userId") }
+      const id = c.req.valid("param").id
+      const body = c.req.valid("json")
+      try {
+        const version = await withRequestRls(c, async (tx) => {
+          const { version: latest } = await getDraft(tx, id)
+          return updateDraftFiles(tx, caller, {
+            draftId: id,
+            files: patchFiles(latest.files, body.files, body.mode ?? "patch"),
+            message: body.message,
+            ...(body.title ? { title: body.title } : {}),
+          })
+        })
+        return success(c, { draftId: id, n: version.n, files: Object.keys(version.files) })
+      } catch (err) {
+        return refuse(c, err)
+      }
+    },
+  )
+  .get("/drafts/:id/status", requireScope(BUILD), zValidator("param", idParam), async (c) => {
+    const orgId = c.get("orgId")
+    try {
+      const { draft, version } = await withRequestRls(c, (tx) =>
+        getDraft(tx, c.req.valid("param").id),
+      )
+      const appName = draft.publishedAppName ?? draftAppName(orgId, draft.baseName)
+      const active = draft.publishedAppName ? await activeCustomApp(orgId, appName) : null
+      // `builder:draft/<draftId>/<n>`: which version of this draft runs now.
+      const runningN = active?.sourceUrl?.match(/^builder:draft\/[^/]+\/(\d+)$/)?.[1]
+      return success(c, {
+        draftId: draft.id,
+        title: draft.title,
+        status: draft.status,
+        appName,
+        latestVersion: version.n,
+        latestBuild: version.build,
+        installed: active
+          ? {
+              version: active.version,
+              sha256: active.sha256,
+              draftVersion: runningN ? Number(runningN) : null,
+              grantedScopes: active.grantedScopes,
+              grantedDomains: active.grantedDomains,
+            }
+          : null,
+        publishes: draft.publishedAppName ? await publishHistory({ orgId, appName }) : [],
+      })
+    } catch (err) {
+      return refuse(c, err)
+    }
   })
   .get("/drafts/:id", requireScope(BUILD), zValidator("param", idParam), async (c) => {
     const { id } = c.req.valid("param")
@@ -209,20 +323,66 @@ export const builderRoutes = new Hono<AppEnv>()
   })
   .post(
     "/drafts/:id/publish",
-    requireScope(ADMIN),
+    requireScope(BUILD),
     zValidator("param", idParam),
     zValidator("json", nBody),
     async (c) => {
-      if (!hasScope(BUILD, (c.get("scopes") as string[]) ?? [])) {
-        throw new PermissionDeniedError({ missingScope: BUILD })
-      }
       const userId = c.get("userId")
       const caller = { orgId: c.get("orgId"), userId }
       const { n } = c.req.valid("json")
+      const draftId = c.req.valid("param").id
+      // A restricted session is a program's token: nobody clicked. It installs
+      // nothing; it asks, through the gated tool, exactly as MCP does.
+      if (c.get("sessionRestricted") === true) {
+        const call = await restToolCall(c)
+        const result = await executeTool({
+          toolName: "kernel:apps_build_publish",
+          orgId: caller.orgId,
+          actor: extractRlsContext(c),
+          threadId: call.threadId,
+          params: { draftId, ...(n ? { n } : {}) },
+          origin: call.origin,
+        })
+        const blocked = result.blocked
+        if (blocked?.reason === "gated" && blocked.approvalRequestId) {
+          return success(
+            c,
+            {
+              status: "pending_approval",
+              approvalId: blocked.approvalRequestId,
+              summary: blocked.summary,
+            },
+            undefined,
+            202,
+          )
+        }
+        // Parked for another reason (a disclosure decision, a refusal): said as it is.
+        if (blocked) return success(c, { blocked }, undefined, 409)
+        // The preflight refused (a build error, a stale draft): the route's error envelope.
+        const refused = (
+          result.data as {
+            error?: { message?: string; code?: string; status?: number; details?: unknown }
+          } | null
+        )?.error
+        return c.json(
+          {
+            error: {
+              message: refused?.message ?? "The publish was not asked for",
+              code: refused?.code ?? "publish_refused",
+              ...(refused?.details ? { details: refused.details } : {}),
+            },
+          },
+          (refused?.status ?? 422) as 400,
+        )
+      }
+      // A person's own publish installs at once: they decide it, so they hold the decider's scope.
+      if (!hasScope(ADMIN, (c.get("scopes") as string[]) ?? [])) {
+        throw new PermissionDeniedError({ missingScope: ADMIN })
+      }
       try {
         const db = requestDb(c)
         const prepared = await preparePublish(db, caller, {
-          draftId: c.req.valid("param").id,
+          draftId,
           ...(n ? { n } : {}),
         })
         const result = await executePublish(db, { ...caller, installedBy: userId }, prepared.pin)

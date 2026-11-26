@@ -59,6 +59,7 @@ import {
   type RunLogLine,
   UNKNOWN_TAINT_TAGS,
 } from "~/modules/app-builder/logs"
+import { validateManifestToolParams } from "~/modules/apps/execute-tool-params"
 import { runLimits } from "~/modules/apps/run-limits"
 import { forWorkersRun, typedError } from "~/modules/apps/sandbox/bridge/secret-free"
 import { createStoreMethods } from "~/modules/apps/sandbox/bridge/store"
@@ -333,6 +334,20 @@ function previewBridge(input: {
   return bridge
 }
 
+/** The entry's arguments, checked against the manifest tool's declared schema. */
+function previewParams(appName: string, manifest: unknown, input: PreviewInput): unknown {
+  const raw = input.params ?? {}
+  if (input.entry.kind !== "tool") return raw
+  const tools = (manifest as { tools?: Record<string, { params?: unknown }> } | null)?.tools
+  const schema = tools?.[input.entry.name]?.params
+  if (!schema || typeof schema !== "object" || !("type" in schema)) return raw
+  try {
+    return validateManifestToolParams(`${appName}:${input.entry.name}`, schema, raw)
+  } catch (err) {
+    throw Object.assign(new Error((err as Error).message), { code: "invalid_params", status: 400 })
+  }
+}
+
 function errorOf(err: unknown): { code: string; message: string; status?: number } {
   const e = err as { code?: unknown; status?: unknown; message?: unknown } | null
   const code = typeof e?.code === "string" ? e.code : "handler_error"
@@ -495,6 +510,8 @@ async function runPreview(args: {
   const started = Date.now()
   let outcome: Pick<PreviewResult, "ok" | "result" | "error">
   try {
+    // A try refuses the arguments a real call would refuse (execute-tool-params.ts).
+    const params = previewParams(built.target.appName, manifest, input)
     const result = await runApp({
       appName: built.target.appName,
       orgId: actor.orgId,
@@ -504,7 +521,7 @@ async function runPreview(args: {
       workerModule: args.workerModule,
       bundleSource: esmExportsToGlobalThis(args.bundle),
       exportName,
-      params: input.params ?? {},
+      params,
       ...(input.entry.kind === "webhook" ? { extraArgs: [{}] } : {}),
       bridge,
       timeoutMs: runLimits("preview").wallMs,

@@ -15,7 +15,7 @@
 //  - `pruneDraftStoreNamespaces`: the preview namespaces (`draft:<id>`) of the
 //    data store whose last write is a day old (hourly kernel job).
 
-import { and, eq, like, sql } from "drizzle-orm"
+import { and, desc, eq, like, sql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { appDocuments, appDocumentUsage, auditLog } from "~/db/schema/kernel"
@@ -149,6 +149,47 @@ export async function hasPublishedAudit(input: {
       .limit(1),
   )
   return row !== undefined
+}
+
+/** One publish of an app built here, newest first (its audit row). */
+export interface PublishRecord {
+  version: string | null
+  draftId: string | null
+  n: number | null
+  sha256: string | null
+  at: string
+}
+
+/** The publishes of `appName` in `orgId`, newest first (at most `limit`). */
+export async function publishHistory(input: {
+  orgId: string
+  appName: string
+  limit?: number
+}): Promise<PublishRecord[]> {
+  const rows = await withPrivilegedDb(input.orgId, "app-builder:publish-history", (db) =>
+    db
+      .select({ metadata: auditLog.metadata, createdAt: auditLog.timestamp })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.orgId, input.orgId),
+          eq(auditLog.app, input.appName),
+          eq(auditLog.action, "app.custom.published"),
+        ),
+      )
+      .orderBy(desc(auditLog.timestamp))
+      .limit(input.limit ?? 20),
+  )
+  return rows.map((r) => {
+    const m = (r.metadata ?? {}) as Record<string, unknown>
+    return {
+      version: typeof m.version === "string" ? m.version : null,
+      draftId: typeof m.draftId === "string" ? m.draftId : null,
+      n: typeof m.n === "number" ? m.n : null,
+      sha256: typeof m.sha256 === "string" ? m.sha256 : null,
+      at: r.createdAt.toISOString(),
+    }
+  })
 }
 
 /** The audit row of a publish: which draft version, which bytes, decided by whom. */

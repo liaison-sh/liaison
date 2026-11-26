@@ -17,6 +17,7 @@ import { setRefreshTokenCookie, success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import { checkBruteForce, recordFailedAttempt } from "~/middleware/brute-force"
 import { createSession } from "~/modules/auth/auth"
+import { LIAISON_CLI_CLIENT_ID, liaisonCliScopes } from "~/modules/auth/cli-client"
 import {
   describeDeviceRequest,
   MCP_DEVICE_CLIENT_PREFIX,
@@ -65,12 +66,19 @@ export const deviceFlow = new Hono<AppEnv>()
 
 // Public: Client initiates device flow
 deviceFlow.post("/initiate", zValidator("json", initiateSchema), async (c) => {
-  const { clientId, scopes, deviceLabel } = c.req.valid("json")
+  const { clientId, deviceLabel } = c.req.valid("json")
 
-  // Default-deny: empty list rejects all clients; "*" wildcard allows all (test/dev use)
-  if (ALLOWED_CLIENTS.size === 0 || (!ALLOWED_CLIENTS.has("*") && !ALLOWED_CLIENTS.has(clientId))) {
+  // Default-deny: empty list rejects all clients; "*" wildcard allows all (test/dev use).
+  // The product's own CLI (`liaison-cli`) is admitted whenever the flow is on (cli-client.ts).
+  const listed =
+    ALLOWED_CLIENTS.has("*") || ALLOWED_CLIENTS.has(clientId) || clientId === LIAISON_CLI_CLIENT_ID
+  if (ALLOWED_CLIENTS.size === 0 || !listed) {
     throw new HTTPException(403, { message: "Unregistered device client" })
   }
+  // The CLI's sign-in is capped by the server: its default set when it declares
+  // nothing, never kernel:apps:admin unless asked for (cli-client.ts).
+  const declared = c.req.valid("json").scopes
+  const scopes = clientId === LIAISON_CLI_CLIENT_ID ? liaisonCliScopes(declared) : declared
   // The MCP device grant stores its rows under this prefix; a login request may
   // not look like one (the approval page and the two polls tell them apart by it).
   if (clientId.startsWith(MCP_DEVICE_CLIENT_PREFIX)) {

@@ -154,3 +154,4 @@ A shared agent's turn marks its transactions -> apps/api/src/db/rls.ts:362
 Mail declares personalAgentOnly -> apps/api/src/apps/mail/app.manifest.json:265
 fileParent canWrite: a function of the parent's schema, run under the caller's RLS, gates add, move and remove -> apps/api/src/modules/files/service.ts (assertParentWritable) ; apps/api/src/modules/apps/manifest-schema.ts (fileParent.canWrite)
 A whole @ref token passes a uuid param -> apps/api/src/modules/apps/execute-tool-params.ts:219,496
+A device sign-in is refused on /custom/install and publishes through the builder (approval) -> apps/api/src/modules/apps/install-routes.ts (refuseRestrictedInstall) ; apps/api/src/modules/app-builder/routes.ts

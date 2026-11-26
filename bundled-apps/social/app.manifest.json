@@ -534,7 +534,7 @@
   "outsideTextFields": ["text", "author", "messages", "title"],
   "tools": {
     "webhooks_setup": {
-      "description": "Point Meta's Facebook Page and Instagram webhooks at this instance, so new comments and direct messages arrive in real time instead of on the next poll. Facebook (when a Facebook account is connected): makes the Meta app's page subscription (fields feed and messages) target this instance's social webhook, provisioning the verify token it checks, then subscribes every managed Page of each connected Facebook account to the app; needs the pages_manage_metadata permission (on '(#200) Requires pages_manage_metadata permission', reconnect Facebook and run it again). Instagram (accounts connected with the Unified login): subscribes each account to the app (fields comments and messages) and reports whether the app's Instagram webhook, which Meta only lets you set in the App Dashboard, points here; when it does not, the result gives the dashboard step with the callback URL and the verify token to enter. Idempotent: what already matches is left alone and reported unchanged. Gated: a person approves. Returns the callback URL, the app subscription status, one result per Page and per Instagram account (subscribed, unchanged or failed with Meta's error).",
+      "description": "Point Meta's Facebook Page and Instagram webhooks at this instance, so comments and DMs arrive in real time instead of on the next poll. Facebook: targets the app's page subscription (feed, messages) at this instance with its verify token, then subscribes each managed Page; on '(#200) Requires pages_manage_metadata permission', reconnect Facebook and rerun. Instagram (Unified login): subscribes each account (comments, messages) and reports whether the app's Instagram webhook, set only in the App Dashboard, points here; if not, the result gives the callback URL and verify token to enter. Idempotent: what matches is reported unchanged. Gated: a person approves. Returns the callback URL, the app subscription status and one result per Page and Instagram account.",
       "requiredScopes": ["social:admin:connection", "social:findings:read"],
       "handler": "webhooksSetupHandler",
       "preflight": "webhooksSetupPreflightHandler",
@@ -549,7 +549,7 @@
         "properties": {
           "callback_base_url": {
             "type": "string",
-            "description": "The public HTTPS address Liaison is reached at; only needed when the Facebook or Instagram connection did not record it."
+            "description": "The public HTTPS address Liaison is reached at; only needed when the connection did not record it."
           }
         },
         "additionalProperties": false
@@ -684,7 +684,7 @@
       "params": { "type": "object", "properties": { "status": { "type": "string" } } }
     },
     "connections_status": {
-      "description": "Status of each Social connection (facebook, instagram, instagram_unified, google) from the kernel: connected or not, org or personal, who connected it, token expiry, and whether it needs a reconnect. Read only.",
+      "description": "Status of each Social connection (facebook, instagram, instagram_unified, google) from the kernel: connected, org or personal, who connected it, token expiry, needs a reconnect. Read only.",
       "readOnly": true,
       "requiredScopes": ["social:findings:read"],
       "handler": "connectionsStatusHandler",

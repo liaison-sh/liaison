@@ -27,6 +27,7 @@ import { decryptConnectionConfigValue } from "~/modules/apps/connections/service
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const APP = "secretprov"
@@ -82,10 +83,17 @@ async function orgWithSecretApp(): Promise<{ ctx: ProvisionContext; orgId: strin
   manifestRegistry.set([orgId, APP], { name: APP, uiBundleUrl: null })
   connectionConfigRegistry.set([orgId, APP, CONN], decl)
   await withSystemDb("app-secrets-test-row", (db) =>
-    db.execute(drizzleSql`
-      INSERT INTO kernel.apps (org_id, name, version, status, config)
-      VALUES (${orgId}, ${APP}, '1.0.0', 'active', '{}'::jsonb)
-    `),
+    db.execute(
+      drizzleSql.raw(
+        insertSql("kernel.apps", {
+          id: crypto.randomUUID(),
+          org_id: orgId,
+          name: APP,
+          version: "1.0.0",
+          status: "active",
+        }),
+      ),
+    ),
   )
   return { ctx, orgId, slug }
 }

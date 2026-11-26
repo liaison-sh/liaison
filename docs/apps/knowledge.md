@@ -81,6 +81,7 @@ Agents read and update a folder's page like any other document.
 
 - Paste an image or a file into the text, or drop it on the text. It is uploaded and shows where the cursor was.
 - Or click **Image** or **File** in the toolbar and pick one or more files.
+- Click an image to select it; Enter then opens a new line below it (the image stays).
 - To add a file without putting it in the text, click **Add a file** under **Attachments**. On a phone, open **Sources** first.
 
 An image shows as the picture. Any other file, an SVG image included, shows as a card with its name and size; click it to download the file. While a file uploads, the text shows **Uploading** and its name. A file that is too large, or that does not fit in your organization's storage, is not added, and Liaison says why.

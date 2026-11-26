@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-li
 import type { Editor } from "@tiptap/core"
 import { closeHistory } from "@tiptap/pm/history"
 import { Slice } from "@tiptap/pm/model"
-import { Selection } from "@tiptap/pm/state"
+import { NodeSelection, Selection } from "@tiptap/pm/state"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { FileViewDeps, PageFileInfo } from "./file-view"
 import { renderFileView } from "./file-view"
@@ -140,6 +140,20 @@ describe("the file token", () => {
     caretInBlock(editor, 0)
     typeInto(editor, ".")
     expect(handle.markdown()).toBe(`Before ${token(A)} after.`)
+  })
+
+  it("a selected picture stays when Enter is pressed: a new line opens below it", () => {
+    const { editor, field, handle } = mount(`Before\n\n${token(A)}\n\nAfter`)
+    let at = -1
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === "liaisonFile") at = pos
+    })
+    editor.view.dispatch(editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, at)))
+    fireEvent.keyDown(editor.view.dom, { key: "Enter" })
+    void field
+    typeInto(editor, "Below")
+    expect(fileNodes(editor)).toEqual([A])
+    expect(handle.markdown()).toBe(`Before\n\n${token(A)}\n\nBelow\n\nAfter`)
   })
 
   it("draws no element with an address of the text, ever", () => {

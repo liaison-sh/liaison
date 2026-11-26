@@ -13,6 +13,7 @@
 import { fileToken } from "@liaison/shared"
 import { Node } from "@tiptap/core"
 import { Fragment, type Node as PMNode, type Slice } from "@tiptap/pm/model"
+import { NodeSelection } from "@tiptap/pm/state"
 import { FILE_REF_AT_START, type FileViewDeps, isFileId, renderFileView } from "./file-view"
 
 const UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
@@ -50,6 +51,17 @@ export const LiaisonFile = Node.create<LiaisonFileOptions>({
   priority: 1001,
   addOptions() {
     return { view: null, label: "Image or file" }
+  },
+  // A click selects the picture; Enter then goes on below it, as in other editors.
+  // Without this, Enter split the block over the selection and the picture was gone.
+  addKeyboardShortcuts() {
+    return {
+      Enter: ({ editor }) => {
+        const sel = editor.state.selection
+        if (!(sel instanceof NodeSelection) || sel.node.type.name !== this.name) return false
+        return editor.chain().setTextSelection(sel.to).splitBlock().run()
+      },
+    }
   },
   markdownTokenizer: {
     name: "liaisonFile",

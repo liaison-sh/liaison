@@ -1,0 +1,13 @@
+{
+  "key": {
+    "kernel.toolCard.title.call_tool": "Utiliser un outil",
+    "kernel.toolCard.title.config_apps": "Modifier les applications",
+    "kernel.toolCard.title.config_export": "Lire la configuration de l'espace",
+    "kernel.toolCard.title.config_knowledge": "Modifier les connaissances",
+    "kernel.toolCard.title.config_users": "Modifier les personnes",
+    "kernel.toolCard.title.memory_view": "Lire la mémoire",
+    "kernel.toolCard.title.setup_state": "Vérifier la configuration",
+    "kernel.toolCard.title.skill_read": "Lire un guide",
+    "kernel.toolCard.title.tool_search": "Chercher un outil"
+  }
+}

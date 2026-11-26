@@ -14,7 +14,7 @@
     "kernel.editor.slashWords.taskList": "tâche à faire case à cocher todo liste",
     "kernel.editor.slashWords.bulletList": "puces liste",
     "kernel.editor.slashWords.orderedList": "numéros liste numérotée",
-    "kernel.editor.slashWords.quote": "citation encadré callout",
+    "kernel.editor.slashWords.quote": "citation",
     "kernel.editor.slashWords.codeBlock": "code extrait",
     "kernel.editor.slashWords.table": "tableau grille lignes colonnes",
     "kernel.editor.slashWords.divider": "ligne séparation trait",

@@ -60,6 +60,7 @@ export const SLASH_FIXTURES: Readonly<Record<string, string>> = {
   bulletList: "- One",
   orderedList: "1. First",
   quote: "> Said",
+  callout: "> [!NOTE]\n> Heads up",
   codeBlock: "```\nconst a = 1\n```",
   table: "|     |     |     |\n| --- | --- | --- |\n|     |     |     |\n|     |     |     |",
   divider: "---",

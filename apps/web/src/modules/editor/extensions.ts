@@ -36,7 +36,8 @@ import {
   matchMention,
   mentionMarked,
 } from "~/modules/shell/markdown-content"
-import type { FileViewDeps } from "./file-view"
+import { Callout } from "./callout"
+import type { FileViewDeps, ImageWidth } from "./file-view"
 import { LiaisonFile, UploadingFile } from "./liaison-file"
 import { PageLink } from "./page-link"
 import type { PageLinkDeps, PageLinkLabels } from "./page-link-view"
@@ -51,6 +52,8 @@ export interface EditorFileOptions {
   label: string
   /** The chip of a file on its way: "Uploading {name}". */
   uploading: (name: string) => string
+  /** The size buttons of a selected picture. */
+  sizes?: Record<ImageWidth, string>
 }
 
 /**
@@ -653,7 +656,10 @@ export function editorExtensions(
           LiaisonFile.configure({
             view: options.files?.view ?? null,
             label: options.files?.label ?? "Image or file",
+            ...(options.files?.sizes ? { sizeLabels: options.files.sizes } : {}),
           }),
+          // A callout: `> [!NOTE]` and its quoted blocks.
+          Callout,
           UploadingFile.configure(options.files ? { label: options.files.uploading } : {}),
         ]
       : []),

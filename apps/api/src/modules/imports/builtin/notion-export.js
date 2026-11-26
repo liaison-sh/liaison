@@ -204,6 +204,11 @@ function documentRecord(st, hex, body, attachments, losses) {
 }
 
 /** The line without its HTML tags, removed until none is left (`<a<b>>` included). */
+// A Notion callout's icon: one emoji (a surrogate pair or a symbol, its variation
+// selector) and the spaces after it. Those that warn make a WARNING callout.
+const CALLOUT_ICON = /^((?:[\uD83C-\uDBFF][\uDC00-\uDFFF]|[\u2600-\u27BF\u2B00-\u2BFF])\uFE0F?)\s*/
+const WARNING_ICONS = ["\u26A0", "\u2757", "\u203C", "\u26D4", "\uD83D\uDEA8", "\uD83D\uDED1"]
+
 function stripTags(line) {
   let out = line
   let before
@@ -252,17 +257,36 @@ async function convertPage(st, ctx, path, text) {
   }
   const out = []
   let inAside = false
+  // A callout's marker line (`> [!NOTE]`), and whether its icon line is still to come.
+  let asideMarker = -1
+  let asideIcon = false
+  // Notion's callout icon starts its first line: the kind it stands for, and the
+  // text without it (the callout draws its own icon).
+  const calloutText = (text) => {
+    if (!asideIcon || !text.trim()) return text
+    asideIcon = false
+    const icon = CALLOUT_ICON.exec(text)
+    if (!icon) return text
+    if (WARNING_ICONS.indexOf(icon[1].replace(/\uFE0F/g, "")) >= 0)
+      out[asideMarker] = "> [!WARNING]"
+    return text.slice(icon[0].length)
+  }
   for (const raw of lines) {
     let line = raw
     const t = line.trim()
     if (/^<aside>/i.test(t)) {
       inAside = true
-      const rest = stripTags(t)
+      out.push("> [!NOTE]")
+      asideMarker = out.length - 1
+      asideIcon = true
+      const rest = calloutText(stripTags(t))
       if (rest) out.push("> " + rest)
       continue
     }
     if (/^<\/aside>/i.test(t)) {
       inAside = false
+      // An empty callout is no callout.
+      if (asideMarker === out.length - 1) out.pop()
       continue
     }
     if (/^<details/i.test(t) || /^<\/details>/i.test(t)) {
@@ -287,7 +311,7 @@ async function convertPage(st, ctx, path, text) {
       if (kept) out.push(kept)
       continue
     }
-    if (inAside) line = "> " + line
+    if (inAside) line = "> " + calloutText(line)
     out.push(line)
   }
   let body = out.join("\n")

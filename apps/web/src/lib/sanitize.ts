@@ -62,7 +62,7 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
  * and let a message draw over the UI around it. So every other class is dropped.
  */
 const RENDERER_CLASS =
-  /^(?:mention-pill|mention-actionable|md-task|md-task-box|md-task-done|language-[A-Za-z0-9_+#.-]{1,40}|lpmark-[A-Za-z0-9]{1,64}-\d{1,6})$/
+  /^(?:mention-pill|mention-actionable|md-callout|md-task|md-task-box|md-task-done|language-[A-Za-z0-9_+#.-]{1,40}|lpmark-[A-Za-z0-9]{1,64}-\d{1,6})$/
 
 export function keepRendererClasses(value: string): string {
   return value

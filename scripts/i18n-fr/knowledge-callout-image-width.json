@@ -1,0 +1,10 @@
+{
+  "key": {
+    "kernel.editor.callout": "Encadré",
+    "kernel.editor.imageSmall": "Petite",
+    "kernel.editor.imageMedium": "Moyenne",
+    "kernel.editor.imageLarge": "Grande",
+    "kernel.editor.imageFull": "Pleine largeur",
+    "kernel.editor.slashWords.callout": "encadré note astuce info remarque callout"
+  }
+}

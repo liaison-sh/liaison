@@ -135,7 +135,16 @@ describe("what the menu offers", () => {
     cleanup()
     const callout = mount()
     typeInto(callout.editor, "/callout")
-    expect(blocks()).toEqual(["quote"])
+    expect(blocks()).toEqual(["callout"])
+  })
+
+  it("/note and /callout find Callout; picking it writes a portable callout", () => {
+    const { editor, field, handle } = mount()
+    typeInto(editor, "/note")
+    expect(blocks()[0]).toBe("callout")
+    key(field, "Enter")
+    typeInto(editor, "Ask your buddy first")
+    expect(handle.markdown()).toBe("> [!NOTE]\n> Ask your buddy first")
   })
 
   it("in French, by French words, accents optional", () => {
@@ -235,6 +244,7 @@ describe("each block is stored as markdown and reads back the same", () => {
     bulletList: "One",
     orderedList: "First",
     quote: "Said",
+    callout: "Heads up",
     codeBlock: "const a = 1",
     table: "",
     divider: "",

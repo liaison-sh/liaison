@@ -170,6 +170,20 @@ export function runDetailView(
         content_hash: "",
         total_minor: r.total_minor,
       })),
+    /**
+     * The rows that need a fix before they can issue, with why. A late run lists them itself: its
+     * card covers only the rows that can issue, so a run whose every row needs a fix has no card,
+     * and these rows are the way out (fix one and a card marked Late asks for it; take it out and
+     * the run closes).
+     */
+    needsFix: rows
+      .filter((r) => r.state === "needs_fix")
+      .map((r) => ({
+        itemId: r.item_id,
+        customer: r.customer,
+        why: r.flags.join(" · ") || tr("It needs a fix before it can issue."),
+        fixHref: `/invoicing/editor/${r.draft_id ?? r.document_id}`,
+      })),
     range: issuedRun ? numberRange(shown.map((r) => r.number as string)) : null,
     rows: shown.map((r) => ({
       key: r.number ?? r.item_id,
@@ -353,10 +367,41 @@ export const RunDetail: Component<{ runId: string }> = (props) => {
                           ? tr(
                               "Its card marked Late is in Approvals: approving it issues these invoices, dated that day. Open a row to change it, or take it out to drop it.",
                             )
-                          : tr(
-                              "Every row needs a fix before it can issue. Open a row to fix it, or take it out to drop it; a card marked Late then asks for the rest.",
-                            )}
+                          : v().needsFix.length > 0
+                            ? tr(
+                                "Every row left needs a fix before it can issue. Fix a row below and a card marked Late asks for it; take it out to drop it, and once no row is left the run closes.",
+                              )
+                            : tr(
+                                "No row is left to decide: the run closes by itself within a day.",
+                              )}
                     </p>
+                    <Show when={v().needsFix.length > 0}>
+                      <div data-testid="run-needs-fix" class="flex flex-col gap-2">
+                        <h2 class="text-[13px] font-medium text-text">{tr("Needs a fix")}</h2>
+                        <For each={v().needsFix}>
+                          {(f) => (
+                            <div
+                              data-testid={`run-needs-fix-${f.itemId}`}
+                              class="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border-subtle px-3 py-2"
+                            >
+                              <div class="flex min-w-0 flex-col">
+                                <span class="text-text">{f.customer ?? "-"}</span>
+                                <span class="text-text-secondary">{f.why}</span>
+                              </div>
+                              <Show when={access()?.documents_write}>
+                                <Button
+                                  class={TAP}
+                                  testid={`run-needs-fix-open-${f.itemId}`}
+                                  onClick={() => navigate(f.fixHref)}
+                                >
+                                  {tr("Fix")}
+                                </Button>
+                              </Show>
+                            </div>
+                          )}
+                        </For>
+                      </div>
+                    </Show>
                     <MonthEndRunPanel
                       payload={{ run_id: v().runId, items: v().toDecide }}
                       viewerScopes={access()?.documents_write ? ["invoicing:documents:write"] : []}

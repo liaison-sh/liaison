@@ -101,8 +101,8 @@ export const CONNECTION_ESTIMATES: Array<{ refs: string[]; label: string } & Ste
   {
     refs: ["social/instagram_unified"],
     label:
-      "Instagram with Unified login (preview, instead of the Instagram login above): the account in the app's business portfolio, a Unified-login configuration and its id",
-    minutes: [12, 20],
+      "Instagram with Unified login (preview, instead of the Instagram login above): the account in the app's business portfolio, a Unified-login configuration and its id, and access to messages turned on in the Instagram app",
+    minutes: [12, 22],
     part: "extra",
   },
   { refs: ["ads/meta"], label: "Meta Ads: a system user token", minutes: [5, 8] },

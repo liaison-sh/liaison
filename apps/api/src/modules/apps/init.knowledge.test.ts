@@ -62,9 +62,9 @@ describe("Knowledge app registration", () => {
       tableName: "documents",
       schemaRef: "app_knowledge",
       joinOn: "id",
-      readScope: "knowledge:attachments:download",
-      // A file door asks the parent's read scope even where the parent's own policy does not.
-      requiredScope: "knowledge:attachments:download",
+      // A page's files follow the page: its readers read them (images in its text
+      // included), with no scope beyond the page's own.
+      readScope: "knowledge:documents:read",
       writeScope: "knowledge:documents:update",
       canWrite: "can_edit_document",
     })

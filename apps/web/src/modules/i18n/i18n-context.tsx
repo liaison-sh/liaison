@@ -56,6 +56,28 @@ function buildFlat(dicts: NamespaceDicts): FlatDict {
   return out
 }
 
+/** A word French elides before a vowel or a mute h: "de" + "Amina" reads "d'Amina". */
+const FR_ELIDING = /\b(de|que|De|Que) \{\{\s*(\w+)\s*\}\}/g
+const FR_ELIDES_BEFORE = /^[aeiouyhàâäæéèêëîïôöœùûüÿ]/i
+
+/**
+ * A template with its params filled in. French elides "de" and "que" before a
+ * value that starts with a vowel or an h ("Agent d'Amina", "Agent d'Hélène",
+ * never "Agent de Amina"), so every catalog string that puts a name after
+ * "de" reads right without a second key per name.
+ */
+export function fillTemplate(locale: string, raw: string, params: TranslateParams): string {
+  let template = raw
+  if (locale === "fr" && template.includes("{{")) {
+    template = template.replace(FR_ELIDING, (whole, word: string, name: string) => {
+      const value = params[name]
+      if (typeof value !== "string" || !FR_ELIDES_BEFORE.test(value.trim())) return whole
+      return `${word.slice(0, -1)}'{{${name}}}`
+    })
+  }
+  return resolveTemplate(template, params)
+}
+
 /** Each locale's flat dict, built once per process — dictionaries are static imports. */
 const flatByLocale = new Map<ShippedLocale, FlatDict>()
 
@@ -162,7 +184,7 @@ export const I18nProvider: Component<{
       }
       return key
     }
-    if (params) return resolveTemplate(raw, params)
+    if (params) return fillTemplate(locale(), raw, params)
     return raw
   }
 
@@ -235,7 +257,7 @@ export function translatorFor(locale: ShippedLocale): Translate {
     if (locale === "en") return englishT(key, params)
     const raw = flatFor(locale)[key]
     if (typeof raw !== "string") return englishT(key, params)
-    return params ? resolveTemplate(raw, params) : raw
+    return params ? fillTemplate(locale, raw, params) : raw
   }
 }
 

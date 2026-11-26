@@ -3,18 +3,33 @@
  * The first card of a new workspace's setup conversation, posted by the
  * platform when its first administrator signs in (api
  * provisioning/setup-kickoff.ts). Its heading, what is set up (a snapshot from
- * the row), the key card when the workspace has no model key yet, and the demo
- * offer, the one place the offer appears. No modal, no banner, no alarm colour:
+ * the row, then read live), the key card when the workspace has no model key
+ * yet, and the demo offer, the one place the offer appears. No modal, no banner, no alarm colour:
  * the agent carries the conversation from here.
  *
  * On Cloud (the managed edition) the card asks for one goal and leaves mail for
  * last. Without a goal from the signup, three plain buttons each post "I want
  * to start with ..." in this conversation: a message, never a dialog, and the
  * buttons go once the person has written here. A self-hosted card is unchanged.
+ *
+ * The checklist is live: the row's snapshot shows first, then the card reads
+ * GET /api/first-run/checklist when it opens, whenever a message lands in this
+ * conversation (a step done through the agent, an approval decided) and when
+ * the tab comes back into view (a step done elsewhere, an invitation sent from
+ * Settings). A failed read keeps what the card showed.
  */
 import { isKickoffGoal, KICKOFF_GOALS, type KickoffGoal } from "@liaison/shared"
 import { ExternalLink } from "lucide-solid"
-import { type Component, createSignal, For, onCleanup, Show } from "solid-js"
+import {
+  type Component,
+  createEffect,
+  createSignal,
+  For,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js"
 import {
   readSetupState,
   SetupChecklistCard,
@@ -73,6 +88,11 @@ function hostOf(url: string): string {
   }
 }
 
+/** How many messages this conversation holds: one more, the checklist is read again. */
+function messageCount(threadId: string): number {
+  return messageStore.threads[threadId]?.ids.length ?? 0
+}
+
 /** Someone wrote in this conversation: the goal is in their own words now. */
 function personWrote(threadId: string): boolean {
   const thread = messageStore.threads[threadId]
@@ -91,6 +111,46 @@ export const SetupKickoffRow: Component<{
   const [chosen, setChosen] = createSignal(false)
   const heldTurnScopes = new Set<() => void>()
   onCleanup(() => releaseHeldScopes(heldTurnScopes))
+
+  // The checklist as it is now; until the first read lands, the row's snapshot.
+  const [live, setLive] = createSignal<SetupStateView | null>(null)
+  let reading = false
+  let again = false
+  const readChecklist = async (): Promise<void> => {
+    if (reading) {
+      again = true
+      return
+    }
+    reading = true
+    try {
+      const state = readSetupState(await api.get<unknown>("/first-run/checklist"))
+      if (state) setLive(state)
+    } catch {
+      // Keep what the card shows; the next message or return to the tab reads again.
+    } finally {
+      reading = false
+      if (again) {
+        again = false
+        void readChecklist()
+      }
+    }
+  }
+  const checklist = (): SetupStateView => live() ?? props.view.state
+  onMount(() => {
+    void readChecklist()
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void readChecklist()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    onCleanup(() => document.removeEventListener("visibilitychange", onVisible))
+  })
+  createEffect(
+    on(
+      () => messageCount(props.threadId),
+      () => void readChecklist(),
+      { defer: true },
+    ),
+  )
 
   const intro = () => {
     if (!props.view.managed) return i18n.t("first-run.kickoff.intro")
@@ -157,7 +217,7 @@ export const SetupKickoffRow: Component<{
         </div>
       </Show>
       <SetupChecklistCard
-        state={props.view.state}
+        state={checklist()}
         starting={sending()}
         onStart={(step) => void say(i18n.t("first-run.checklist.startMessage", { step }))}
       />

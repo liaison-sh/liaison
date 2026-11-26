@@ -522,92 +522,104 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                   </div>
                 </div>
 
-                {/* Task key — copyable handle */}
-                <Show when={t().key}>
-                  <button
-                    type="button"
-                    data-testid="task-detail.key"
-                    class="flex w-fit items-center gap-1 rounded bg-bg-subtle px-1.5 py-0.5 font-mono text-[11px] text-text-tertiary hover:text-text-secondary"
-                    title={i18n.t("projects.copyTaskKey")}
-                    aria-label={i18n.t("projects.copyTaskKey")}
-                    onClick={() => {
-                      const key = t().key
-                      if (!key) return
-                      void navigator.clipboard?.writeText(key)
-                      addToast({ message: i18n.t("projects.copiedKey", { key }), type: "info" })
-                    }}
-                  >
-                    {t().key}
-                  </button>
-                </Show>
-
-                {/* Author — who filed it (the agent when an agent did) and when. */}
-                <Show when={t().createdByAgentLabel || t().createdByName}>
-                  {(name) => (
-                    <p
-                      data-testid="task-detail.created-by"
-                      data-agent={t().createdByAgentLabel ? "true" : undefined}
-                      class="text-[12px] text-text-tertiary"
-                    >
-                      {i18n.t("projects.createdByLine", {
-                        name: name(),
-                        date: formatDay(t().createdAt, i18n.locale(), { dateStyle: "medium" }),
-                      })}
-                    </p>
-                  )}
-                </Show>
-
-                {/* Delete — the UI had no task-delete affordance at all;
-                    deleting was reachable only through the agent's gated tool. */}
-                <button
-                  type="button"
-                  data-testid="task-detail.copy-link"
-                  class="inline-flex w-fit items-center gap-1 rounded-sm border border-transparent px-1.5 py-0.5 text-[12.5px] text-text-tertiary transition-colors hover:border-border-subtle hover:bg-surface-hover/50 hover:text-text-secondary"
-                  onClick={() => void copyLink(entityRoute("projects:task", t().id))}
+                {/* Header row: the task's handle and author on the left, its actions
+                    (copy link, delete) on the right, one tidy line that wraps on a
+                    phone instead of four stacked rows. Actions stay at the top. */}
+                <div
+                  data-testid="task-detail.header-row"
+                  class="flex flex-wrap items-center gap-x-3 gap-y-1"
                 >
-                  <Link size={13} aria-hidden="true" />
-                  {i18n.t("kernel.copyLink")}
-                </button>
-                <div class="flex items-center gap-2">
-                  <Show
-                    when={confirmingDelete()}
-                    fallback={
-                      <button
-                        type="button"
-                        data-testid="task-detail.delete"
-                        disabled={isArchived() || deleting()}
-                        class="inline-flex w-fit items-center gap-1 rounded-sm border border-transparent px-1.5 py-0.5 text-[12.5px] text-text-tertiary transition-colors hover:border-border-subtle hover:bg-surface-hover/50 hover:text-danger disabled:opacity-50"
-                        onClick={() => setConfirmingDelete(true)}
-                      >
-                        <Trash2 size={13} aria-hidden="true" />
-                        {i18n.t("projects.deleteTask")}
-                      </button>
-                    }
-                  >
-                    <span class="text-[12.5px] text-text-secondary">
-                      {t().childCount > 0
-                        ? i18n.t("projects.deleteTaskConfirmSubtree")
-                        : i18n.t("projects.deleteTaskConfirm")}
-                    </span>
+                  {/* Task key — copyable handle */}
+                  <Show when={t().key}>
                     <button
                       type="button"
-                      data-testid="task-detail.delete-confirm"
-                      disabled={deleting()}
-                      class="inline-flex items-center gap-1 rounded-sm border border-danger/30 bg-danger/10 px-1.5 py-0.5 text-[12.5px] text-danger transition-colors disabled:opacity-50"
-                      onClick={() => void remove()}
+                      data-testid="task-detail.key"
+                      class="flex w-fit items-center gap-1 rounded bg-bg-subtle px-1.5 py-0.5 font-mono text-[11px] text-text-tertiary hover:text-text-secondary"
+                      title={i18n.t("projects.copyTaskKey")}
+                      aria-label={i18n.t("projects.copyTaskKey")}
+                      onClick={() => {
+                        const key = t().key
+                        if (!key) return
+                        void navigator.clipboard?.writeText(key)
+                        addToast({ message: i18n.t("projects.copiedKey", { key }), type: "info" })
+                      }}
                     >
-                      {i18n.t("projects.delete")}
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="task-detail.delete-cancel"
-                      disabled={deleting()}
-                      class="inline-flex items-center gap-1 rounded-sm border border-transparent px-1.5 py-0.5 text-[12.5px] text-text-tertiary transition-colors hover:text-text-secondary disabled:opacity-50"
-                      onClick={() => setConfirmingDelete(false)}
-                    >
-                      {i18n.t("projects.deleteTaskCancel")}
+                      {t().key}
                     </button>
                   </Show>
+
+                  {/* Author — who filed it (the agent when an agent did) and when. */}
+                  <Show when={t().createdByAgentLabel || t().createdByName}>
+                    {(name) => (
+                      <p
+                        data-testid="task-detail.created-by"
+                        data-agent={t().createdByAgentLabel ? "true" : undefined}
+                        class="text-[12px] text-text-tertiary"
+                      >
+                        {i18n.t("projects.createdByLine", {
+                          name: name(),
+                          date: formatDay(t().createdAt, i18n.locale(), { dateStyle: "medium" }),
+                        })}
+                      </p>
+                    )}
+                  </Show>
+                  <div
+                    data-testid="task-detail.header-actions"
+                    class="ml-auto flex flex-wrap items-center gap-x-1 gap-y-1"
+                  >
+                    {/* Delete — the UI had no task-delete affordance at all;
+                        deleting was reachable only through the agent's gated tool. */}
+                    <button
+                      type="button"
+                      data-testid="task-detail.copy-link"
+                      class="inline-flex w-fit items-center gap-1 rounded-sm border border-transparent px-1.5 py-0.5 text-[12.5px] text-text-tertiary transition-colors hover:border-border-subtle hover:bg-surface-hover/50 hover:text-text-secondary"
+                      onClick={() => void copyLink(entityRoute("projects:task", t().id))}
+                    >
+                      <Link size={13} aria-hidden="true" />
+                      {i18n.t("kernel.copyLink")}
+                    </button>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <Show
+                        when={confirmingDelete()}
+                        fallback={
+                          <button
+                            type="button"
+                            data-testid="task-detail.delete"
+                            disabled={isArchived() || deleting()}
+                            class="inline-flex w-fit items-center gap-1 rounded-sm border border-transparent px-1.5 py-0.5 text-[12.5px] text-text-tertiary transition-colors hover:border-border-subtle hover:bg-surface-hover/50 hover:text-danger disabled:opacity-50"
+                            onClick={() => setConfirmingDelete(true)}
+                          >
+                            <Trash2 size={13} aria-hidden="true" />
+                            {i18n.t("projects.deleteTask")}
+                          </button>
+                        }
+                      >
+                        <span class="text-[12.5px] text-text-secondary">
+                          {t().childCount > 0
+                            ? i18n.t("projects.deleteTaskConfirmSubtree")
+                            : i18n.t("projects.deleteTaskConfirm")}
+                        </span>
+                        <button
+                          type="button"
+                          data-testid="task-detail.delete-confirm"
+                          disabled={deleting()}
+                          class="inline-flex items-center gap-1 rounded-sm border border-danger/30 bg-danger/10 px-1.5 py-0.5 text-[12.5px] text-danger transition-colors disabled:opacity-50"
+                          onClick={() => void remove()}
+                        >
+                          {i18n.t("projects.delete")}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="task-detail.delete-cancel"
+                          disabled={deleting()}
+                          class="inline-flex items-center gap-1 rounded-sm border border-transparent px-1.5 py-0.5 text-[12.5px] text-text-tertiary transition-colors hover:text-text-secondary disabled:opacity-50"
+                          onClick={() => setConfirmingDelete(false)}
+                        >
+                          {i18n.t("projects.deleteTaskCancel")}
+                        </button>
+                      </Show>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Title — inline-editable */}

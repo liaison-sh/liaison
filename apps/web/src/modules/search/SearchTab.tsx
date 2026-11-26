@@ -3,7 +3,7 @@
 import { Search, X } from "lucide-solid"
 import { type Component, createEffect, createMemo, For, onMount, Show } from "solid-js"
 import { Dynamic } from "solid-js/web"
-import { appLabel, entityTypeLabel } from "~/lib/app-label"
+import { appLabel, entityTypeChipLabel, entityTypeLabel } from "~/lib/app-label"
 import { entityIcon } from "~/lib/entity-icon"
 import { relativeTime } from "~/lib/relative-time"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -192,7 +192,7 @@ const SearchTab: Component<SearchTabProps> = () => {
                     : "border-border bg-bg text-text-tertiary hover:text-text-secondary"
                 }`}
               >
-                {entityTypeLabel(type, i18n.t)}
+                {entityTypeChipLabel(type, i18n.t)}
               </button>
             )}
           </For>

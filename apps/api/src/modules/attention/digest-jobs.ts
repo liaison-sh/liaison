@@ -97,6 +97,36 @@ const retireReadRows = (notMoving: SQL) => sql`
     AND read_at IS NOT NULL
     AND ${notMoving}`
 
+// The digest says what is still waiting when it is sent, not when it was
+// queued: a row about an approval request (the computed "approval pending"
+// row, or a routed reminder naming one) whose request was decided, withdrawn
+// or expired since is retired (`suppressed`) like a read row, so a mail never
+// lists a request as pending that is already approved, and nothing is mailed
+// when nothing is left. A request still being carried out (`approving`) or
+// put off (`deferred`) stays. An id that is not a uuid
+// names no request and is left alone.
+const UUID_RE_SQL = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+const retireSettledApprovalRows = (notMoving: SQL) => {
+  // The request a row names, as a uuid, or NULL (CASE: no cast is tried on a non-uuid).
+  const named = sql`CASE
+    WHEN a.kind = 'approval_pending' AND a.entity_type = 'approval_request'
+         AND a.entity_id ~* ${UUID_RE_SQL} THEN a.entity_id::uuid
+    WHEN a.metadata->'routedReminder'->>'approvalId' ~* ${UUID_RE_SQL}
+         THEN (a.metadata->'routedReminder'->>'approvalId')::uuid
+  END`
+  return sql`
+  UPDATE ${K}.attention_events a
+  SET digest_state = 'suppressed'
+  WHERE a.digest_state = 'pending'
+    AND a.app = 'kernel'
+    AND ${notMoving}
+    AND (${named}) IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM ${K}.approval_requests ar
+      WHERE ar.id = (${named}) AND ar.org_id = a.org_id
+        AND ar.status IN ('pending', 'approving', 'deferred'))`
+}
+
 // Cadence 'off' is "every email cell off" (S9): such a user receives no
 // digest at all, urgent included, whatever state a row was left in.
 // An org being moved keeps its attention rows as they are until the move ends.
@@ -142,6 +172,7 @@ async function defaultFetchUrgent(): Promise<PendingAttentionRow[]> {
       "digest:fetch-urgent",
       async (tx: PrivilegedDb) => {
         await tx.execute(retireReadRows(notMoving(sql.raw("org_id"))))
+        await tx.execute(retireSettledApprovalRows(notMoving(sql.raw("a.org_id"))))
         const rows = (await tx.execute(query)) as unknown as Record<string, unknown>[]
         return rows.map(rowToPending)
       },
@@ -158,6 +189,7 @@ async function defaultFetchCadencePending(
       `digest:fetch-${cadence}`,
       async (tx: PrivilegedDb) => {
         await tx.execute(retireReadRows(notMoving(sql.raw("org_id"))))
+        await tx.execute(retireSettledApprovalRows(notMoving(sql.raw("a.org_id"))))
         // Users without a `user_preferences` row inherit the default cadence
         // ('daily', the column default): a LEFT JOIN + COALESCE keeps the two in sync.
         const rows = (await tx.execute(sql`

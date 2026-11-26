@@ -81,6 +81,16 @@ export function entityTypeLabel(type: string, t: Translate): string {
 }
 
 /**
+ * A result type as a search filter chip names it: plural and capitalised, beside the app chips
+ * ("Tâches", "Documents"), never the raw lowercase type. A type the catalog does not know reads
+ * as its id in words.
+ */
+export function entityTypeChipLabel(type: string, t: Translate): string {
+  const key = `kernel.searchUi.entityTypeChips.${type}`
+  return catalogHasKey(key) ? t(key) : humanizeId(type)
+}
+
+/**
  * A role's name as the reader says it. An app's own role (`<app>.<tier>`, the
  * roles an app's manifest declares) reads as the app's name and the tier
  * ("API connector · Admin"); the seeded "Full Member" in the reader's

@@ -6,7 +6,12 @@
 
 import { describe, expect, test } from "bun:test"
 import type { Platform } from "./adapters/types"
-import { onConnectionDisconnected, onConnectionEstablished, resolveAccountAuth } from "./connection"
+import {
+  onConnectionDisconnected,
+  onConnectionEstablished,
+  resolveAccountAuth,
+  resolveConnectedAccount,
+} from "./connection"
 import type { SocialToolCtx } from "./ctx"
 import { createMockDb, type MockDb } from "./test-db"
 
@@ -148,7 +153,7 @@ describe("resolveAccountAuth — the connected account's host-side credential", 
   }
   const active = (identifier: string): Account => ({ identifier, status: "active" })
 
-  test("maps facebook → `facebook`, instagram → `instagram`, youtube → `google`", async () => {
+  test("maps facebook → `facebook`, instagram → `instagram_unified` then `instagram`, youtube → `google`", async () => {
     const seen: string[] = []
     const ctx = flatCtx(async (name) => {
       seen.push(name)
@@ -163,7 +168,8 @@ describe("resolveAccountAuth — the connected account's host-side credential", 
     expect(await resolveAccountAuth(ctx, "youtube" as Platform, "CHAN_1")).toMatchObject({
       connection: "google",
     })
-    expect(seen).toEqual(["facebook", "instagram", "google"])
+    // This host lists IG_1 under every name, so the first candidate holds it.
+    expect(seen).toEqual(["facebook", "instagram_unified", "google"])
   })
 
   test("reads the FLAT shape's JSON answer and the RECORD SDK shape", async () => {
@@ -185,42 +191,88 @@ describe("resolveAccountAuth — the connected account's host-side credential", 
   })
 })
 
-// `instagram_unified` (Meta's Unified login) is declared as a preview: its reads
-// wait for a live check of the Unified-login endpoints, so connecting it seeds
-// nothing, and the Instagram platform keeps reading through `instagram`.
-describe("instagram_unified preview leaves the instagram path untouched", () => {
-  test("connecting instagram_unified seeds no sync_state and enqueues nothing", async () => {
+// `instagram_unified` (Meta's Instagram API with Unified login) backs the same
+// Instagram platform as `instagram`: connecting it seeds the instagram rows and
+// the platform's credential resolves through whichever connection holds the account.
+describe("instagram_unified backs the instagram platform", () => {
+  const unifiedConnect = {
+    ...instagramConnect,
+    data: {
+      ...instagramConnect.data,
+      connectionName: "instagram_unified",
+      identifier: "17841400000000101",
+    },
+  }
+
+  test("connecting instagram_unified seeds instagram discovery/watch/dm and kicks discovery", async () => {
     const db = createMockDb()
     const ctx = makeCtx(db)
-    await onConnectionEstablished(
-      {
-        ...instagramConnect,
-        data: {
-          ...instagramConnect.data,
-          connectionName: "instagram_unified",
-          identifier: "17841400000000101",
-        },
-      },
-      ctx,
-    )
-    expect(await db.count("sync_state")).toBe(0)
-    expect(ctx.__jobs).toEqual([])
+    await onConnectionEstablished(unifiedConnect, ctx)
+    const rows = (await db.findMany("sync_state", {})) as Array<{
+      platform: string
+      account_external_id: string
+      source_type: string
+    }>
+    expect(rows.map((r) => [r.platform, r.account_external_id, r.source_type])).toEqual([
+      ["instagram", "17841400000000101", "discovery"],
+      ["instagram", "17841400000000101", "watch"],
+      ["instagram", "17841400000000101", "dm"],
+    ])
+    expect(ctx.__jobs.filter((j) => j.name === "discovery-sync").length).toBe(1)
   })
 
-  test("the instagram platform still sends the `instagram` connection's credential only", async () => {
-    const asked: string[] = []
+  test("disconnecting instagram_unified flips its instagram rows inactive", async () => {
+    const db = createMockDb()
+    const ctx = makeCtx(db)
+    await onConnectionEstablished(unifiedConnect, ctx)
+    await onConnectionDisconnected(unifiedConnect, ctx)
+    const rows = (await db.findMany("sync_state")) as Array<{ active: boolean }>
+    expect(rows.length).toBe(3)
+    expect(rows.every((r) => r.active === false)).toBe(true)
+  })
+
+  test("resolves an instagram account held only by instagram_unified", async () => {
     const ctx = {
       connections: {
-        getAccounts: async (name: string) => {
-          asked.push(name)
-          return [{ identifier: "IG_1", status: "active" }]
-        },
+        getAccounts: async (name: string) =>
+          name === "instagram_unified"
+            ? [{ identifier: "17841400000000101", status: "active" }]
+            : [],
+      },
+    } as unknown as SocialToolCtx
+    expect(await resolveAccountAuth(ctx, "instagram" as Platform, "17841400000000101")).toEqual({
+      connection: "instagram_unified",
+      identifier: "17841400000000101",
+      scheme: "bearer",
+    })
+  })
+
+  test("prefers the connection that holds the identifier when both exist", async () => {
+    const ctx = {
+      connections: {
+        getAccounts: async (name: string) =>
+          name === "instagram_unified"
+            ? [{ identifier: "17841400000000101", status: "active" }]
+            : [{ identifier: "IG_1", status: "active" }],
       },
     } as unknown as SocialToolCtx
     expect(await resolveAccountAuth(ctx, "instagram" as Platform, "IG_1")).toMatchObject({
       connection: "instagram",
     })
-    expect(asked).toEqual(["instagram"])
+    expect(
+      await resolveAccountAuth(ctx, "instagram" as Platform, "17841400000000101"),
+    ).toMatchObject({ connection: "instagram_unified" })
+  })
+
+  test("the RECORD SDK shape resolves an instagram_unified account too", async () => {
+    const ctx = {
+      connections: {
+        instagram_unified: { getAccounts: async () => [{ identifier: "IG_U", status: "active" }] },
+      },
+    } as unknown as SocialToolCtx
+    expect(await resolveAccountAuth(ctx, "instagram" as Platform, "IG_U")).toMatchObject({
+      connection: "instagram_unified",
+    })
   })
 
   test("connecting instagram still seeds the instagram platform", async () => {
@@ -229,5 +281,46 @@ describe("instagram_unified preview leaves the instagram path untouched", () => 
     await onConnectionEstablished(instagramConnect, ctx)
     const rows = (await db.findMany("sync_state", {})) as Array<{ platform: string }>
     expect(rows.map((r) => r.platform)).toEqual(["instagram", "instagram", "instagram"])
+  })
+})
+
+describe("resolveConnectedAccount: the platform's first active account whose credential resolves", () => {
+  test("skips a seeded row with no connected account behind it", async () => {
+    const db = createMockDb()
+    // A seeded (demo) row first, then the real connected account.
+    await db.insert("sync_state", {
+      platform: "instagram",
+      account_external_id: "seeded-ig",
+      source_type: "discovery",
+      active: true,
+    })
+    await db.insert("sync_state", {
+      platform: "instagram",
+      account_external_id: "17841400000000101",
+      source_type: "discovery",
+      active: true,
+    })
+    const ctx = makeCtx(db)
+    ctx.connections = {
+      getAccounts: async (name: string) =>
+        name === "instagram_unified" ? [{ identifier: "17841400000000101", status: "active" }] : [],
+    }
+    expect(await resolveConnectedAccount(ctx, "instagram" as Platform)).toEqual({
+      accountExternalId: "17841400000000101",
+      auth: { connection: "instagram_unified", identifier: "17841400000000101", scheme: "bearer" },
+    })
+  })
+
+  test("returns null when no active row resolves", async () => {
+    const db = createMockDb()
+    await db.insert("sync_state", {
+      platform: "instagram",
+      account_external_id: "seeded-ig",
+      source_type: "discovery",
+      active: true,
+    })
+    const ctx = makeCtx(db)
+    ctx.connections = { getAccounts: async () => [] }
+    expect(await resolveConnectedAccount(ctx, "instagram" as Platform)).toBeNull()
   })
 })

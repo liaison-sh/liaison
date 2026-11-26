@@ -22,6 +22,7 @@ let orgId: string
 let ownerId: string
 let otherId: string
 let docId: string
+let fileId: string
 
 beforeAll(async () => {
   await acquireTestLock()
@@ -65,6 +66,18 @@ beforeAll(async () => {
     ),
   )
   docId = doc!.id
+
+  // An image the page's text embeds, stored as the page's own file.
+  const [file] = extractRows<{ id: string }>(
+    await db.execute(
+      sql`INSERT INTO kernel.files (id, org_id, app, entity_type, entity_id, filename, mime_type,
+                                    size_bytes, storage_key, uploaded_by)
+          VALUES (gen_random_uuid(), ${orgId}::uuid, 'knowledge', 'document', ${docId}, 'diagram.png',
+                  'image/png', 4, ${`test/${docId}/diagram.png`}, ${ownerId}::uuid)
+          RETURNING id`,
+    ),
+  )
+  fileId = file!.id
 
   // Register Knowledge (and other default apps) so the manifest file-parent
   // registry is populated for this org. Required for resolveParent("knowledge", "document").
@@ -168,6 +181,72 @@ describe("Knowledge attachment RLS", () => {
         // RLS filters rows — other user sees empty list
         expect(result.files).toEqual([])
         expect(result.total).toBe(0)
+      },
+    )
+  })
+
+  it("a page's reader reads its images with the page's read scope alone", async () => {
+    // No knowledge:attachments:* scope: a page's files follow the page.
+    await withRlsContext(
+      {
+        actorType: "user",
+        orgId,
+        userId: ownerId,
+        scopes: ["knowledge:documents:read"],
+        dimensionGrants: {},
+      },
+      async (rlsTx) => {
+        const result = await listFiles(
+          {
+            app: "knowledge",
+            entityType: "document",
+            entityId: docId,
+            orgId,
+            scopes: ["knowledge:documents:read"],
+          },
+          { rlsTx },
+        )
+        expect(result.files.map((f) => f.id)).toEqual([fileId])
+        const direct = extractRows<{ id: string }>(
+          await rlsTx.execute(
+            sql`SELECT id::text AS id FROM kernel.files WHERE id = ${fileId}::uuid`,
+          ),
+        )
+        expect(direct).toHaveLength(1)
+      },
+    )
+  })
+
+  it("someone who cannot read the page cannot read its images, by list or by id", async () => {
+    await withRlsContext(
+      {
+        actorType: "user",
+        orgId,
+        userId: otherId,
+        scopes: ["knowledge:documents:read", "knowledge:documents:update"],
+        dimensionGrants: {},
+      },
+      async (rlsTx) => {
+        const direct = extractRows<{ id: string }>(
+          await rlsTx.execute(
+            sql`SELECT id::text AS id FROM kernel.files WHERE id = ${fileId}::uuid`,
+          ),
+        )
+        expect(direct).toHaveLength(0)
+      },
+    )
+  })
+
+  it("the page's owner without the page read scope reads no file of it", async () => {
+    await withRlsContext(
+      { actorType: "user", orgId, userId: ownerId, scopes: [], dimensionGrants: {} },
+      async (rlsTx) => {
+        const direct = extractRows<{ id: string }>(
+          await rlsTx.execute(
+            sql`SELECT id::text AS id FROM kernel.files WHERE id = ${fileId}::uuid`,
+          ),
+        )
+        expect(direct).toHaveLength(0)
       },
     )
   })

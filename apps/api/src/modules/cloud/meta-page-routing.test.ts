@@ -123,4 +123,35 @@ describe("metaOrgsForPageIds", () => {
     await recorded(gone, "fb-user-d", [page], null)
     expect((await metaOrgsForPageIds([page])).get(page)).toBeUndefined()
   })
+
+  // Instagram deliveries carry the IG professional account id as `entry.id`: the org whose
+  // Unified-login connection holds that account gets them (only `instagram_unified`: the
+  // Instagram-login connection is signed with another app secret and never reaches here).
+  test("an Instagram account id routes to the org whose Unified-login account holds it", async () => {
+    const ig = `1784${randomUUID().replace(/\D/g, "").slice(0, 11)}`
+    const holder = await org("Instagram holder")
+    const gone = await org("Instagram disconnected")
+    const legacy = await org("Instagram login")
+    const connect = async (
+      o: { id: string; user: string },
+      connectionName: string,
+      status: "active" | "disconnected",
+    ) =>
+      seedConnectedAccountRow({
+        orgId: o.id,
+        appName: "social",
+        connectionName,
+        ownerType: "org",
+        ownerId: null,
+        providerType: "oauth2",
+        identifier: ig,
+        status,
+        createdBy: o.user,
+      })
+    await connect(holder, "instagram_unified", "active")
+    await connect(gone, "instagram_unified", "disconnected")
+    await connect(legacy, "instagram", "active")
+    const owners = await metaOrgsForPageIds([ig, PAGE])
+    expect(owners.get(ig)).toEqual([holder.id])
+  })
 })

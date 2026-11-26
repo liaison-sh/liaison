@@ -21,7 +21,7 @@ import {
 } from "solid-js"
 import { appLabel } from "~/lib/app-label"
 import { DraftsSection } from "~/modules/app-builder/DraftsSection"
-import { useI18n } from "~/modules/i18n/i18n-context"
+import { seededCopy, type Translate, useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
@@ -134,6 +134,21 @@ export function kindLabel(t: (k: string) => string, kind: StoreKind): string {
 
 export function itemName(t: (k: string) => string, item: StoreItem): string {
   return appLabel(item.name, t, item.displayName)
+}
+
+/**
+ * The app's one-line listing summary in the reader's language: the catalog's
+ * `kernel.appSummaries.<app>` while the listing still says what the catalog's
+ * English says, else the listing as written (a third party's own words, or a
+ * newer summary the catalog has not caught up with). The long description is
+ * the fallback for an item with no listing.
+ */
+export function storeItemSummary(item: StoreItem, t: Translate): string {
+  if (item.listing?.summary)
+    return seededCopy(item.listing.summary, `kernel.appSummaries.${item.name}`, t)
+  if (item.description)
+    return seededCopy(item.description, `kernel.appDescriptions.${item.name}`, t)
+  return ""
 }
 
 /** The publisher as the store shows it: an outside app's reads as self-declared (A12). */
@@ -467,10 +482,12 @@ export const AppStorePage: Component = () => {
                       <Show
                         when={item.state !== "off" && runReason(i18n.t, item)}
                         fallback={
-                          <Show when={item.listing?.summary ?? item.description}>
-                            <span class="block truncate text-xs text-text-secondary">
-                              {item.listing?.summary ?? item.description}
-                            </span>
+                          <Show when={storeItemSummary(item, i18n.t)}>
+                            {(summary) => (
+                              <span class="block truncate text-xs text-text-secondary">
+                                {summary()}
+                              </span>
+                            )}
                           </Show>
                         }
                       >

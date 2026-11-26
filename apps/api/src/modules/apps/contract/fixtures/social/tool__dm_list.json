@@ -12,7 +12,25 @@
         "dm_conversation",
         "{\"where\":{\"status\":\"open\"},\"orderBy\":{\"last_message_at\":\"desc\"},\"limit\":1000}"
       ],
-      "reply": "[{\"id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.917666+00\",\"updated_at\":\"2026-11-13 01:32:44.005362+00\",\"platform\":\"facebook\",\"external_id\":\"t_10000000000000001\",\"contact_id\":null,\"participant_handle\":\"Camille Martin\",\"participant_external_id\":\"6000000000000001\",\"participant_display_name\":\"Camille Martin\",\"last_inbound_at\":\"2025-12-31 23:50:00+00\",\"last_message_at\":\"2025-12-31 23:50:00+00\",\"last_message_snippet\":\"Great, can you put one aside for me?\",\"unread_count\":0,\"status\":\"open\",\"suggested_reply\":null,\"approval_request_id\":null,\"metadata\":{\"pageId\":\"104857600000001\"}}]"
+      "reply": "[{\"id\":\"30652bc7-648d-41f6-863b-b99d5a244325\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-26 15:34:32.625149+00\",\"updated_at\":\"2026-11-26 15:34:32.716687+00\",\"platform\":\"facebook\",\"external_id\":\"t_10000000000000001\",\"contact_id\":null,\"participant_handle\":\"Camille Martin\",\"participant_external_id\":\"6000000000000001\",\"participant_display_name\":\"Camille Martin\",\"last_inbound_at\":\"2025-12-31 23:50:00+00\",\"last_message_at\":\"2025-12-31 23:50:00+00\",\"last_message_snippet\":\"Great, can you put one aside for me?\",\"unread_count\":0,\"status\":\"open\",\"suggested_reply\":null,\"approval_request_id\":null,\"metadata\":{\"pageId\":\"104857600000001\"}}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["sync_state", "{\"where\":{\"platform\":\"facebook\",\"active\":true}}"],
+      "reply": "[{\"id\":\"cfe530d5-a7e0-4f8b-88a2-d9638a326d27\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-26 15:34:31.869775+00\",\"updated_at\":\"2026-11-26 15:34:32.149278+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDE0OjAwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"33c6fa98-f4e9-4393-b64b-899c870bd86f\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-26 15:34:31.907611+00\",\"updated_at\":\"2026-11-26 15:34:32.721732+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDIzOjUwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"dmStateRepair\":{\"done\":true,\"offset\":0,\"version\":1},\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"f99f555b-0394-4b5b-bdf9-2559dc72b1ef\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-26 15:34:31.890011+00\",\"updated_at\":\"2026-11-26 15:34:31.890011+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+    },
+    {
+      "method": "connections_getAccounts",
+      "args": ["facebook"],
+      "reply": "[{\"id\":\"ad94c3d7-09c4-45fa-823d-1e47692c1576\",\"identifier\":\"104857600000001\",\"displayName\":\"Resonant Audio Labs\",\"status\":\"active\"}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "sync_state",
+        "{\"where\":{\"platform\":\"instagram\",\"source_type\":\"dm\",\"active\":true},\"limit\":200}"
+      ],
+      "reply": "[]"
     }
   ]
 }

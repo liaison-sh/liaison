@@ -18,7 +18,7 @@
 // or `?x=1` cannot redirect the call.
 
 import { facebookAdapter } from "./adapters/facebook"
-import { instagramAdapter } from "./adapters/instagram"
+import { instagramAdapter, UNIFIED_CONNECTION } from "./adapters/instagram"
 import type {
   AdapterContext,
   OutboundRequest,
@@ -27,9 +27,9 @@ import type {
   PlatformAdapter,
 } from "./adapters/types"
 import { youtubeAdapter } from "./adapters/youtube"
-import { resolveAccountAuth } from "./connection"
-import type { SocialToolCtx } from "./ctx"
-import { dmReplyWindow, dmWindowTag } from "./dm-window"
+import { resolveConnectedAccount } from "./connection"
+import type { SocialAuth, SocialToolCtx } from "./ctx"
+import { type DmWindowOptions, dmReplyWindow, dmWindowTag } from "./dm-window"
 import { refreshConversationState } from "./ingest"
 import { pendingFindingApprovals } from "./pending"
 
@@ -129,10 +129,13 @@ function dateTime(v: string | null | undefined): string | null {
  *
  * `headers` (from the adapter's `OutboundRequest.headers`) are merged OVER the
  * default content-type — this is how a Page-scoped Facebook call carries its
- * `Authorization: Bearer <page-token>` header. The host sandbox-fetch bridge
- * does NOT inject per-connection OAuth headers on POSTs (only sync.ts's GETs
- * build their own `Authorization` header explicitly); without this merge a
- * Page POST would go out with no credentials at all.
+ * `Authorization: Bearer <page-token>` header (the token the adapter resolved
+ * from `/me/accounts`).
+ *
+ * `auth` names the connected account whose token the host adds, on a POST as on
+ * a GET. The host REPLACES any Authorization header with it, so it is passed
+ * for Instagram only (`postAuth`): a Facebook Page POST passing it would swap
+ * the Page token for the user token.
  */
 async function postJson(
   ctx: SocialToolCtx,
@@ -140,13 +143,40 @@ async function postJson(
   body: Record<string, unknown>,
   headers?: Record<string, string>,
   timeoutMs?: number,
+  auth?: SocialAuth,
 ): Promise<{ status: number; body?: string }> {
   return ctx.fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
     ...(timeoutMs ? { timeoutMs } : {}),
+    ...(auth ? { auth } : {}),
   })
+}
+
+/**
+ * The credential a POST names: the connected Instagram account's (either login),
+ * whose host token authorizes the call; none for Facebook (the Page token rides
+ * in the adapter's header) or YouTube (unchanged).
+ */
+function postAuth(platform: Platform, adapterCtx: AdapterContext): SocialAuth | undefined {
+  return platform === "instagram" ? adapterCtx.auth : undefined
+}
+
+/**
+ * An Instagram account connected with the Unified login sends without Meta's
+ * HUMAN_AGENT tag (instagram.ts `dmRequest`), so its reply window is 24 hours.
+ */
+function dmWindowOptions(adapterCtx: AdapterContext): DmWindowOptions {
+  return adapterCtx.auth?.connection === UNIFIED_CONNECTION ? { humanAgent: false } : {}
+}
+
+/** The DM window options the send path uses for a platform, for read-time window reporting. */
+export async function dmWindowOptionsFor(
+  ctx: SocialToolCtx,
+  platform: Platform,
+): Promise<DmWindowOptions> {
+  return dmWindowOptions(await resolveOutboundAdapterContext(ctx, platform))
 }
 
 async function loadFinding(ctx: SocialToolCtx, id: string): Promise<FindingRow | null> {
@@ -167,33 +197,35 @@ interface SyncStateAccountRow {
 }
 
 /**
- * Build an `AdapterContext` for an outbound (post-back) call: resolves the
- * platform's connected-account external id from any active `sync_state` row
- * (mirroring sync.ts's `accountIdForPlatform`; post-back has no watch/finding
- * row carrying it) and the account's credential via `resolveAccountAuth` (added host-side).
+ * Build an `AdapterContext` for an outbound (post-back) call: the platform's
+ * connected account is the first active `sync_state` row whose credential
+ * resolves (`resolveConnectedAccount`; post-back has no watch/finding row
+ * carrying it), so a seeded row with no account behind it is never picked over
+ * the connected one. `auth` names that account's connection (for Instagram,
+ * `instagram_unified` or `instagram`); the host adds its token.
  * Adapters that need an async page-token lookup (Facebook's `replyRequest`/
  * `dmRequest`/`likeRequest`) use this `ctx.auth` (the connected USER
  * account) to call `/me/accounts` themselves and resolve the correct PAGE
- * token — see facebook.ts. `accountExternalId` is left blank; the outbound
- * adapters here don't use it (they resolve Page ids from the target's own
- * externalId or explicit `pageId`), only `fetch`/`auth` matter.
+ * token — see facebook.ts. With no resolvable account, the first active row's
+ * id is kept with no `auth`, and the call fails with the provider's own error.
  */
 async function resolveOutboundAdapterContext(
   ctx: SocialToolCtx,
   platform: Platform,
 ): Promise<AdapterContext> {
+  const connected = await resolveConnectedAccount(ctx, platform)
+  if (connected) {
+    return {
+      accountExternalId: connected.accountExternalId,
+      fetch: ctx.fetch,
+      auth: connected.auth,
+    }
+  }
   const [state] = (await ctx.db.findMany("sync_state", {
     where: { platform, active: true },
     limit: 1,
   })) as SyncStateAccountRow[]
-  const auth = state
-    ? ((await resolveAccountAuth(ctx, platform, state.account_external_id)) ?? undefined)
-    : undefined
-  return {
-    accountExternalId: state?.account_external_id ?? "",
-    fetch: ctx.fetch,
-    ...(auth ? { auth } : {}),
-  }
+  return { accountExternalId: state?.account_external_id ?? "", fetch: ctx.fetch }
 }
 
 /**
@@ -402,7 +434,14 @@ export async function replyToFinding(
       },
     },
   })
-  const res = await postJson(ctx, req.url, req.body, req.headers, REPLY_POST_TIMEOUT_MS)
+  const res = await postJson(
+    ctx,
+    req.url,
+    req.body,
+    req.headers,
+    REPLY_POST_TIMEOUT_MS,
+    postAuth(finding.platform, adapterCtx),
+  )
   const verdict = classifyHttp(res.status)
   if (verdict !== "ok") {
     // §4.3/§7: a gone (404/410) or blocked parent is a terminal `failed` state
@@ -666,8 +705,9 @@ export async function sendDm(
     }
   }
 
-  // Recompute the window AT SEND TIME.
-  const tag = dmWindowTag(convo.last_inbound_at)
+  // Recompute the window AT SEND TIME, for the account that will send it.
+  const adapterCtx = await resolveOutboundAdapterContext(ctx, convo.platform)
+  const tag = dmWindowTag(convo.last_inbound_at, new Date(), dmWindowOptions(adapterCtx))
   if (tag === "closed") {
     return { status: "window_closed", reason: "reply_window_closed" }
   }
@@ -681,7 +721,6 @@ export async function sendDm(
   // conversation synced before this fix; `dmRequest` falls back to the
   // first managed page in that case (documented there), never the user token.
   const pageId = typeof convo.metadata?.pageId === "string" ? convo.metadata.pageId : null
-  const adapterCtx = await resolveOutboundAdapterContext(ctx, convo.platform)
   // The Send API addresses the PERSON, not the thread: a synced conversation's
   // external_id is the Graph conversation id, the participant id is the PSID /
   // IGSID. (A webhook-created conversation is keyed on the sender id itself.)
@@ -703,7 +742,14 @@ export async function sendDm(
     approval_request_id: ctx.approval?.approvalRequestId ?? null,
     occurred_at: new Date().toISOString(),
   })
-  const res = await postJson(ctx, req.url, req.body, req.headers)
+  const res = await postJson(
+    ctx,
+    req.url,
+    req.body,
+    req.headers,
+    undefined,
+    postAuth(convo.platform, adapterCtx),
+  )
   const verdict = classifyHttp(res.status)
   if (verdict !== "ok") {
     // The platform refused the message: nothing went out, so the intent goes
@@ -744,7 +790,8 @@ export async function sendDmPreflight(
       },
     }
   }
-  const window = dmReplyWindow(convo.last_inbound_at)
+  const adapterCtx = await resolveOutboundAdapterContext(ctx, convo.platform)
+  const window = dmReplyWindow(convo.last_inbound_at, new Date(), dmWindowOptions(adapterCtx))
   if (!window.canSend) {
     return {
       error: {
@@ -844,7 +891,14 @@ export async function likeItem(
   const req: OutboundRequest | null =
     (await adapter.likeRequest?.({ externalId: finding.external_id }, adapterCtx)) ?? null
   if (!req) return { status: "unsupported", reason: "like_unsupported_for_target" }
-  const res = await postJson(ctx, req.url, req.body, req.headers)
+  const res = await postJson(
+    ctx,
+    req.url,
+    req.body,
+    req.headers,
+    undefined,
+    postAuth(finding.platform, adapterCtx),
+  )
   const verdict = classifyHttp(res.status)
   if (verdict !== "ok") return { status: "failed", reason: verdict }
   return { status: "completed" }

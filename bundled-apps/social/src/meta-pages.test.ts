@@ -32,7 +32,7 @@ function harness(reply: () => Reply) {
       calls.push(url)
       return reply()
     },
-    connections: { getAccounts: async () => connectedAccountList() },
+    connections: { getAccounts: async (name: string) => connectedAccountList(name) },
     config: { get: async () => null },
     async emit() {},
     logger: { warn() {}, info() {}, error() {}, debug() {} },

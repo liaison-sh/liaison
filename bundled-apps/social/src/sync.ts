@@ -22,7 +22,7 @@ import {
   shouldAutoWatch,
   type WatchStatus,
 } from "./auto-watch"
-import { resolveAccountAuth } from "./connection"
+import { resolveAccountAuth, resolveConnectedAccount } from "./connection"
 import type { SocialAuth, SocialToolCtx } from "./ctx"
 import { emitFindingCreated, upsertFinding } from "./ingest"
 import { watchObject } from "./internal"
@@ -467,22 +467,6 @@ function isDue(row: WatchedRow, now: Date): boolean {
 }
 
 /**
- * The connected-account external id for a platform — the OAuth-token identifier
- * the watch poller resolves a token against (watch rows don't carry it). Read
- * from any active sync_state row for the platform; `null` when none is connected.
- */
-async function accountIdForPlatform(
-  ctx: SocialToolCtx,
-  platform: Platform,
-): Promise<string | null> {
-  const [state] = (await ctx.db.findMany("sync_state", {
-    where: { platform, active: true },
-    limit: 1,
-  })) as SyncStateRow[]
-  return state?.account_external_id ?? null
-}
-
-/**
  * Load (or lazily construct) the per-org YouTube unit budget for `now`'s quota
  * day (Pacific, Google's reset clock).
  *
@@ -580,11 +564,8 @@ export async function runWatchPoller(
     platform: Platform,
   ): Promise<{ accountExternalId: string; auth: SocialAuth } | null> {
     if (accountByPlatform.has(platform)) return accountByPlatform.get(platform) ?? null
-    const accountExternalId = await accountIdForPlatform(ctx, platform)
-    const auth = accountExternalId
-      ? await resolveAccountAuth(ctx, platform, accountExternalId)
-      : null
-    const account = accountExternalId && auth ? { accountExternalId, auth } : null
+    // The first active account whose credential resolves (a seeded row is skipped).
+    const account = await resolveConnectedAccount(ctx, platform)
     accountByPlatform.set(platform, account)
     return account
   }

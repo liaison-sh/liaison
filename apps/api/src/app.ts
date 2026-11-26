@@ -177,6 +177,7 @@ import { portalAuthMiddleware, portalAvailableGate } from "~/modules/portal/auth
 import { portalAuthRoutes } from "~/modules/portal/auth-routes"
 import { portalRoutes } from "~/modules/portal/routes"
 import { PORTAL_AUTH_PREFIX, PORTAL_PREFIX } from "~/modules/portal/routes-list"
+import { firstRunChecklistRoutes } from "~/modules/provisioning/checklist-route"
 import { pushRoutes } from "~/modules/push/routes"
 import { savedViewsRoutes } from "~/modules/saved-views/routes"
 import { scopeRequests } from "~/modules/scope-requests/routes"
@@ -1155,6 +1156,10 @@ app.route("/api/attention-items", attentionRoutes)
 // Home's "Today's brief": the caller's own morning-brief routine's newest output.
 app.use("/api/home/*", authMw, orgLimiter)
 app.route("/api/home", homeBriefRoutes)
+
+// The first-open setup card's checklist, read live (provisioning/checklist-route.ts).
+app.use("/api/first-run/*", authMw, orgLimiter)
+app.route("/api/first-run", firstRunChecklistRoutes)
 
 // Phase 16 Task A8a — user-scoped subscription rules + installed-app axes registry.
 app.use("/api/attention/subscriptions", authMw, orgLimiter)

@@ -302,6 +302,14 @@ const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFo
       onTitleAdopted: (title) => {
         if (titleEl) titleEl.textContent = title
       },
+      // Someone saved meanwhile and our edits touch different blocks: both are kept.
+      onMerged: (merged) => {
+        if (!editor || lastText) return false
+        editor.applyRemote(merged.body)
+        if (titleEl && titleEl.textContent !== merged.title) titleEl.textContent = merged.title
+        addToast({ type: "info", message: i18n.t("knowledge.autosave.mergedToast") })
+        return true
+      },
     })
 
   const startEditing = async (d: KnowledgeDocumentFetched) => {

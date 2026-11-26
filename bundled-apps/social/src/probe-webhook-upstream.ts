@@ -22,9 +22,9 @@
 // an older post or thread. That errs on the safe side: a missed event only
 // delays a page, a counted event that Meta never sends would page falsely.
 //
-// Instagram is left out: its webhooks belong to a separate product
-// subscription, and the shared parser does not read Instagram's `comments`
-// field, so nothing here proves they are delivered.
+// Instagram is left out (and the job does not run for `instagram_unified`): its
+// webhooks are a separate subscription, set in Meta's App Dashboard, and this
+// probe reads Facebook Pages only, so it proves nothing about Instagram delivery.
 //
 // Contract: `{ upstreamActivityAt: ISO }` when a subscribed Page has such an
 // event, `{ upstreamActivityAt: null }` when there is no live sender (no

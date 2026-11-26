@@ -12,6 +12,7 @@ import { makeHmacTestBridge } from "@liaison/test-helpers/webhook-hmac"
 import { parseJsonCursor } from "./adapters/cursor"
 import { connectedAccountList } from "./adapters/mock-fetch"
 import type { SocialToolCtx } from "./ctx"
+import { DM_ACCESS_DISABLED_METADATA_KEY } from "./dm-access"
 import {
   discoverySyncJob,
   dmSyncJob,
@@ -214,7 +215,7 @@ describe("job handlers smoke (B5)", () => {
       info: () => {},
     }
     ;(ctx as { connections: unknown }).connections = {
-      getAccounts: async () => connectedAccountList(),
+      getAccounts: async (name: string) => connectedAccountList(name),
     }
     await discoverySyncJob({}, ctx)
     // facebook failed and was LOGGED — not silently swallowed, not job-fatal.
@@ -335,7 +336,7 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
     const ctx = ctxWith(db) as TestCtx & {
       __logged: Array<{ level: string; msg: string; fields?: Record<string, unknown> }>
     }
-    ctx.connections = { getAccounts: async () => connectedAccountList() } as never
+    ctx.connections = { getAccounts: async (name: string) => connectedAccountList(name) } as never
     ctx.fetch = (async (url: string) => ({ headers: {}, ...fetchImpl(url) })) as never
     ctx.logger = {
       error: (msg: string, fields?: unknown) => {
@@ -403,6 +404,61 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
     expect(hit).toBeDefined()
     expect(hit?.level).toBe("warn")
     expect(hit?.fields).toEqual(expect.objectContaining({ error: "RATE_LIMITED" }))
+  })
+
+  // Instagram's "Allow access to messages" switched off: an explicit state on the
+  // account's sync_state row (read by connections_status and dm_list), said once
+  // at warn, and cleared by the first sync that lands.
+  test("dmSyncJob stamps Instagram DM access disabled on sync_state, warns once, clears on success", async () => {
+    const db = createMockDb()
+    let disabled = true
+    const ctx = dmSyncCtx(db, (url) => {
+      if (url.includes("/conversations") && disabled) {
+        return {
+          status: 403,
+          body: JSON.stringify({
+            error: {
+              message:
+                "(#200) The account owner has disabled access to Instagram Direct Messaging Outside of Instagram App.",
+              type: "OAuthException",
+              code: 200,
+            },
+          }),
+        }
+      }
+      if (url.includes("/conversations")) {
+        return { status: 200, body: JSON.stringify({ data: [], paging: { cursors: {} } }) }
+      }
+      return { status: 200, body: JSON.stringify({ id: "pro-ig1", username: "our_brand" }) }
+    })
+    await db.insert("sync_state", {
+      id: "dm-ss-ig",
+      platform: "instagram",
+      account_external_id: "ig1",
+      source_type: "dm",
+      cursor: "old",
+      active: true,
+    })
+    await dmSyncJob({}, ctx)
+    await dmSyncJob({}, ctx)
+    const read = async () =>
+      (await db.findMany("sync_state", { where: { id: "dm-ss-ig" } }))[0] as {
+        cursor: string
+        last_synced_at?: string | null
+        metadata?: Record<string, unknown> | null
+      }
+    const ss = await read()
+    expect(ss.cursor).toBe("old")
+    expect(ss.last_synced_at ?? null).toBeNull()
+    expect(typeof ss.metadata?.[DM_ACCESS_DISABLED_METADATA_KEY]).toBe("string")
+    const said = ctx.__logged.filter((l) => /instagram direct messages are off/i.test(l.msg))
+    expect(said.map((l) => l.level)).toEqual(["warn"])
+
+    disabled = false
+    await dmSyncJob({}, ctx)
+    const after = await read()
+    expect(after.metadata?.[DM_ACCESS_DISABLED_METADATA_KEY]).toBeUndefined()
+    expect(after.last_synced_at ?? null).not.toBeNull()
   })
 
   test("dmSyncJob on a successful sync advances cursor + last_synced_at and lands the batch", async () => {
@@ -799,7 +855,7 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
     })
     const logged: Array<{ msg: string; fields?: Record<string, unknown> }> = []
     const ctx = ctxWith(db) as TestCtx
-    ctx.connections = { getAccounts: async () => connectedAccountList() } as never
+    ctx.connections = { getAccounts: async (name: string) => connectedAccountList(name) } as never
     ctx.logger = {
       error: (msg: string, fields?: unknown) =>
         logged.push({ msg, fields: fields as Record<string, unknown> | undefined }),
@@ -838,7 +894,7 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
     const errors: string[] = []
     const warns: Array<{ msg: string; fields?: Record<string, unknown> }> = []
     const ctx = ctxWith(db) as TestCtx
-    ctx.connections = { getAccounts: async () => connectedAccountList() } as never
+    ctx.connections = { getAccounts: async (name: string) => connectedAccountList(name) } as never
     ctx.logger = {
       error: (msg: string) => errors.push(msg),
       warn: (msg: string, fields?: unknown) =>
@@ -876,7 +932,7 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
     })
     const errors: Array<{ msg: string; fields?: Record<string, unknown> }> = []
     const ctx = ctxWith(db) as TestCtx
-    ctx.connections = { getAccounts: async () => connectedAccountList() } as never
+    ctx.connections = { getAccounts: async (name: string) => connectedAccountList(name) } as never
     ctx.logger = {
       error: (msg: string, fields?: unknown) =>
         errors.push({ msg, fields: fields as Record<string, unknown> | undefined }),
@@ -922,7 +978,7 @@ describe("webhook DMs and polled threads share one conversation", () => {
   const PSID = "cust-9"
   function pollCtx(db: MockDb): TestCtx {
     const ctx = ctxWith(db)
-    ctx.connections = { getAccounts: async () => connectedAccountList() } as never
+    ctx.connections = { getAccounts: async (name: string) => connectedAccountList(name) } as never
     ctx.fetch = (async (url: string) => ({ headers: {}, ...pollRoutes(url) })) as never
     return ctx
   }

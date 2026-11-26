@@ -35,8 +35,8 @@ import { renderMarkdown } from "./markdown"
 // The editor is its own chunk; while it loads the page shows its rendered text.
 const PageTextEditor = lazy(() => import("~/modules/editor/PageTextEditor"))
 
-/** What the server asks of a viewer to list or download a document's files. */
-const ATTACHMENTS_SCOPE = "knowledge:attachments:download"
+/** A page's files follow the page: whoever may read it may list and open them. */
+const ATTACHMENTS_SCOPE = "knowledge:documents:read"
 
 export interface PageBodyDoc {
   id: string

@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from "bun:test"
 import type { SocialToolCtx } from "./ctx"
+import { DM_ACCESS_DISABLED_MESSAGE, DM_ACCESS_DISABLED_METADATA_KEY } from "./dm-access"
 import {
   countsRead,
   dmGet,
@@ -351,5 +352,88 @@ describe("dm_list — null-recency rows must not starve the window", () => {
     const list = await dmList({ limit: 3 }, makeCtx(db))
     const ids = (list.conversations as Array<{ id: string }>).map((c) => c.id)
     expect(ids).toEqual(["real1", "real2"])
+  })
+})
+
+// The read-time window must match the send-time one: an Instagram account connected with the
+// Unified login sends without the human agent tag, so its window is 24 hours, not 7 days.
+describe("dm reply window by Instagram connection", () => {
+  const IG_ID = "17841400000000101"
+  const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000).toISOString()
+  async function seed(db: MockDb): Promise<void> {
+    await db.insert("sync_state", {
+      platform: "instagram",
+      account_external_id: IG_ID,
+      source_type: "discovery",
+      active: true,
+    })
+    await db.insert("dm_conversation", {
+      id: "c1",
+      platform: "instagram",
+      external_id: "CONV_1",
+      status: "open",
+      last_inbound_at: threeDaysAgo,
+      last_message_snippet: "hi",
+    })
+  }
+  function holding(connection: string) {
+    return {
+      getAccounts: async (name: string) =>
+        name === connection ? [{ identifier: IG_ID, status: "active" }] : [],
+    }
+  }
+
+  test("unified account, 3 days after the last inbound: closed in dm_get and dm_list", async () => {
+    const db = createMockDb()
+    await seed(db)
+    const ctx = makeCtx(db)
+    ctx.connections = holding("instagram_unified")
+    const got = await dmGet({ conversation_id: "c1" }, ctx)
+    const listed = await dmList({}, ctx)
+    const tagOf = (c: unknown) => (c as { reply_window?: { tag: string } }).reply_window?.tag
+    expect(tagOf(got.conversation)).toBe("closed")
+    expect(tagOf(listed.conversations[0])).toBe("closed")
+  })
+
+  test("Instagram-login account, 3 days after: still the human-agent window", async () => {
+    const db = createMockDb()
+    await seed(db)
+    const ctx = makeCtx(db)
+    ctx.connections = holding("instagram")
+    const got = await dmGet({ conversation_id: "c1" }, ctx)
+    expect((got.conversation as { reply_window?: { tag: string } }).reply_window?.tag).toBe(
+      "human_agent",
+    )
+  })
+})
+
+describe("dm_list notices", () => {
+  test("an Instagram account with DM access off comes back as a notice that says how to turn it on", async () => {
+    const db = createMockDb()
+    await db.insert("sync_state", {
+      id: "dm-ss-ig",
+      platform: "instagram",
+      account_external_id: "17841400000000101",
+      source_type: "dm",
+      active: true,
+      metadata: { [DM_ACCESS_DISABLED_METADATA_KEY]: "2026-11-26T10:00:00.000Z" },
+    })
+    const list = await dmList({}, makeCtx(db))
+    expect(list.notices).toEqual([
+      {
+        code: "dm_access_disabled",
+        platform: "instagram",
+        accountExternalId: "17841400000000101",
+        since: "2026-11-26T10:00:00.000Z",
+        message: DM_ACCESS_DISABLED_MESSAGE,
+      },
+    ])
+    expect(DM_ACCESS_DISABLED_MESSAGE).toContain("Allow access to messages")
+    expect(DM_ACCESS_DISABLED_MESSAGE).toContain("Connected tools")
+  })
+
+  test("no stamped account, no notices", async () => {
+    const list = await dmList({}, makeCtx(createMockDb()))
+    expect(list.notices).toEqual([])
   })
 })

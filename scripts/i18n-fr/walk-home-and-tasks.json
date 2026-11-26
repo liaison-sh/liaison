@@ -1,0 +1,12 @@
+{
+  "key": {
+    "kernel.homeStatusNeedYouNowOne": "requiert votre attention",
+    "kernel.homeStatusNeedYouNowMany": "requièrent votre attention",
+    "kernel.homeStatusOtherWork": "dans vos autres tâches",
+    "kernel.homeStatusUpdated": "mis à jour",
+    "kernel.homeStatusNothingUrgent": "Rien ne vous attend",
+    "kernel.allClear": "Rien à signaler",
+    "kernel.attentionTitle.mailboxBlocked": "La boîte mail {{email}} ne se synchronise plus : ses clés de chiffrement sont inutilisables. Ouvrez Paramètres > Mail pour les réinitialiser.",
+    "kernel.attentionTitle.mailboxNotSyncing": "La boîte mail {{email}} ne se synchronise pas encore : configurez son chiffrement dans Paramètres > Mail pour commencer à recevoir des mails."
+  }
+}

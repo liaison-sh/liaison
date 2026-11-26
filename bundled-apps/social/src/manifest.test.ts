@@ -41,6 +41,8 @@ describe("social manifest (B1)", () => {
     // 0.6.65: one deduplicated discovery run after a connect; job timeouts declared.
     // 0.6.66: watch_object commits the watch and its backfilled finding links in one batch, with no
     // transaction held across the run.
+    // 0.7.1: Instagram DMs switched off by the owner ("Allow access to messages") are an explicit
+    // state (connections_status issues, dm_list notices, a Messages notice), not an empty sync.
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/)
     expect(manifest.packageFormat).toBe(1)
   })
@@ -153,8 +155,8 @@ describe("social declarative settings", () => {
       ]),
     )
     expect(purposes).toEqual({
-      instagram: "Instagram account",
-      instagram_unified: "Instagram account (Unified login, preview)",
+      instagram: "Instagram account (Instagram login, older Meta apps)",
+      instagram_unified: "Instagram account",
       facebook: "Facebook Page",
       google: "Google account (YouTube)",
     })
@@ -187,10 +189,10 @@ describe("social declarative settings", () => {
   })
 })
 
-// Meta's Instagram API with Unified login, for Meta apps that no longer offer
-// API setup with Instagram login: declared, marked as a preview, never a
-// replacement of `instagram`.
-describe("instagram_unified connection (preview)", () => {
+// Meta's Instagram API with Unified login: the Instagram connection for current
+// Meta apps (the Instagram-login one stays for older apps). Same Meta app as
+// Facebook, so it mirrors the same app secret for webhook signatures.
+describe("instagram_unified connection", () => {
   const conn = manifest.connections.instagram_unified
   const legacy = manifest.connections.instagram
 
@@ -200,7 +202,10 @@ describe("instagram_unified connection (preview)", () => {
     expect(conn.tokenUrl).toBe("https://graph.facebook.com/v26.0/oauth/access_token")
     // The configuration carries the permissions: no `scope` is sent.
     expect(conn.scopes).toEqual([])
-    expect(conn.extraParams).toEqual({ override_default_response_type: "true" })
+    // prompt=login lets the person choose Instagram or Facebook credentials, as Meta's own login
+    // URL for an "Instagram Login Compatible" configuration does; without it Meta reuses a
+    // Facebook session and lists only that account's portfolios.
+    expect(conn.extraParams).toEqual({ override_default_response_type: "true", prompt: "login" })
     expect(conn.authorizeConfigParams).toEqual({
       config_id: { configKey: "instagramLoginConfigurationId", pattern: "^[0-9]{1,30}$" },
     })
@@ -220,18 +225,26 @@ describe("instagram_unified connection (preview)", () => {
     expect(conn.refreshTokenUrl).toBeUndefined()
   })
 
-  test("is an optional preview whose guide says so, picks Never and how to revoke", () => {
-    expect(conn.optional).toBe(true)
-    expect(conn.description).toStartWith("Preview: reads pending verification.")
-    expect(conn.setupGuide.summary).toContain("Preview: reads pending verification")
+  test("is the primary Instagram connection whose guide asks the three permissions, Never and how to revoke", () => {
+    // Unified login is "Instagram" in Settings; the older Instagram login is the optional alternative.
+    expect(conn.optional).toBeUndefined()
+    expect(legacy.optional).toBe(true)
+    expect(conn.description).not.toContain("Preview")
+    expect(conn.description).not.toContain("does not read or post")
+    expect(conn.setupGuide.summary).not.toContain("Preview")
     expect(conn.setupGuide.summary).toContain("remove the app from the business portfolio")
     const text = conn.setupGuide.steps.map((s: { text: string }) => s.text).join("\n")
     expect(text).toContain("**Business settings > Accounts > Instagram accounts**")
     expect(text).toContain("**Manage messaging & content on Instagram**")
     expect(text).toContain("**API setup with Unified login**")
     expect(text).toContain("**Create new configuration**")
+    expect(text).toContain(
+      "instagram_basic, instagram_manage_comments and instagram_manage_messages",
+    )
+    expect(text).not.toContain("instagram_content_publish")
     expect(text).toContain("choose **Never**")
     expect(text).toContain("**Configuration ID**")
+    expect(text).toContain("Roles > Instagram testers**")
     for (const step of conn.setupGuide.steps as Array<{
       who: string
       minutes?: number
@@ -241,6 +254,13 @@ describe("instagram_unified connection (preview)", () => {
       expect(typeof step.minutes).toBe("number")
       if (step.who === "human") expect(step.url ?? step.place).toBeTruthy()
     }
+  })
+
+  test("mirrors the Meta app secret webhooks are signed with, after facebook", () => {
+    expect(conn.clientSecretConfigKey).toBe("socialMetaAppSecret")
+    // The secret-mirror fallback takes the first connection declaring the key.
+    const names = Object.keys(manifest.connections)
+    expect(names.indexOf("facebook")).toBeLessThan(names.indexOf("instagram_unified"))
   })
 
   test("leaves the Instagram-login connection as it was", () => {
@@ -253,11 +273,15 @@ describe("instagram_unified connection (preview)", () => {
     ])
   })
 
-  test("is read by no job: nothing syncs through it yet", () => {
-    for (const job of Object.values(
-      manifest.jobs as Record<string, { runsFor?: { connection?: string[] } }>,
-    )) {
-      expect(job.runsFor?.connection ?? []).not.toContain("instagram_unified")
+  test("the sync jobs run for it; the Facebook-only webhook probe does not", () => {
+    const jobs = manifest.jobs as Record<string, { runsFor?: { connection?: string[] } }>
+    for (const name of ["discovery-sync", "watch-poller", "dm-sync"]) {
+      expect(jobs[name]?.runsFor?.connection).toContain("instagram_unified")
     }
+    expect(jobs["probe-webhook-upstream"]?.runsFor?.connection).not.toContain("instagram_unified")
+  })
+
+  test("connections_status names it", () => {
+    expect(manifest.tools.connections_status.description).toContain("instagram_unified")
   })
 })

@@ -13,16 +13,26 @@ const DAY = 24 * H
 
 export type DmWindowTag = "none" | "human_agent" | "closed"
 
+/**
+ * `humanAgent: false` for an account that sends without the HUMAN_AGENT tag (an
+ * Instagram account connected with the Unified login): its window is the
+ * standard 24 hours only, so past it the window is `closed`, never `human_agent`.
+ */
+export interface DmWindowOptions {
+  humanAgent?: boolean
+}
+
 export function dmWindowTag(
   lastInboundAt: string | Date | null,
   now: Date = new Date(),
+  opts: DmWindowOptions = {},
 ): DmWindowTag {
   if (lastInboundAt == null) return "closed"
   const t = typeof lastInboundAt === "string" ? Date.parse(lastInboundAt) : lastInboundAt.getTime()
   if (Number.isNaN(t)) return "closed"
   const delta = now.getTime() - t
   if (delta <= 24 * H) return "none"
-  if (delta <= 7 * DAY) return "human_agent"
+  if (opts.humanAgent !== false && delta <= 7 * DAY) return "human_agent"
   return "closed"
 }
 
@@ -53,8 +63,9 @@ export interface DmReplyWindow {
 export function dmReplyWindow(
   lastInboundAt: string | Date | null,
   now: Date = new Date(),
+  opts: DmWindowOptions = {},
 ): DmReplyWindow {
-  const tag = dmWindowTag(lastInboundAt, now)
+  const tag = dmWindowTag(lastInboundAt, now, opts)
   let daysSinceLastInbound: number | null = null
   if (lastInboundAt != null) {
     const t =
@@ -95,10 +106,16 @@ export function dmReplyWindow(
             ? "No inbound message on record, so the reply window cannot be opened, so an API send is not " +
               "possible. Do NOT claim a message was sent; tell the user the message must go via the " +
               "native app or another channel."
-            : "The reply window is CLOSED (more than 7 days since the last inbound message), so an API " +
-              "send is not possible and would be rejected at send time. Do NOT claim or attempt a send; " +
-              "tell the user the messaging window has closed and the message must go via the native app " +
-              "or another channel.",
+            : opts.humanAgent === false
+              ? "The reply window is CLOSED (more than 24 hours since the last inbound message; this " +
+                "account sends without the platform's human-agent tag, so it has no 7-day window), so an " +
+                "API send is not possible and would be rejected at send time. Do NOT claim or attempt a " +
+                "send; tell the user the messaging window has closed and the message must go via the " +
+                "native app or another channel."
+              : "The reply window is CLOSED (more than 7 days since the last inbound message), so an API " +
+                "send is not possible and would be rejected at send time. Do NOT claim or attempt a send; " +
+                "tell the user the messaging window has closed and the message must go via the native app " +
+                "or another channel.",
       }
   }
 }

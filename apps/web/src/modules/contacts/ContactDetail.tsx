@@ -264,7 +264,7 @@ export const ContactDetail: Component<ContactDetailProps> = (props) => {
                         <span aria-hidden="true" class="px-1.5 text-text-tertiary/60">
                           ·
                         </span>
-                        <span>
+                        <span class="whitespace-nowrap">
                           {i18n.t("contacts.editedWhen", {
                             when: relativeTime(contact()?.updatedAt, i18n.locale()),
                           })}

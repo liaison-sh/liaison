@@ -9,6 +9,7 @@
 // the deferred work the webhook handler enqueues after its fast-ack 200.
 
 import { facebookAdapter, sameReplyText } from "./adapters/facebook"
+import { instagramAdapter } from "./adapters/instagram"
 import type { NormalizedFinding, NormalizedMessage, Platform } from "./adapters/types"
 import type { SocialToolCtx } from "./ctx"
 import { livePagesOnly, META_PAGE_IDS_KEY } from "./meta-pages"
@@ -21,15 +22,31 @@ const WEBHOOK_PARSERS: Partial<
   >
 > = {
   facebook: (body) => facebookAdapter.parseWebhook?.(body) ?? { findings: [], messages: [] },
-  // IG webhook change-notifications share Meta's envelope; reuse the FB parser
-  // shape for comment events (the relation is overridden to the IG platform).
-  instagram: (body) => {
-    const parsed = facebookAdapter.parseWebhook?.(body) ?? { findings: [], messages: [] }
-    return {
-      findings: parsed.findings.map((f) => ({ ...f, platform: "instagram" as Platform })),
-      messages: parsed.messages,
-    }
-  },
+  // Instagram's own shape: `comments` changes and Messenger-shaped `messaging`.
+  instagram: (body) => instagramAdapter.parseWebhook?.(body) ?? { findings: [], messages: [] },
+}
+
+/**
+ * Keep only the entries of an Instagram delivery whose account (`entry.id`, the
+ * IG professional account id) this workspace has connected and active; the rest
+ * are dropped and logged, never ingested.
+ */
+async function liveInstagramAccountsOnly(ctx: SocialToolCtx, body: unknown): Promise<unknown> {
+  const rows = (await ctx.db.findMany("sync_state", {
+    where: { platform: "instagram", active: true },
+  })) as Array<{ account_external_id?: unknown }>
+  const live = new Set(rows.map((r) => String(r.account_external_id ?? "")))
+  const envelope =
+    body && typeof body === "object" && !Array.isArray(body) ? (body as { entry?: unknown }) : {}
+  const entries = Array.isArray(envelope.entry) ? (envelope.entry as Array<{ id?: unknown }>) : []
+  const kept = entries.filter((e) => e && e.id !== undefined && live.has(String(e.id)))
+  if (kept.length !== entries.length) {
+    ctx.logger?.info?.(
+      "social: delivery entries for Instagram accounts this workspace has not connected were dropped",
+      { dropped: entries.length - kept.length },
+    )
+  }
+  return { ...envelope, entry: kept }
 }
 
 /** A normalized finding ready to upsert (camelCase normalized shape). */
@@ -641,8 +658,13 @@ export async function parseWebhookJob(
   if (!parser) return { ingested: 0, messagesIngested: 0 }
   // A server-wide Meta callback routes by stored Page ids: only Pages this
   // workspace still manages are ingested (meta-pages.ts).
+  // Instagram deliveries likewise keep only the accounts connected here.
   const body =
-    payload.platform === "facebook" ? await livePagesOnly(ctx, payload.body) : payload.body
+    payload.platform === "facebook"
+      ? await livePagesOnly(ctx, payload.body)
+      : payload.platform === "instagram"
+        ? await liveInstagramAccountsOnly(ctx, payload.body)
+        : payload.body
   const { findings, messages } = parser(body)
   let ingested = 0
   for (const f of findings) {

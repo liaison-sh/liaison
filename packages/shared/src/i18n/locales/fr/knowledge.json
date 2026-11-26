@@ -1,6 +1,10 @@
 {
   "apiUnavailable": "API indisponible.",
   "googleDrive": "Google Drive",
+  "diff": {
+    "added": "Ajouté",
+    "removed": "Supprimé"
+  },
   "knowledgeItemNotFound": "Élément de connaissance introuvable",
   "newDocument": "Nouveau document",
   "noRecentDocuments": "Aucun document récent.",

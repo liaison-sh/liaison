@@ -196,6 +196,45 @@ export async function assertCanDeleteForGood(
   }
 }
 
+/** A new page left untouched may be discarded this long after it was made. */
+export const UNTOUCHED_PAGE_WINDOW_HOURS = 24
+
+/**
+ * The checks of discarding a page its maker left untouched (New page, then closed):
+ * under the caller's own row view, the page is theirs, writable, not synced, nobody's
+ * folder page, empty, made in the last day, and never saved since it was made (no
+ * version but its baseline, no text kept aside). Anything else is refused and the
+ * page stays: an agent's page, an imported one, a page someone typed in or renamed.
+ */
+export async function assertUntouchedNewPage(
+  tx: RlsClient,
+  id: string,
+  actor: KnowledgeActor,
+): Promise<void> {
+  const row = await loadKnowledgeDocument(tx, id, actor)
+  if (!row) throw new KnowledgeError("NOT_FOUND", "Knowledge item not found")
+  assertCanWriteDocumentRow(row, actor, await loadDocumentShareRole(tx, row.id, actor))
+  const untouched = extractRows<{ ok: boolean }>(
+    await tx.execute(drizzleSql`
+      SELECT (d.created_by = ${actor.userId}::uuid
+              AND d.synced_source_id IS NULL
+              AND d.archived_at IS NULL
+              AND btrim(d.body) = ''
+              AND d.created_at > now() - make_interval(hours => ${UNTOUCHED_PAGE_WINDOW_HOURS})
+              AND NOT EXISTS (
+                SELECT 1 FROM ${knowledgeRel("document_versions")} v
+                 WHERE v.org_id = d.org_id AND v.document_id = d.id AND v.kind <> 'baseline')
+              AND NOT EXISTS (
+                SELECT 1 FROM ${knowledgeRel("collections")} c
+                 WHERE c.org_id = d.org_id AND c.index_document_id = d.id)) AS ok
+        FROM ${knowledgeRel("documents")} d
+       WHERE d.id = ${id}::uuid AND d.org_id = ${actor.orgId}::uuid`),
+  )[0]?.ok
+  if (!untouched) {
+    throw new KnowledgeError("VALIDATION", "This page was written in: it is kept")
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The purge
 // ---------------------------------------------------------------------------

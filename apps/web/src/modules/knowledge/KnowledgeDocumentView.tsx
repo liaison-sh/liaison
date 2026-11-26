@@ -43,6 +43,7 @@ import {
 } from "./autosave"
 import { ConflictDialog } from "./ConflictDialog"
 import { draftKey, pageDrafts, webLocks } from "./drafts"
+import { discardIfUntouched } from "./fresh-pages"
 import KnowledgeShareDialog from "./KnowledgeShareDialog"
 import {
   getKnowledgeDocument,
@@ -463,7 +464,17 @@ const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFo
         )
         .finally(() => void s.destroy())
     } else {
-      void s.flush().finally(() => void s.destroy())
+      const left = lastText
+      void s
+        .flush()
+        .finally(() => void s.destroy())
+        // A page made with New page and left with no text is not kept (fresh-pages.ts).
+        .then(async () => {
+          if (api && left && (await discardIfUntouched(api, s.docId, left))) {
+            void loadCollectionsTree(api)
+            void loadDocuments(api)
+          }
+        })
     }
   }
   createEffect(
@@ -809,6 +820,7 @@ const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFo
                 current={{ title: d().title, body: d().body }}
                 onRestore={restoreVersion}
                 onClose={() => setHistoryOpen(false)}
+                files={fileView}
               />
             </Show>
             <div class="flex min-h-0 flex-1 flex-col" classList={{ hidden: historyOpen() }}>

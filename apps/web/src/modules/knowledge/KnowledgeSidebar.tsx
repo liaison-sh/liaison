@@ -22,6 +22,7 @@ import { evictTabByEntity, openTab, tabStore } from "~/modules/shell/tab-store"
 import { addToast } from "~/modules/shell/toast-store"
 import { Dialog } from "~/ui/Dialog"
 import { ScrollFade } from "~/ui/ScrollFade"
+import { markFreshPage } from "./fresh-pages"
 import KnowledgeCollectionTree, {
   type MoveDocArgs,
   type MoveRequest,
@@ -197,6 +198,8 @@ const KnowledgeSidebar: Component = () => {
         ...(personal ? { orgAccess: "none" } : {}),
         ...(folderId ? { collectionIds: [folderId] } : {}),
       })) as { id: string; title?: string }
+      // Left with no text, it is discarded (fresh-pages.ts).
+      markFreshPage(doc.id)
       await reloadAfterChange()
       // Just created by the user: a permanent tab, not a preview.
       openTab({

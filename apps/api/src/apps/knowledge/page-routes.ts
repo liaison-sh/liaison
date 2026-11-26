@@ -21,6 +21,7 @@ import {
 import {
   alertTrash,
   assertCanDeleteForGood,
+  assertUntouchedNewPage,
   DeleteForGoodScopeError,
   deleteForGood,
   listTrash,
@@ -354,6 +355,33 @@ export function mountPageRoutes(routes: Hono<AppEnv>, helpers: PageRouteHelpers)
       const doc = await withRequestRls(c, (tx) => archiveKnowledgeDocument(tx, id, actor))
       return success(c, doc)
     } catch (err) {
+      return helpers.pageWriteRefusal(c, err)
+    }
+  })
+
+  // A new page its maker left untouched (New page, then closed with nothing written):
+  // deleted for good, so abandoned "Untitled" pages do not pile up. Only an empty page
+  // of theirs never saved since it was made (assertUntouchedNewPage); anything else is
+  // refused and kept. It goes through Trash so the purge's own checks apply.
+  routes.post("/documents/:id/discard-untouched", zValidator("param", idParamSchema), async (c) => {
+    try {
+      const actor = helpers.getActor(c)
+      const { id } = c.req.valid("param")
+      await withRequestRls(c, async (tx) => {
+        await assertUntouchedNewPage(tx, id, actor)
+        await archiveKnowledgeDocument(tx, id, actor)
+      })
+      const deleted = await deleteForGood(actor.orgId, id, actor.userId)
+      return success(c, { id, deleted })
+    } catch (err) {
+      if (err instanceof PurgeResidueError) {
+        alertTrash(
+          err,
+          { orgId: c.get("orgId"), documentId: err.documentId, residue: err.residue },
+          "knowledge: discarding an untouched page left rows, page kept in Trash",
+        )
+        return success(c, { id: err.documentId, deleted: false })
+      }
       return helpers.pageWriteRefusal(c, err)
     }
   })

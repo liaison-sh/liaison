@@ -3,6 +3,6 @@
     "kernel.attentionTitle.approvalDecided.expired": "Demande {{handle}} expirée",
     "kernel.attentionTitle.approvalDecidedNamed.approved": "Approuvée : {{title}} ({{handle}})",
     "kernel.attentionTitle.approvalDecidedNamed.rejected": "Refusée : {{title}} ({{handle}})",
-    "kernel.attentionTitle.approvalDecidedNamed.expired": "Expirée sans décision : {{title}} ({{handle}})"
+    "kernel.attentionTitle.approvalDecidedNamed.expired": "Expirée sans décision, rien n'a été fait : {{title}} ({{handle}})"
   }
 }

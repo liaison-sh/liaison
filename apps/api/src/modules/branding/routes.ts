@@ -108,7 +108,12 @@ export interface PublicBranding {
    * design: it is embedded in every page that renders the widget), the
    * booking link (absent when unset) and the self-hosting docs link.
    */
-  demo?: { turnstileSiteKey?: string; bookingUrl?: string; selfHostUrl?: string }
+  demo?: {
+    turnstileSiteKey?: string
+    bookingUrl?: string
+    selfHostUrl?: string
+    registerUrl?: string
+  }
 }
 
 /**
@@ -181,6 +186,9 @@ brandingRoutes.get("/branding", async (c) => {
             ...(env.LIAISON_DEMO_BOOKING_URL ? { bookingUrl: env.LIAISON_DEMO_BOOKING_URL } : {}),
             ...(env.LIAISON_DEMO_SELF_HOST_URL
               ? { selfHostUrl: env.LIAISON_DEMO_SELF_HOST_URL }
+              : {}),
+            ...(env.LIAISON_DEMO_REGISTER_URL
+              ? { registerUrl: env.LIAISON_DEMO_REGISTER_URL }
               : {}),
           },
         }

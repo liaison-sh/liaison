@@ -274,6 +274,7 @@ Read ONLY when LIAISON_DEMO_MODE is on; plain env so the box can be retuned with
 | `LIAISON_DEMO_EDGE_OVERWRITES_XFF` | `boolean` | `false` | no | The reverse proxy in front of this box OVERWRITES X-Forwarded-For with the client address it saw (it never appends). Only then may the demo limits read the client from that header, and only when the socket peer is loopback or private. Off: the socket peer is the client. |
 | `LIAISON_DEMO_BOOKING_URL` | `string (URL)` |  | no | The next-steps dialog's links: have it set up (a contact page, which gets topic, from, email and scenarios as query parameters, or a mailto: link used as is) and deploy it yourself. Each option is hidden when its link is unset: a guessed default is a dead link the day that page moves. |
 | `LIAISON_DEMO_SELF_HOST_URL` | `string (URL)` |  | no |  |
+| `LIAISON_DEMO_REGISTER_URL` | `string (URL)` |  | no | A hosted edition's signup page. When set, the next-steps dialog (end card and budget window) leads with "Create your workspace" and the banner offers it after the first finished scenario; the link gets from=demo and, for a knowledge, support or projects scenario, goal=&lt;that&gt;. Unset: the dialog is unchanged. |
 | `LIAISON_DEMO_MAIL_RESEND_API_KEY` | `string` |  | no | Demo system mail (verification codes, owner alerts), its own channel. CAPTURE keeps those mails in process for tests and local runs; it is never valid in production. |
 | `LIAISON_DEMO_MAIL_CAPTURE` | `boolean` | `false` | no |  |
 | `TURNSTILE_SITE_KEY` | `string` |  | no | Cloudflare Turnstile for the demo's public forms. Without the secret, demo signup refuses (fails closed); the site key goes to the browser. |
@@ -299,7 +300,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `CLAUDE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:23`, `apps/desktop/sidecar/session-import.ts:14` |
 | `CLAUDE_SECURESTORAGE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:17`, `apps/desktop/sidecar/config-isolation.ts:22` |
 | `CONTEXT_PROVIDERS_DISABLED` | `apps/api/src/modules/agent/context/context-providers.ts:271` |
-| `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:59`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5722` |
+| `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:60`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5722` |
 | `GS_BIN` | `apps/api/src/modules/pdf/render.ts:388` |
 | `INBOUND_TRUSTED_AUTHSERV_IDS` | `apps/api/src/lib/email/sender-auth.ts:44` |
 | `LIAISON_ALLOW_OLDER_IMAGE` | `apps/api/src/db/schema-guard.ts:32` |
@@ -316,7 +317,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/modules/apps/connections/sql/credentials.ts:145`, `apps/api/src/modules/apps/connections/sql/credentials.ts:165` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/modules/apps/connections/sql/credentials.ts:154` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:157` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1877` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1891` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:522`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |

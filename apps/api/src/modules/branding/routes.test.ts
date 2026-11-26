@@ -74,18 +74,25 @@ describe("public branding route", () => {
       secret: env.TURNSTILE_SECRET_KEY,
       booking: env.LIAISON_DEMO_BOOKING_URL,
       selfHost: env.LIAISON_DEMO_SELF_HOST_URL,
+      register: env.LIAISON_DEMO_REGISTER_URL,
     }
     env.TURNSTILE_SITE_KEY = "1x00000000000000000000AA"
     env.TURNSTILE_SECRET_KEY = "secret-never-published"
     env.LIAISON_DEMO_BOOKING_URL = undefined
     env.LIAISON_DEMO_SELF_HOST_URL = undefined
+    env.LIAISON_DEMO_REGISTER_URL = undefined
     DemoModeTestAccess.set(true)
     try {
       const read = async () =>
         (
           (await (await app.request("/api/settings/branding")).json()) as {
             data: {
-              demo?: { turnstileSiteKey?: string; bookingUrl?: string; selfHostUrl?: string }
+              demo?: {
+                turnstileSiteKey?: string
+                bookingUrl?: string
+                selfHostUrl?: string
+                registerUrl?: string
+              }
             }
           }
         ).data
@@ -94,11 +101,14 @@ describe("public branding route", () => {
       // Unset links are absent, never a guessed default.
       expect(unset.demo && "selfHostUrl" in unset.demo).toBe(false)
       expect(unset.demo && "bookingUrl" in unset.demo).toBe(false)
+      expect(unset.demo && "registerUrl" in unset.demo).toBe(false)
       expect(JSON.stringify(unset)).not.toContain("secret-never-published")
       env.LIAISON_DEMO_BOOKING_URL = "https://booking.example/liaison"
       expect((await read()).demo?.bookingUrl).toBe("https://booking.example/liaison")
       env.LIAISON_DEMO_SELF_HOST_URL = "https://liaison.example/self-host"
       expect((await read()).demo?.selfHostUrl).toBe("https://liaison.example/self-host")
+      env.LIAISON_DEMO_REGISTER_URL = "https://hosted.example/signup/"
+      expect((await read()).demo?.registerUrl).toBe("https://hosted.example/signup/")
       DemoModeTestAccess.set(null)
       expect((await read()).demo).toBeUndefined()
     } finally {
@@ -107,6 +117,7 @@ describe("public branding route", () => {
       env.TURNSTILE_SECRET_KEY = keys.secret
       env.LIAISON_DEMO_BOOKING_URL = keys.booking
       env.LIAISON_DEMO_SELF_HOST_URL = keys.selfHost
+      env.LIAISON_DEMO_REGISTER_URL = keys.register
     }
   })
 

@@ -19,10 +19,24 @@
 //   key      the demo's own key form (DemoByokPrompt): a key of the visitor's
 //            own has no budget here
 //   self     the self-hosting guide (`demo.selfHostUrl`)
+//   register a hosted edition's signup page (`demo.registerUrl`), with
+//            from=demo and the goal of the last scenario finished
 //
 // A work address puts setup first, a personal one (a webmail domain) the key.
+// When the box names a register page, it leads for every address at both
+// moments, the one filled button, and the other options become text links.
 // Each link option is absent when the box names no link.
-import { type Component, createEffect, createSignal, For, type JSX, on, Show } from "solid-js"
+import type { DemoNeed } from "@liaison/shared"
+import {
+  type Component,
+  createEffect,
+  createSignal,
+  For,
+  type JSX,
+  on,
+  onMount,
+  Show,
+} from "solid-js"
 import { cn } from "~/lib/cn"
 import { DemoByokPrompt } from "~/modules/demo/DemoByokPrompt"
 import { demoScenarioQueue, demoScenarioQueueLoaded } from "~/modules/demo/DemoScenarioRunner"
@@ -116,12 +130,42 @@ export function demoContactUrl(
   return url.toString()
 }
 
-type PathId = "setup" | "key" | "self"
+/** The scenarios whose subject a hosted signup can start with (its `goal`). */
+const REGISTER_GOALS: Partial<Record<DemoNeed, string>> = {
+  knowledge: "knowledge",
+  support: "support",
+  projects: "projects",
+}
 
-/** The options in the visitor's order: setup first for a work address, the key for a personal one. */
+/**
+ * The register option's link: the page with from=demo, and goal=<subject>
+ * when the last scenario finished has one. Never the visitor's address.
+ */
+export function demoRegisterUrl(base: string, lastScenario: string | null | undefined): string {
+  const url = new URL(base)
+  url.searchParams.set("from", "demo")
+  const goal = lastScenario ? REGISTER_GOALS[lastScenario as DemoNeed] : undefined
+  if (goal) url.searchParams.set("goal", goal)
+  return url.toString()
+}
+
+type PathId = "register" | "setup" | "key" | "self"
+
+/**
+ * The options in the visitor's order: register first whenever the box has
+ * one, then setup first for a work address, the key for a personal one.
+ */
 export function orderedPaths(available: readonly PathId[], personal: boolean): PathId[] {
-  const order: PathId[] = personal ? ["key", "self", "setup"] : ["setup", "key", "self"]
+  const order: PathId[] = personal
+    ? ["register", "key", "self", "setup"]
+    : ["register", "setup", "key", "self"]
   return order.filter((id) => available.includes(id))
+}
+
+/** The last scenario the visitor finished, in queue order. */
+function lastFinished(): string | null {
+  const queue = demoScenarioQueueLoaded() ? demoScenarioQueue() : []
+  return queue.filter((item) => item.status === "completed").at(-1)?.need ?? null
 }
 
 /** What the budget moment headlines (the refusal that opened it wins over a stale read). */
@@ -236,15 +280,19 @@ export const DemoNextSteps: Component = () => {
   const paths = () =>
     orderedPaths(
       [
+        ...(demoDoorSettings()?.registerUrl ? (["register"] as const) : []),
         ...(demoDoorSettings()?.bookingUrl ? (["setup"] as const) : []),
         ...(ownKey() ? [] : (["key"] as const)),
         ...(demoDoorSettings()?.selfHostUrl ? (["self"] as const) : []),
       ],
       personal(),
     )
-  // The first option stands out; at the end only setup does (the key is no
-  // urgent step while the budget lasts).
-  const primary = (id: PathId) => paths()[0] === id && (moment() === "budget" || id === "setup")
+  // The first option stands out; at the end only register or setup does (the
+  // key is no urgent step while the budget lasts). With register, the others
+  // are text links under it.
+  const hasRegister = () => paths()[0] === "register"
+  const primary = (id: PathId) =>
+    paths()[0] === id && (moment() === "budget" || id === "setup" || id === "register")
 
   function openLink(href: string): void {
     if (/^https?:/i.test(href)) window.open(href, "_blank", "noopener,noreferrer")
@@ -267,31 +315,39 @@ export const DemoNextSteps: Component = () => {
 
   const card = (id: PathId): JSX.Element => {
     const title = () =>
-      id === "setup"
-        ? i18n.t("kernel.demo.next.setupTitle")
-        : id === "self"
-          ? i18n.t("kernel.demo.next.selfTitle")
-          : moment() === "end"
-            ? i18n.t("kernel.demo.next.keyTitleEnd")
-            : i18n.t("kernel.demo.next.keyTitleBudget")
+      id === "register"
+        ? i18n.t("kernel.demo.next.registerTitle")
+        : id === "setup"
+          ? i18n.t("kernel.demo.next.setupTitle")
+          : id === "self"
+            ? i18n.t("kernel.demo.next.selfTitle")
+            : moment() === "end"
+              ? i18n.t("kernel.demo.next.keyTitleEnd")
+              : i18n.t("kernel.demo.next.keyTitleBudget")
     const badge = () => i18n.t(`kernel.demo.next.${id}Badge`)
     const body = () =>
-      id === "setup"
-        ? i18n.t("kernel.demo.next.setupBody")
-        : id === "self"
-          ? i18n.t("kernel.demo.next.selfBody")
-          : moment() === "end"
-            ? i18n.t("kernel.demo.next.keyBodyEnd", { cap: cap() })
-            : i18n.t("kernel.demo.next.keyBodyBudget")
+      id === "register"
+        ? i18n.t("kernel.demo.next.registerBody")
+        : id === "setup"
+          ? i18n.t("kernel.demo.next.setupBody")
+          : id === "self"
+            ? i18n.t("kernel.demo.next.selfBody")
+            : moment() === "end"
+              ? i18n.t("kernel.demo.next.keyBodyEnd", { cap: cap() })
+              : i18n.t("kernel.demo.next.keyBodyBudget")
     const action = () =>
-      id === "setup"
-        ? i18n.t("kernel.demo.next.setupAction")
-        : id === "self"
-          ? i18n.t("kernel.demo.next.selfAction")
-          : i18n.t("kernel.demo.next.keyAction")
+      id === "register"
+        ? i18n.t("kernel.demo.next.registerAction")
+        : id === "setup"
+          ? i18n.t("kernel.demo.next.setupAction")
+          : id === "self"
+            ? i18n.t("kernel.demo.next.selfAction")
+            : i18n.t("kernel.demo.next.keyAction")
     const onClick = () => {
       const settings = demoDoorSettings()
       if (id === "key") setKeyOpen((v) => !v)
+      else if (id === "register" && settings?.registerUrl)
+        openLink(demoRegisterUrl(settings.registerUrl, lastFinished()))
       else if (id === "setup" && settings?.bookingUrl)
         openLink(
           demoContactUrl(
@@ -301,6 +357,21 @@ export const DemoNextSteps: Component = () => {
           ),
         )
       else if (id === "self" && settings?.selfHostUrl) openLink(settings.selfHostUrl)
+    }
+    if (hasRegister() && id !== "register") {
+      return (
+        <section data-testid={`demo-next-${id}`} data-link="" class="min-w-0">
+          <button
+            type="button"
+            data-testid={`demo-next-${id}-action`}
+            aria-expanded={id === "key" ? keyOpen() : undefined}
+            onClick={onClick}
+            class="text-[13px] text-text-secondary underline underline-offset-2 hover:text-text"
+          >
+            {title()}
+          </button>
+        </section>
+      )
     }
     return (
       <section
@@ -487,15 +558,42 @@ export const DemoNextSteps: Component = () => {
                 ? i18n.t("kernel.demo.next.pathsEnd")
                 : i18n.t("kernel.demo.next.pathsBudget")}
             </h2>
-            <div
-              data-testid="demo-next-paths"
-              class={cn(
-                "mx-6 grid grid-cols-1 gap-2.5",
-                paths().length === 3 ? "sm:grid-cols-3" : paths().length === 2 && "sm:grid-cols-2",
-              )}
+            <Show
+              when={hasRegister()}
+              fallback={
+                <div
+                  data-testid="demo-next-paths"
+                  class={cn(
+                    "mx-6 grid grid-cols-1 gap-2.5",
+                    paths().length === 3
+                      ? "sm:grid-cols-3"
+                      : paths().length === 2 && "sm:grid-cols-2",
+                  )}
+                >
+                  <For each={paths()}>{(id) => card(id)}</For>
+                </div>
+              }
             >
-              <For each={paths()}>{(id) => card(id)}</For>
-            </div>
+              <div data-testid="demo-next-paths" class="mx-6 flex flex-col gap-2.5">
+                {card("register")}
+                <Show when={paths().length > 1}>
+                  <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <For each={paths().slice(1)}>{(id) => card(id)}</For>
+                  </div>
+                </Show>
+                <Show when={keyOpen()}>
+                  <div
+                    data-testid="demo-next-key-form"
+                    class="flex flex-col gap-1 rounded-lg border border-border bg-surface px-3.5 py-3"
+                  >
+                    <DemoByokPrompt standalone />
+                    <p class="text-[11.5px] text-text-tertiary">
+                      {i18n.t("kernel.demo.next.keyHint")}
+                    </p>
+                  </div>
+                </Show>
+              </div>
+            </Show>
           </Show>
 
           <Show when={moment() === "budget" && remaining().length > 0}>
@@ -580,5 +678,34 @@ export const DemoNextStepsBannerEntry: Component = () => {
     >
       {i18n.t("kernel.demo.next.bannerLink")}
     </button>
+  )
+}
+
+/**
+ * "Create your workspace" in the demo banner, once a scenario is finished and
+ * only when the box names a register page. A plain link, no dialog.
+ */
+export const DemoRegisterBannerEntry: Component = () => {
+  const i18n = useI18n()
+  onMount(() => void ensureDemoDoorSettings())
+  const href = () => {
+    const base = demoDoorSettings()?.registerUrl
+    const last = lastFinished()
+    return base && last ? demoRegisterUrl(base, last) : null
+  }
+  return (
+    <Show when={href()}>
+      {(url) => (
+        <a
+          data-testid="demo-banner-register"
+          href={url()}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="rounded-full border border-border bg-surface px-2 py-0.5 font-medium text-text hover:bg-surface-hover"
+        >
+          {i18n.t("kernel.demo.next.bannerRegister")}
+        </a>
+      )}
+    </Show>
   )
 }

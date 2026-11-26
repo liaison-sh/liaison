@@ -20,9 +20,14 @@ vi.mock("~/modules/demo/DemoScenarioRunner", () => {
   return { demoScenarioQueue: items, demoScenarioQueueLoaded: () => true }
 })
 
-const { DemoNextSteps, demoContactUrl, isPersonalEmail, orderedPaths } = await import(
-  "~/modules/demo/DemoNextSteps"
-)
+const {
+  DemoNextSteps,
+  DemoRegisterBannerEntry,
+  demoContactUrl,
+  demoRegisterUrl,
+  isPersonalEmail,
+  orderedPaths,
+} = await import("~/modules/demo/DemoNextSteps")
 const {
   _resetDemoStore,
   demoExhaustedRequest,
@@ -101,25 +106,26 @@ const RECAP = {
   approvalsDecided: 5,
 }
 
-function world(over: Record<string, unknown> = {}) {
+const REGISTER = "https://hosted.example/signup/"
+const WITH_REGISTER = { ...BRANDING, demo: { ...BRANDING.demo, registerUrl: REGISTER } }
+
+function world(over: Record<string, unknown> = {}, branding: unknown = BRANDING) {
   return serve([
-    ["/settings/branding", BRANDING],
+    ["/settings/branding", branding],
     ["/demo/budget", budget(over)],
     ["/demo/recap", RECAP],
     ["/demo/next-steps/shown", { nextStepsShown: true }],
   ])
 }
 
-function mount(locale: "en" | "fr" = "en") {
+function mount(locale: "en" | "fr" = "en", banner = false) {
   render(() => (
     <I18nProvider initialLocale={locale}>
       <Router>
         <Route
           path="*"
           component={() => (
-            <ApiProvider>
-              <DemoNextSteps />
-            </ApiProvider>
+            <ApiProvider>{banner ? <DemoRegisterBannerEntry /> : <DemoNextSteps />}</ApiProvider>
           )}
         />
       </Router>
@@ -172,6 +178,9 @@ describe("the budget moment", () => {
       expect(pathOrder()).toEqual(["demo-next-setup", "demo-next-key", "demo-next-self"]),
     )
     expect(screen.getByTestId("demo-next-setup").hasAttribute("data-primary")).toBe(true)
+    // Without a register URL nothing changes: three cards, no register, no text links.
+    expect(screen.queryByTestId("demo-next-register")).toBeNull()
+    expect(screen.getByTestId("demo-next-key").hasAttribute("data-link")).toBe(false)
     // The remaining scenarios, the played one struck through.
     expect(screen.getByTestId("demo-next-remaining").textContent).toContain(
       "2 more scenarios to play with your key:",
@@ -232,6 +241,115 @@ describe("the budget moment", () => {
       ),
     )
     expect(screen.getByTestId("demo-next-setup").textContent).toContain("On l'installe pour vous")
+  })
+})
+
+describe("with a register URL (the hosted edition's signup)", () => {
+  it("puts register first and filled, for a work and a personal address, the rest as text links", async () => {
+    for (const email of ["jo@studio.example", "jo@gmail.com"]) {
+      _resetDemoStore()
+      world({ email }, WITH_REGISTER)
+      mount()
+      openDemoNextSteps("budget")
+      await waitFor(() =>
+        expect(screen.getByTestId("demo-next-steps").getAttribute("data-state")).toBe("spent"),
+      )
+      await waitFor(() => expect(pathOrder()[0]).toBe("demo-next-register"))
+      expect(pathOrder().slice(1).sort()).toEqual([
+        "demo-next-key",
+        "demo-next-self",
+        "demo-next-setup",
+      ])
+      expect(screen.getByTestId("demo-next-register").hasAttribute("data-primary")).toBe(true)
+      for (const id of ["setup", "key", "self"]) {
+        expect(screen.getByTestId(`demo-next-${id}`).hasAttribute("data-primary")).toBe(false)
+        expect(screen.getByTestId(`demo-next-${id}`).hasAttribute("data-link")).toBe(true)
+      }
+      cleanup()
+    }
+  })
+
+  it("leads the end card too, and opens the URL with from and goal, never the address", async () => {
+    setQueue([item("sales", "completed"), item("knowledge", "completed")])
+    world({}, WITH_REGISTER)
+    const open = vi.spyOn(window, "open").mockImplementation(() => null)
+    mount()
+    openDemoNextSteps("end")
+    await waitFor(() => expect(pathOrder()[0]).toBe("demo-next-register"))
+    expect(screen.getByTestId("demo-next-register").hasAttribute("data-primary")).toBe(true)
+    fireEvent.click(screen.getByTestId("demo-next-register-action"))
+    expect(open).toHaveBeenCalledWith(
+      "https://hosted.example/signup/?from=demo&goal=knowledge",
+      "_blank",
+      "noopener,noreferrer",
+    )
+    expect(JSON.stringify(open.mock.calls)).not.toContain("studio.example")
+  })
+
+  it("the key option still opens the demo's key form from its text link", async () => {
+    world({ email: "jo@gmail.com" }, WITH_REGISTER)
+    mount()
+    openDemoNextSteps("budget")
+    await waitFor(() => expect(screen.getByTestId("demo-next-key-action")).toBeTruthy())
+    fireEvent.click(screen.getByTestId("demo-next-key-action"))
+    expect(screen.getByTestId("demo-byok-standalone")).toBeTruthy()
+  })
+
+  it("speaks French", async () => {
+    world({}, WITH_REGISTER)
+    mount("fr")
+    openDemoNextSteps("budget")
+    await waitFor(() =>
+      expect(screen.getByTestId("demo-next-register").textContent).toContain("Créez votre espace"),
+    )
+  })
+
+  it("the news offer promises news only, so it stays true once the hosted edition is open", async () => {
+    for (const [locale, offer, done] of [
+      [
+        "en",
+        "Send me occasional news about Liaison",
+        "Done. We will send you occasional news about Liaison.",
+      ],
+      [
+        "fr",
+        "M'envoyer de temps en temps des nouvelles de Liaison",
+        "C'est noté. Nous vous enverrons de temps en temps des nouvelles de Liaison.",
+      ],
+    ] as const) {
+      _resetDemoStore()
+      world({}, WITH_REGISTER)
+      mount(locale)
+      openDemoNextSteps("budget")
+      expect((await screen.findByTestId("demo-next-notify")).textContent?.trim()).toBe(offer)
+      cleanup()
+      _resetDemoStore()
+      world({ notifyManaged: true, verified: true }, WITH_REGISTER)
+      mount(locale)
+      openDemoNextSteps("budget")
+      expect((await screen.findByTestId("demo-next-notify-done")).textContent?.trim()).toBe(done)
+      cleanup()
+    }
+  })
+
+  it("the banner offers it once a scenario is finished, and not before", async () => {
+    setQueue([item("support", "new")])
+    world({}, WITH_REGISTER)
+    mount("en", true)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.queryByTestId("demo-banner-register")).toBeNull()
+    setQueue([item("support", "completed")])
+    const link = await screen.findByTestId("demo-banner-register")
+    expect(link.textContent).toBe("Create your workspace")
+    expect(link.getAttribute("href")).toBe("https://hosted.example/signup/?from=demo&goal=support")
+  })
+
+  it("without a register URL, the banner shows nothing", async () => {
+    setQueue([item("support", "completed")])
+    world()
+    mount("en", true)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.queryByTestId("demo-banner-register")).toBeNull()
   })
 })
 
@@ -304,6 +422,15 @@ describe("helpers", () => {
       expect(isPersonalEmail(e)).toBe(false)
     }
     expect(orderedPaths(["self", "key"], false)).toEqual(["key", "self"])
+  })
+
+  it("builds the register URL: from=demo, a goal only for knowledge, support and projects", () => {
+    expect(demoRegisterUrl(REGISTER, "projects")).toBe(`${REGISTER}?from=demo&goal=projects`)
+    expect(demoRegisterUrl(REGISTER, "sales")).toBe(`${REGISTER}?from=demo`)
+    expect(demoRegisterUrl(REGISTER, null)).toBe(`${REGISTER}?from=demo`)
+    expect(demoRegisterUrl("https://hosted.example/signup/?plan=base", "support")).toBe(
+      "https://hosted.example/signup/?plan=base&from=demo&goal=support",
+    )
   })
 
   it("adds the parameters to a web page and leaves a mail link alone", () => {

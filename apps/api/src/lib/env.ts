@@ -817,6 +817,20 @@ export const envSchema = z
     // is unset: a guessed default is a dead link the day that page moves.
     LIAISON_DEMO_BOOKING_URL: z.preprocess(unsetIfEmpty, z.string().trim().url().optional()),
     LIAISON_DEMO_SELF_HOST_URL: z.preprocess(unsetIfEmpty, z.string().trim().url().optional()),
+    // A hosted edition's signup page. When set, the next-steps dialog (end card
+    // and budget window) leads with "Create your workspace" and the banner
+    // offers it after the first finished scenario; the link gets from=demo and,
+    // for a knowledge, support or projects scenario, goal=<that>. Unset: the
+    // dialog is unchanged.
+    LIAISON_DEMO_REGISTER_URL: z.preprocess(
+      unsetIfEmpty,
+      z
+        .string()
+        .trim()
+        .url()
+        .refine((v) => /^https?:\/\//i.test(v), "must be an http(s) URL")
+        .optional(),
+    ),
     // Demo system mail (verification codes, owner alerts), its own channel.
     // CAPTURE keeps those mails in process for tests and local runs; it is
     // never valid in production.

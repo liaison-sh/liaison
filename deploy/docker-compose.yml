@@ -474,6 +474,8 @@ services:
       LIAISON_DEMO_POOL_MAX_AGE_HOURS: ${LIAISON_DEMO_POOL_MAX_AGE_HOURS:-}
       # Demo workspaces seeded at once, pool refill and empty-pool signups alike (empty: 2).
       LIAISON_DEMO_SEED_CONCURRENCY: ${LIAISON_DEMO_SEED_CONCURRENCY:-}
+      # A hosted edition's signup page the demo's next steps lead with (empty: none).
+      LIAISON_DEMO_REGISTER_URL: ${LIAISON_DEMO_REGISTER_URL:-}
       # Minutes after which an org unused in a process has its in-memory setup
       # released (set up again at its next use). Empty: 60. 0: never.
       LIAISON_ORG_RUNTIME_IDLE_MINUTES: ${LIAISON_ORG_RUNTIME_IDLE_MINUTES:-}

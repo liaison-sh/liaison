@@ -65,7 +65,9 @@ Once your email is confirmed, the agents run on the demo's key within a small bu
 - **Continue now with your key**: **Add my key** opens the key form described below.
 - **Install it yourself**: **See the guide** opens the self-hosting guide.
 
-With a work address, **We set it up for you** comes first; with a personal one (Gmail, Outlook, Yahoo and the like), your own key does. **Send me occasional news about Liaison, including when the hosted version opens** at the bottom is the same choice as the box on the form, if you did not tick it.
+With a work address, **We set it up for you** comes first; with a personal one (Gmail, Outlook, Yahoo and the like), your own key does.
+
+When the demo instance points to a hosted edition (its operator sets `LIAISON_DEMO_REGISTER_URL`), **Create your workspace** comes first for everyone, at both moments: **Create my workspace** opens that edition's signup page, and the three options above become text links under it. The banner also shows **Create your workspace** once you have finished a scenario. The link carries where you came from and the subject of your last scenario (knowledge, support or projects), never your email address. **Send me occasional news about Liaison** at the bottom is the same choice as the box on the form, if you did not tick it.
 
 When you finish your last scenario, the same window opens in place of the scenario's end card: **Keep exploring** shows what is left of your budget, with a request to try, above the same three options.
 

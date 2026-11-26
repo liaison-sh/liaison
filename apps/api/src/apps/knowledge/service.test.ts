@@ -567,4 +567,15 @@ describe("knowledgeDisplayTitle", () => {
   it("leaves a real (non-filename) title verbatim", () => {
     expect(knowledgeDisplayTitle("Dealer Onboarding Guide")).toBe("Dealer Onboarding Guide")
   })
+
+  it("keeps a page's own title over the heading its text opens with", () => {
+    // A page renamed in the editor, whose text starts with a heading, is listed by its name.
+    expect(knowledgeDisplayTitle("Team wiki", "# Big heading\n\n## Medium heading")).toBe(
+      "Team wiki",
+    )
+  })
+
+  it("uses the leading heading when the stored title is blank", () => {
+    expect(knowledgeDisplayTitle("  ", "# Onboarding\n\ntext")).toBe("Onboarding")
+  })
 })

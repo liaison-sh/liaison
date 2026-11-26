@@ -128,6 +128,16 @@ describe("what the menu offers", () => {
     expect(menu()).toBeNull()
   })
 
+  it("takes the words a Notion user types: /to-do, /callout", () => {
+    const { editor } = mount()
+    typeInto(editor, "/to-do")
+    expect(blocks()).toEqual(["taskList"])
+    cleanup()
+    const callout = mount()
+    typeInto(callout.editor, "/callout")
+    expect(blocks()).toEqual(["quote"])
+  })
+
   it("in French, by French words, accents optional", () => {
     const { editor } = mount({}, "fr")
     typeInto(editor, "/tache")

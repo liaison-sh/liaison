@@ -104,8 +104,10 @@ Post to destination reporting -> apps/api/src/modules/agent/routines/routine-rep
 Routines list groups Running and Switched off -> packages/shared/src/i18n/locales/en/kernel.json:244
 Mine and Shared filters -> packages/shared/src/i18n/locales/en/kernel.json:324
 Switched off no next run -> packages/shared/src/i18n/locales/en/kernel.json:331
-App templates group -> packages/shared/src/i18n/locales/en/kernel.json:334
-Built in template chip -> packages/shared/src/i18n/locales/en/kernel.json:335
+App templates group -> packages/shared/src/i18n/locales/en/kernel.json:346
+Built in template chip -> packages/shared/src/i18n/locales/en/kernel.json:347
+Template trigger chip Recurring / On an event -> packages/shared/src/i18n/locales/en/kernel.json:348
+Template trigger chip in words -> apps/web/src/modules/agent/RoutinesList.tsx:447
 Enable template button -> packages/shared/src/i18n/locales/en/kernel.json:337
 morning-brief template weekday 08:00 -> apps/api/src/modules/agent/routines/kernel-routine-templates.ts:59
 Morning brief content: mail, approvals, tasks due -> apps/api/src/modules/agent/routines/kernel-routine-templates.ts:57

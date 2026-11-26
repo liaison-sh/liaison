@@ -189,6 +189,7 @@
   "refusalFolderCycle": "Un dossier ne peut pas aller dans lui-même ni dans l'un de ses sous-dossiers.",
   "refusalNameRequired": "Donnez-lui un nom.",
   "refusalPageNotInFolder": "Cette page n'est plus dans ce dossier. Rechargez la liste et réessayez.",
+  "pageTextPlaceholder": "Écrivez, ou tapez / pour les blocs",
   "autosave": {
     "saved": "Enregistré",
     "notSaved": "Non enregistré : {{reason}}",

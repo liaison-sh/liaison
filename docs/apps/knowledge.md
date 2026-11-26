@@ -47,7 +47,7 @@ Moving a document, or taking it out of a folder, needs the right to edit it, and
 
 ### Add a block with /
 
-Type **/** at the start of a line, or after a space, to open **Add a block**: **Text**, **Heading 1** to **Heading 3**, **Checklist**, **Bulleted list**, **Numbered list**, **Quote**, **Code block**, **Table** and **Divider**, plus **Image**, **File** and **Link to a page** where the page takes them. Type a few letters to narrow the list (in your language: "todo" or "tâche" finds **Checklist**), move with the arrow keys and press Enter, or click one. After a word ("50 km /h"), Enter stays a new line unless you first chose a block with the arrow keys. Escape closes it and leaves the slash as text. A slash inside a word, an address or code never opens it. Every block is stored as plain markdown, so agents and other apps read the page as you see it.
+Type **/** at the start of a line, or after a space, to open **Add a block**: **Text**, **Heading 1** to **Heading 3**, **Checklist**, **Bulleted list**, **Numbered list**, **Quote**, **Code block**, **Table** and **Divider**, plus **Image**, **File** and **Link to a page** where the page takes them. Type a few letters to narrow the list (in your language: "todo", "to-do" or "tâche" finds **Checklist**, "callout" finds **Quote**), move with the arrow keys and press Enter, or click one. After a word ("50 km /h"), Enter stays a new line unless you first chose a block with the arrow keys. Escape closes it and leaves the slash as text. An empty page says **Write, or type / for blocks**. A slash inside a word, an address or code never opens it. Every block is stored as plain markdown, so agents and other apps read the page as you see it.
 
 Tick a checklist item by clicking its box, or press Ctrl+Enter (Cmd+Enter on a Mac) with the caret in the item. This shortcut ticks only in a page: in a task discussion or a ticket note, Ctrl+Enter still sends. The page saves the change like any other edit. People who may only read the page see which items are done and cannot tick them.
 
@@ -81,6 +81,7 @@ Agents read and update a folder's page like any other document.
 
 - Paste an image or a file into the text, or drop it on the text. It is uploaded and shows where the cursor was.
 - Or click **Image** or **File** in the toolbar and pick one or more files.
+- Click an image to select it; Enter then opens a new line below it (the image stays).
 - To add a file without putting it in the text, click **Add a file** under **Attachments**. On a phone, open **Sources** first.
 
 An image shows as the picture. Any other file, an SVG image included, shows as a card with its name and size; click it to download the file. While a file uploads, the text shows **Uploading** and its name. A file that is too large, or that does not fit in your organization's storage, is not added, and Liaison says why.

@@ -345,6 +345,8 @@
     "nextRun": "Prochaine exécution {{when}}",
     "appTemplates": "Modèles d'applications",
     "builtInTemplate": "Intégré",
+    "templateKindRecurring": "Récurrente",
+    "templateKindEvent": "Sur un événement",
     "enabled": "Activé",
     "enable": "Activer",
     "status": {
@@ -5129,7 +5131,7 @@
       "taskList": "tâche à faire case à cocher todo liste",
       "bulletList": "puces liste",
       "orderedList": "numéros liste numérotée",
-      "quote": "citation",
+      "quote": "citation encadré callout",
       "codeBlock": "code extrait",
       "table": "tableau grille lignes colonnes",
       "divider": "ligne séparation trait",

@@ -7,8 +7,8 @@ import type { Editor } from "@tiptap/core"
 import type { EditorState } from "@tiptap/pm/state"
 import { textBeforeCaret } from "./suggest"
 
-/** `/` at the start or after a space, then up to 24 letters, digits or spaces. */
-const SLASH = /(?:^|\s)\/([\p{L}\p{N}][\p{L}\p{N} ]{0,23}|)$/u
+/** `/` at the start or after a space, then up to 24 letters, digits, spaces or dashes ("/to-do"). */
+const SLASH = /(?:^|\s)\/([\p{L}\p{N}][\p{L}\p{N} -]{0,23}|)$/u
 
 export interface SlashQuery {
   /** What was typed after the slash. */
@@ -99,8 +99,9 @@ export const SLASH_BLOCKS: readonly SlashBlock[] = [
   },
 ]
 
-/** Lower case, without accents: "Élément" finds "element". */
-const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()
+/** Lower case, without accents or dashes: "Élément" finds "element", "to-do" finds "todo". */
+const fold = (s: string) =>
+  s.normalize("NFD").replace(/\p{M}/gu, "").replace(/-/g, "").toLowerCase()
 
 /**
  * The blocks whose name or search words hold every word typed, the ones whose

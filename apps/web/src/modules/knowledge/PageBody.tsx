@@ -204,6 +204,7 @@ export const PageBody: Component<PageBodyProps> = (props) => {
               value={props.editorText ?? ""}
               onEdit={props.onEdit}
               aria-label={props.doc.title}
+              placeholder={i18n.t("knowledge.pageTextPlaceholder")}
               files={props.editorFiles}
               pages={props.editorPages}
               data-testid="knowledge-doc-body-editor"

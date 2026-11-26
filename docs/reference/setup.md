@@ -26,7 +26,7 @@ Measured on a live install with a coding agent running the AGENT steps: about 9 
 | Google Ads, Merchant Center and YouTube (optional, advanced): their APIs on the same Google client, Explorer access to the Google Ads API in the Cloud console (no developer token) and the account ids | 6 to 12 min | Explorer access is usually granted within minutes; Basic access (only for creating accounts or managing users, which Liaison does not use) needs the Cloud project's brand verification |
 | Shopify: a Dev Dashboard app, released and installed on the store | 6 to 12 min |  |
 | Facebook Pages and Instagram: one Meta app with both products, then the consents and the Page webhooks | 12 to 20 min | Pages of people without a role on the Meta app need Business verification and App Review, which take days |
-| Instagram with Unified login (preview, instead of the Instagram login above): the account in the app's business portfolio, a Unified-login configuration and its id *(on top)* | 12 to 20 min |  |
+| Instagram with Unified login (preview, instead of the Instagram login above): the account in the app's business portfolio, a Unified-login configuration and its id, and access to messages turned on in the Instagram app *(on top)* | 12 to 22 min |  |
 | Meta Ads: a system user token | 5 to 8 min |  |
 | An IMAP mailbox: an app password | 2 to 4 min |  |
 | GitLab: a read-only access token | 2 to 4 min |  |

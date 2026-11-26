@@ -395,19 +395,30 @@ const RoutinesList: Component<Props> = (props) => {
                   class="flex items-center gap-3 border-b border-border-subtle px-4 py-3"
                 >
                   <div class="min-w-0 flex-1">
-                    <div class="flex items-center gap-2">
-                      <span class="text-[13px] font-medium text-text">
-                        {t.title ?? t.templateKey}
-                      </span>
+                    {/* Same shape as a routine row: the title truncates on one line and
+                        the chips sit on their own row, so a narrow list never breaks the
+                        title mid-word or a chip over two lines. */}
+                    <div
+                      data-testid={`routine-template-title-${t.appName}-${t.templateKey}`}
+                      class="truncate text-[13px] font-medium text-text"
+                    >
+                      {t.title ?? t.templateKey}
+                    </div>
+                    <div class="mt-1 flex flex-wrap items-center gap-2">
                       {/* A kernel template is the platform's own, not an app's (S28). */}
-                      <Chip>
+                      <Chip class="whitespace-nowrap">
                         {t.appName === "kernel"
                           ? i18n.t("kernel.agents.builtInTemplate")
                           : t.appName}
                       </Chip>
-                      <Chip>{t.kind}</Chip>
+                      <Chip
+                        class="whitespace-nowrap"
+                        data-testid={`routine-template-kind-${t.appName}-${t.templateKey}`}
+                      >
+                        {templateKindLabel(i18n.t, t.kind)}
+                      </Chip>
                     </div>
-                    <p class="mt-0.5 truncate text-[12px] text-text-tertiary">{t.description}</p>
+                    <p class="mt-1 truncate text-[12px] text-text-tertiary">{t.description}</p>
                   </div>
                   <button
                     type="button"
@@ -430,6 +441,13 @@ const RoutinesList: Component<Props> = (props) => {
       </div>
     </div>
   )
+}
+
+/** A template's trigger in words: a raw kind ("recurring", "event") never reaches the screen. */
+export function templateKindLabel(translate: (key: string) => string, kind: string): string {
+  if (kind === "recurring") return translate("kernel.agents.templateKindRecurring")
+  if (kind === "event") return translate("kernel.agents.templateKindEvent")
+  return kind
 }
 
 export default RoutinesList

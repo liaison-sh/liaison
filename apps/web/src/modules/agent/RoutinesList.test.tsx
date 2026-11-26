@@ -100,6 +100,14 @@ describe("RoutinesList", () => {
     const row = await screen.findByTestId("routine-template-kernel-morning-brief")
     expect(row).toHaveTextContent("Built in")
     expect(row).not.toHaveTextContent(/\bkernel\b/)
+    // The trigger kind reads as words, never the raw enum ("recurring").
+    expect(screen.getByTestId("routine-template-kind-kernel-morning-brief")).toHaveTextContent(
+      /^Recurring$/,
+    )
+    // The title has a line of its own (it truncates there instead of wrapping mid-word).
+    expect(screen.getByTestId("routine-template-title-kernel-morning-brief")).toHaveTextContent(
+      "morning-brief",
+    )
     fireEvent.click(screen.getByTestId("routine-template-enable-kernel-morning-brief"))
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(

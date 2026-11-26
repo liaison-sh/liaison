@@ -436,6 +436,8 @@ describe("no hardcoded English in the surfaces a customer works in", () => {
     "src/modules/shell/message-kind.ts::Internal note",
     // The product's name, the same in every language.
     "src/modules/auth/Login.tsx::Liaison",
+    // The platform's own tools in the reads roll-up: the product name.
+    "src/modules/agent/ToolCallRow.tsx::Liaison",
     "src/modules/auth/Register.tsx::Liaison",
     // The contacts tab's stored fallback; the tab strip names it from the catalog.
     "src/modules/contacts/ContactsSidebar.tsx::Contacts",

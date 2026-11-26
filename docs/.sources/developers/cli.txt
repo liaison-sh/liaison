@@ -1,0 +1,22 @@
+Remote CLI talks HTTPS with a capped token, no server code -> packages/cli/src/main.ts ; packages/cli/src/http.ts (Client)
+Server-only commands answer they run on the server -> packages/cli/src/main.ts (SERVER_COMMANDS)
+Install: build to dist/liaison.js, node>=20, npm pack -> packages/cli/package.json (bin, engines, files, scripts.build)
+Login: device flow, client id liaison-cli, link + code, opens browser -> packages/cli/src/auth.ts (login, CLIENT_ID)
+Default scopes kernel:apps:build + kernel:apps:logs; --admin adds kernel:apps:admin; --config scopes; --scope -> packages/cli/src/auth.ts (DEFAULT_SCOPES, CONFIG_SCOPES)
+Server caps liaison-cli: default set, reads, opt-in admin scopes, anything else refused -> apps/api/src/modules/auth/cli-client.ts (liaisonCliScopes)
+Never more than the person holds -> apps/api/src/modules/auth/session-ceiling.ts (applyScopeCeiling)
+Keychain (security / secret-tool) or 0600 credentials.json; LIAISON_CREDENTIAL_STORE, LIAISON_CONFIG_DIR -> packages/cli/src/store.ts
+Token 15 minutes, refresh 30 days, refresh cookie rotated -> packages/cli/src/http.ts (Client.refresh) ; apps/api/src/lib/response.ts (setRefreshTokenCookie)
+whoami / logout / profiles / use -> packages/cli/src/auth.ts
+apps init/push/test/publish/status/logs/rollback/pull/list/link, approvals wait -> packages/cli/src/apps.ts
+REST draft create/update/status -> apps/api/src/modules/app-builder/routes.ts (POST /drafts, PUT /drafts/:id/files, GET /drafts/:id/status)
+Custom apps on in managed, LIAISON_CUSTOM_APPS -> apps/api/src/lib/edition.ts (customAppsEnabled)
+Test cases tests/*.json, expect subset, expectError, job/webhook -> packages/cli/src/apps.ts (readFixtures, matches)
+Preview read-only scratch store -> apps/api/src/modules/app-builder/preview.ts
+Four files, 512 KiB -> apps/api/src/modules/app-builder/drafts.ts
+CLI publish never installs: approval card, same as MCP -> apps/api/src/modules/app-builder/routes.ts (restricted publish) ; apps/api/src/modules/app-builder/tools.ts (apps_build_publish)
+CLI cannot decide an approval -> apps/api/src/modules/approvals/routes.ts (assertUnrestrictedSession)
+Install by URL refused to device sign-ins -> apps/api/src/modules/apps/install-routes.ts (refuseRestrictedInstall)
+UI consent: typed app name, --yes, --withdraw, version only -> packages/cli/src/apps.ts (uiConsent) ; packages/cli/src/prompt.ts ; apps/api/src/modules/apps/install-routes.ts (ui-approval confirm)
+Config apply subset, gated config tools, refusals -> packages/cli/src/config-apply.ts ; apps/api/src/modules/agent/tools/config-tools.ts
+Log lines show only to readers holding what the run could read; CLI names missing read scopes -> apps/api/src/modules/app-builder/logs.ts (readAppLogs) ; packages/cli/src/apps.ts (logs, appReadScopes)

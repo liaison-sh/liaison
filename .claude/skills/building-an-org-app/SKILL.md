@@ -1,6 +1,6 @@
 ---
 name: building-an-org-app
-description: Build, test, publish and update a custom app for one Liaison organization from Claude Code or Codex, through the Liaison MCP server's app builder tools (kernel__apps_build_*), with no server access and no repo checkout. Use when someone on a hosted Liaison org (or any server with custom apps on) asks "build me an app that does X for our org", or wants to change, test, roll back or read the logs of an app they built that way. For an app inside a Liaison fork or a self-hosted checkout, use creating-an-app instead.
+description: Build, test, publish and update a custom app for one Liaison organization from Claude Code or Codex, through the remote `liaison` command line (`liaison apps init/push/test/publish`) or the Liaison MCP server's app builder tools (kernel__apps_build_*), with no server access and no repo checkout. Use when someone on a hosted Liaison org (or any server with custom apps on) asks "build me an app that does X for our org", or wants to change, test, roll back or read the logs of an app they built that way. For an app inside a Liaison fork or a self-hosted checkout, use creating-an-app instead.
 ---
 
 # Building an app for a Liaison organization
@@ -14,10 +14,48 @@ Two paths exist. Pick one before anything else:
 
 | The person has | Path |
 |---|---|
-| A Liaison account on a hosted org, or a server with custom apps on, and an MCP client | **This skill**: the app builder over MCP. |
+| A Liaison account on a hosted org (or a server with custom apps on) and a shell | **This skill, path A: the `liaison` command line** (section 0). The files live in a folder on this machine; the CLI sends them. Prefer it when you can run commands. |
+| The same, and an MCP client but no shell | **This skill, path B: the app builder over MCP** (sections 1-2). |
 | A fork or checkout of the Liaison repo and their own server | `.claude/skills/creating-an-app/SKILL.md`: an in-tree app, frozen and installed by the operator. |
 
-## 1. Prerequisites (check them, in this order)
+Both paths drive the same server-side builder: sections 3 to 7 (files, example, testing,
+refusals, rules) apply to both.
+
+## 0. Path A: the `liaison` command line
+
+1. **Install** (Node.js 20+ or Bun): from a Liaison checkout, `cd packages/cli && bun install &&
+   bun run build && npm pack && npm install -g ./liaison-cli-*.tgz`; or run `node dist/liaison.js`.
+   Check with `liaison --version`.
+2. **Sign in:** `liaison login --host https://<org address>`. It prints a link and a code: ask
+   the person to open it, check the code and approve. Wait for "Signed in". Never approve it
+   yourself. `liaison whoami` shows the scopes (by default `kernel:apps:build`,
+   `kernel:apps:logs`). Errors: "Unregistered device client" = the server has the device flow
+   off (its operator sets `DEVICE_FLOW_CLIENTS`); 404 on `apps` commands = custom apps off.
+3. **The loop** (in the app folder):
+
+   | Step | Command | Notes |
+   |---|---|---|
+   | Start | `liaison apps init <base_name> --title "<title>" [--template read-only]` | writes `<base_name>/` with the template files and `.liaison/app.json`; prints the `appName` |
+   | Write | edit `app.manifest.json`, `handlers.ts`, `ui.tsx`, `README.md` | whole files, the rules of section 3 |
+   | Check | `liaison apps push --message "<what changed>"` | exit 1 and `file:line: message` per error: fix and push again |
+   | Try | `liaison apps test` | runs `tests/*.json` cases (`{"tool": "...", "params": {...}, "expect": {...}}`) in the preview; `--tool <t> --params '<json>' --verbose` for one; `--fresh` empties the scratch store |
+   | Publish | `liaison apps publish --wait` | creates the approval card and waits. Tell the person a holder of `kernel:apps:admin` must approve it in Liaison; it is NOT installed until then. Exit 2 = still waiting (`liaison approvals wait <id>`), 1 = denied |
+   | Look | `liaison apps status`, `liaison apps logs [--follow] [--level warn]` | a log line shows only to a sign-in holding what its run read: if `logs` names missing scopes, sign in again with `--scope <appName>:<resource>:read` |
+   | Roll back | `liaison apps rollback --wait` | restores the previously published version and publishes it again (a new approval) |
+
+4. **The app's page with the person's session** (only if the person asks for it, never by
+   default): `liaison login --host <address> --admin`, then `liaison apps ui-consent`. It prints
+   what the page could do and asks the PERSON to type the app's name. Do not pass `--yes`
+   unless the person has read that text and told you to approve; never type the name for them.
+5. **Roles, agents, skills, routines from a file:** `liaison login --host <address> --config`,
+   then `liaison config apply <file.yaml>`. Only `roles`, `agents`, `apps`, `skills`, `routines`
+   are sent, each change as an approval card; mail, users, invoicing, secrets and model keys are
+   refused (they stay server-side).
+
+The CLI never installs anything by itself and cannot decide an approval: report every publish
+as waiting for approval until `--wait` (or `liaison apps status`) says it is installed.
+
+## 1. Path B: prerequisites over MCP (check them, in this order)
 
 1. **The MCP connection.** Liaison's MCP server is `<the org's Liaison address>/mcp`.
    - Claude Code: `claude mcp add --transport http liaison https://<org address>/mcp`, then
@@ -38,7 +76,7 @@ Two paths exist. Pick one before anything else:
 4. **The server's own guide.** If `kernel__skill_read` with `name: "build-app"` answers,
    read it: it is the server's version of this loop and wins where the two differ.
 
-## 2. The loop
+## 2. Path B: the loop over MCP
 
 Always in this order. Every tool answers `{ error: { code, message, status, retryable, details? } }`
 when it refuses (section 6 says what to do about each code).

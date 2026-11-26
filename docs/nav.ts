@@ -155,6 +155,7 @@ export const NAV: NavSection[] = [
     pages: [
       { id: "app-development", url: "developers/build-an-app" },
       { id: "developers/org-app-with-an-assistant", url: "developers/build-an-org-app" },
+      { id: "developers/cli", url: "developers/cli" },
       { id: "app-package-format", url: "developers/app-package" },
       { id: "app-sandbox", url: "developers/app-sandbox" },
       { id: "app-webhooks", url: "developers/app-webhooks" },

@@ -11,6 +11,19 @@ knowledge gathering, this config, a smoke test), open a clone's folder in
 Claude Code or Codex and ask "set up Liaison for my company"; the playbook is
 [.claude/skills/setup-liaison/SKILL.md](../.claude/skills/setup-liaison/SKILL.md).
 
+## Server CLI or remote CLI
+
+Two programs are called `liaison`:
+
+| | This page: the server CLI | The remote CLI (`@liaison/cli`) |
+|---|---|---|
+| Runs | on the server, next to the database (`docker compose exec api liaison ...`) | on anyone's computer, over HTTPS |
+| Acts as | the instance operator | the signed-in person, with a token capped to app building and logs ([The liaison command line](developers/cli.md)) |
+| Config apply | every section, secrets included | `roles`, `agents`, `apps`, `skills`, `routines` only, each change an approval card; mail, users, invoicing, secrets and model keys are refused |
+| Apps | `app status`, `app rollback`, `app verify` of installed apps | `apps init`, `push`, `test`, `publish` (through an approval), `status`, `logs`, `rollback` of the organization's own apps |
+
+On a hosted organization, where you have no server access, use the remote CLI.
+
 ## Mail app mailboxes vs ticket inboxes
 
 Liaison has two different products that both read an email account. Pick by

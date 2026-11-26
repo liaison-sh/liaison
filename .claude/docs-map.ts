@@ -162,6 +162,8 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/src/modules/org/transfer/**", pages: ["runbooks/org-transfer"] },
   // The app data store (ctx.store for apps, the agent's data tools) and dashboards (agent tools, the dashboard tab).
   // The in-product app builder: drafts, the sandboxed build, custom app logs.
+  // The remote `liaison` command line (@liaison/cli).
+  { glob: "packages/cli/**", pages: ["developers/cli", "developers/org-app-with-an-assistant"] },
   { glob: "apps/api/src/modules/app-builder/**", pages: ["app-development", "agents/build-an-app", "developers/org-app-with-an-assistant"] },
   { glob: "apps/web/src/modules/app-builder/**", pages: ["agents/build-an-app"] },
   { glob: "apps/api/src/modules/agent/prompts/kernel/build-app.md", pages: ["agents/build-an-app", "developers/org-app-with-an-assistant"] },

@@ -208,7 +208,9 @@ describe("Knowledge attachment RLS", () => {
         )
         expect(result.files.map((f) => f.id)).toEqual([fileId])
         const direct = extractRows<{ id: string }>(
-          await rlsTx.execute(sql`SELECT id::text AS id FROM kernel.files WHERE id = ${fileId}::uuid`),
+          await rlsTx.execute(
+            sql`SELECT id::text AS id FROM kernel.files WHERE id = ${fileId}::uuid`,
+          ),
         )
         expect(direct).toHaveLength(1)
       },
@@ -226,7 +228,9 @@ describe("Knowledge attachment RLS", () => {
       },
       async (rlsTx) => {
         const direct = extractRows<{ id: string }>(
-          await rlsTx.execute(sql`SELECT id::text AS id FROM kernel.files WHERE id = ${fileId}::uuid`),
+          await rlsTx.execute(
+            sql`SELECT id::text AS id FROM kernel.files WHERE id = ${fileId}::uuid`,
+          ),
         )
         expect(direct).toHaveLength(0)
       },
@@ -238,7 +242,9 @@ describe("Knowledge attachment RLS", () => {
       { actorType: "user", orgId, userId: ownerId, scopes: [], dimensionGrants: {} },
       async (rlsTx) => {
         const direct = extractRows<{ id: string }>(
-          await rlsTx.execute(sql`SELECT id::text AS id FROM kernel.files WHERE id = ${fileId}::uuid`),
+          await rlsTx.execute(
+            sql`SELECT id::text AS id FROM kernel.files WHERE id = ${fileId}::uuid`,
+          ),
         )
         expect(direct).toHaveLength(0)
       },

@@ -166,3 +166,18 @@ describe("Off app: HTTP chokepoints", () => {
     )
   }, 60_000)
 })
+
+describe("manifest feed: the Home heading", () => {
+  it("carries each app's declared attention heading and its catalog key", async () => {
+    const res = await call("/api/apps/manifests", admin)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      data: Array<{ name: string; manifest: { attention?: { groupLabel?: unknown } } }>
+    }
+    const tickets = body.data.find((d) => d.name === "tickets")
+    expect(tickets?.manifest.attention?.groupLabel).toEqual({
+      label: "Support",
+      labelKey: "kernel.homeGroupSupport",
+    })
+  }, 60_000)
+})

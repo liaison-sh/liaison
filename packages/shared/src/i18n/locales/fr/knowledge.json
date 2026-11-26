@@ -223,6 +223,7 @@
     "yours": "Le vôtre",
     "theirs": "L'autre",
     "back": "Retour",
+    "mergedToast": "Quelqu'un a enregistré cette page pendant que vous écriviez. Les deux modifications sont conservées.",
     "keptMineToast": "Votre texte est enregistré. L'autre texte est dans l'historique de la page.",
     "tookTheirsToast": "L'autre texte est affiché. Le vôtre est dans l'historique de la page.",
     "leftConflictToast": "Votre texte est dans l'historique de la page.",

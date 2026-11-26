@@ -223,6 +223,7 @@
     "yours": "Yours",
     "theirs": "Theirs",
     "back": "Back",
+    "mergedToast": "Someone saved this page while you wrote. Both changes are kept.",
     "keptMineToast": "Your text is saved. The other text is in Page history.",
     "tookTheirsToast": "The other text is shown. Yours is in Page history.",
     "leftConflictToast": "Your text is in Page history.",

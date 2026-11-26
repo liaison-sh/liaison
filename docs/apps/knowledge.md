@@ -23,7 +23,7 @@ When you sign out with text that could not be saved, Liaison first tries to save
 
 You can also click **Create knowledge from…** on the Knowledge home to ask your agent to write documents from material you give it.
 
-If someone else saves the page while you write, or you do in another tab, Liaison tells you and keeps your text. Click **Choose what to keep**: **Keep mine** makes your text the page, **Take theirs** shows the other text, and **See both** compares them first. Whatever you choose, the other text stays in **Page history**. If you leave without choosing, the other text is shown and yours goes to **Page history**. If only the title changed elsewhere (someone renamed the page) and you did not edit the title, Liaison takes the new title and saves your text, without asking.
+If someone else saves the page while you write, or you do in another tab, and your changes are in different blocks (another paragraph, heading, list item or code block), Liaison keeps both and saves the merged page: both versions are in **Page history**. If you both changed the same block, Liaison tells you and keeps your text. Click **Choose what to keep**: **Keep mine** makes your text the page, **Take theirs** shows the other text, and **See both** compares them first. Whatever you choose, the other text stays in **Page history**. If you leave without choosing, the other text is shown and yours goes to **Page history**. If only the title changed elsewhere (someone renamed the page) and you did not edit the title, Liaison takes the new title and saves your text, without asking.
 
 ## Organise documents and folders
 

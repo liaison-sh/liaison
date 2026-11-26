@@ -22,6 +22,26 @@ export function diffOf(before: string, after: string) {
 
 /** A fence line (```), drawn as the code marker it is, never as an empty code block. */
 const FENCE = /^ {0,3}(```|~~~)/
+/** Lines that only make sense together: a quote or callout, a table. */
+const JOINED = /^ {0,3}(>|\|)/
+
+/**
+ * The rows drawn: blank separator lines dropped, and the neighbouring lines of one
+ * quote, callout or table that changed the same way kept together, so a callout is
+ * drawn with its text and a table with its rows.
+ */
+export function rowsOf(lines: Array<{ type: "add" | "del" | "same"; text: string }>) {
+  const rows: Array<{ type: "add" | "del" | "same"; text: string }> = []
+  for (const line of lines) {
+    if (line.text.trim() === "") continue
+    const last = rows.at(-1)
+    const kind = JOINED.exec(line.text)?.[1]
+    if (last && kind && last.type === line.type && JOINED.exec(last.text)?.[1] === kind) {
+      last.text = `${last.text}\n${line.text}`
+    } else rows.push({ ...line })
+  }
+  return rows
+}
 
 export const TextDiff: Component<{
   before: string
@@ -32,9 +52,7 @@ export const TextDiff: Component<{
 }> = (props) => {
   const i18n = useI18n()
   const label = () => `[${i18n.t("kernel.editor.pageLink")}]`
-  const lines = createMemo(() =>
-    lineDiff(props.before, props.after).filter((l) => l.text.trim() !== ""),
-  )
+  const lines = createMemo(() => rowsOf(lineDiff(props.before, props.after)))
   const draw = (el: HTMLElement, text: string) => {
     const source = text.replace(PAGE_TOKEN_RE, label())
     if (FENCE.test(source)) {

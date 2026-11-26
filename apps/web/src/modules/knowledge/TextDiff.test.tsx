@@ -44,4 +44,16 @@ describe("TextDiff", () => {
     expect(diff.querySelector("[data-diff='add']")?.textContent).toContain("Added")
     expect(diff.querySelector("[data-diff='del']")?.textContent).toContain("Removed")
   })
+
+  it("draws a quote (or callout) with all its lines and a table with its rows, in one row each", () => {
+    const diff = show(
+      "Intro",
+      "Intro\n\n> Keep the fire exit clear.\n> Always.\n\n| A | B |\n| --- | --- |\n| 1 | 2 |",
+    )
+    const added = diff.querySelectorAll("[data-diff='add']")
+    expect(added.length).toBe(2)
+    expect(added[0]!.querySelectorAll("blockquote").length).toBe(1)
+    expect(added[0]!.querySelector("blockquote")?.textContent).toContain("Always.")
+    expect(added[1]!.querySelectorAll("td").length).toBe(2)
+  })
 })

@@ -43,6 +43,7 @@ export type SlashKey =
   | "bulletList"
   | "orderedList"
   | "quote"
+  | "callout"
   | "codeBlock"
   | "table"
   | "divider"
@@ -71,6 +72,11 @@ export const SLASH_BLOCKS: readonly SlashBlock[] = [
   { key: "bulletList", hint: "-", run: (ed) => chain(ed).toggleBulletList().run() },
   { key: "orderedList", hint: "1.", run: (ed) => chain(ed).toggleOrderedList().run() },
   { key: "quote", hint: ">", run: (ed) => chain(ed).toggleBlockquote().run() },
+  {
+    key: "callout",
+    hint: "> [!NOTE]",
+    run: (ed) => chain(ed).setParagraph().setCallout().run(),
+  },
   { key: "codeBlock", hint: "```", run: (ed) => chain(ed).toggleCodeBlock().run() },
   {
     key: "table",

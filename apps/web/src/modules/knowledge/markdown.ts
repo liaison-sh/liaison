@@ -26,7 +26,8 @@ import { editorMarkdown } from "@liaison/shared"
 import { Marked, type MarkedExtension } from "marked"
 import { wrapMarkdownTables } from "~/lib/markdown-tables"
 import { sanitizeHtml } from "~/lib/sanitize"
-import { FILE_REF_AT_START } from "~/modules/editor/file-view"
+import { CALLOUT_AT_START, calloutInner, calloutStart } from "~/modules/editor/callout"
+import { FILE_REF_AT_START, imageWidthOfRef } from "~/modules/editor/file-view"
 import { PAGE_REF_AT_START, pageRefStart } from "~/modules/editor/page-link-view"
 
 /**
@@ -45,9 +46,14 @@ const fileTokens: MarkedExtension = {
       },
       tokenizer(src: string) {
         const match = FILE_REF_AT_START.exec(src)
-        return match ? { type: "liaisonFile", raw: match[0], id: match[1] } : undefined
+        return match
+          ? { type: "liaisonFile", raw: match[0], id: match[1], width: imageWidthOfRef(match[0]) }
+          : undefined
       },
-      renderer: (token) => `<span data-page-file="${String(token.id)}"></span>`,
+      renderer: (token) =>
+        token.width && token.width !== "full"
+          ? `<span data-page-file="${String(token.id)}" data-width="${String(token.width)}"></span>`
+          : `<span data-page-file="${String(token.id)}"></span>`,
     },
   ],
 }
@@ -75,7 +81,45 @@ const pageTokens: MarkedExtension = {
   ],
 }
 
-const marked = new Marked({ breaks: false, gfm: true }, editorMarkdown, fileTokens, pageTokens)
+/**
+ * A callout (`> [!NOTE]` and its quoted lines, editor/callout.ts) is a quote with a
+ * kind: `<blockquote class="md-callout" data-callout="note">`, its icon drawn by the
+ * stylesheet.
+ */
+const callouts: MarkedExtension = {
+  extensions: [
+    {
+      name: "callout",
+      level: "block",
+      start: (src: string) => {
+        const at = calloutStart(src)
+        return at < 0 ? undefined : at
+      },
+      tokenizer(src: string) {
+        const match = CALLOUT_AT_START.exec(src)
+        if (!match) return undefined
+        return {
+          type: "callout",
+          raw: match[0],
+          kind: match[1]!.toLowerCase(),
+          tokens: this.lexer.blockTokens(calloutInner(match[2] ?? ""), []),
+        }
+      },
+      renderer(token) {
+        const kind = String(token.kind)
+        return `<blockquote class="md-callout" data-callout="${kind}">${this.parser.parse(token.tokens ?? [])}</blockquote>\n`
+      },
+    },
+  ],
+}
+
+const marked = new Marked(
+  { breaks: false, gfm: true },
+  editorMarkdown,
+  callouts,
+  fileTokens,
+  pageTokens,
+)
 
 /** Sanitized HTML; a wide table scrolls in its own box, as in a message. */
 export function renderMarkdown(body: string): string {

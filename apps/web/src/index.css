@@ -533,6 +533,94 @@
   border-radius: 8px;
 }
 
+/* A picture's width on the page (`![width=50%](...)`, editor/file-view.ts), in the
+   editor and the reader alike. */
+.liaison-file[data-kind="image"][data-width] {
+  position: relative;
+}
+.liaison-file[data-kind="image"][data-width="small"] {
+  width: 33%;
+}
+.liaison-file[data-kind="image"][data-width="medium"] {
+  width: 50%;
+}
+.liaison-file[data-kind="image"][data-width="large"] {
+  width: 75%;
+}
+.liaison-file[data-kind="image"] {
+  position: relative;
+}
+/* The size buttons of a selected picture, over its top right corner. */
+.liaison-file-sizes {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  font-size: 12px;
+}
+.rich-editor .ProseMirror .liaison-file.ProseMirror-selectednode .liaison-file-sizes,
+.rich-editor .ProseMirror .liaison-file:hover .liaison-file-sizes {
+  display: inline-flex;
+}
+.liaison-file-sizes button {
+  min-width: 1.75rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.liaison-file-sizes button:hover {
+  background: var(--color-surface-hover);
+}
+.liaison-file-sizes button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  color: var(--color-text);
+}
+
+/* A callout (editor/callout.ts): an icon and a tinted box, in the editor and the reader. */
+blockquote.md-callout {
+  position: relative;
+  margin: 0.75em 0;
+  padding: 0.6em 0.9em 0.6em 2.6em;
+  border: 1px solid var(--color-border-subtle);
+  border-left: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+  color: var(--color-text);
+  font-style: normal;
+}
+blockquote.md-callout > :first-child {
+  margin-top: 0;
+}
+blockquote.md-callout > :last-child {
+  margin-bottom: 0;
+}
+blockquote.md-callout::before {
+  position: absolute;
+  top: 0.55em;
+  left: 0.85em;
+  content: "\1F4A1";
+}
+blockquote.md-callout[data-callout="tip"]::before {
+  content: "\2705";
+}
+blockquote.md-callout[data-callout="important"]::before {
+  content: "\2757";
+}
+blockquote.md-callout[data-callout="warning"]::before,
+blockquote.md-callout[data-callout="caution"]::before {
+  content: "\26A0\FE0F";
+}
+blockquote.md-callout[data-callout="warning"],
+blockquote.md-callout[data-callout="caution"] {
+  background: color-mix(in srgb, #d97706 8%, transparent);
+}
+
 /* Mention pills inside thread prose. An INLINE chip on the text line: it
    never sets a height or a line-height of its own, so the paragraph keeps its
    rhythm, and a long name wraps with the chip's look on both fragments. */

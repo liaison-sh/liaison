@@ -857,6 +857,12 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
             label: i18n.t("kernel.editor.fileToken"),
             uploading: (name) =>
               props.files?.uploading(name) ?? i18n.t("kernel.editor.uploadingFile", { name }),
+            sizes: {
+              small: i18n.t("kernel.editor.imageSmall"),
+              medium: i18n.t("kernel.editor.imageMedium"),
+              large: i18n.t("kernel.editor.imageLarge"),
+              full: i18n.t("kernel.editor.imageFull"),
+            },
           },
           keys: {
             onSubmit: props.onSubmit && (() => props.onSubmit?.()),

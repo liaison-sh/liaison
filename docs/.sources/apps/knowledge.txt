@@ -8,6 +8,11 @@ New folder -> packages/shared/src/i18n/locales/en/knowledge.json:15
 Move to -> apps/web/src/modules/knowledge/KnowledgeCollectionTree.tsx:220
 Unfiled -> apps/web/src/modules/knowledge/KnowledgeSidebar.tsx:418
 Deleting a folder keeps documents -> packages/shared/src/i18n/locales/en/knowledge.json:73
+Callout block -> apps/web/src/modules/editor/callout.ts:41
+Callout in the slash menu -> apps/web/src/modules/editor/slash.ts:76
+Image size buttons -> apps/web/src/modules/editor/liaison-file.ts:165
+Image width in the token -> apps/web/src/modules/editor/file-view.ts:62
+Notion callouts become callouts -> apps/api/src/modules/imports/builtin/notion-export.js:279
 Create knowledge from… opens agent chat -> apps/web/src/modules/knowledge/KnowledgeHome.tsx:62
 Load the latest version on concurrent edit -> packages/shared/src/i18n/locales/en/knowledge.json:120
 Share button -> apps/web/src/modules/knowledge/KnowledgeDocumentView.tsx:445

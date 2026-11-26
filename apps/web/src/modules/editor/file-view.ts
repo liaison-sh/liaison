@@ -41,6 +41,34 @@ export interface FileViewDeps {
 export const FILE_REF_AT_START =
   /^!\[(?:\\.|[^\]\\])*\]\(liaison-file:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)/
 
+/**
+ * How wide a page's picture is drawn, stored in the token's alt text so any markdown
+ * reader keeps it: `![width=50%](liaison-file:<id>)`. No width (or another alt) is the
+ * full line. Only these steps are written; any other value reads as the full line.
+ */
+export const IMAGE_WIDTHS = { small: 33, medium: 50, large: 75 } as const
+export type ImageWidth = keyof typeof IMAGE_WIDTHS | "full"
+
+/** The width a file reference's source (`![<alt>](liaison-file:...)`) asks for. */
+export function imageWidthOfRef(raw: string): ImageWidth {
+  const alt = /^!\[([^\]]*)\]/.exec(raw)?.[1] ?? ""
+  const pct = /^width=(\d{1,3})%$/.exec(alt.trim())?.[1]
+  for (const [name, value] of Object.entries(IMAGE_WIDTHS))
+    if (String(value) === pct) return name as ImageWidth
+  return "full"
+}
+
+/** The token for a file at a width. */
+export function fileRef(id: string, width: ImageWidth): string {
+  return width === "full"
+    ? `![](liaison-file:${id})`
+    : `![width=${IMAGE_WIDTHS[width]}%](liaison-file:${id})`
+}
+
+export function isImageWidth(value: unknown): value is ImageWidth {
+  return value === "full" || (typeof value === "string" && value in IMAGE_WIDTHS)
+}
+
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
 /** A file id as a token holds it: a uuid and nothing else. */
@@ -129,7 +157,13 @@ function card(file: PageFileInfo, deps: FileViewDeps): HTMLElement {
  * Draw file `id` into `dom` (whose content it owns). Answers a function that
  * stops the drawing (a view destroyed or redrawn before the lookup answered).
  */
-export function renderFileView(dom: HTMLElement, id: string, deps: FileViewDeps): () => void {
+export function renderFileView(
+  dom: HTMLElement,
+  id: string,
+  deps: FileViewDeps,
+  /** Called once the picture is in place (the editor adds its size buttons). */
+  onImage?: () => void,
+): () => void {
   let live = true
   dom.classList.add("liaison-file")
   dom.dataset.liaisonFile = id
@@ -168,6 +202,7 @@ export function renderFileView(dom: HTMLElement, id: string, deps: FileViewDeps)
       img.src = url
       dom.dataset.kind = "image"
       dom.replaceChildren(img)
+      onImage?.()
     })
   return () => {
     live = false

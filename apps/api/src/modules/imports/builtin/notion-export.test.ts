@@ -273,13 +273,31 @@ describe("notion-export: S16 mapping on the fixtures", () => {
     expect(b?.body).toContain("Desk3B")
   }, 120_000)
 
-  it("toggles stay as text under a heading, callouts as quotes, the title line is dropped", async () => {
+  it("toggles stay as text under a heading, callouts as callouts, the title line is dropped", async () => {
     const { docs } = await stage(both())
     const b = docs.get(B)?.body ?? ""
     expect(b).toContain("#### First week")
-    expect(b).toContain("> 💡 Ask your buddy before you ask the channel.")
+    expect(b).toContain("> [!NOTE]\n> Ask your buddy before you ask the channel.")
+    expect(b).not.toContain("💡")
     expect(b).not.toContain("<aside>")
     expect(b.startsWith("# Onboarding")).toBe(false)
+  }, 120_000)
+
+  it("a warning icon makes a warning callout; a callout over several lines stays one", async () => {
+    const page = "c2000000000000000000000000000019"
+    const { docs } = await stage(
+      buildZip([
+        {
+          name: `Ops ${page}.md`,
+          data: Buffer.from(
+            "# Ops\n\n<aside>\n⚠️ Never restart on a Friday.\nAsk first.\n</aside>\n\nAfter\n",
+          ),
+        },
+      ]),
+    )
+    const body = docs.get(page)?.body ?? ""
+    expect(body).toContain("> [!WARNING]\n> Never restart on a Friday.\n> Ask first.\n\nAfter")
+    expect(body).not.toContain("⚠")
   }, 120_000)
 
   it("a callout's tags go even when nested, and a table cell keeps its backslashes and pipes", async () => {
@@ -296,7 +314,7 @@ describe("notion-export: S16 mapping on the fixtures", () => {
     )
     const odd = docs.get(page)?.body ?? ""
     expect(odd).not.toContain("<script")
-    expect(odd).toContain("> ipt>Hi")
+    expect(odd).toContain("> [!NOTE]\n> ipt>Hi")
     expect(docs.get(db)?.body).toContain("| One | C:\\\\a\\|b |")
   }, 120_000)
 

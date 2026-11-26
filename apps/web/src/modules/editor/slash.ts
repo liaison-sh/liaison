@@ -101,11 +101,7 @@ export const SLASH_BLOCKS: readonly SlashBlock[] = [
 
 /** Lower case, without accents or dashes: "Élément" finds "element", "to-do" finds "todo". */
 const fold = (s: string) =>
-  s
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .replace(/-/g, "")
-    .toLowerCase()
+  s.normalize("NFD").replace(/\p{M}/gu, "").replace(/-/g, "").toLowerCase()
 
 /**
  * The blocks whose name or search words hold every word typed, the ones whose

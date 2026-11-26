@@ -12,7 +12,7 @@ You manage the people in your organization from **Settings › Users**, in the *
 3. Pick a **Role**. You cannot assign a role that grants more permissions than you have.
 4. Click **Send invitation**.
 
-Liaison emails the person an **Accept invitation** link. The invitation expires in 7 days. If the email already belongs to a user, the dialog offers to open that user instead.
+Liaison emails the person an **Accept invitation** link. The invitation expires in 7 days. Once they have entered their name, their first open lands in the conversation with their own agent, where they can ask what the workspace is for and where to start. If the email already belongs to a user, the dialog offers to open that user instead.
 
 On a local trial with no SMTP server, the email is written to the app log instead of being sent (see [Install Liaison](../getting-started/install.md#sign-in-the-first-time)). To invite many people from a file, list them under `users` in a config file and run `liaison config apply`: its report gives each invite link as `users[].inviteUrl`. See [Provision from a config file](../provisioning-cli.md).
 

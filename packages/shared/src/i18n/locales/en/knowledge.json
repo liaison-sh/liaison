@@ -1,10 +1,6 @@
 {
   "apiUnavailable": "API unavailable.",
   "googleDrive": "Google Drive",
-  "diff": {
-    "added": "Added",
-    "removed": "Removed"
-  },
   "knowledgeItemNotFound": "Knowledge item not found",
   "newDocument": "New document",
   "noRecentDocuments": "No recent documents.",
@@ -459,5 +455,9 @@
       "other": "Other items"
     },
     "rowsPastDetail": "{{count}} rows past the first {{max}}"
+  },
+  "diff": {
+    "added": "Added",
+    "removed": "Removed"
   }
 }

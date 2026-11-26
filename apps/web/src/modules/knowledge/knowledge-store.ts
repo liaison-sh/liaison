@@ -493,3 +493,6 @@ if (
 }
 
 onSessionTeardown(resetKnowledgeStore)
+
+// Pages made with New page here, discarded when left empty (fresh-pages.ts).
+export { markFreshPage } from "./fresh-pages"

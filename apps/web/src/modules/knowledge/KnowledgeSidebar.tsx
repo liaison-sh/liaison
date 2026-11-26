@@ -22,7 +22,6 @@ import { evictTabByEntity, openTab, tabStore } from "~/modules/shell/tab-store"
 import { addToast } from "~/modules/shell/toast-store"
 import { Dialog } from "~/ui/Dialog"
 import { ScrollFade } from "~/ui/ScrollFade"
-import { markFreshPage } from "./fresh-pages"
 import KnowledgeCollectionTree, {
   type MoveDocArgs,
   type MoveRequest,
@@ -47,6 +46,7 @@ import {
   loadCollectionsTree,
   loadDocuments,
   loadKnowledgeHome,
+  markFreshPage,
   revealDocument,
   searchKnowledge,
   setFolderOpen,

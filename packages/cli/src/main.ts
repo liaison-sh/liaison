@@ -28,6 +28,7 @@ const BOOLEANS = new Set([
   "no-push",
   "dry-run",
   "help",
+  "version",
 ])
 
 const HELP = `liaison ${CLI_VERSION}: your Liaison organization from the command line
@@ -87,12 +88,12 @@ async function run(argv: string[]): Promise<number> {
   const [cmd, sub, ...rest] = args.positionals
   const io: auth.Io = { out: (l) => console.log(l), err: (l) => console.error(l) }
   const shifted = (n: number) => ({ ...args, positionals: args.positionals.slice(n) })
-  if (!cmd || cmd === "help" || args.flags.has("help")) {
-    console.log(HELP)
+  if (cmd === "version" || args.flags.has("version")) {
+    console.log(CLI_VERSION)
     return 0
   }
-  if (cmd === "version" || cmd === "--version") {
-    console.log(CLI_VERSION)
+  if (!cmd || cmd === "help" || args.flags.has("help")) {
+    console.log(HELP)
     return 0
   }
   switch (cmd) {

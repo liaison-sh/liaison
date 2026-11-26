@@ -13,7 +13,10 @@
 //   when the browser is back online. A text over 1,000,000 characters is not sent.
 // - 409: someone saved first. If the stored text is the one this saver sent (the
 //   reply was lost after the server applied it) it is saved; else `conflict`, and
-//   saving stops while typing goes on. 404/403: `no-access`, the draft is kept.
+//   saving stops while typing goes on. Before that, both edits are merged when they
+//   touch different blocks (merge.ts): the view shows the merged text and it is saved
+//   over theirs, so their version and the merged one are both in Page history.
+//   404/403: `no-access`, the draft is kept.
 // - WHOSE SESSION: a saver is bound to the user it was created for. Before each
 //   request it checks that the signed-in user is that user, and otherwise sends
 //   nothing, ever. When the session ends (expiry, revocation, another tab's
@@ -32,6 +35,7 @@ import {
   type PageDraft,
   textHash,
 } from "./drafts"
+import { mergeTexts } from "./merge"
 
 export type SaveState =
   | "idle"
@@ -108,6 +112,12 @@ export interface PageSaverOptions {
    * shows this title, and `read` returns it from now on.
    */
   onTitleAdopted?: (title: string) => void
+  /**
+   * Someone saved while this view had unsaved text, and both edits touch different
+   * blocks: the view shows `merged` (the editor and the title) and answers true; this
+   * saver then saves it over theirs. False (or no handler): the person chooses.
+   */
+  onMerged?: (merged: PageText, theirs: SavedRow) => boolean
   sessionId?: string
   /** For tests: the window whose events end the page (pagehide, visibility, online). */
   target?: Window | null
@@ -450,6 +460,19 @@ export function createPageSaver(opts: PageSaverOptions): PageSaver {
         opts.onTitleAdopted?.(stored.title)
         again = true
         return
+      }
+      // Their edits and mine touch different blocks: both are kept, nobody is asked.
+      if (opts.onMerged) {
+        const merged = mergeTexts(acked, normalized(opts.read()), {
+          title: stored.title,
+          body: stored.body,
+        })
+        if (merged && opts.onMerged(merged, stored)) {
+          revision = stored.revision
+          acked = { title: stored.title, body: stored.body }
+          again = true
+          return
+        }
       }
       clearSaveTimers()
       setStatus({ state: "conflict", theirs: stored })

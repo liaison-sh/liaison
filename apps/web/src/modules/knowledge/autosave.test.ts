@@ -140,6 +140,8 @@ function tab(args: {
   user?: () => string | null
   userId?: string
   text?: { title: string; body: string }
+  /** The view shows a merged text (as the page view does). */
+  merge?: boolean
 }) {
   const text = args.text ?? { title: args.server.page.title, body: args.server.page.body }
   const editor = { ...text }
@@ -156,6 +158,15 @@ function tab(args: {
     onTitleAdopted: (title) => {
       editor.title = title
     },
+    ...(args.merge
+      ? {
+          onMerged: (merged: { title: string; body: string }) => {
+            editor.title = merged.title
+            editor.body = merged.body
+            return true
+          },
+        }
+      : {}),
   })
   return {
     saver,
@@ -366,6 +377,42 @@ describe("createPageSaver", () => {
     await vi.advanceTimersByTimeAsync(30_000)
     expect(server.page.body).toBe("Amina's text")
     expect(drafts.map.get(b.saver.key)?.body).toBe("Lucas's text, longer")
+  })
+
+  it("two people edit different blocks at once: both edits are merged and saved, nobody is asked", async () => {
+    server.page = { ...server.page, body: "# Plan\n\nIntro\n\n- one\n- two\n\nOutro" }
+    const a = tab({ server, api, drafts, liveness: locks, merge: true })
+    const b = tab({ server, api, drafts, liveness: locks, userId: "lucas", merge: true })
+    a.type("# Plan\n\nIntro, by Amina\n\n- one\n- two\n\nOutro")
+    await vi.advanceTimersByTimeAsync(1_000)
+    b.type("# Plan\n\nIntro\n\n- one\n- two\n- three\n\nOutro, by Lucas")
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushPromises()
+    const merged = "# Plan\n\nIntro, by Amina\n\n- one\n- two\n- three\n\nOutro, by Lucas"
+    expect(b.saver.status().state).toBe("saved")
+    expect(server.page.body).toBe(merged)
+    expect(b.editor.body).toBe(merged)
+    // History keeps both: Amina's save, then the merged one made against it.
+    expect(server.patches.map((p) => p.body.body)).toContain(
+      "# Plan\n\nIntro, by Amina\n\n- one\n- two\n\nOutro",
+    )
+    expect(server.patches.at(-1)!.body).toMatchObject({ body: merged, revision: 2 })
+    expect(server.page.revision).toBe(3)
+  })
+
+  it("two people change the same block differently: still a conflict, both texts kept", async () => {
+    server.page = { ...server.page, body: "Intro\n\nOutro" }
+    const a = tab({ server, api, drafts, liveness: locks, merge: true })
+    const b = tab({ server, api, drafts, liveness: locks, userId: "lucas", merge: true })
+    a.type("Intro by Amina\n\nOutro")
+    await vi.advanceTimersByTimeAsync(1_000)
+    b.type("Intro by Lucas\n\nOutro")
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushPromises()
+    expect(b.saver.status().state).toBe("conflict")
+    expect(server.page.body).toBe("Intro by Amina\n\nOutro")
+    expect(b.editor.body).toBe("Intro by Lucas\n\nOutro")
+    expect(drafts.map.get(b.saver.key)?.body).toBe("Intro by Lucas\n\nOutro")
   })
 
   it("the page goes away with a conflict open: my text is posted to Page history with keepalive, the draft kept", async () => {

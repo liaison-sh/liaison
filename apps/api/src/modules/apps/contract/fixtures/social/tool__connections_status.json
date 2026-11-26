@@ -4,23 +4,31 @@
   "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
   "calls": [
     {
-      "method": "connections_describe",
-      "args": ["facebook"],
-      "reply": "[{\"id\":\"cc728fa8-1522-49cc-a747-e210a0fe891d\",\"identifier\":\"104857600000001\",\"displayName\":\"Resonant Audio Labs\",\"ownerType\":\"org\",\"isMine\":false,\"status\":\"active\",\"statusMessage\":null,\"tokenExpiresAt\":\"2036-11-13T01:32:42.998Z\",\"hasRefreshToken\":false,\"connectedByName\":\"Contract Recorder\",\"connectedAt\":\"2026-11-13T01:32:42.998Z\",\"updatedAt\":\"2026-11-13T01:32:42.998Z\"}]"
-    },
-    {
-      "method": "connections_describe",
-      "args": ["google"],
-      "reply": "[{\"id\":\"51d230c8-1d04-4d1f-a959-8e458c8e7284\",\"identifier\":\"UCxContractChannel0000001\",\"displayName\":\"Resonant Audio Labs\",\"ownerType\":\"org\",\"isMine\":false,\"status\":\"active\",\"statusMessage\":null,\"tokenExpiresAt\":\"2036-11-13T01:32:42.999Z\",\"hasRefreshToken\":false,\"connectedByName\":\"Contract Recorder\",\"connectedAt\":\"2026-11-13T01:32:42.999Z\",\"updatedAt\":\"2026-11-13T01:32:42.999Z\"}]"
-    },
-    {
-      "method": "connections_describe",
-      "args": ["instagram"],
+      "method": "db_findMany",
+      "args": [
+        "sync_state",
+        "{\"where\":{\"platform\":\"instagram\",\"source_type\":\"dm\",\"active\":true},\"limit\":200}"
+      ],
       "reply": "[]"
     },
     {
       "method": "connections_describe",
+      "args": ["facebook"],
+      "reply": "[{\"id\":\"ad94c3d7-09c4-45fa-823d-1e47692c1576\",\"identifier\":\"104857600000001\",\"displayName\":\"Resonant Audio Labs\",\"ownerType\":\"org\",\"isMine\":false,\"status\":\"active\",\"statusMessage\":null,\"tokenExpiresAt\":\"2036-11-26T15:34:31.749Z\",\"hasRefreshToken\":false,\"connectedByName\":\"Contract Recorder\",\"connectedAt\":\"2026-11-26T15:34:31.749Z\",\"updatedAt\":\"2026-11-26T15:34:31.749Z\"}]"
+    },
+    {
+      "method": "connections_describe",
       "args": ["instagram_unified"],
+      "reply": "[]"
+    },
+    {
+      "method": "connections_describe",
+      "args": ["google"],
+      "reply": "[{\"id\":\"317cfc8b-0643-4258-ae1c-0cc64739102b\",\"identifier\":\"UCxContractChannel0000001\",\"displayName\":\"Resonant Audio Labs\",\"ownerType\":\"org\",\"isMine\":false,\"status\":\"active\",\"statusMessage\":null,\"tokenExpiresAt\":\"2036-11-26T15:34:31.751Z\",\"hasRefreshToken\":false,\"connectedByName\":\"Contract Recorder\",\"connectedAt\":\"2026-11-26T15:34:31.751Z\",\"updatedAt\":\"2026-11-26T15:34:31.751Z\"}]"
+    },
+    {
+      "method": "connections_describe",
+      "args": ["instagram"],
       "reply": "[]"
     }
   ]

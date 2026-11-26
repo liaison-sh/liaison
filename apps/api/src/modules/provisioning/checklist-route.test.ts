@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { and, eq } from "drizzle-orm"
 import { app } from "~/app"
 import { withSystemDb } from "~/db/privileged"
-import { invitations, roles } from "~/db/schema/kernel"
+import { invitations, roles, users } from "~/db/schema/kernel"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -77,5 +77,21 @@ describe("GET /api/first-run/checklist", () => {
     const after = await checklist(adminToken)
     expect(after.data?.items.find((i) => i.key === "team")?.done).toBe(true)
     expect(Date.parse(after.data?.asOf ?? "")).toBeGreaterThan(0)
+  })
+
+  test("a member without kernel:threads:read is refused, as the setup_state tool", async () => {
+    const [noScope] = await withSystemDb("test-checklist-noscope", (db) =>
+      db
+        .insert(users)
+        .values({
+          orgId,
+          email: `noscope-${crypto.randomUUID()}@t.co`,
+          name: "No Scope",
+          status: "active",
+        })
+        .returning({ id: users.id }),
+    )
+    const res = await checklist(await minimal.token(noScope!.id))
+    expect(res.status).toBe(403)
   })
 })

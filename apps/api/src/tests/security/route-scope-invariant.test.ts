@@ -122,6 +122,10 @@ const ANY_MEMBER: Record<string, string> = {
     "knowledge reads filtered by the sharing ACL and dimensions; empty here",
   "GET /api/knowledge/synced-sources":
     "knowledge reads filtered by the sharing ACL and dimensions; empty here",
+  "GET /api/knowledge/documents/pick":
+    "knowledge reads filtered by the sharing ACL and dimensions; empty here",
+  "GET /api/knowledge/trash":
+    "knowledge reads filtered by the sharing ACL and dimensions; empty here (empty without the archive scope)",
   "GET /api/files/delivery": "deployment file delivery mode",
   "GET /api/assist/capabilities":
     "whether dictation is available in the org and the caller's own clean-up default",

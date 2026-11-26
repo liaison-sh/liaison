@@ -527,6 +527,33 @@ describe("BillingSettings", () => {
     expect(invoiceReads).toBeGreaterThan(beforeInvoices)
   })
 
+  it("the card line follows a re-read, not the card first drawn", async () => {
+    let switched = false
+    let summaryReads = 0
+    stubApi((url, init) => {
+      if (url.includes("/billing/managed/change-plan") && init?.method === "POST") {
+        switched = true
+        return {
+          body: { data: { ok: true, result: "changed", effectiveAt: "2026-11-26T10:00:00.000Z" } },
+        }
+      }
+      if (url.includes("/billing/managed/summary")) {
+        summaryReads++
+        const card = switched
+          ? { brand: "mastercard", last4: "5100", expMonth: 9, expYear: 2032 }
+          : SUMMARY.card
+        return { body: { data: { ok: true, ...SUMMARY, card } } }
+      }
+      return baseRoutes(url)
+    })
+    renderPage()
+    fireEvent.click(await screen.findByTestId("billing-switch-pro"))
+    await vi.waitFor(() => expect(summaryReads).toBeGreaterThanOrEqual(2))
+    await vi.waitFor(() =>
+      expect(screen.getByTestId("billing-card")).toHaveTextContent("Mastercard ending in 5100"),
+    )
+  })
+
   it("a re-read after a payment leaves the page on screen: the notice stays while Control answers", async () => {
     let balanceReads = 0
     let hold: () => void = () => {}

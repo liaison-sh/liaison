@@ -8,6 +8,10 @@ instance.
 If you are pairing with Claude inside this repo, the `creating-an-app` skill
 walks the same path interactively.
 
+Building an app for one organization only, from an account on a Liaison org
+with no server or checkout of your own? Use the app builder over MCP instead:
+[Build an app for your organization with Claude Code or Codex](developers/org-app-with-an-assistant.md).
+
 ---
 
 ## 1. What you're building

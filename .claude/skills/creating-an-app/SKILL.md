@@ -1,6 +1,6 @@
 ---
 name: creating-an-app
-description: Walk a developer through building, testing, packaging, and installing a sandboxed Liaison plugin app — interactive, one decision at a time, grounded in the existing example app. Use when the user wants to build a liaison plugin app, create a new app, extend liaison, or add a new app to a Liaison fork.
+description: Walk a developer through building, testing, packaging, and installing a sandboxed Liaison plugin app inside a Liaison fork or self-hosted checkout — interactive, one decision at a time, grounded in the existing example app. Use when the user wants to build a liaison plugin app in this repo, add a new app to a Liaison fork, or ship an app on a server they run. For an app built for one organization from an MCP connection (a hosted org, no checkout), use building-an-org-app instead.
 ---
 
 # Creating a Liaison App
@@ -8,6 +8,13 @@ description: Walk a developer through building, testing, packaging, and installi
 You are pairing with a developer to build a sandboxed plugin app on top of
 Liaison. Drive the conversation one decision at a time; recommend a default;
 let the developer course-correct.
+
+This skill is for an app that lives **in this repo** (a fork, or a checkout a
+self-hosting operator builds from) and that the server's operator installs.
+Someone who only has an account on a Liaison org (hosted, or a server with
+custom apps on) and an MCP client builds an app for that org with the app
+builder tools instead: follow `.claude/skills/building-an-org-app/SKILL.md`.
+Ask which one it is first if you cannot tell.
 
 ## Before you start
 
@@ -83,13 +90,21 @@ bun run app:freeze <name>                       # → dist/apps/<name>-<ver>.lia
 bun run app:sign  dist/apps/<name>-<ver>.liaisonapp
 ```
 
-To install on a running instance:
+There is no `liaison app install` command. To install the package on a running
+instance, host the `.liaisonapp` at a URL the server can download and call the
+install route as an admin holding `kernel:apps:admin`:
 
-```bash
-liaison app install <url> --grant <scope> --grant <scope>
-```
+- `POST /api/apps/install` with `{ "url": "<package url>", ... }`: an instance app,
+  shared by every org (the instance operator's org only, on a multi-tenant server);
+- `POST /api/apps/custom/install` with the same body: an app for the caller's own
+  org only. Its `name` must be `<name>-o<orgKey>` (`GET /api/apps/custom/namespace`
+  returns the key) and it may not declare what an org app may not hold
+  (`docs/app-development.md`, "Custom apps").
 
-The package format is specified in `docs/app-package-format.md`.
+An operator can also bake the package into the image's app catalog, as the bundled
+apps are (`scripts/build-app-catalog.ts`). On the server, `liaison app status <name>`
+shows an installed app's state and `liaison app rollback <name>` makes its previous
+version active again. The package format is specified in `docs/app-package-format.md`.
 
 ## When the SDK doesn't fit
 

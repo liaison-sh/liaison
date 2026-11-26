@@ -380,6 +380,8 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "scripts/api-connector-schema-doc*", suites: ["root"] },
   { glob: "docs/api-connector.md", suites: ["root"] },
   { glob: ".claude/skills/api-connector-authoring/**", suites: ["root"] },
+  // The org-app skill's worked example is built by app-builder/org-app-skill-example.test.ts.
+  { glob: ".claude/skills/building-an-org-app/**", suites: ["unit"] },
 ]
 
 /**

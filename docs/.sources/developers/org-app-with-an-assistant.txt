@@ -1,0 +1,21 @@
+Custom apps on in the managed edition, off self-hosted, LIAISON_CUSTOM_APPS -> apps/api/src/lib/edition.ts (customAppsEnabled)
+App builder tools registered only while custom apps are on -> apps/api/src/modules/app-builder/tools.ts (applyCustomAppsSwitch)
+Tools need kernel:apps:build; publish gated, approved by kernel:apps:admin, never auto-approved -> apps/api/src/modules/app-builder/tools.ts (defineAppBuilderTools, apps_build_publish)
+MCP lists the same catalog by scope, nothing deferred -> apps/api/src/modules/mcp/tool-projection.ts (listMcpTools)
+liaison_tool_search / liaison_call_tool -> docs/.sources/developers/mcp.txt ; apps/api/src/modules/mcp/tool-projection.ts
+create gives the name <base>-o<orgKey> -> apps/api/src/modules/app-builder/tools.ts (apps_build_create) ; apps/api/src/modules/apps/custom-app-name.ts (customAppNameKey)
+Four files, 512 KiB -> apps/api/src/modules/app-builder/build/build-draft.ts (DRAFT_FILE_NAMES, DRAFT_MAX_TOTAL_BYTES)
+Last 20 versions kept -> apps/api/src/modules/app-builder/tools.ts (apps_build_update description)
+check builds and type-checks, errors with file and line -> apps/api/src/modules/app-builder/check.ts (checkDraft)
+Preview read-only, scratch store kept per version, no db/fetch before first publish, 30 s -> apps/api/src/modules/app-builder/preview.ts (file header)
+Draft page in a sealed frame under Settings > App store > Apps in the making; its tool calls run as previews -> apps/web/src/modules/app-builder/BuilderView.tsx (Frame) ; docs/agents/build-an-app.md
+Approval card contents -> apps/api/src/modules/app-builder/publish.ts (preparePublish, manifestDelta) ; docs/.sources/agents/build-an-app.txt
+After publish: On, member scopes, tools found by tool search -> apps/api/src/modules/app-builder/tools.ts (apps_build_publish handler next)
+Each publish next patch version -> apps/api/src/modules/app-builder/check.ts (nextPatchVersion, publishTarget)
+Restore keeps undeclared tables -> apps/api/src/modules/app-builder/tools.ts (apps_build_restore description)
+Logs kept 7 days, app logs need kernel:apps:logs -> apps/api/src/modules/app-builder/tools.ts (apps_build_logs) ; apps/api/src/modules/agent/prompts/kernel/build-app.md
+Activity bar page from views.activityBar / tabTypes component -> apps/web/src/framework/define-app.ts (registerAppFromManifest) ; apps/web/src/framework/manifest-exports.ts (collectDeclaredComponentNames)
+Forbidden declarations and limits (5 s, 60 s, 1 MB) -> apps/api/src/modules/apps/app-org-scope.ts (forbiddenCustomAppDeclaration, CUSTOM_APP_LIMITS) ; apps/api/src/modules/app-builder/build/build-draft.ts (validate: pdf_templates)
+Custom app count and daily run caps -> apps/api/src/modules/org/caps.ts (assertCustomAppRoom, APP_DAY_CAP_KINDS)
+Skill worked example verified by the build -> apps/api/src/modules/app-builder/org-app-skill-example.test.ts
+Claude Code personal skills dir ~/.claude/skills -> Claude Code documentation (skills)

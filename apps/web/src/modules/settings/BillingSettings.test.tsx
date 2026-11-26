@@ -527,6 +527,45 @@ describe("BillingSettings", () => {
     expect(invoiceReads).toBeGreaterThan(beforeInvoices)
   })
 
+  it("after a plan switch the next invoice is the re-read one, not the one first drawn", async () => {
+    let summaryReads = 0
+    let switched = false
+    stubApi((url, init) => {
+      if (url.includes("/billing/managed/change-plan") && init?.method === "POST") {
+        switched = true
+        return {
+          body: { data: { ok: true, result: "changed", effectiveAt: "2026-11-26T10:00:00.000Z" } },
+        }
+      }
+      if (url.includes("/billing/managed/summary")) {
+        summaryReads++
+        // The read right after the switch already has the new plan's amount.
+        const fresh = switched
+        return {
+          body: {
+            data: {
+              ok: true,
+              ...SUMMARY,
+              plan: switched ? "pro" : "base",
+              nextInvoice: {
+                amountDisplay: fresh ? "€77.77" : "€41.37",
+                date: "2026-12-01T00:00:00.000Z",
+              },
+            },
+          },
+        }
+      }
+      return baseRoutes(url)
+    })
+    renderPage()
+    fireEvent.click(await screen.findByTestId("billing-switch-pro"))
+    expect(screen.getByTestId("billing-next-invoice")).toHaveTextContent("41.37")
+    await vi.waitFor(() => expect(summaryReads).toBe(2))
+    await vi.waitFor(() =>
+      expect(screen.getByTestId("billing-next-invoice")).toHaveTextContent("77.77"),
+    )
+  })
+
   it("a re-read after a payment leaves the page on screen: the notice stays while Control answers", async () => {
     let balanceReads = 0
     let hold: () => void = () => {}

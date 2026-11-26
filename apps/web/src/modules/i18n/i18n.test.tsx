@@ -492,6 +492,8 @@ describe("no hardcoded English in the surfaces a customer works in", () => {
       // The title of the thread this opens with the agent (stored data, not
       // chrome). Owned by the knowledge module's current rework.
       "src/modules/knowledge/KnowledgeHome.tsx::CREATE_FROM_LABEL",
+      // Card network names (Visa, Mastercard) are brands, the same in every language.
+      "src/modules/settings/BillingSettings.tsx::CARD_BRANDS[brand]",
       // Plan tier names are product names.
       "src/modules/settings/PlanSettings.tsx::TIER_LABELS[managed.tier]",
       "src/modules/settings/UsageSettings.tsx::TIER_LABELS[b().tier]",

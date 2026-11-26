@@ -1480,6 +1480,8 @@ export const manifestRegistry = createTypedRegistry<
     iconSvg?: string
     iconName?: string
     homepage?: string
+    /** The heading over the app's items on Home (manifest `attention.groupLabel`). */
+    attention?: { groupLabel?: { label: string; labelKey?: string } }
     uiBundleUrl: string | null
   }
 >()

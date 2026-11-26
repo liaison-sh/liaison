@@ -33,6 +33,7 @@ import { addCalendarDays, isoWeekdayOf } from "@liaison/shared"
 import { type StoryClock, storyClock } from "~/seed/worlds/story-clock"
 import { STUDIO_AWAY, STUDIO_HOURS_PER_DAY_MINUTES, type StudioDeliveryKey } from "./fiction"
 import { STUDIO_PAST_SIGN_ON_HOURS } from "./knowledge"
+import { STUDIO_PIPELINE_NAME } from "./refs"
 
 export type StudioTaskStatus = "todo" | "in_progress" | "done"
 
@@ -748,7 +749,7 @@ export function studioPlan(anchor: Date): StudioPlan {
     },
     {
       key: "SALES",
-      name: "Sales pipeline",
+      name: STUDIO_PIPELINE_NAME,
       description: "",
       icon: "handshake",
       owner: "romain",
@@ -864,7 +865,7 @@ export function studioPlan(anchor: Date): StudioPlan {
 
   const pipeline: StudioPipelinePlan = {
     key: "SALES",
-    name: "Sales pipeline",
+    name: STUDIO_PIPELINE_NAME,
     description: "New work from briefs to signed agreements.",
     owner: "romain",
     deals: [

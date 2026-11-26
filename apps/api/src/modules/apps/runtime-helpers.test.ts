@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import type { UserContext } from "~/db/rls"
-import { withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
+import { attentionGroupLabelOf, withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
 
 function user(scopes: string[], dimensionGrants: Record<string, string[]> = {}): UserContext {
   return { actorType: "user", userId: "u1", orgId: "o1", scopes, dimensionGrants }
@@ -139,5 +139,28 @@ describe("withAppDimensionAliases — per-app scope aliases", () => {
   it("leaves non-user (system) actors unchanged", () => {
     const sys = { actorType: "system" as const, orgId: "o1", purpose: "webhook" as const }
     expect(withAppDimensionAliases(sys, "shopify")).toBe(sys)
+  })
+})
+
+describe("attentionGroupLabelOf — the Home heading an app declares", () => {
+  it("keeps the label and its catalog key, so the shell can translate the heading", () => {
+    const desc = {
+      attention: { groupLabel: { label: "Tasks", labelKey: "kernel.homeGroupTasks" } },
+    }
+    expect(attentionGroupLabelOf(desc)).toEqual({
+      groupLabel: { label: "Tasks", labelKey: "kernel.homeGroupTasks" },
+    })
+  })
+
+  it("keeps a label without a key (a third-party app's plain heading)", () => {
+    expect(attentionGroupLabelOf({ attention: { groupLabel: { label: "Leads" } } })).toEqual({
+      groupLabel: { label: "Leads" },
+    })
+  })
+
+  it("is undefined when the app declares no heading or a malformed one", () => {
+    expect(attentionGroupLabelOf({})).toBeUndefined()
+    expect(attentionGroupLabelOf({ attention: { translations: [] } })).toBeUndefined()
+    expect(attentionGroupLabelOf({ attention: { groupLabel: { labelKey: 7 } } })).toBeUndefined()
   })
 })

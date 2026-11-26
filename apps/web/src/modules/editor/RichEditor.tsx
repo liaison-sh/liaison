@@ -1049,7 +1049,12 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
     setEditor(ed)
     props.ref?.({
       element: ed.view.dom,
-      focus: () => ed.commands.focus("end"),
+      // Synchronously too (TipTap's own focus waits a frame): the keys typed right
+      // after Enter in a page title land in the text, not in the title.
+      focus: () => {
+        ed.view.focus()
+        ed.commands.focus("end")
+      },
       insertText: (text) => ed.chain().focus("end").insertContent(text).run(),
       // Focus synchronously first: TipTap's focus waits a frame outside
       // Safari, and the keys typed right after a pick or an emoji were lost.

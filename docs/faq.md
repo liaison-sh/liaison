@@ -27,7 +27,7 @@ Only what the person it works for can see. Row-level security in Postgres decide
 
 ## Where does my data live?
 
-On your own servers. A self-hosted Liaison is one app image plus Postgres, Redis, MeiliSearch and an S3-compatible object store, each with its own Docker volume. Point the object store at your own S3-compatible endpoint if you prefer. See [Run Liaison with Docker](self-hosting/docker.md) and [Production setup](runbooks/production-bootstrap.md).
+On your own servers, or on a hosted edition, where the operator runs it for you. A self-hosted Liaison is one app image plus Postgres, Redis, MeiliSearch and an S3-compatible object store, each with its own Docker volume. Point the object store at your own S3-compatible endpoint if you prefer. See [Run Liaison with Docker](self-hosting/docker.md) and [Production setup](runbooks/production-bootstrap.md).
 
 ## Does it work with Gmail and IMAP?
 

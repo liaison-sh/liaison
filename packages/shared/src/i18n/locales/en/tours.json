@@ -425,6 +425,8 @@
     "routineRunningUnnamed": "The routine is working on it ({{elapsed}}). This step moves on when it is done.",
     "routineDone": "The routine “{{name}}” has finished.",
     "routineDoneUnnamed": "The routine has finished.",
+    "routineIncomplete": "The routine “{{name}}” finished without doing this step. Skip it to go on.",
+    "routineIncompleteUnnamed": "The routine finished without doing this step. Skip it to go on.",
     "routineWaiting": "The routine “{{name}}” is waiting for an approval it asked for. Decide it in Home and the routine carries on.",
     "routineWaitingAsks": "The routine “{{name}}” asks for your approval before it goes on. Approve its request in Home, or press Do it for me, and the routine carries on.",
     "routineWaitingAsksUnnamed": "The routine asks for your approval before it goes on. Approve its request in Home, or press Do it for me, and the routine carries on.",
@@ -1182,7 +1184,7 @@
       },
       "bundle": {
         "title": "Nothing goes out without you",
-        "body": "The routine has done its part: it read up on the group and wrote everything, but sent nothing. What it delivers is one request in Home, named after its first action, holding what it wants to do: create the company, create the contact, issue the quote, send the reply. Press Next.",
+        "body": "The routine has done its part: it read up on the group and wrote everything, but sent nothing. What it delivers is one request in Home, named after the reply it ends with, holding what it wants to do, in order: create the company, create the contact, issue the quote, send the reply. Press Next.",
         "role": "Instead of several things to check one by one, you decide once."
       },
       "bundleSteps": {
@@ -1193,7 +1195,7 @@
       },
       "approve": {
         "title": "Approve once",
-        "body": "Press Approve: the company and the contact are written, then the quote is issued, then the reply goes out with the quote attached (here to a fictional prospect), in that order. If a step fails, nothing after it runs and the routine works out a corrected request.",
+        "body": "Press Approve: the steps its card shows run in that order, the reply last, with the quote attached (here to a fictional prospect). If a step fails, nothing after it runs and the routine works out a corrected request with what is left to do.",
         "role": "One decision, and the deal moves forward in the right order.",
         "undo": "Let it go, or press Undo to keep the request waiting for you.",
         "way2": "Open the request, then press Approve"
@@ -1656,7 +1658,7 @@
       },
       "bundle": {
         "title": "Nothing goes out without you",
-        "body": "The routine has done its part: it read up on the firm and wrote everything, but sent nothing. What it delivers is one request in Home, named after its first action, holding what it wants to do: create the company, open the deal, draft the proposal, send the reply. Press Next.",
+        "body": "The routine has done its part: it read up on the firm and wrote everything, but sent nothing. What it delivers is one request in Home, named after the reply it ends with, holding what it wants to do, in order: create the company, open the deal, draft the proposal, send the reply. Press Next.",
         "role": "Instead of several things to check one by one, you decide once."
       },
       "bundleSteps": {
@@ -1667,7 +1669,7 @@
       },
       "approve": {
         "title": "Approve once",
-        "body": "Press Approve: the company is written, the deal opened and the proposal drafted, then the reply goes out (here to a fictional prospect), in that order. If a step fails, nothing after it runs and the routine works out a corrected request.",
+        "body": "Press Approve: the steps its card shows run in that order, the reply last (here to a fictional prospect). If a step fails, nothing after it runs and the routine works out a corrected request with what is left to do.",
         "role": "One decision, and the deal moves forward in the right order.",
         "undo": "Let it go, or press Undo to keep the request waiting for you.",
         "way2": "Open the request, then press Approve"
@@ -1692,10 +1694,10 @@
       },
       "setPrice": {
         "title": "Set the proposal's price",
-        "body": "Open the proposal in Agreements, type the price you want in its price panel and press Set price. No agent can set it for you.",
+        "body": "Open the proposal in Agreements and press Edit: its price panel is there. Type the price you want and press Set price. No agent can set it for you.",
         "role": "The routine wrote the scope, but the price is a decision only you make.",
         "way1": "Open the proposal at the top of Agreements",
-        "way2": "Find the price panel of the draft",
+        "way2": "Press Edit to open the draft's price panel",
         "way3": "Type your price, then press Set price"
       }
     },

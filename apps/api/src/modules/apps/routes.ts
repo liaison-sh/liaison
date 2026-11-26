@@ -552,6 +552,8 @@ appRoutes.get("/manifests", async (c) => {
         // source after its own check, never as markup in the page.
         iconSvg: entry.iconSvg,
         iconName: entry.iconName,
+        // The heading Home shows over the app's items, translated by its labelKey.
+        attention: entry.attention,
       },
       uiBundleUrl,
       ...(frameUrl ? { frameUrl } : {}),

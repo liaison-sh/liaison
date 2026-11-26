@@ -224,3 +224,5 @@ drafts listed newest first -> bundled-apps/invoicing/src/reads.ts:820
 drafts_create project_id param -> bundled-apps/invoicing/app.manifest.json:3583
 project unreadable refused before anything is drafted -> bundled-apps/invoicing/src/mutations/drafts.ts:436
 issued invoice company: contact's, else the project's -> bundled-apps/invoicing/src/issue.ts:1416
+A late run whose remaining rows all need a fix has no card; its page lists each with why and Fix; fixing one stages the Late card; the run closes once every row is issued or taken out -> bundled-apps/invoicing/src/recurring/run-card.ts:399 ; bundled-apps/invoicing/src/ui/RunDetail.tsx:179 ; bundled-apps/invoicing/src/ui/RunDetail.tsx:379 ; bundled-apps/invoicing/src/recurring/run-card.ts:254
+billing draft issue approval decided by invoicing:approve -> bundled-apps/invoicing/src/mutations/billing-plan.ts:778

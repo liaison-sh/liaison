@@ -6847,10 +6847,9 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.demo.next.remainingOther": "Encore {{count}} scénarios à jouer :",
   "kernel.demo.next.remainingKeyOne": "Encore {{count}} scénario à jouer avec votre clé :",
   "kernel.demo.next.remainingKeyOther": "Encore {{count}} scénarios à jouer avec votre clé :",
-  "kernel.demo.next.notify":
-    "M'envoyer de temps en temps des nouvelles de Liaison, notamment l'ouverture de la version hébergée",
+  "kernel.demo.next.notify": "M'envoyer de temps en temps des nouvelles de Liaison",
   "kernel.demo.next.notifyDone":
-    "C'est noté. Nous vous enverrons de temps en temps des nouvelles de Liaison, notamment l'ouverture de la version hébergée.",
+    "C'est noté. Nous vous enverrons de temps en temps des nouvelles de Liaison.",
   "kernel.demo.next.continue": "Continuer à explorer",
   "kernel.demo.next.close": "Fermer",
   "kernel.demo.next.bannerLink": "Envie de Liaison pour votre entreprise ?",

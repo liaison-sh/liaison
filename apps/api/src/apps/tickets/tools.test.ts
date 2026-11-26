@@ -182,6 +182,15 @@ describe("ticketsReply", () => {
     expect("error" in r && r.error.code).toBe("no_recipient")
   })
 
+  it("a reply without text names the parameter the text goes in", async () => {
+    // A model that put the text under another name (body, text) saw only "reply body or
+    // attachments required" and retried the same call until the circuit breaker opened.
+    const ctx = fakeTx([[openTicket], customerRecipientRow])
+    const r = await ticketsReply({ ticketId: T1 }, ctx)
+    expect("error" in r && r.error.code).toBe("invalid_params")
+    expect("error" in r && r.error.message).toContain("textBody")
+  })
+
   it("rejects an attachment the agent cannot see", async () => {
     // ticketsReply runs the shared preflight (loadTicket + recipient), then loads the ticket again
     // before resolving attachments — so the scripted rows carry the ticket twice.

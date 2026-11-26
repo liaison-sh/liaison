@@ -7,6 +7,7 @@
 // request for the whole chain, and no step sets a price: the proposal is
 // drafted without one and the person sets it.
 import { STUDIO_PROSPECT_ROUTINE_NAME } from "@liaison/shared"
+import { STUDIO_PIPELINE_NAME } from "~/seed/worlds/studio/refs"
 
 export const STUDIO_PROSPECT_SCENARIO_ROUTINE_NAME = STUDIO_PROSPECT_ROUTINE_NAME
 
@@ -30,8 +31,10 @@ export function studioProposalRoutinePrompt(): string {
     "3. Company. A NEW firm: call kernel__companies_write with its name, its domain and one " +
     "line on what it does. Its result has outputs.id and outputs.name, tokens like " +
     "@ref:<id>:id. A firm ALREADY there: make no call; its id is the id the search returned.\n" +
-    "4. Deal. Call projects__create in the Sales pipeline: title the firm's name and what they " +
-    "ask for, companyId the id token from step 3, whole.\n" +
+    `4. Deal. Call projects__create with projectName "${STUDIO_PIPELINE_NAME}" exactly (the ` +
+    "pipeline's full name), the title the firm's name and what they ask for, companyId the id " +
+    "token from step 3, whole. Pass NO contactId: that field is for a person, and the " +
+    "company's token never goes there.\n" +
     "5. Proposal. Call agreements__agreement_create with kind sow, the statement of work " +
     "template's id from step 1, the " +
     "title of what they ask for, company_id the id token from step 3, whole, and the scope " +
@@ -43,8 +46,9 @@ export function studioProposalRoutinePrompt(): string {
     "Then stop: the run waits for my decision and comes back to you with the results.\n" +
     "7. Once I have decided, close with a short brief: who they are, what the firm does (say " +
     "where you learned it), what they want, and what became of the company, the deal, the " +
-    "proposal and the reply. If a step failed, propose the corrected calls as the error says " +
-    "instead. End with it as your answer.\n\n" +
+    "proposal and the reply. If a step failed, the steps after it did not run: propose again, " +
+    "as one request and in the order above, the failed step corrected as its error says and " +
+    "every step after it, the reply last. End with it as your answer.\n\n" +
     "If a call is refused, read its error, fix the call as it says and make it again. Report " +
     "only what the results show."
   )

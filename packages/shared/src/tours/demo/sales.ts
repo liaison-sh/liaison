@@ -95,10 +95,22 @@ const approveInHome = (tools: readonly string[]): TourStep[] => {
   ]
 }
 
+/**
+ * The rows a request carrying the reply can head: the chained request's first
+ * step, by preference, or the reply alone. On Auto a run may still split its
+ * work (it waited for an approval half way, and the reply came as a request of
+ * its own once the rest was decided): the steps that open and approve the
+ * request then ring the reply's own row, never a row that is not there (demo
+ * walk 2026-11-25).
+ */
+export function salesRequestRowTools(head: readonly string[]): string[] {
+  return [...new Set([...head, REPLY_TOOL])]
+}
+
 export function buildSalesTour(cfg: SalesScenarioCfg): Tour {
   const k = scenarioKey(cfg.copy ?? "sales")
   const routineName = cfg.prospectRoutineName
-  const head = cfg.bundleHeadTools ?? BUNDLE_HEAD_TOOLS
+  const head = salesRequestRowTools(cfg.bundleHeadTools ?? BUNDLE_HEAD_TOOLS)
   /** The request's expanded card in Home, and its Approve button. */
   const headCard = `approval-card[data-tool-name=${head.join("|")}]`
   const headApprove = `approval-card-action-approve[data-tool-name=${head.join("|")}]`

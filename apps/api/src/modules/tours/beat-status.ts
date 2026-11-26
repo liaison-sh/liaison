@@ -680,6 +680,11 @@ async function followAnsweredQuestion(
     : progress
 }
 
+/** A do step whose event is the routine's own work (`actor: "any"`), not a person's press. */
+function doneByRoutine(beat: EffectiveBeat): boolean {
+  return beat.kind === "do" && beat.event?.actor === "any" && !approvesSomething(beat)
+}
+
 /** A step that approves something: it waits on the person's press, never on a turn. */
 function approvesSomething(beat: EffectiveBeat): boolean {
   return beat.event?.entity === "approval_request" && beat.event.action === "update"
@@ -711,13 +716,23 @@ export async function computeBeatStatus(input: {
     // (sales walk 2026-10-27: "the runner did not understand where we're
     // at"). Running, failed or skipped still say so: the card is not there yet.
     if (approvesSomething(beat) && run.kind === "routine-succeeded") return { kind: "pending" }
-    // A run paused on an approval: a step approving what it staged, or one
-    // showing what it made, waits on the person as before. A step that waits
-    // for the routine to DO something says the run waits on an approval: it
-    // said "The routine has not started" while the run sat on a request in
-    // Home (a sales run that asked for the company first, walk 2026-11-25).
+    // A step the routine itself completes (its event is the run's own work)
+    // that has not arrived when the run ended "succeeded": the run finished
+    // without doing it. "The routine has finished", with its check, read as
+    // done while the step never moved (a sales run that ended without staging
+    // its reply, demo walk 2026-11-25). The card says so and offers Skip.
+    if (run.kind === "routine-succeeded" && doneByRoutine(beat)) {
+      return { kind: "routine-incomplete", routineName: run.routineName }
+    }
+    // A run paused on an approval: every step waiting on the run says so. A
+    // step approving what it staged, or one showing what it made, read
+    // `pending`, and its card fell back to its own clock: "The routine has not
+    // started. Skip this step" while the run sat on its request in Home (the
+    // services sales tour's `bundle` and `approve`, walk 2026-11-25). Only a
+    // step the routine itself completes names the request, so its Do it for
+    // me approves it: approving is the person's own press on the others.
     if (run.kind === "routine-waiting" && (approvesSomething(beat) || beat.kind !== "do")) {
-      return { kind: "pending" }
+      return { ...run, requestId: null, toolName: null }
     }
     return run
   }

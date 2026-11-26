@@ -1451,6 +1451,12 @@ const ApprovalRunGroupRow: Component<{ item: AttentionItem; group: ApprovalRunGr
       ? t("kernel.approvalRunGroup.title", { count, name: props.group.label })
       : t("kernel.approvalRunGroup.titleNoName", { count })
   }
+  const heldTools = (): string =>
+    members()
+      .map((m) => m.metadata?.toolName)
+      .filter((t): t is string => typeof t === "string")
+      .map((t) => `data-tool-name=${t}`)
+      .join(" ")
   const why = (): string =>
     props.group.basis === "batch"
       ? t("kernel.approvalRunGroup.batchWhy")
@@ -1477,6 +1483,8 @@ const ApprovalRunGroupRow: Component<{ item: AttentionItem; group: ApprovalRunGr
             type="button"
             data-testid="approval-run-group-toggle"
             aria-expanded={open()}
+            // What the folded rows are, for a tour step ringing one of them to open the group.
+            data-tour-holds={heldTools()}
             class="shrink-0 rounded-md border border-border px-2.5 py-1 text-[12.5px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
             onClick={(e) => {
               e.stopPropagation()

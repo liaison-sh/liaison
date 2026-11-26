@@ -172,7 +172,11 @@ import {
   type RegistryJournal,
 } from "~/modules/apps/registries"
 import { resolveAppOrder } from "~/modules/apps/resolver"
-import { appSelfScopes, grantableScopesWithAppAliases } from "~/modules/apps/runtime-helpers"
+import {
+  appSelfScopes,
+  attentionGroupLabelOf,
+  grantableScopesWithAppAliases,
+} from "~/modules/apps/runtime-helpers"
 import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import { createSandboxRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { orgSetupLockSql } from "~/modules/apps/setup-stamp"
@@ -4720,6 +4724,7 @@ async function registerSingleApp(
           // Checked by validateAppManifest before the app got here.
           iconSvg: typeof desc.iconSvg === "string" ? desc.iconSvg : undefined,
           iconName: typeof desc.iconName === "string" ? desc.iconName : undefined,
+          attention: attentionGroupLabelOf(desc),
           uiBundleUrl: uiBundlePath ? `/api/apps/${desc.name}/${desc.version}/ui.js` : null,
         })
 

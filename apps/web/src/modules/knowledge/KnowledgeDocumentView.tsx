@@ -520,6 +520,36 @@ const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFo
       })
   }
   createEffect(() => loadBacklinks(props.entityId))
+
+  // A page just made with New page opens with its title selected, so the first keys
+  // name it ("Untitled" is replaced, not appended to). Once per page, only while
+  // nothing else holds the caret, and never for a page made from typed text.
+  let titleOffered: string | null = null
+  createEffect(() => {
+    const d = row()
+    if (!d || editorText() === null || titleOffered === d.id) return
+    titleOffered = d.id
+    if (focusOnOpen || (d.body ?? "").trim() !== "" || d.title !== i18n.t("knowledge.untitled"))
+      return
+    requestAnimationFrame(() => {
+      const el = titleEl
+      const active = document.activeElement as HTMLElement | null
+      if (!el?.isConnected || el.getAttribute("contenteditable") !== "true") return
+      if (
+        active &&
+        active !== document.body &&
+        (active.getAttribute("contenteditable") === "true" ||
+          /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))
+      )
+        return
+      el.focus()
+      const range = document.createRange()
+      range.selectNodeContents(el)
+      const sel = window.getSelection()
+      sel?.removeAllRanges()
+      sel?.addRange(range)
+    })
+  })
   onCleanup(() => backlinksAsk?.abort())
 
   // ── Conflict choices ──────────────────────────────────────────────────────

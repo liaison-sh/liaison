@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { render, screen } from "@solidjs/testing-library"
-import { describe, expect, it } from "vitest"
+import { fireEvent, render, screen } from "@solidjs/testing-library"
+import { describe, expect, it, vi } from "vitest"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
 import { SetupChecklistCard, type SetupStateView, setupStateResult } from "./SetupChecklistCard"
 
@@ -15,17 +15,39 @@ const STATE: SetupStateView = {
 }
 
 describe("SetupChecklistCard", () => {
-  it("draws each item done or not from the data alone, optional ones marked", () => {
+  it("reads as a to-do list: a heading with the count, numbered actions to do, done steps ticked and struck", () => {
     render(() => <SetupChecklistCard state={STATE} />)
+    expect(screen.getByTestId("setup-checklist-heading").textContent).toContain(
+      "Next steps to set up",
+    )
+    expect(screen.getByTestId("setup-checklist-progress").textContent).toBe("1 of 3 done")
     expect(screen.getByTestId("setup-item-aiKey").getAttribute("data-done")).toBe("true")
     expect(screen.getByTestId("setup-item-apps").getAttribute("data-done")).toBe("false")
+    // Open steps are numbered actions with a verb, in order; the done one has no number.
+    expect(screen.getByTestId("setup-item-number-apps").textContent).toBe("1.")
+    expect(screen.getByTestId("setup-item-number-import").textContent).toBe("2.")
+    expect(screen.queryByTestId("setup-item-number-aiKey")).toBeNull()
+    expect(screen.getByTestId("setup-item-apps").textContent).toContain("Turn on the apps you need")
     expect(screen.getByTestId("setup-item-import").textContent).toContain("optional")
     expect(screen.getByTestId("setup-item-apps").textContent).not.toContain("optional")
-    expect(screen.getByTestId("setup-item-aiKey").textContent).toContain("AI model key")
-    expect(screen.getByTestId("setup-checklist").textContent).toContain("As of")
-    // The tick and the circle are named images, not bare decoration.
+    // Done: muted and struck through behind a named tick.
+    expect(screen.getByTestId("setup-item-aiKey").textContent).toContain("Add an AI model key")
+    expect(screen.getByTestId("setup-item-aiKey").querySelector(".line-through")).not.toBeNull()
     expect(screen.getAllByRole("img", { name: "Done" })).toHaveLength(1)
-    expect(screen.getAllByRole("img", { name: "Not yet" })).toHaveLength(2)
+    // Nothing that looks like a box to tick: no checkbox, no empty circle.
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0)
+    expect(screen.queryAllByRole("img", { name: "Not yet" })).toHaveLength(0)
+    expect(screen.getByTestId("setup-checklist").textContent).toContain("As of")
+    // Without a conversation to post in, no Start buttons.
+    expect(screen.queryByTestId("setup-item-start-apps")).toBeNull()
+  })
+
+  it("each open step has a Start arrow that hands its action to the conversation", () => {
+    const onStart = vi.fn()
+    render(() => <SetupChecklistCard state={STATE} onStart={onStart} />)
+    expect(screen.queryByTestId("setup-item-start-aiKey")).toBeNull()
+    fireEvent.click(screen.getByTestId("setup-item-start-apps"))
+    expect(onStart).toHaveBeenCalledWith("Turn on the apps you need")
   })
 
   it("speaks French", () => {
@@ -34,8 +56,11 @@ describe("SetupChecklistCard", () => {
         <SetupChecklistCard state={STATE} />
       </I18nProvider>
     ))
-    expect(screen.getByTestId("setup-item-aiKey").textContent).toContain("Clé de modèle d'IA")
+    expect(screen.getByTestId("setup-item-aiKey").textContent).toContain(
+      "Ajouter une clé de modèle d'IA",
+    )
     expect(screen.getByTestId("setup-item-import").textContent).toContain("facultatif")
+    expect(screen.getByTestId("setup-checklist-progress").textContent).toBe("1 sur 3 faites")
   })
 })
 

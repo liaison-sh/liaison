@@ -18,11 +18,18 @@ import { isSeeding } from "~/modules/notifications/seeded"
 function stampFiringRoutineId(event: AppEvent): AppEvent {
   const frame = currentRunContext()
   const routineId = frame?.routineId
-  if (!routineId) return event
   const existing =
     event.metadata && typeof event.metadata === "object"
       ? (event.metadata as Record<string, unknown>)
       : {}
+  if (!routineId) {
+    // The approved write of a request a routine staged: the routine's own work, done once a
+    // person approved it. Marked apart from `firedByRoutineId` (the tour's actor rules and the
+    // routine chain depth read that one), so only that routine's self-trigger guard sees it.
+    const staged = frame?.approvedForRoutineId
+    if (!staged || existing.stagedByRoutineId) return event
+    return { ...event, metadata: { ...existing, stagedByRoutineId: staged } }
+  }
   if (existing.firedByRoutineId) return event // already stamped (nested tick) — keep the outermost
   // The routine chain's depth (0303): one more than the event that fired this run, so a chain of
   // routines triggering one another stops at depth 5 (event-routine-subscriber.ts).

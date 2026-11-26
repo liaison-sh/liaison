@@ -12,7 +12,7 @@ import type { TicketSpec } from "~/seed/factories/support/tickets"
 import type { DemoSupportSpecs } from "~/seed/tiers/demo/seed-support"
 import { STORY_TIME_ZONE, storyClock } from "~/seed/worlds/story-clock"
 import { SAAS_CUSTOMER_COMPANIES, SAAS_EMAIL_DOMAIN } from "./fiction"
-import { SAAS_PIPELINE_KEY } from "./plan"
+import { SAAS_PIPELINE_KEY, SAAS_PIPELINE_NAME } from "./plan"
 
 export const SAAS_TICKET_CATEGORIES = [
   "Exports and payroll",
@@ -422,7 +422,7 @@ export const SAAS_SUPPORT_SPECS: DemoSupportSpecs = {
   // The pipeline itself is the pack's layer's (`layer.ts`), with every deal.
   pipeline: {
     key: SAAS_PIPELINE_KEY,
-    name: "Sales",
+    name: SAAS_PIPELINE_NAME,
     description: "New plans and group expansions, from first call to signed plan.",
     deals: [],
   },

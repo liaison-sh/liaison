@@ -323,6 +323,42 @@ export function revealPersonalAgentDm(threadId: string): void {
   revealThread(threadId)
 }
 
+/**
+ * A brand-new workspace's first open lands in the person's own agent
+ * conversation, where its setup starts, instead of Home. The handoff sign-in
+ * (a new workspace's first sign-in, auth/MagicLinkVerify) marks it for this
+ * tab; the shell takes the mark once, so a reload or a later session keeps
+ * whatever tabs the person had. Session storage: the mark never outlives the
+ * browser tab and never reaches another one.
+ */
+const FIRST_OPEN_KEY = "liaison:first-open"
+
+export function markFirstOpen(): void {
+  try {
+    sessionStorage.setItem(FIRST_OPEN_KEY, "personal-agent")
+  } catch {
+    // No storage (private mode): the workspace opens on Home, as before.
+  }
+}
+
+function takeFirstOpen(): boolean {
+  try {
+    const mark = sessionStorage.getItem(FIRST_OPEN_KEY)
+    sessionStorage.removeItem(FIRST_OPEN_KEY)
+    return mark === "personal-agent"
+  } catch {
+    return false
+  }
+}
+
+/** Open the personal agent conversation when this is the workspace's first open. */
+export async function openPersonalAgentOnFirstOpen(api?: PersonalDmApi): Promise<boolean> {
+  if (!takeFirstOpen()) return false
+  const threadId = await ensurePersonalAgentDm(resolveApi(api))
+  revealThread(threadId)
+  return true
+}
+
 export function resetPersonalDmStore(): void {
   cachedId = undefined
   setKnownDmId(undefined)

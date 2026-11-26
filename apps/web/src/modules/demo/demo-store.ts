@@ -584,6 +584,8 @@ export interface DemoDoorSettings {
   bookingUrl?: string
   /** The self-hosting guide; the option is absent when the box sets none. */
   selfHostUrl?: string
+  /** A hosted edition's signup page: the dialog then leads with it. */
+  registerUrl?: string
 }
 
 const [doorSettings, setDoorSettings] = createSignal<DemoDoorSettings | null>(null)
@@ -609,6 +611,9 @@ export function ensureDemoDoorSettings(fetchImpl: typeof fetch = fetch): Promise
             ? { turnstileSiteKey: demo.turnstileSiteKey }
             : {}),
           ...(typeof demo.bookingUrl === "string" ? { bookingUrl: demo.bookingUrl } : {}),
+          ...(typeof demo.registerUrl === "string" && /^https?:\/\//i.test(demo.registerUrl)
+            ? { registerUrl: demo.registerUrl }
+            : {}),
         })
       }
     } catch (err) {

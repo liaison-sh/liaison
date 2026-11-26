@@ -226,6 +226,21 @@ describe("KnowledgeDocumentView: an editor", () => {
     expect(api.patch.mock.calls[0]![1]).toMatchObject({ title: "Returns policy" })
   })
 
+  it("a new, empty Untitled page opens with its title selected, so typing names it", async () => {
+    renderView(makeApi({ title: "Untitled", body: "" }))
+    await bodyField()
+    const title = screen.getByTestId("knowledge-doc-title")
+    await waitFor(() => expect(document.activeElement).toBe(title))
+    expect(window.getSelection()?.toString()).toBe("Untitled")
+  })
+
+  it("a page with a title or with text does not take the caret", async () => {
+    renderView(makeApi())
+    await bodyField()
+    await new Promise((r) => setTimeout(r, 100))
+    expect(document.activeElement).not.toBe(screen.getByTestId("knowledge-doc-title"))
+  })
+
   it("the selection survives a save acknowledgement", async () => {
     const api = makeApi()
     renderView(api)

@@ -12,6 +12,7 @@ import type { TicketSpec } from "~/seed/factories/support/tickets"
 import type { DemoSupportSpecs } from "~/seed/tiers/demo/seed-support"
 import { STUDIO_CLIENTS } from "./fiction"
 import { STUDIO_PIPELINE_KEY } from "./layer"
+import { STUDIO_PIPELINE_NAME } from "./refs"
 
 export const STUDIO_TICKET_CATEGORIES = [
   "Releases",
@@ -227,7 +228,7 @@ export const STUDIO_SUPPORT_SPECS: DemoSupportSpecs = {
   // The pipeline's deals are the layer's (`layer.ts`).
   pipeline: {
     key: STUDIO_PIPELINE_KEY,
-    name: "Sales pipeline",
+    name: STUDIO_PIPELINE_NAME,
     description: "New work from briefs to signed agreements.",
     deals: [],
   },

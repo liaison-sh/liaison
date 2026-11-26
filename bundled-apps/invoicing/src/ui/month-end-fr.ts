@@ -15,8 +15,12 @@ export const MONTH_END_FR: Record<string, string> = {
     "Sa carte En retard a été refusée : rien n'est émis. Modifiez une ligne, ou retirez-en une, et elle redemande.",
   "Its card marked Late is in Approvals: approving it issues these invoices, dated that day. Open a row to change it, or take it out to drop it.":
     "Sa carte marquée En retard est dans Approbations : l'approuver émet ces factures, datées de ce jour. Ouvrez une ligne pour la modifier, ou retirez-la pour l'abandonner.",
-  "Every row needs a fix before it can issue. Open a row to fix it, or take it out to drop it; a card marked Late then asks for the rest.":
-    "Chaque ligne demande une correction avant de pouvoir être émise. Ouvrez une ligne pour la corriger, ou retirez-la pour l'abandonner ; une carte marquée En retard demande ensuite le reste.",
+  "Every row left needs a fix before it can issue. Fix a row below and a card marked Late asks for it; take it out to drop it, and once no row is left the run closes.":
+    "Chaque ligne restante demande une correction avant de pouvoir être émise. Corrigez une ligne ci-dessous et une carte marquée En retard la demande ; retirez-la pour l'abandonner, et le lot se clôt quand il ne reste aucune ligne.",
+  "No row is left to decide: the run closes by itself within a day.":
+    "Il ne reste aucune ligne à décider : le lot se clôt de lui-même sous un jour.",
+  "Needs a fix": "À corriger",
+  "It needs a fix before it can issue.": "Elle demande une correction avant de pouvoir être émise.",
   "This row": "Cette ligne",
   "Changed after approval: it waits for this card, the others issue on time.":
     "Modifiée après l'approbation : elle attend cette carte, les autres sont émises à l'heure.",

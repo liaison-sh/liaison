@@ -425,6 +425,8 @@
     "routineRunningUnnamed": "La routine s'en occupe ({{elapsed}}). Cette étape avance quand elle a fini.",
     "routineDone": "La routine « {{name}} » a fini.",
     "routineDoneUnnamed": "La routine a fini.",
+    "routineIncomplete": "La routine « {{name}} » a fini sans faire cette étape. Passez-la pour continuer.",
+    "routineIncompleteUnnamed": "La routine a fini sans faire cette étape. Passez-la pour continuer.",
     "routineWaiting": "La routine « {{name}} » attend une approbation qu’elle a demandée. Décidez-la dans Accueil et la routine reprend.",
     "routineWaitingAsks": "La routine « {{name}} » demande votre approbation avant de continuer. Approuvez sa demande dans Accueil ou appuyez sur Faites-le pour moi, et la routine reprend.",
     "routineWaitingAsksUnnamed": "La routine demande votre approbation avant de continuer. Approuvez sa demande dans Accueil ou appuyez sur Faites-le pour moi, et la routine reprend.",
@@ -1182,7 +1184,7 @@
       },
       "bundle": {
         "title": "Rien ne part sans vous",
-        "body": "La routine a fait sa part : elle s'est renseignée sur le groupe et a tout rédigé, mais n'a rien envoyé. Elle livre une seule demande dans Accueil, nommée d'après sa première action, qui contient ce qu'elle veut faire : créer l'entreprise, créer le contact, émettre le devis, envoyer la réponse. Appuyez sur Suivant.",
+        "body": "La routine a fait sa part : elle s'est renseignée sur le groupe et a tout rédigé, mais n'a rien envoyé. Elle livre une seule demande dans Accueil, nommée d'après la réponse qui la termine, qui contient ce qu'elle veut faire, dans l'ordre : créer l'entreprise, créer le contact, émettre le devis, envoyer la réponse. Appuyez sur Suivant.",
         "role": "Au lieu de plusieurs choses à vérifier une à une, vous décidez une seule fois."
       },
       "bundleSteps": {
@@ -1193,7 +1195,7 @@
       },
       "approve": {
         "title": "Approuvez une fois",
-        "body": "Appuyez sur Approuver : l'entreprise et le contact sont écrits, puis le devis est émis, puis la réponse part avec le devis en pièce jointe (ici vers un prospect fictif), dans cet ordre. Si une étape échoue, aucune suivante ne s'exécute et la routine prépare une demande corrigée.",
+        "body": "Appuyez sur Approuver : les étapes que montre sa carte s'exécutent dans cet ordre, la réponse en dernier, avec le devis en pièce jointe (ici vers un prospect fictif). Si une étape échoue, aucune suivante ne s'exécute et la routine prépare une demande corrigée avec ce qui reste à faire.",
         "role": "Une seule décision, et l'affaire avance dans le bon ordre.",
         "undo": "Laissez partir ou appuyez sur Annuler pour garder la demande en attente.",
         "way2": "Ouvrez la demande, puis appuyez sur Approuver"
@@ -1656,7 +1658,7 @@
       },
       "bundle": {
         "title": "Rien ne part sans vous",
-        "body": "La routine a fait sa part : elle s'est renseignée sur le cabinet et a tout rédigé, mais n'a rien envoyé. Elle livre une seule demande dans Accueil, nommée d'après sa première action, qui contient ce qu'elle veut faire : créer l'entreprise, ouvrir l'affaire, rédiger la proposition, envoyer la réponse. Appuyez sur Suivant.",
+        "body": "La routine a fait sa part : elle s'est renseignée sur le cabinet et a tout rédigé, mais n'a rien envoyé. Elle livre une seule demande dans Accueil, nommée d'après la réponse qui la termine, qui contient ce qu'elle veut faire, dans l'ordre : créer l'entreprise, ouvrir l'affaire, rédiger la proposition, envoyer la réponse. Appuyez sur Suivant.",
         "role": "Au lieu de plusieurs choses à vérifier une à une, vous décidez une seule fois."
       },
       "bundleSteps": {
@@ -1667,7 +1669,7 @@
       },
       "approve": {
         "title": "Approuvez une fois",
-        "body": "Appuyez sur Approuver : l'entreprise est écrite, l'affaire ouverte et la proposition rédigée, puis la réponse part (ici vers un prospect fictif), dans cet ordre. Si une étape échoue, aucune suivante ne s'exécute et la routine prépare une demande corrigée.",
+        "body": "Appuyez sur Approuver : les étapes que montre sa carte s'exécutent dans cet ordre, la réponse en dernier (ici vers un prospect fictif). Si une étape échoue, aucune suivante ne s'exécute et la routine prépare une demande corrigée avec ce qui reste à faire.",
         "role": "Une seule décision, et l'affaire avance dans le bon ordre.",
         "undo": "Laissez partir ou appuyez sur Annuler pour garder la demande en attente.",
         "way2": "Ouvrez la demande, puis appuyez sur Approuver"
@@ -1692,10 +1694,10 @@
       },
       "setPrice": {
         "title": "Fixez le prix de la proposition",
-        "body": "Ouvrez la proposition dans Contrats, saisissez le prix voulu dans son panneau de prix et appuyez sur Fixer le prix. Aucun agent ne peut le fixer à votre place.",
+        "body": "Ouvrez la proposition dans Contrats et appuyez sur Modifier : son panneau de prix est là. Saisissez le prix voulu et appuyez sur Fixer le prix. Aucun agent ne peut le fixer à votre place.",
         "role": "La routine a écrit le périmètre, mais le prix est une décision que vous seul prenez.",
         "way1": "Ouvrez la proposition en haut de Contrats",
-        "way2": "Trouvez le panneau de prix du projet",
+        "way2": "Appuyez sur Modifier pour ouvrir le panneau de prix du projet",
         "way3": "Saisissez votre prix, puis appuyez sur Fixer le prix"
       }
     },

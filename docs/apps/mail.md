@@ -94,6 +94,8 @@ Each mailbox row says **Transparent** or **Private**. **Make private** re-encryp
 
 A routine reads your transparent mailbox only if you set it up and nobody else changed it since, and only on its schedule, its event or when you run it yourself. A routine someone else created to run as you, or edited, or ran for you, cannot read it.
 
+A routine started by new mail (the `mail:message:create` event) runs on mail that arrives, never on mail your organization sends, whether a person or another routine sent it.
+
 A mail admin decides whether private mailboxes are allowed, with **Allow private mailboxes** in the same section. Turning it off makes new mailboxes transparent; mailboxes that are already private stay private.
 
 On a self-hosted Liaison, `MAILBOX_ENCRYPTION_DEFAULT` (`managed` or `private`) sets the default for people who have not chosen. It is a default, not a lock: people can still pick the other mode. Unset, it is decided once and kept: a Liaison where someone had already set up a private mailbox stays private, any other is transparent. `MAILBOX_ENCRYPTION_ALLOW_MANAGED=false` locks every personal mailbox to private. See [Docker](../self-hosting/docker.md#mail-encryption) and [Security](../security.md#mail-encryption).

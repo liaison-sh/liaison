@@ -114,12 +114,17 @@ function isTimeLine(item: AttentionItem): boolean {
   return item.app === "projects" && item.kind.startsWith(TIME_KIND_PREFIX)
 }
 
-/** A request that expired with no decision: nothing happened and nothing is asked any more. */
+/**
+ * A request that expired with no decision: nothing happened and nothing is asked any more. One
+ * whose action would have reached outside the organisation (an invoice, a reply) is not news but
+ * work left undone (`metadata.leftUndone`, api approvals/attention-rows.ts): it stays in the way.
+ */
 function isExpiredRequest(item: AttentionItem): boolean {
   return (
     item.app === "kernel" &&
     item.kind === "approval_decision" &&
-    /^Approval \S+ expired$/.test(item.summary)
+    /^Approval \S+ expired$/.test(item.summary) &&
+    item.metadata?.leftUndone !== true
   )
 }
 

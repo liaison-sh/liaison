@@ -222,6 +222,19 @@ export const kernelTranslations: Translation[] = [
     keepActorWhen: { op: "eq", path: "actorType", value: "system" },
   },
   {
+    // An expiry is news to the people who were asked to decide, not only to who asked: the card
+    // left their Home and what it asked (an invoice, a reply) was never done. Same row as the
+    // requester's (one per person and request); the feed names what it was about.
+    event: "approval_request:update",
+    app: "kernel",
+    kind: "approval_decision",
+    urgency: 50,
+    isUrgent: false,
+    summary: "Approval {{payload.data.handle}} {{payload.data.status}}",
+    when: { op: "eq", path: "data.status", value: "expired" },
+    recipients: { kind: "participants", path: "data.notifyUserIds" },
+  },
+  {
     // A request that ended needs no reminder that it waits (approvals/routed-reminders.ts): the
     // rows its deciders hold, keyed on the request, are read with it.
     event: "approval_request:update",

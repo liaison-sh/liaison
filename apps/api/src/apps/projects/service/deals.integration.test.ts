@@ -612,6 +612,53 @@ describe("creating a deal", () => {
     expect(noAccess.error?.code).toBe("deal_access_needed")
     expect(await taskCount(p.projectId)).toBe(before)
   })
+
+  it("a company's id passed as the contact is read as the deal's company, never as a missing contact; another company there is refused", async () => {
+    const p = await makePipeline(w, "Company as contact")
+    const co = await newCompany("Corail")
+    const contactOf = async (taskId: string) =>
+      extractRows<{ contact_id: string | null }>(
+        await db.execute(
+          drizzleSql`SELECT contact_id::text AS contact_id FROM app_projects.deals WHERE task_id = ${taskId}::uuid`,
+        ),
+      )[0]?.contact_id ?? null
+    // The same company in both fields (a model citing the one id it holds).
+    const both = await call<{ id: string }>("projects_createTask", {
+      projectId: p.projectId,
+      title: "Extranet",
+      companyId: co,
+      contactId: co,
+    })
+    expect(await dealState(both.id)).toMatchObject({ outcome: "open", company_id: co })
+    expect(await contactOf(both.id)).toBeNull()
+    // The company in contactId alone: it is the deal's company.
+    const alone = await call<{ id: string }>("projects_createTask", {
+      projectId: p.projectId,
+      title: "Portal",
+      contactId: co,
+    })
+    expect(await dealState(alone.id)).toMatchObject({ company_id: co })
+    expect(await contactOf(alone.id)).toBeNull()
+    // Two different companies: which one was meant cannot be told.
+    const other = await newCompany("Verrerie")
+    const before = await taskCount(p.projectId)
+    const refused = await call<{ error?: { code: string; message: string } }>(
+      "projects_createTask",
+      { projectId: p.projectId, title: "Mixed", companyId: co, contactId: other },
+    )
+    expect(refused.error?.code).toBe("contact_is_a_company")
+    expect(refused.error?.message).toContain("companyId")
+    expect(await taskCount(p.projectId)).toBe(before)
+    // A real contact still lands as the contact.
+    const person = await newContact(co)
+    const withPerson = await call<{ id: string }>("projects_createTask", {
+      projectId: p.projectId,
+      title: "Intranet",
+      companyId: co,
+      contactId: person.id,
+    })
+    expect(await contactOf(withPerson.id)).toBe(person.id)
+  })
 })
 
 describe("closing a deal", () => {

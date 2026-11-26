@@ -81,7 +81,7 @@ function cloudOrder(goal: KickoffGoal | null): string {
     "then invite the team, then offer mail connection last (the setup-guide skill, On Cloud). Do not ask which features they want, and leave the checklist order until then."
   return goal
     ? `This Cloud workspace's person chose to start with ${goal}: do that step first unless it is already done, ${tail} `
-    : `This is a Cloud workspace: first ask which one goal they want to start with, knowledge, support or projects (unless they already said it in this conversation), do that step, ${tail} `
+    : `This is a Cloud workspace: the setup card already asked which one goal to start with, knowledge, support or projects; start with the one they named (ask only when they named none, never repeating the card), do that step, ${tail} `
 }
 
 /** The next action: what is left of the features the person chose (connections

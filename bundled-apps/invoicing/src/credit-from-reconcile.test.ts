@@ -215,8 +215,8 @@ describe("a correction of a billed line", () => {
     expect(h.approvals[0]).toMatchObject({
       tool_name: TOOL,
       current_payload: { reconciliationId: REC, lineId: "line-1", correctedQuantity: "2.5" },
-      approve_scope: "invoicing:documents:write",
     })
+    expect(h.approvals[0]?.approve_scope).toBeUndefined()
     expect(h.approvals[0]?.auto_approvable).toBeUndefined()
     expect(creditNotes(h.db)).toHaveLength(0)
 

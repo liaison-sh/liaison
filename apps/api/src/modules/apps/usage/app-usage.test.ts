@@ -285,6 +285,19 @@ describe("CPU from the loader", () => {
     expect(await appDayCapReached(ORG)).toEqual({ kind: "appCpuMsPerDay", limit: 500, used: 520 })
     await sql`DELETE FROM kernel.app_usage_daily WHERE org_id = ${ORG}`
   })
+
+  it("a deleted org's counters are skipped quietly; the other orgs of the pull are stored", async () => {
+    const day = utcDay(Date.now())
+    const gone = randomUUID()
+    await storeLoaderUsage(day, [
+      { orgId: gone, app: "shopify", cpuMs: 10 },
+      { orgId: ORG, app: "shopify", cpuMs: 30 },
+    ])
+    const rows = await sql<Array<{ org_id: string }>>`
+      SELECT org_id FROM kernel.app_usage_daily WHERE org_id IN (${gone}, ${ORG}) AND executor = 'workers'`
+    expect(rows.map((r) => r.org_id)).toEqual([ORG])
+    await sql`DELETE FROM kernel.app_usage_daily WHERE org_id = ${ORG}`
+  })
 })
 
 describe("the daily apps.usage report", () => {

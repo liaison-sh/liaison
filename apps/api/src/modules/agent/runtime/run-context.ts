@@ -110,6 +110,14 @@ export interface RunContext {
   /** On a routine tick: this routine follows up, so its mail runs the send check as a follow-up. */
   routineFollowUp?: boolean
   /**
+   * On the execution of an approved request a routine's run staged (run-approved-handler.ts):
+   * that routine. Not `routineId` (nothing here is the routine's tick); the events the approved
+   * write queues carry it (`metadata.stagedByRoutineId`, queue-event.ts), so the routine never
+   * runs again on its own approved work (its reply, once sent, is a new message of the kind it
+   * watches).
+   */
+  approvedForRoutineId?: string
+  /**
    * On a routine tick (and the agent turn it starts for that same routine):
    * the person whose SERVER-MANAGED mailbox the tick may read, its owner, set
    * only when the routine and this run of it are the owner's own doing

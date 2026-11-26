@@ -106,7 +106,7 @@ To give one of these people their own access, invite them with their real email.
 
 ## Set how people sign in
 
-The first administrator to sign in to a new workspace is greeted by their agent in a pinned **Set up your space** conversation. See [Set up a new workspace with your agent](../agents/how-agents-work.md#set-up-a-new-workspace-with-your-agent).
+The first administrator to sign in to a new workspace is greeted by their agent in a pinned **Set up your space** conversation. On Liaison Cloud the workspace's first sign-in link opens straight on that conversation; later sign-ins open where the person left off. See [Set up a new workspace with your agent](../agents/how-agents-work.md#set-up-a-new-workspace-with-your-agent).
 
 Sign-in is passwordless by default: a person enters their email, clicks **Continue with email** and types the 6-digit code (valid 10 minutes) or opens the link in the email. A person who has a password can choose **Sign in with a password** instead, and changes it in **Settings › Security › Change password**. Changing or resetting a password ends every session of that person and every AI tool they connected over MCP; the tools must connect again. It also stops push notifications to every phone and browser the person registered: the phone app registers again at its next launch, and in a browser the person turns notifications on again.
 

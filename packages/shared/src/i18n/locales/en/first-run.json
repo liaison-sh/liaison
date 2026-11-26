@@ -24,20 +24,24 @@
     "demoLink": "Open the demo"
   },
   "checklist": {
-    "title": "Setup",
     "asOf": "As of {{time}}",
     "optional": "optional",
     "done": "Done",
-    "notDone": "Not yet",
-    "item": {
-      "aiKey": "AI model key",
-      "apps": "Apps",
-      "mail": "Mail",
-      "team": "Team",
-      "knowledge": "Company knowledge",
+    "heading": "Next steps to set up {{workspace}}",
+    "headingNoName": "Next steps to set up your workspace",
+    "progress": "{{done}} of {{total}} done",
+    "start": "Start",
+    "startLabel": "Start: {{step}}",
+    "startMessage": "Let's do this step now: {{step}}.",
+    "action": {
+      "aiKey": "Add an AI model key",
+      "apps": "Turn on the apps you need",
+      "mail": "Connect your mailbox",
+      "team": "Invite your team",
+      "knowledge": "Add your company knowledge",
       "import": "Import from another tool",
-      "roles": "Roles",
-      "connector": "API connection"
+      "roles": "Set up roles",
+      "connector": "Connect an API"
     }
   }
 }

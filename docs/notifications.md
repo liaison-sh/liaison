@@ -33,6 +33,12 @@ channel, switch on "Notify me of every message" in that channel's menu (it is yo
 `notifyAllPosts`). The decision on a request you made (approved, denied, expired, access granted) and
 new email also go to the feed quietly by default; each can be switched back on in the grid.
 
+A request that expires with no decision is also told to the people who were asked to decide it. When
+what it asked would have reached outside the organisation (an invoice issued, a reply sent), its line
+on Home says **Expired without a decision, not done**, names the card's title and its first lines
+(the customer, the amount), and stays in the alerts until it is read: nothing does it by itself.
+**Ask agent to draft** on that line asks your agent to stage it again, as a new request to approve.
+
 Urgency orders the feed and never makes noise by itself, and it does not cross quiet hours: only a
 critical incident for the people on call does (see "Quiet hours"). Only the system marks an item urgent (an
 approval for the person who decides it, an app's urgent kind, a critical incident); an agent's own

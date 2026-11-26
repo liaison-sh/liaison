@@ -933,3 +933,30 @@ button.app-pill:hover {
 [data-dock-reserved] > * {
   --shell-dock-clearance: 0px;
 }
+
+/* A block of a page's text in Page history's comparison (knowledge/TextDiff.tsx): drawn
+   as the page draws it, but compact, one block per row. */
+.history-diff-block :is(h1, h2, h3, h4, h5, h6) {
+  margin: 0;
+  font-size: 1em;
+  font-weight: 600;
+}
+.history-diff-block :is(p, ul, ol, blockquote, pre, table) {
+  margin: 0;
+}
+.history-diff-block :is(ul, ol) {
+  padding-left: 1.25em;
+}
+.history-diff-block ul {
+  list-style: disc;
+}
+.history-diff-block ol {
+  list-style: decimal;
+}
+.history-diff-block .liaison-file[data-kind="image"] {
+  margin: 0.25em 0;
+}
+.history-diff-block .liaison-file img {
+  max-height: 96px;
+  width: auto;
+}

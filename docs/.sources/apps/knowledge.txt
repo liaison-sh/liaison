@@ -28,6 +28,8 @@ Drive folder ID and where to find it -> packages/shared/src/i18n/locales/en/know
 Display name, Sync interval (minutes) -> apps/web/src/modules/knowledge/SyncedSourceAddTab.tsx:126
 Scope Personal / Shared with org -> apps/web/src/modules/knowledge/SyncedSourceAddTab.tsx:160
 Shared needs knowledge:sources:manage -> packages/shared/src/i18n/locales/en/knowledge.json:86
+Untouched new page discarded -> apps/api/src/apps/knowledge/trash.ts:209
+History diff drawn as the page -> apps/web/src/modules/knowledge/TextDiff.tsx:26
 Sensitivity options -> apps/web/src/modules/knowledge/SyncedSourceAddTab.tsx:194
 Add source submit -> apps/web/src/modules/knowledge/SyncedSourceAddTab.tsx:235
 Confidential or restricted synced documents are not org-wide -> apps/api/src/apps/knowledge/sync-reconciler.ts:294

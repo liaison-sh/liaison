@@ -456,5 +456,9 @@
       "other": "Autres éléments"
     },
     "rowsPastDetail": "{{count}} lignes au-delà des {{max}} premières"
+  },
+  "diff": {
+    "added": "Ajouté",
+    "removed": "Supprimé"
   }
 }

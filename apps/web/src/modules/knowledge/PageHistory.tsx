@@ -9,6 +9,7 @@ import { Zap } from "lucide-solid"
 import { type Component, createMemo, createResource, createSignal, For, Show } from "solid-js"
 import type { ApiClient } from "~/lib/api-client"
 import { relativeTime } from "~/lib/relative-time"
+import type { FileViewDeps } from "~/modules/editor/file-view"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { Button } from "~/ui/Button"
@@ -30,6 +31,8 @@ export interface PageHistoryProps {
   current: { title: string; body: string }
   onRestore: (version: KnowledgeVersionItem) => Promise<boolean>
   onClose: () => void
+  /** How the page draws its files, so a compared image shows as a picture. */
+  files?: FileViewDeps | null
 }
 
 /** "Amina Cherif", "Agent of Amina Cherif", or "Someone". */
@@ -180,12 +183,18 @@ export const PageHistory: Component<PageHistoryProps> = (props) => {
                       data-testid="history-diff"
                       before={other().body}
                       after={props.current.body}
+                      files={props.files}
                     />
                   )}
                 </Show>
               }
             >
-              <TextDiff data-testid="history-diff" before="" after={props.current.body} />
+              <TextDiff
+                data-testid="history-diff"
+                before=""
+                after={props.current.body}
+                files={props.files}
+              />
             </Show>
           </div>
         </div>

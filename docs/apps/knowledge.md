@@ -30,7 +30,7 @@ If someone else saves the page while you write, or you do in another tab, and yo
 The sidebar has two trees: **Personal** for your own notes and **Shared with org** for team documents. Any member can make, rename, move and delete the folders they see, and rename and move the documents they can edit.
 
 - **New page in a folder**: point at the folder and click its **+**. A page made in one of your personal folders is yours alone until you share it.
-- **A new page** opens with its title **Untitled** selected: type its name, then press Enter to go on to the text. The home's **Recently touched** lists every page by its title (a page whose title is a file name, such as an imported `notes.md`, by the heading its text opens with).
+- **A new page** opens with its title **Untitled** selected: type its name, then press Enter to go on to the text. A new page you close without writing anything in it (no text, no new title) is deleted, so empty **Untitled** pages do not pile up; a page an agent makes is never removed this way. The home's **Recently touched** lists every page by its title (a page whose title is a file name, such as an imported `notes.md`, by the heading its text opens with).
 - **Row menu**: every folder and document has a **…** button (or right click it). A folder offers **New page**, **New folder**, **Rename**, **Move to…** and **Delete folder**; a document offers **Rename**, **Move to…** and **Copy link**, and **Move to trash** (with **Undo** for 10 seconds) if you hold `knowledge:documents:archive`; a synced document has no **Move to trash**. A document you can only read offers **Copy link** alone, and the folder actions and **+** buttons show only if your role lets you organise folders and make pages. The menu works with the mouse, the keyboard (Enter opens it, Escape closes it) and on touch.
 - **Move to…** opens a list of folders you can search. Moving between **Personal** and **Shared with org** asks first and says who will see it. You can also drag a row onto a folder.
 - **New personal folder** and **New shared folder** (the **+** next to each tree's name) make a top folder.
@@ -54,7 +54,7 @@ Tick a checklist item by clicking its box, or press Ctrl+Enter (Cmd+Enter on a M
 ## See and restore a page's history
 
 1. Open the page and click the **...** menu, then **Page history**.
-2. Pick a version on the right: who wrote it, when, and what changed since is marked.
+2. Pick a version on the right: who wrote it, when, and what changed since is marked, block by block, as the page shows it (added in green, removed in red and struck through; an image as a small picture).
 3. Click **Restore this version** to give the page that text back. The text it replaces stays in the history.
 
 Every change by a person or an agent is kept with its author and time. One person's edits in one tab within 10 minutes form one version; an agent's write is always its own. A page keeps its versions for a year and at most 200 of them, oldest first out, but each author's newest version and every text kept aside from a conflict are never removed to make room, and texts kept aside from a conflict are kept past a year too. Pages synced from another app have no history. Anyone who may edit a page sees its history.

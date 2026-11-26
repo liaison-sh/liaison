@@ -46,6 +46,7 @@ import {
   loadCollectionsTree,
   loadDocuments,
   loadKnowledgeHome,
+  markFreshPage,
   revealDocument,
   searchKnowledge,
   setFolderOpen,
@@ -197,6 +198,8 @@ const KnowledgeSidebar: Component = () => {
         ...(personal ? { orgAccess: "none" } : {}),
         ...(folderId ? { collectionIds: [folderId] } : {}),
       })) as { id: string; title?: string }
+      // Left with no text, it is discarded (fresh-pages.ts).
+      markFreshPage(doc.id)
       await reloadAfterChange()
       // Just created by the user: a permanent tab, not a preview.
       openTab({

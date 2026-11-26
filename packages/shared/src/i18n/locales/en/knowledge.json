@@ -456,5 +456,9 @@
       "other": "Other items"
     },
     "rowsPastDetail": "{{count}} rows past the first {{max}}"
+  },
+  "diff": {
+    "added": "Added",
+    "removed": "Removed"
   }
 }

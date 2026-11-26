@@ -936,3 +936,40 @@ describe("members of an org registered before Trash (S1)", () => {
     void otherId
   })
 })
+
+describe("a new page left untouched", () => {
+  const exists = async (id: string) =>
+    extractRows(await privileged(sql`SELECT 1 FROM ${K()}.documents WHERE id = ${id}::uuid`))
+      .length > 0
+
+  it("is deleted for good by its maker, with no admin scope", async () => {
+    const id = await page(editor, { title: "Untitled", body: "" })
+    const res = await call(editor, "POST", `/documents/${id}/discard-untouched`)
+    expect(res.status).toBe(200)
+    expect(res.json.data).toEqual({ id, deleted: true })
+    expect(await exists(id)).toBe(false)
+  })
+
+  it("is kept once written in, renamed, or when it is someone else's", async () => {
+    const written = await page(editor, { title: "Untitled", body: "" })
+    const row = await call(editor, "GET", `/documents/${written}`)
+    const revision = (row.json.data as { revision: number }).revision
+    const saved = await call(editor, "PATCH", `/documents/${written}?autosave=1&session=s1`, {
+      title: "Untitled",
+      body: "A first line",
+      revision,
+    })
+    expect(saved.status).toBe(200)
+    expect((await call(editor, "POST", `/documents/${written}/discard-untouched`)).status).toBe(400)
+    expect(await exists(written)).toBe(true)
+
+    const theirs = await page(editor, { title: "Untitled", body: "" })
+    const refused = await call(other, "POST", `/documents/${theirs}/discard-untouched`)
+    expect(refused.status).toBeGreaterThanOrEqual(400)
+    expect(await exists(theirs)).toBe(true)
+
+    const full = await page(editor, { title: "Notes", body: "kept" })
+    expect((await call(editor, "POST", `/documents/${full}/discard-untouched`)).status).toBe(400)
+    expect(await exists(full)).toBe(true)
+  })
+})

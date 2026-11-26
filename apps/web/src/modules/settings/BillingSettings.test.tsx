@@ -148,6 +148,7 @@ describe("BillingSettings", () => {
     expect(screen.getByTestId("billing-next-invoice")).toHaveTextContent("€41.37")
     expect(screen.getByTestId("billing-plan-pro")).toHaveTextContent("€77.77")
     expect(screen.getByTestId("billing-card")).toHaveTextContent("4242")
+    expect(screen.getByTestId("billing-card")).toHaveTextContent("Visa ending in 4242")
     expect(await screen.findByTestId("billing-credits-left")).toHaveTextContent("180")
     expect(screen.getByTestId("billing-credits-used")).toHaveTextContent("28%")
     // The top-up starts at Control's minimum and is priced at Control's unit price.

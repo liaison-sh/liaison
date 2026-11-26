@@ -156,6 +156,22 @@ export function localMoney(display: string, locale: string, perMonth?: string): 
  * reply (success, or a refusal it chose) ends the intent, and a changed
  * amount or target is a new one.
  */
+/** Stripe's card brand id as people write it: "visa" -> "Visa", "amex" -> "American Express". */
+const CARD_BRANDS: Record<string, string> = {
+  amex: "American Express",
+  cartes_bancaires: "Cartes Bancaires",
+  diners: "Diners Club",
+  discover: "Discover",
+  eftpos_au: "eftpos",
+  jcb: "JCB",
+  mastercard: "Mastercard",
+  unionpay: "UnionPay",
+  visa: "Visa",
+}
+export function cardBrandName(brand: string): string {
+  return CARD_BRANDS[brand] ?? (brand ? brand.charAt(0).toUpperCase() + brand.slice(1) : brand)
+}
+
 export function createIntentKeys(mint: () => string = () => crypto.randomUUID()) {
   const open = new Map<string, { intent: string; id: string }>()
   return {
@@ -784,7 +800,7 @@ const BillingSettings: Component = () => {
                       <Show when={s().card} fallback={t("cloud-billing.card.none")}>
                         {(c) =>
                           t("cloud-billing.card.onFile", {
-                            brand: c().brand,
+                            brand: cardBrandName(c().brand),
                             last4: c().last4,
                             month: String(c().expMonth).padStart(2, "0"),
                             year: String(c().expYear),

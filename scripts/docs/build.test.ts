@@ -99,7 +99,9 @@ describe("docs build", () => {
     expect(html).toContain('<link rel="canonical" href="https://liaison.sh/docs/guides/one/">')
     expect(html).toContain('<meta name="description" content="How to do the first thing.">')
     // A page without a screenshot still shares a card, and the header leads to an account.
-    expect(html).toContain('<meta property="og:image" content="https://liaison.sh/assets/og/en/docs.jpg">')
+    expect(html).toContain(
+      '<meta property="og:image" content="https://liaison.sh/assets/og/en/docs.jpg">',
+    )
     expect(html).toContain('<meta name="twitter:card" content="summary_large_image">')
     expect(html).toContain('<a class="hd-login" href="/login/">Log in</a>')
     expect(html).toContain('<a class="btn" href="/signup/">Register</a>')

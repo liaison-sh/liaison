@@ -1724,7 +1724,9 @@ export async function preflightTicketsReplyParams(
       error: {
         code: "invalid_params",
         retryable: false,
-        message: "reply body or attachments required",
+        message:
+          "the reply text is missing: put it in textBody (plain text) or htmlBody, or attach " +
+          "files with attachments. A parameter with another name (body, text, message) is ignored.",
       },
     }
   }
@@ -2180,7 +2182,13 @@ export async function preflightTicketsNudgeParams(
   if (!hasBody(params)) {
     return {
       ok: false,
-      error: { code: "invalid_params", retryable: false, message: "nudge body required" },
+      error: {
+        code: "invalid_params",
+        retryable: false,
+        message:
+          "the nudge text is missing: put it in textBody (plain text) or htmlBody. A parameter " +
+          "with another name (body, text, message) is ignored.",
+      },
     }
   }
   return { ok: true, ticket }

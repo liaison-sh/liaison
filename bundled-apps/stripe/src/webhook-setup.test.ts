@@ -3,20 +3,12 @@
 // Setting up the Stripe webhook: the events an admin selects are the ones the handler acts on
 // (in the tool, the settings page and the setup guide alike), the signing secret has one shape
 // everywhere, the status says set or not without ever reading the secret, and the settings page
-// sends the secret once to the kernel's app-secret route.
+// leaves the secret's field to the kernel's own block.
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { HANDLED } from "./dispatch"
 import { SIGNING_SECRET_PATTERN, WEBHOOK_EVENTS, webhookStatus } from "./tools/webhook-status"
-import {
-  APP_SECRETS_PATH,
-  type HostFetchFn,
-  loadWebhookSettings,
-  SIGNING_SECRET_SHAPE,
-  saveSigningSecret,
-  signingSecretProblem,
-} from "./ui/webhook-settings-model"
 
 const manifest = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8"),
@@ -72,21 +64,18 @@ describe("the events to select", () => {
 })
 
 describe("the signing secret's shape", () => {
-  it("is one pattern in the manifest, the tool and the settings page", () => {
+  it("is one pattern in the manifest and the tool", () => {
     const field = conn.appSecretFields.find((f) => f.key === "webhookSigningSecret")
     expect(field?.pattern).toBe(SIGNING_SECRET_PATTERN.source)
-    expect(SIGNING_SECRET_SHAPE.source).toBe(SIGNING_SECRET_PATTERN.source)
     // Only the current secret is a person's to set; the previous one is the kernel's roll.
     expect(conn.appSecretFields.map((f) => f.key)).toEqual(["webhookSigningSecret"])
     expect(conn.appSecretConfigKeys).toContain("webhookSigningSecretPrevious")
   })
 
-  it("refuses an empty value, a restricted or secret key, and a short whsec", () => {
-    expect(signingSecretProblem(GOOD)).toBeNull()
-    expect(signingSecretProblem(`  ${GOOD}  `)).toBeNull()
-    expect(signingSecretProblem("")).toBe("Paste the signing secret first.")
+  it("accepts a whsec secret, refuses a restricted or secret key and a short whsec", () => {
+    expect(SIGNING_SECRET_PATTERN.test(GOOD)).toBe(true)
     for (const bad of ["rk_live_abcdefghijklmnop", "sk_test_abcdefghijklmnop", "whsec_short"])
-      expect(signingSecretProblem(bad)).toContain("whsec_")
+      expect(SIGNING_SECRET_PATTERN.test(bad)).toBe(false)
   })
 })
 
@@ -98,7 +87,9 @@ describe("webhook_status", () => {
     expect(tool?.agentVisible).not.toBe(false)
     const section = manifest.settings.sections.find((s) => s.id === "webhook")
     expect(section?.adminScope).toBe("stripe:admin:connection")
+    // The kernel draws the secret's field (the app bundle never sends it); the app, its events.
     expect(section?.blocks).toEqual([
+      { block: "appSecrets", connection: "stripe" },
       expect.objectContaining({ component: "StripeWebhookSettings" }),
     ])
   })
@@ -133,39 +124,5 @@ describe("webhook_status", () => {
     expect(out.state).toBe("connected")
     expect(JSON.stringify(out)).not.toContain("ciphertext")
     expect(reads).toEqual(["webhookSigningSecretPreviousUntil"])
-  })
-})
-
-describe("the settings page's read and write", () => {
-  it("reads set or not and the endpoint address from the kernel route", async () => {
-    const calls: string[] = []
-    const fetch: HostFetchFn = async <T>(path: string) => {
-      calls.push(path)
-      return {
-        secrets: [{ key: "webhookSigningSecret", set: true, previousUntil: null }],
-        webhooks: [{ endpoint: "events", url: "https://x.example/webhooks/o/stripe/events" }],
-      } as T
-    }
-    const s = await loadWebhookSettings(fetch)
-    expect(calls).toEqual([APP_SECRETS_PATH])
-    expect(s).toMatchObject({
-      address: "https://x.example/webhooks/o/stripe/events",
-      secretSet: true,
-      previousUntil: null,
-    })
-    expect(s.events).toEqual(WEBHOOK_EVENTS)
-  })
-
-  it("puts the trimmed secret to the signing secret's key and reports a roll", async () => {
-    const sent: Array<{ path: string; init?: RequestInit }> = []
-    const fetch: HostFetchFn = async <T>(path: string, init?: RequestInit) => {
-      sent.push({ path, init })
-      return { data: { key: "webhookSigningSecret", set: true, rolled: true } } as T
-    }
-    expect(await saveSigningSecret(fetch, ` ${GOOD} `)).toEqual({ rolled: true })
-    expect(sent).toHaveLength(1)
-    expect(sent[0]?.path).toBe(`${APP_SECRETS_PATH}/webhookSigningSecret`)
-    expect(sent[0]?.init?.method).toBe("PUT")
-    expect(JSON.parse(String(sent[0]?.init?.body))).toEqual({ value: GOOD })
   })
 })

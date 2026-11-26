@@ -24,7 +24,10 @@ import {
   connectionConfigRegistry,
   webhookHandlers,
 } from "~/modules/apps/app-registries"
-import { storeAppHeldSecret } from "~/modules/apps/connections/service"
+import {
+  decryptConnectionConfigValue,
+  storeAppHeldSecret,
+} from "~/modules/apps/connections/service"
 
 /** The longest value accepted (the store's own bound). */
 const MAX_VALUE_LENGTH = 4096
@@ -158,8 +161,10 @@ export async function appSecretStatus(
 
 /**
  * Store a secret a person gave, after checking the key is one they may set and the value has
- * its shape. `rolled`: a value was already set (it keeps verifying for a while, when the
- * connection declares the previous key). The caller checked the person's scope.
+ * its shape. `rolled`: another value was set (it keeps verifying for a while, when the
+ * connection declares the previous key). The same value again writes nothing (`unchanged`), so
+ * a double submit never displaces a previous secret that is still verifying. The caller checked
+ * the person's scope.
  */
 export async function setAppSecret(args: {
   orgId: string
@@ -167,20 +172,34 @@ export async function setAppSecret(args: {
   connectionName: string
   key: string
   value: unknown
-}): Promise<{ key: string; rolled: boolean }> {
+}): Promise<{ key: string; rolled: boolean; unchanged: boolean }> {
   const decl = connectionDeclFor(args.orgId, args.appName, args.connectionName)
   const field = settableField(decl, args.key)
   const problem = appSecretValueProblem(field, args.value)
   if (problem) throw new AppSecretError("invalid_value", problem, 400)
+  const value = String(args.value).trim()
+  const manifestConnections = { [args.connectionName]: decl }
   const before = await storedConfig(args.orgId, args.appName)
+  const stored = before[field.key]
+  if (isSet(stored)) {
+    const current = decryptConnectionConfigValue(
+      args.orgId,
+      args.appName,
+      field.key,
+      stored,
+      undefined,
+      manifestConnections,
+    )
+    if (current === value) return { key: field.key, rolled: false, unchanged: true }
+  }
   await storeAppHeldSecret({
     orgId: args.orgId,
     appName: args.appName,
     key: field.key,
-    value: String(args.value).trim(),
-    manifestConnections: { [args.connectionName]: decl },
+    value,
+    manifestConnections,
   })
-  return { key: field.key, rolled: isSet(before[field.key]) }
+  return { key: field.key, rolled: isSet(stored), unchanged: false }
 }
 
 /** The addresses the app's webhook endpoints are reached at (the org's public base). */

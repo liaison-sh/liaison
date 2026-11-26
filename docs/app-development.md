@@ -640,9 +640,12 @@ Instead:
   `"appSecretConfigKeys"` (kept encrypted, read back by your verifier) and in
   `"appSecretFields"` with a `label`, and optionally a `pattern` the value must
   match and a `patternMessage`. A person then sets it on your settings page
-  (`PUT /api/connections/<app>/<connection>/app-secrets/<key>`, the connection's
-  admin scope; `GET` on the same path says which are set, never their value,
-  with your webhook addresses), on an agent's card (`request_secret`, kind
+  through an `appSecrets` block (`{ "block": "appSecrets", "connection":
+  "<name>" }`): the kernel draws it, with your webhook addresses and whether
+  each secret is set, and writes it with
+  `PUT /api/connections/<app>/<connection>/app-secrets/<key>` (the connection's
+  admin scope). Your UI bundle may read `GET` on that path (never a value) but
+  cannot write it. A person can also set it on an agent's card (`request_secret`, kind
   `app_secret`) or with `liaison config apply` (`apps[].appSecrets`). A new
   `webhookSigningSecret` rolls the old one into `webhookSigningSecretPrevious`
   for 24 hours. A secret your handler receives from the provider's API is

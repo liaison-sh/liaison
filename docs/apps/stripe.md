@@ -101,7 +101,7 @@ Stripe tells Liaison about changes through a webhook. Until its signing secret i
 
 3. On the endpoint, reveal its **Signing secret** (it starts with `whsec_`) and paste it into **Webhook signing secret** on the same page, then **Save**.
 
-The secret is never shown again: the page says only **Set** or **Not set yet**. A value that does not start with `whsec_` is refused before it is kept. To replace it (after you roll it in Stripe), paste the new one and choose **Replace**: the previous one keeps working for 24 hours, and the page says until when.
+The secret is never shown again: the page says only **Set** or **Not set yet**. A value that does not start with `whsec_` is refused before it is kept. To replace it (after you roll it in Stripe), paste the new one and choose **Replace**: the previous one keeps working for 24 hours, and the page says until when. Saving the one already saved changes nothing.
 
 **With the agent.** Ask the agent to set up the Stripe webhook. Its `webhook_status` tool (admins) gives the endpoint path, the events to select, whether a secret is set and the connection's state. The agent then posts a card (`request_secret`, kind `app_secret`) that shows the endpoint address and a field for the secret: you paste it there, never in a message, and the agent only learns that it was saved.
 

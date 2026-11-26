@@ -36,6 +36,7 @@ export {
   RESERVED_SETTINGS_NAMESPACES,
   SETTINGS_FIELD_TYPES,
   SETTINGS_SECRET_KEY_PATTERN,
+  type SettingsAppSecretsBlock,
   type SettingsBlock,
   type SettingsConnectionsBlock,
   type SettingsCustomBlock,

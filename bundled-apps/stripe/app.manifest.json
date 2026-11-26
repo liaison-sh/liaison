@@ -150,10 +150,11 @@
         "scope": "org",
         "adminScope": "stripe:admin:connection",
         "blocks": [
+          { "block": "appSecrets", "connection": "stripe" },
           {
             "block": "custom",
             "component": "StripeWebhookSettings",
-            "reason": "The webhook address and its events, and a write-only form for the signing secret: the secret is never read back, only whether one is set."
+            "reason": "The steps in Stripe and the exact events to select, read from the event handler's own list."
           }
         ]
       }

@@ -20,6 +20,7 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { appsStore } from "~/modules/settings/apps-store"
 import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
+import { AppSecretsBlock } from "./AppSecretsBlock"
 import { ConnectionsBlock, canAdministerConnection } from "./ConnectionsBlock"
 import { CustomBlock } from "./CustomBlock"
 import { FieldBlock } from "./fields"
@@ -183,6 +184,9 @@ export const SectionView: Component<SectionViewProps> = (props) => {
               personalSection={props.section.scope === "user"}
             />
           )}
+        </Match>
+        <Match when={b.block === "appSecrets" && b}>
+          {(s) => <AppSecretsBlock app={props.app} block={s()} />}
         </Match>
         <Match when={b.block === "custom" && b}>
           {(c) => <CustomBlock app={props.app} block={c()} exports={props.exports} />}

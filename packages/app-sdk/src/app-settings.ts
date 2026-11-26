@@ -270,12 +270,27 @@ const customBlockSchema = z
   })
   .strict()
 
+/**
+ * The secrets a person gives one connection (its manifest `appSecretFields`: a webhook
+ * endpoint's signing secret copied from the provider's dashboard), drawn by the kernel: set or
+ * not (never a value), write-only fields, and the app's webhook addresses to paste at the
+ * provider. The kernel's own page writes them, never the app's UI bundle.
+ */
+const appSecretsBlockSchema = z
+  .object({
+    block: z.literal("appSecrets"),
+    /** The manifest connection whose `appSecretFields` the block shows. */
+    connection: z.string().min(1),
+  })
+  .strict()
+
 export const settingsBlockSchema = z.discriminatedUnion("block", [
   fieldBlockSchema,
   connectionsBlockSchema,
   listBlockSchema,
   treeBlockSchema,
   customBlockSchema,
+  appSecretsBlockSchema,
 ])
 
 export const settingsSectionSchema = z
@@ -315,6 +330,7 @@ export type SettingsConnectionsBlock = z.infer<typeof connectionsBlockSchema>
 export type SettingsListBlock = z.infer<typeof listBlockSchema>
 export type SettingsTreeBlock = z.infer<typeof treeBlockSchema>
 export type SettingsCustomBlock = z.infer<typeof customBlockSchema>
+export type SettingsAppSecretsBlock = z.infer<typeof appSecretsBlockSchema>
 
 /** The default scope of an org section that declares none. */
 export const DEFAULT_SETTINGS_ADMIN_SCOPE = "kernel:apps:admin"

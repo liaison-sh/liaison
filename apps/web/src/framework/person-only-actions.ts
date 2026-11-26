@@ -37,6 +37,14 @@ export const PERSON_ONLY_ROUTES: readonly PersonOnlyRoute[] = [
     path: /^\/api\/contacts\/[^/]+\/addresses\/[^/]+\/verify$/i,
     action: "verify a contact's address",
   },
+  {
+    // An app-held secret (a webhook signing secret): an app that could write one could forge
+    // the deliveries another app verifies with it. The kernel's settings block and the
+    // secret request card write it with Liaison's own client.
+    method: "PUT",
+    path: /^\/api\/connections\/[^/]+\/[^/]+\/app-secrets\/[^/]+$/i,
+    action: "save a connection's secret",
+  },
 ]
 
 /** Tools an app UI may never run directly (a direct run counts as the person's click). */

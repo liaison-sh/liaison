@@ -306,30 +306,8 @@ export const FR: Record<string, string> = {
   Connected: "Connecté",
   "Setting up": "Mise en place",
   "Needs a look": "À vérifier",
-  // Settings > Apps > Stripe > Webhook (WebhookSettings.tsx, webhook-settings-model.ts)
-  "Saved. The previous secret keeps working for 24 hours.":
-    "Enregistré. L'ancien secret reste valable 24 heures.",
-  "Saved. Stripe deliveries are now verified.":
-    "Enregistré. Les envois de Stripe sont maintenant vérifiés.",
-  "Could not save the secret.": "Impossible d'enregistrer le secret.",
-  "Could not read the webhook settings.": "Impossible de lire les réglages du webhook.",
-  "Endpoint URL": "URL du point de terminaison",
-  "This server names no address yet.": "Ce serveur n'indique pas encore d'adresse.",
-  Copy: "Copier",
-  Copied: "Copié",
-  "In Stripe: Developers, Webhooks, Add endpoint. Paste this address.":
-    "Dans Stripe : Développeurs, Webhooks, Ajouter un point de terminaison. Collez cette adresse.",
+  // Settings > Apps > Stripe > Webhook (WebhookSettings.tsx)
+  "In Stripe: Developers, Webhooks, Add endpoint. Paste the endpoint URL, select the events below, then reveal the endpoint's Signing secret and save it here.":
+    "Dans Stripe : Développeurs, Webhooks, Ajouter un point de terminaison. Collez l'URL du point de terminaison, sélectionnez les événements ci-dessous, puis affichez son secret de signature et enregistrez-le ici.",
   "Events to select ({{count}})": "Événements à sélectionner ({{count}})",
-  "Webhook signing secret": "Secret de signature du webhook",
-  "Set.": "Enregistré.",
-  "Not set yet.": "Pas encore enregistré.",
-  "The previous secret keeps working until {{until}}.":
-    "L'ancien secret reste valable jusqu'au {{until}}.",
-  Replace: "Remplacer",
-  Save: "Enregistrer",
-  "On the endpoint in Stripe, reveal its Signing secret and paste it here. It is never shown again, here or to the agent.":
-    "Sur le point de terminaison dans Stripe, affichez son secret de signature et collez-le ici. Il n'est plus jamais affiché, ni ici ni à l'agent.",
-  "Paste the signing secret first.": "Collez d'abord le secret de signature.",
-  "A webhook signing secret starts with whsec_ followed by letters and digits.":
-    "Un secret de signature de webhook commence par whsec_ suivi de lettres et de chiffres.",
 }

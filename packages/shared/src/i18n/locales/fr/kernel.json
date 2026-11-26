@@ -3301,6 +3301,24 @@
     "newOutboundDomains": "Nouveaux hôtes que cette version peut joindre (accordés par la mise à jour)"
   },
   "settingsPage": {
+    "appSecrets": {
+      "webhookAddress": "URL du point de terminaison",
+      "webhookAddressHint": "Collez cette adresse chez le fournisseur quand vous ajoutez le point de terminaison du webhook.",
+      "copy": "Copier",
+      "copied": "Copié",
+      "set": "Enregistré.",
+      "notSet": "Pas encore enregistré.",
+      "previousUntil": "L'ancien reste valable jusqu'au {{until}}.",
+      "save": "Enregistrer",
+      "replace": "Remplacer",
+      "saved": "Enregistré.",
+      "savedRolled": "Enregistré. L'ancien reste valable 24 heures.",
+      "unchanged": "C'est celui qui est déjà enregistré : rien n'a changé.",
+      "empty": "Collez-le d'abord.",
+      "failed": "Impossible de l'enregistrer.",
+      "loadFailed": "Impossible de lire ces réglages.",
+      "neverShown": "Il n'est plus jamais affiché, ni ici ni à l'agent."
+    },
     "unsupported": "Ce réglage nécessite une version plus récente de Liaison. Mettez Liaison à jour pour le modifier.",
     "justYou": "Vous seul",
     "justYouHint": "Ne concerne que vous",

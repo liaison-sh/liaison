@@ -138,6 +138,7 @@ describe("a person saves the webhook signing secret", () => {
     expect(await save("webhookSigningSecret", `  ${FIRST}\n`)).toEqual({
       key: "webhookSigningSecret",
       rolled: false,
+      unchanged: false,
     })
     const config = await storedConfig()
     expect(typeof config.webhookSigningSecret).toBe("string")
@@ -153,6 +154,7 @@ describe("a person saves the webhook signing secret", () => {
     expect(await save("webhookSigningSecret", SECOND)).toEqual({
       key: "webhookSigningSecret",
       rolled: true,
+      unchanged: false,
     })
     expect(await deliver(SECOND)).toMatchObject({ ok: true })
     expect(await deliver(FIRST)).toMatchObject({ ok: true })
@@ -162,6 +164,21 @@ describe("a person saves the webhook signing secret", () => {
     expect(until).toBeGreaterThan(Date.now() + 23 * 3_600_000)
     expect(JSON.stringify(status)).not.toContain(FIRST)
     expect(JSON.stringify(status)).not.toContain(SECOND)
+  })
+})
+
+describe("saving the same secret again", () => {
+  it("writes nothing, so the previous secret still verifies until its deadline", async () => {
+    const before = await storedConfig()
+    expect(await save("webhookSigningSecret", SECOND)).toEqual({
+      key: "webhookSigningSecret",
+      rolled: false,
+      unchanged: true,
+    })
+    const after = await storedConfig()
+    expect(after.webhookSigningSecret).toBe(before.webhookSigningSecret)
+    expect(after.webhookSigningSecretPrevious).toBe(before.webhookSigningSecretPrevious)
+    expect(await deliver(FIRST)).toMatchObject({ ok: true })
   })
 })
 

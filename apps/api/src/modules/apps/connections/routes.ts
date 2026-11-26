@@ -302,8 +302,9 @@ export const connectionRoutes = new Hono<AppEnv>()
   .get("/:appName/:connectionName/app-secrets", async (c) => {
     const orgId = c.get("orgId")
     const { appName, connectionName } = c.req.param()
-    requireOrgConnectScope(c, appName, connectionName, "org")
+    // The registry first: the scope check reads the connection's own admin scope from it.
     await ensureAppsForOrg(orgId)
+    requireOrgConnectScope(c, appName, connectionName, "org")
     try {
       const secrets = await appSecretStatus(orgId, appName, connectionName)
       const webhooks = await appWebhookAddresses(orgId, appName)
@@ -315,8 +316,8 @@ export const connectionRoutes = new Hono<AppEnv>()
   .put("/:appName/:connectionName/app-secrets/:key", async (c) => {
     const orgId = c.get("orgId")
     const { appName, connectionName, key } = c.req.param()
-    requireOrgConnectScope(c, appName, connectionName, "org")
     await ensureAppsForOrg(orgId)
+    requireOrgConnectScope(c, appName, connectionName, "org")
     const body = ((await c.req.json().catch(() => null)) ?? {}) as { value?: unknown }
     try {
       const saved = await setAppSecret({ orgId, appName, connectionName, key, value: body.value })
@@ -331,7 +332,9 @@ export const connectionRoutes = new Hono<AppEnv>()
         },
         "app-held secret set by a person",
       )
-      return c.json({ data: { key: saved.key, set: true, rolled: saved.rolled } })
+      return c.json({
+        data: { key: saved.key, set: true, rolled: saved.rolled, unchanged: saved.unchanged },
+      })
     } catch (err) {
       throw appSecretHttpError(err)
     }

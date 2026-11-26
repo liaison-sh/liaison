@@ -6931,7 +6931,18 @@
     "superseded": "Remplacée par une carte plus récente",
     "unreachable": "Rien n'a été exécuté : cette carte ne peut pas joindre le serveur ici.",
     "waitingApproval": "En attente d'approbation. Rien n'a encore été exécuté.",
-    "working": "En cours…"
+    "working": "En cours…",
+    "title": {
+      "call_tool": "Utiliser un outil",
+      "config_apps": "Modifier les applications",
+      "config_export": "Lire la configuration de l'espace",
+      "config_knowledge": "Modifier les connaissances",
+      "config_users": "Modifier les personnes",
+      "memory_view": "Lire la mémoire",
+      "setup_state": "Vérifier la configuration",
+      "skill_read": "Lire un guide",
+      "tool_search": "Chercher un outil"
+    }
   },
   "entityDiscussion": {
     "empty": "Aucun message pour l'instant.",

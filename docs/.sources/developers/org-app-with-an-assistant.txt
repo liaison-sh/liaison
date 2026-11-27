@@ -23,3 +23,4 @@ Who gets an app: manifest roles become <app>.<role>, member tier extends Full Me
 Page shows only after interface approval, and only on the org's own host -> apps/api/src/modules/apps/routes.ts (GET /manifests uiBundleUrl), apps/api/src/modules/apps/ui-bundle-routes.ts (orgPrivateBundleRefused)
 Page built from @liaison/app-ui/kit, the frame takes the page's stylesheet -> apps/web/src/framework/isolated-app.tsx (pageCss) ; apps/api/src/modules/app-builder/build/sandbox-resolve.ts (allowedSpecifiers: app-ui) ; packages/app-ui/src/kit.tsx
 Rollback restores code, stored data kept -> apps/api/src/modules/app-builder/drafts.ts (restoreDraftVersion)
+Logs hidden count and scopes in the answer -> apps/api/src/modules/app-builder/tools.ts (apps_build_logs hidden) ; apps/api/src/modules/app-builder/logs.ts (hiddenAppLogs)

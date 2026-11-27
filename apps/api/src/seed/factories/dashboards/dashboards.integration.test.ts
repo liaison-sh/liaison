@@ -39,7 +39,6 @@ afterAll(async () => {
 const lively = () => ({
   key: "lively:sales-and-support",
   title: LIVELY_DASHBOARD_TITLE,
-  ownerUserId: owner.userId,
   visibility: "org" as const,
   spec: LIVELY_DASHBOARD_SPEC,
 })
@@ -47,7 +46,7 @@ const lively = () => ({
 describe("the dashboards factory", () => {
   it("writes the lively dashboard, shared with the org, with its first version", async () => {
     const ctx = seedContext({ orgId, now: new Date("2026-11-20T09:00:00Z") })
-    const [id] = await seedDashboards(ctx, [lively()])
+    const [id] = await seedDashboards(ctx, owner, [lively()])
     expect(id).toBe(ctx.id("dashboard", "lively:sales-and-support"))
     const [row] = rowsOf<{ title: string; org_access: string; version: number; blocks: number }>(
       await db.execute(
@@ -68,7 +67,7 @@ describe("the dashboards factory", () => {
 
   it("a re-run adopts the row", async () => {
     const ctx = seedContext({ orgId, now: new Date() })
-    await seedDashboards(ctx, [lively()])
+    await seedDashboards(ctx, owner, [lively()])
     const [row] = rowsOf<{ n: number }>(
       await db.execute(
         sql`SELECT count(*)::int AS n FROM kernel.dashboards WHERE org_id = ${orgId}::uuid`,
@@ -80,7 +79,9 @@ describe("the dashboards factory", () => {
   it("refuses a spec the dashboard schema refuses, and writes nothing", async () => {
     const ctx = seedContext({ orgId, now: new Date() })
     await expect(
-      seedDashboards(ctx, [{ ...lively(), key: "bad", spec: { v: 1, blocks: [{ id: "x" }] } }]),
+      seedDashboards(ctx, owner, [
+        { ...lively(), key: "bad", spec: { v: 1, blocks: [{ id: "x" }] } },
+      ]),
     ).rejects.toThrow(/invalid spec/)
     const [row] = rowsOf<{ n: number }>(
       await db.execute(

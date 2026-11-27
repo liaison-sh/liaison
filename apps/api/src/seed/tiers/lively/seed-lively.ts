@@ -660,12 +660,11 @@ async function seedLivelyActivity(
   // ── Dashboard: the founder's sales and support figures, shared with the org.
   // It reads invoicing and the carrier's queue, so it needs the commerce layer.
   const dashboardIds =
-    labelFounder && world.commerce
-      ? await seedDashboards(ctx, [
+    labelAdmin && world.commerce
+      ? await seedDashboards(ctx, labelAdmin, [
           {
             key: "lively:sales-and-support",
             title: LIVELY_DASHBOARD_TITLE,
-            ownerUserId: labelFounder.userId,
             visibility: "org",
             spec: LIVELY_DASHBOARD_SPEC,
           },

@@ -6,7 +6,7 @@
 // re-seed adopts the row instead of adding one. The sources are not resolved
 // here: a seed runs before the org's apps register in a server, and the
 // dashboard reads them, as for any dashboard, when someone opens it.
-import { withPrivilegedDb } from "~/db/privileged"
+import { type UserContext, withRlsContext } from "~/db/rls"
 import { dashboards, dashboardVersions } from "~/db/schema/kernel"
 import { dashboardSpecSchema } from "~/modules/dashboards/spec"
 import type { SeedContext } from "~/seed/context"
@@ -15,14 +15,20 @@ export interface DashboardSeed {
   /** Stable key: the row's id is derived from it. */
   key: string
   title: string
-  ownerUserId: string
   /** "org": every member opens it (as a viewer); "personal": its owner only. */
   visibility: "org" | "personal"
   spec: unknown
 }
 
-/** Write each dashboard (and its first version) once; returns the ids, in order. */
-export async function seedDashboards(ctx: SeedContext, seeds: DashboardSeed[]): Promise<string[]> {
+/**
+ * Write each dashboard (and its first version) once, as its owner (row security
+ * applies, as for a dashboard the owner saves); returns the ids, in order.
+ */
+export async function seedDashboards(
+  ctx: SeedContext,
+  owner: UserContext,
+  seeds: DashboardSeed[],
+): Promise<string[]> {
   const rows = seeds.map((s) => {
     const parsed = dashboardSpecSchema.safeParse(s.spec)
     if (!parsed.success) {
@@ -31,7 +37,7 @@ export async function seedDashboards(ctx: SeedContext, seeds: DashboardSeed[]): 
     return { seed: s, id: ctx.id("dashboard", s.key), spec: parsed.data }
   })
   if (rows.length === 0) return []
-  await withPrivilegedDb(ctx.orgId, "seed:dashboards", async (tx) => {
+  await withRlsContext(owner, async (tx) => {
     for (const { seed, id, spec } of rows) {
       const at = ctx.now
       await tx
@@ -42,11 +48,11 @@ export async function seedDashboards(ctx: SeedContext, seeds: DashboardSeed[]): 
           title: seed.title,
           visibility: seed.visibility,
           orgAccess: seed.visibility === "org" ? "viewer" : "none",
-          ownerUserId: seed.ownerUserId,
+          ownerUserId: owner.userId,
           spec,
           version: 1,
-          createdBy: seed.ownerUserId,
-          updatedBy: seed.ownerUserId,
+          createdBy: owner.userId,
+          updatedBy: owner.userId,
           createdAt: at,
           updatedAt: at,
         })
@@ -60,7 +66,7 @@ export async function seedDashboards(ctx: SeedContext, seeds: DashboardSeed[]): 
           title: seed.title,
           spec,
           visibility: seed.visibility,
-          savedBy: seed.ownerUserId,
+          savedBy: owner.userId,
           savedAt: at,
         })
         .onConflictDoNothing()

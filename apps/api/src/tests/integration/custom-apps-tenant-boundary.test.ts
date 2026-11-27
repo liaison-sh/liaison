@@ -149,6 +149,19 @@ function verifyPing() { return { valid: true } }
   return tar
 }
 
+/** A page in the activity bar, for the cases that check where it is offered. */
+const PAGE_VIEWS = {
+  views: {
+    activityBar: {
+      icon: "CrmIcon",
+      label: "CRM",
+      order: 90,
+      tabAction: { type: "home", entityId: "home", label: "CRM" },
+    },
+    tabTypes: { home: { component: "Page", label: "CRM", icon: "CrmIcon", singleton: true } },
+  },
+}
+
 /** Each package's declared outbound domains: the install consents to them (egress-grants.ts). */
 const packageDomains = new Map<string, string[]>()
 
@@ -732,7 +745,7 @@ describe("self-hosted without organization hosts", () => {
       const res = await on(
         host,
         "/api/apps/custom/install",
-        asJson(A, installBody(A.crm, makePackage(A.crm, "A"))),
+        asJson(A, installBody(A.crm, makePackage(A.crm, "A", PAGE_VIEWS))),
       )
       expect(res.status).toBe(200)
       await reloadInstalledApps(A.orgId)
@@ -746,6 +759,34 @@ describe("self-hosted without organization hosts", () => {
       expect(
         (await on(host, `/api/apps/${A.crm}/1.0.0/ui.js?t=${encodeURIComponent(t)}`)).status,
       ).toBe(404)
+      // The shell is offered no page that cannot load, and is told why.
+      const manifests = await on(host, "/api/apps/manifests", {
+        headers: { authorization: `Bearer ${A.bearer}` },
+      })
+      const entry = (
+        (await manifests.json()) as {
+          data: Array<{
+            name: string
+            uiBundleUrl: string | null
+            pageUnavailable?: string
+            manifest: { views?: Record<string, unknown> }
+          }>
+        }
+      ).data.find((e) => e.name === A.crm)
+      expect(entry?.uiBundleUrl).toBeNull()
+      expect(entry?.pageUnavailable).toBe("no_org_hosts")
+      expect(entry?.manifest.views?.activityBar).toBeUndefined()
+      expect(entry?.manifest.views?.tabTypes).toBeDefined()
+      // Approving the interface is refused with the reason, not recorded for nothing.
+      const consent = await on(
+        host,
+        `/api/apps/${A.crm}/ui-approval`,
+        asJson(A, { approved: true, confirm: A.crm }),
+      )
+      expect(consent.status).toBe(409)
+      expect(((await consent.json()) as { error: { message: string } }).error.message).toContain(
+        "LIAISON_ORG_HOST_TEMPLATE",
+      )
     } finally {
       env.LIAISON_ORG_HOST_TEMPLATE = TEMPLATE
       forgetOrgHostCache()

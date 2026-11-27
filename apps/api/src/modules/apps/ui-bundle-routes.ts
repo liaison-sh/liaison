@@ -47,7 +47,7 @@ const notFound = { error: { message: "Not found" } }
  * approval recorded by an admin of that org: never in another tenant's origin,
  * on a cell host, or on a deployment without org hosts. Any other app: false.
  */
-async function orgPrivateBundleRefused(
+export async function orgPrivateBundleRefused(
   c: Context,
   name: string,
   version: string,

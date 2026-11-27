@@ -92,6 +92,16 @@ Who can use the app once it is published is set by the roles its manifest declar
 
 A sign-in from the command line never installs code by itself, even with `kernel:apps:admin`. `liaison apps publish` and `liaison apps rollback` create the same approval card as an assistant connected over MCP: a person holding `kernel:apps:admin` approves it in Liaison, after reading the version, its package fingerprint, its type check and what access changes. The command line cannot approve it: deciding an approval is done in your own browser session. Installing a package by its address is refused to the command line too.
 
+## A rollback brings back code, not data
+
+`liaison apps rollback` changes the code only. What the newer version stored stays as it wrote it, and nothing is deleted. The older code may not know what the newer one wrote: a status it never had (say `repair`), a field it never read. Records like that can then be missing from its lists or read wrongly until you publish a version that knows them again.
+
+To keep a rollback safe:
+
+- Make each change additive: add fields and values, keep the old ones meaning what they meant, and make new fields optional.
+- Have list code show records it does not recognise (as "other", say) rather than skip them.
+- Once a version has written data in a new shape, fix forward: publish a corrected version instead of rolling back past that change.
+
 ## Let the app's page run with your session
 
 An installed app's page (`ui.tsx`) shows to no one until an admin approves it: then it runs with the session of the person using it. Approve it from the terminal:

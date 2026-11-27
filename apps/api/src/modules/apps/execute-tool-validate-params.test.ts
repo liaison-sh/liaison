@@ -139,6 +139,15 @@ describe("validateParamsForTool — manifest (ajv) error messages", () => {
     expect(msg).toContain('did you mean "ticketId"?')
   })
 
+  it("names the accepted parameters when an unknown one has no close match", () => {
+    // A caller that guessed a key (`content` for `body`) cannot recover from a
+    // refusal that only names the bad key: the error lists what the tool takes.
+    const msg = invalidMessage(manifestTool(schema), { ticketId: "t", content: "x" })
+    expect(msg).toContain('"content" is not a recognised parameter')
+    expect(msg).not.toContain("did you mean")
+    expect(msg).toContain("Accepted parameters: ticketId, priority, attachments.")
+  })
+
   it("respects an explicit additionalProperties:true opt-out — unknown param allowed", () => {
     const open = { ...schema, additionalProperties: true }
     expect(() => validate(manifestTool(open), { ticketId: "t", anythingElse: "ok" })).not.toThrow()

@@ -42,7 +42,7 @@ refusals, rules) apply to both.
    | Try | `liaison apps test` | runs `tests/*.json` cases (`{"tool": "...", "params": {...}, "expect": {...}}`, or `"expectError": "<code>"` for a refusal: name the code, or a case passes on the wrong refusal) in name order on one shared scratch store (`01-`, `02-`...); `--tool <t> --params '<json>' --verbose` for one; `--fresh` empties the scratch store |
    | Publish | `liaison apps publish --wait` | creates the approval card and waits. Tell the person a holder of `kernel:apps:admin` must approve it in Liaison; it is NOT installed until then. Exit 2 = still waiting (`liaison approvals wait <id>`), 1 = denied |
    | Look | `liaison apps status`, `liaison apps logs [--follow] [--level warn]` | a log line shows only to a sign-in holding what its run read: if `logs` names missing scopes, sign in again with `--scope <appName>:<resource>:read` |
-   | Roll back | `liaison apps rollback --wait` | restores the previously published version and publishes it again (a new approval) |
+   | Roll back | `liaison apps rollback --wait` | restores the previously published version and publishes it again (a new approval). Code only: data the newer version wrote stays, and the older code may not show records in a shape it does not know (step 8 of section 2) |
 
 4. **The app's page with the person's session** (only if the person asks for it, never by
    default): `liaison login --host <address> --admin`, then `liaison apps ui-consent`. It prints
@@ -118,6 +118,13 @@ when it refuses (section 6 says what to do about each code).
    waiting, withdraw it (`kernel__approval_withdraw`) and publish again: it cannot be edited.
 8. **Roll back** with `restore` to the good version `n`, then `check` and `publish`: it ships as
    a new patch version. Tables the restored version no longer declares are kept with their data.
+   A rollback brings back code, never data: what the newer version stored stays as it wrote it.
+   Records in a shape the older code does not know (a status it never had, a field it never
+   read) can be missing from its lists or misread until a version that knows them is published.
+   So make changes additive (new fields optional, old values keep their meaning), have list code
+   show records it does not recognise instead of skipping them, and once a version has written
+   data in a new shape, fix forward with a new version rather than roll back past it. Tell the
+   person this before you roll back across a data change.
 
 ## 3. The files
 
@@ -267,8 +274,9 @@ export default defineHandlers({ visits_log })
 ```
 
 ```tsx ui.tsx
+import { Button, Card, EmptyState, Field, inputClass, PageHeader } from "@liaison/app-ui/kit"
 import { app } from "@liaison/host"
-import { createSignal, For, onMount } from "solid-js"
+import { createSignal, For, onMount, Show } from "solid-js"
 
 interface Visit {
   id: string
@@ -286,24 +294,47 @@ export function VisitLog() {
   }
   onMount(() => void run({}))
   return (
-    <section data-testid="visit-log">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          if (customer().trim()) void run({ customer: customer().trim() }).then(() => setCustomer(""))
-        }}
-      >
-        <input
-          data-testid="visit-log-customer"
-          value={customer()}
-          onInput={(e) => setCustomer(e.currentTarget.value)}
-          placeholder="Customer"
-        />
-        <button type="submit" data-testid="visit-log-add">Log visit</button>
-      </form>
-      <ul>
-        <For each={visits()}>{(v) => <li>{v.customer} · {new Date(v.at).toLocaleString()}</li>}</For>
-      </ul>
+    <section data-testid="visit-log" class="flex h-full flex-col">
+      <PageHeader title="Visit log" count={visits().length} />
+      <div class="flex flex-col gap-4 p-5">
+        <form
+          class="flex items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (customer().trim()) void run({ customer: customer().trim() }).then(() => setCustomer(""))
+          }}
+        >
+          <Field label="Customer" class="flex-1">
+            <input
+              data-testid="visit-log-customer"
+              class={inputClass}
+              value={customer()}
+              onInput={(e) => setCustomer(e.currentTarget.value)}
+              placeholder="Acme"
+            />
+          </Field>
+          <Button type="submit" variant="primary" testid="visit-log-add">
+            Log visit
+          </Button>
+        </form>
+        <Show
+          when={visits().length > 0}
+          fallback={<EmptyState title="No visits yet">Log the first one above.</EmptyState>}
+        >
+          <Card>
+            <ul class="divide-y divide-border-subtle">
+              <For each={visits()}>
+                {(v) => (
+                  <li class="flex justify-between px-4 py-2.5 text-[12.5px]">
+                    <span class="text-text">{v.customer}</span>
+                    <span class="text-text-tertiary">{new Date(v.at).toLocaleString()}</span>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </Card>
+        </Show>
+      </div>
     </section>
   )
 }
@@ -316,6 +347,27 @@ export function VisitLog() {
 
 `views.activityBar.icon` and the tab's `icon` are export names that `iconName` stands in for
 while the page runs framed, so `ui.tsx` does not need to export `VisitLogIcon`.
+
+**Style the page with the app UI kit.** A page of bare HTML elements renders unstyled. The
+frame takes Liaison's own stylesheet, so build the page from `@liaison/app-ui/kit`, the
+components every built-in app uses, and it looks like the rest of Liaison in light and dark:
+
+| Component | Use |
+|---|---|
+| `PageHeader` | the page's title row: `title`, `count?`, `subtitle?`, `actions?` |
+| `Card`, `SectionLabel` | a framed block, a small uppercase heading over one |
+| `Button` | `variant`: `primary`, `secondary` (default), `ghost`, `danger`; `type`, `onClick`, `disabled`, `testid` |
+| `Field` + `inputClass` | a labelled control: put an `<input class={inputClass}>` (or `select`, `textarea`) inside `Field label="..."` |
+| `Badge` | a status: `tone` `neutral`, `accent`, `success`, `warning`, `error`, `muted`; `dot?` |
+| `Segmented` | a choice of a few values: `options`, `value`, `onChange` |
+| `EmptyState` | what shows while a list is empty: `title?`, text as children |
+| `ConfirmDialog` | ask before a destructive action (never `window.confirm`) |
+| `Th`, `cx` | a table head cell; joins class names |
+
+`@liaison/app-ui/card-table` (`CardTable`, a sortable table with row actions) is there too. The
+Tailwind classes you write yourself work only when Liaison already uses them (layout ones such
+as `flex`, `gap-2`, `p-5`, and the color tokens `text-text`, `text-text-tertiary`,
+`border-border-subtle`, `bg-surface`); for anything else use a `style` attribute.
 
 ## 5. Testing: what you can and cannot try before publishing
 

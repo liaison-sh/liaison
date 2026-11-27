@@ -90,7 +90,7 @@
     "footer": "Si vous n'attendiez pas ce message, ignorez-le : rien ne se passe tant que vous ne vous êtes pas connecté et n'avez pas donné votre accord."
   },
   "csat": {
-    "subject": "Votre avis compte -- {{subject}}",
+    "subject": "Votre avis compte : {{subject}}",
     "eyebrow": "Votre avis",
     "heading": "Comment nous sommes-nous débrouillés ?",
     "body": "Merci d'avoir contacté le support au sujet de « {{subject}} » ({{handle}}).",

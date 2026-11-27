@@ -7,7 +7,7 @@
     "eyebrow": "Sign in",
     "heading": "Your sign-in code",
     "body": "Enter it to sign in. The code expires in 10 minutes and can be used once. You can also just tap the button below on this device.",
-    "ignore": "If you didn't try to sign in, you can safely ignore this email — no one can access your account without this code or link.",
+    "ignore": "If you didn't try to sign in, you can safely ignore this email: no one can access your account without this code or link.",
     "cta": "Sign in to Liaison",
     "footer": "You're receiving this because a sign-in was requested for this email address."
   },
@@ -25,7 +25,7 @@
     "eyebrow": "Security",
     "heading": "Reset your password",
     "body": "We received a request to reset the password for your account. Click the button below to choose a new one.",
-    "expiry": "This link expires in 1 hour and can only be used once. If you didn't request a reset, you can safely ignore this email -- your password won't change.",
+    "expiry": "This link expires in 1 hour and can only be used once. If you didn't request a reset, you can safely ignore this email: your password won't change.",
     "cta": "Reset your password",
     "footer": "You're receiving this because a password reset was requested for this email address."
   },
@@ -90,11 +90,11 @@
     "footer": "If you weren't expecting this, ignore it: nothing happens until you sign in and consent."
   },
   "csat": {
-    "subject": "How did we do? -- {{subject}}",
+    "subject": "How did we do? {{subject}}",
     "eyebrow": "Feedback",
     "heading": "How did we do?",
     "body": "Thanks for contacting support about \"{{subject}}\" ({{handle}}).",
-    "ask": "We'd love your feedback -- it only takes a moment to rate your experience from 1 to 5.",
+    "ask": "We'd love your feedback: it only takes a moment to rate your experience from 1 to 5.",
     "cta": "Rate your experience"
   }
 }

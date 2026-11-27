@@ -194,6 +194,14 @@ export class HttpGate implements DbTransport {
           "timeout",
         )
       }
+      // Our own deadline: db-gate took the connection and never answered. That is
+      // a gate (or its database) hanging, not a network that cannot reach it.
+      if (controller.signal.aborted) {
+        throw new DbTransportError(
+          `db-gate at ${this.safeHost()} did not answer within ${Math.round(this.timeoutMs / 1000)} s`,
+          "timeout",
+        )
+      }
       throw new DbTransportError(`Could not reach db-gate at ${this.safeHost()}`, "unreachable")
     } finally {
       clearTimeout(timeout)

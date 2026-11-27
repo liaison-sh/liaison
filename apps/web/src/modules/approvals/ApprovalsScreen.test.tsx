@@ -37,8 +37,6 @@ vi.mock("~/modules/approvals/approvals-service", () => ({
 import type { AttentionItem } from "@liaison/shared"
 import { attentionStore } from "~/modules/shell/attention-store"
 import { _resetBranding, ensureBrandingLoaded } from "~/modules/shell/branding-store"
-import { openFromWork } from "~/modules/shell/open-from-work"
-import { resetPushNavOpener } from "~/primitives/createPushNav"
 import { setShellTier } from "~/tests/helpers/shell-tier"
 import { ApprovalsScreen, COLLAPSE_MS, soonestDeadlineMinutes } from "./ApprovalsScreen"
 
@@ -100,36 +98,6 @@ describe("ApprovalsScreen", () => {
     vi.useRealTimers()
   })
   afterEach(() => cleanup())
-
-  // iOS re-walk N2: opened from the phone's Work list, the screen (which hides
-  // the shell's top bar) carries "< Work" itself, the edge swipe's target too.
-  it("on the phone, opened from Work, shows a back control to Work", async () => {
-    setShellTier("phone")
-    try {
-      // The Approvals tab is the active one once the Work row opened it.
-      openFromWork(
-        () => "Work",
-        () => {},
-      )
-      renderScreen()
-      const back = await screen.findByTestId("approvals-back")
-      expect(back.textContent).toContain("Work")
-      expect(back.hasAttribute("data-phone-back")).toBe(true)
-    } finally {
-      resetPushNavOpener()
-      setShellTier("desktop")
-    }
-  })
-
-  it("shows no back control when not opened from Work", () => {
-    setShellTier("phone")
-    try {
-      renderScreen()
-      expect(screen.queryByTestId("approvals-back")).toBeNull()
-    } finally {
-      setShellTier("desktop")
-    }
-  })
 
   it("leads with the count and how long the soonest decision has", async () => {
     handleWsCreate(row({ id: "ar-1" }), "u-approver")

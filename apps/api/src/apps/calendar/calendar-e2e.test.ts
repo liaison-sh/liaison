@@ -258,9 +258,10 @@ describe("calendar backend e2e journey", () => {
       await recoverFromSyncTokenGone(tx as any, orgAId, orgCalendarId, async (jobName, payload) => {
         jobs.push({ jobName, payload })
       })
+      // The rows are kept (stable ids); the queued full resync sweeps what Google dropped.
       expect(
-        await getEventByGoogleId(tx as any, orgAId, orgCalendarId, "evt-e2e-a"),
-      ).toBeUndefined()
+        (await getEventByGoogleId(tx as any, orgAId, orgCalendarId, "evt-e2e-a"))?.google_event_id,
+      ).toBe("evt-e2e-a")
       expect(jobs.filter((j) => j.jobName === "calendar-initial-sync").length).toBe(1)
 
       // --- 7. Personal calendar remains isolated from the org flow throughout ---

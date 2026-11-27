@@ -220,14 +220,14 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `invoicing:approve` | approver scope | Decide (approve, edit, or deny) invoicing approvals raised by its gated tools |
 | `invoicing:contacts:read` | manifest scopes; tools contact_relationships_get, counterparty_identity_get, counterparty_identity_lookup, vat_lookup, vat_validate |  |
 | `invoicing:contacts:write` | manifest scopes; tools contact_relationships_set, counterparty_identity_set, counterparty_territory_set, einvoicing_backfill_identities |  |
-| `invoicing:documents:read` | manifest scopes; entities document, recurring_run, recurring_schedule; tools activity_read, approval_route_read, billing_plan_get, client_action_view_get, customer_history, deferred_list and 22 more |  |
-| `invoicing:documents:write` | manifest scopes; tools advance_draft_create, advance_refund_prepare, billing_plan_set, billing_step_add, credit_note_create_and_issue, credit_note_from_reconcile and 44 more |  |
+| `invoicing:documents:read` | manifest scopes; entities document, recurring_run, recurring_schedule; tools activity_read, approval_route_read, billing_plan_get, client_action_view_get, customer_history, deferred_list and 23 more |  |
+| `invoicing:documents:write` | manifest scopes; tools advance_draft_create, advance_refund_prepare, billing_plan_set, billing_step_add, credit_note_create_and_issue, credit_note_from_reconcile and 46 more |  |
 | `invoicing:internal` | manifest scopes; tool card_stream_issuer |  |
 | `invoicing:issuer:admin` | manifest scopes |  |
 | `invoicing:received:read` | manifest scopes; entity received_einvoice; tools received_einvoices_get, received_einvoices_list |  |
 | `invoicing:received:write` | manifest scopes; tools received_einvoice_action_request, received_einvoice_set_status, received_einvoices_refresh |  |
-| `invoicing:settings:read` | manifest scopes; settings sections hs-codes, issuers, shop-mappings, tax-regimes; tools documents_issue_preview, einvoicing_provider_options, einvoicing_settings_get, einvoicing_settings_values, issuer_stream_get, settings_hs_code_list and 3 more |  |
-| `invoicing:settings:write` | manifest scopes; settings section einvoicing; tools einvoice_standing_off, einvoicing_settings_set, hs_codes_library_delete, hs_codes_library_upsert, issuer_emails_confirm, issuer_stream_set and 3 more |  |
+| `invoicing:settings:read` | manifest scopes; settings sections hs-codes, issuers, shop-mappings, tax-regimes; tools documents_issue_preview, einvoicing_provider_options, einvoicing_settings_get, einvoicing_settings_values, issuer_stream_get, revenue_streams_list and 5 more |  |
+| `invoicing:settings:write` | manifest scopes; settings section einvoicing; tools einvoice_standing_off, einvoicing_settings_set, hs_codes_library_delete, hs_codes_library_upsert, issuer_emails_confirm, issuer_stream_set and 4 more |  |
 
 ## knowledge
 
@@ -354,7 +354,7 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `shopify:draft-orders:write` | manifest scopes; tools draft_orders_complete, draft_orders_create, draft_orders_delete, draft_orders_send, draft_orders_update |  |
 | `shopify:fulfillments:read` | manifest scopes; tool fulfillments_get |  |
 | `shopify:fulfillments:write` | manifest scopes; tools fulfillments_cancel, fulfillments_create, fulfillments_update_tracking |  |
-| `shopify:internal` | manifest scopes |  |
+| `shopify:internal` | manifest scopes; tools rs_sale_get, rs_sales_list |  |
 | `shopify:inventory:read` | manifest scopes; tools inventory_levels_list, inventory_value |  |
 | `shopify:inventory:write` | manifest scopes; tools inventory_adjust, inventory_set_on_hand |  |
 | `shopify:locations:read` | manifest scopes; tool locations_list |  |
@@ -378,7 +378,7 @@ Watch Facebook, Instagram and YouTube activity and answer with approved replies.
 | `social:admin:connection` | manifest scopes; settings section connections; tool webhooks_setup |  |
 | `social:approve` | approver scope | Decide (approve, edit, or deny) social approvals raised by its gated tools |
 | `social:dm:read` | manifest scopes; tools dm_get, dm_list |  |
-| `social:dm:write` | manifest scopes; tool send_dm |  |
+| `social:dm:write` | manifest scopes; tools dm_delete_conversation, send_dm |  |
 | `social:findings:read` | manifest scopes; entity finding; settings section quota; tools connections_status, counts, findings_get, findings_list, quota_status, webhooks_setup |  |
 | `social:findings:write` | manifest scopes; tools like_item, reply_to_finding |  |
 | `social:internal` | manifest scopes; tools correct_triage, dismiss_finding, set_triage |  |
@@ -393,11 +393,11 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 
 | Scope | Declared by | Description |
 | --- | --- | --- |
-| `stripe:admin:connection` | manifest scopes; role admin; settings section connection; tools connection_check, connection_precheck, settings_load |  |
-| `stripe:approve` | approver scope | Decide (approve, edit, or deny) stripe approvals raised by its gated tools |
+| `stripe:admin:connection` | manifest scopes; role admin; settings sections connection, webhook; tools connection_check, connection_precheck, settings_load, webhook_status |  |
+| `stripe:approve` | approver scope; manifest scopes; role billing | Decide (approve, edit, or deny) stripe approvals raised by its gated tools |
 | `stripe:customers:read` | manifest scopes; entity customer; role member; tools activity_read, approval_route_read, card_update_link, customers_get, customers_search, home_load |  |
 | `stripe:customers:write` | manifest scopes; role billing; tool customer_link |  |
-| `stripe:internal` | manifest scopes; tools billing_status_for_counterparty, invoice_document_link, invoice_payload, payment_payload, reconcile_candidates, refund_document_link and 2 more |  |
+| `stripe:internal` | manifest scopes; tools billing_status_for_counterparty, invoice_document_link, invoice_payload, payment_payload, reconcile_candidates, refund_document_link and 4 more |  |
 | `stripe:invoices:read` | manifest scopes; role member; tools invoice_send_state, invoices_search |  |
 | `stripe:payments:read` | manifest scopes; role member; tools disputes_list, payments_search |  |
 | `stripe:refunds:write` | manifest scopes; role billing; tool refunds_create |  |

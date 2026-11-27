@@ -25,6 +25,11 @@ import { routines } from "~/db/schema/kernel/routines"
 import { schemaRef } from "~/db/schema-ref"
 import { DEMO_COMPANY_NAME } from "~/modules/demo/demo-seeder"
 import { runAsSeed } from "~/modules/notifications/seeded"
+import {
+  parseProfileSize,
+  type SearchProfileResult,
+  seedSearchProfile,
+} from "~/seed/bulk/search-profile"
 import { HOUR_MS } from "~/seed/clock"
 import { type SeedContext, seedContext } from "~/seed/context"
 import { seedRoutineRuns } from "~/seed/factories/agent/routine-runs"
@@ -95,6 +100,11 @@ export interface SeedLivelyOptions {
   withoutCommerce?: boolean
   /** The instant the fourteen days end at. Defaults to the moment of the call. */
   baseTime?: Date
+  /**
+   * Then add the realistic search volume (`seedSearchProfile`) at this share of
+   * the heavy workspace, owned by the org's admin, with vectors of `vectorDims`.
+   */
+  searchProfile?: { fraction: number; vectorDims?: number }
   log?: (msg: string) => void
 }
 
@@ -121,6 +131,8 @@ export interface SeedLivelyResult {
   activity: LivelyActivity | null
   replaced: boolean
   complete: boolean
+  /** The search profile's result, when one was asked for. */
+  profile?: SearchProfileResult
 }
 
 const ticketRef = (key: string) => `lively:${key}`
@@ -220,7 +232,15 @@ async function seedLivelyLayers(opts: SeedLivelyOptions): Promise<SeedLivelyResu
 
   const ctx = seedContext({ orgId: world.orgId, now: baseTime, log })
   const activity = await seedLivelyActivity(ctx, world)
-  return { world, activity, replaced, complete: true }
+  if (!opts.searchProfile) return { world, activity, replaced, complete: true }
+  const profile = await seedSearchProfile(ctx, {
+    ownerId: world.org.adminUserId,
+    fraction: opts.searchProfile.fraction,
+    ...(opts.searchProfile.vectorDims !== undefined
+      ? { vectorDims: opts.searchProfile.vectorDims }
+      : {}),
+  })
+  return { world, activity, replaced, complete: true, profile }
 }
 
 /** What a routine's schedule makes of it in the plan. */
@@ -777,18 +797,47 @@ export async function runSeedLivelyCli(
     console.error(`[lively-seed] --passwords-env names ${envName}, which is not set`)
     return { exitCode: 2 }
   }
+  const profileFlag = flag(argv, "search-profile")
+  const profileFraction = profileFlag === undefined ? null : parseProfileSize(profileFlag)
+  if (profileFlag !== undefined && profileFraction === null) {
+    console.error(
+      `[lively-seed] --search-profile ${profileFlag}: heavy, typical or a fraction (0, 4]`,
+    )
+    return { exitCode: 2 }
+  }
+  const dimsFlag = flag(argv, "vector-dims")
+  const vectorDims = dimsFlag === undefined ? undefined : Number(dimsFlag)
+  if (vectorDims !== undefined && !(Number.isInteger(vectorDims) && vectorDims > 0)) {
+    console.error(`[lively-seed] --vector-dims ${dimsFlag}: a positive integer`)
+    return { exitCode: 2 }
+  }
   const started = performance.now()
-  const result = await seedLivelyWorld({
-    ...(slug ? { orgSlug: slug } : {}),
-    ...(existingOrg ? { existingOrg } : {}),
-    ...(people ? { people } : {}),
-    orgName: flag(argv, "name"),
-    personaPassword: password,
-    replace: argv.includes("--replace"),
-    warehouse: argv.includes("--warehouse"),
-    withoutCommerce: argv.includes("--no-commerce"),
-    log: (msg) => console.log(`[lively-seed] ${msg}`),
-  })
+  let result: SeedLivelyResult
+  try {
+    result = await seedLivelyWorld({
+      ...(slug ? { orgSlug: slug } : {}),
+      ...(existingOrg ? { existingOrg } : {}),
+      ...(people ? { people } : {}),
+      orgName: flag(argv, "name"),
+      personaPassword: password,
+      replace: argv.includes("--replace"),
+      warehouse: argv.includes("--warehouse"),
+      withoutCommerce: argv.includes("--no-commerce"),
+      ...(profileFraction !== null
+        ? {
+            searchProfile: {
+              fraction: profileFraction,
+              ...(vectorDims !== undefined ? { vectorDims } : {}),
+            },
+          }
+        : {}),
+      log: (msg) => console.log(`[lively-seed] ${msg}`),
+    })
+  } catch (err) {
+    if (profileFraction === null) throw err
+    console.error(`[lively-seed] FAILED: ${err instanceof Error ? err.message : String(err)}`)
+    return { exitCode: 1 }
+  }
   const seconds = ((performance.now() - started) / 1000).toFixed(1)
   if (!result.complete) {
     console.error(
@@ -797,6 +846,12 @@ export async function runSeedLivelyCli(
     return { exitCode: 1, result }
   }
   const seeded = result.world.org.people
+  if (result.profile) {
+    const profile = result.profile
+    console.log(
+      `[lively-seed] profile ${JSON.stringify({ fraction: profileFraction, index: profile.index, vectors: profile.vectors, vectorDims: profile.vectorDims, seconds: Number(profile.seconds.toFixed(1)) })}`,
+    )
+  }
   console.log(
     `[lively-seed] org ${result.world.orgSlug} (${result.world.orgId}) seeded in full in ${seconds}s; ` +
       `admin ${seeded.find((p) => p.role === "founder_admin")?.email ?? "none"}`,

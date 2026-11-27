@@ -50,6 +50,16 @@ Time zones and recurring events kept, override becomes its own event -> apps/api
 Re-import skips events already there -> apps/api/src/apps/calendar/import-kind.ts:168
 Imported calendar is the importer's own account -> apps/api/src/apps/calendar/import-kind.ts:103
 Imported calendars never granted to members who join later -> apps/api/src/apps/calendar/sync.ts:547
+Only the fields you changed are sent; Google's other edits are kept -> apps/api/src/apps/calendar/handlers.ts:791
+Same field changed on both sides: the newer change wins -> apps/api/src/apps/calendar/handlers.ts:791
+Notice naming the field and the replaced value -> apps/api/src/apps/calendar/sync.ts:2247
+Quiet item on Home after a conflict -> apps/api/src/apps/calendar/app.manifest.json:696
+Times sent with the calendar's time zone -> apps/api/src/apps/calendar/handlers.ts:721
+Read-only calendars refuse new events and edits -> apps/api/src/modules/apps/sandbox/bridge/calendar.ts:70
+Primary and editable calendars start selected, read-only ones unselected -> apps/api/src/apps/calendar/sync.ts:631
+Calendar list read again once a day -> apps/api/src/apps/calendar/app.manifest.json:585
+Added calendar appears, renamed one updated -> apps/api/src/apps/calendar/handlers.ts:233
+Calendar removed from Google is removed with its events -> apps/api/src/apps/calendar/sync.ts:886
 Only the fields you changed are sent; Google's other edits are kept -> apps/api/src/apps/calendar/handlers.ts:759
 Same field changed on both sides: the newer change wins -> apps/api/src/apps/calendar/handlers.ts:759
 Notice naming the field and the replaced value -> apps/api/src/apps/calendar/sync.ts:2096

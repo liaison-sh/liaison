@@ -536,10 +536,11 @@ Stripe connects with a restricted key that reads customers, subscriptions, invoi
 1. **HUMAN** (3 min) In the Stripe Dashboard, open **Developers → API keys → Create restricted key**. Give **Read** to Customers, Subscriptions, Invoices, Charges, Disputes, Payment methods, Products, Prices and Events, and **Write** to Refunds. Leave everything else at None.
    Open: <https://dashboard.stripe.com/apikeys>
 2. **HUMAN** (1 min) Paste the restricted key (it starts with `rk_`) into **Restricted key**. Never paste the secret key (`sk_`).
-3. **HUMAN** (3 min) In **Developers → Webhooks**, add an endpoint at the webhook address Liaison shows, selecting the Customer, Invoice and Charge events, then give Liaison its signing secret.
+3. **HUMAN** (3 min) In **Developers → Webhooks**, add an endpoint at the webhook address Liaison shows on **Settings → Apps → Stripe → Webhook**, and select exactly these events: `charge.dispute.closed`, `charge.dispute.created`, `charge.dispute.funds_reinstated`, `charge.dispute.funds_withdrawn`, `charge.dispute.updated`, `charge.failed`, `charge.refund.updated`, `charge.refunded`, `charge.succeeded`, `charge.updated`, `customer.created`, `customer.deleted`, `customer.subscription.created`, `customer.subscription.deleted`, `customer.subscription.paused`, `customer.subscription.resumed`, `customer.subscription.trial_will_end`, `customer.subscription.updated`, `customer.updated`, `invoice.finalization_failed`, `invoice.finalized`, `invoice.marked_uncollectible`, `invoice.paid`, `invoice.payment_failed`, `invoice.updated`, `invoice.voided`.
    Open: <https://dashboard.stripe.com/webhooks>
-4. **HUMAN** This server receives the app's `events` webhook at https://liaison.example.com/webhooks/<org-id>/stripe/events (the steps above say who registers it).
-5. **AGENT** The owner pastes the secret values into deploy/.setup-secrets.env (never the chat); put the values in the config: an `apps` entry { name: stripe, connection: { name: stripe, credentials: { restrictedKey (secret) } } }, secrets as ${ENV} references to the secrets file, then run `liaison config apply` and `liaison config verify --app stripe`.
+4. **HUMAN** (1 min) On the endpoint, reveal its **Signing secret** (it starts with `whsec_`) and paste it into **Webhook signing secret** on **Settings → Apps → Stripe → Webhook**. Saving a new one later replaces it: the old one keeps working for 24 hours.
+5. **HUMAN** This server receives the app's `events` webhook at https://liaison.example.com/webhooks/<org-id>/stripe/events (the steps above say who registers it).
+6. **AGENT** The owner pastes the secret values into deploy/.setup-secrets.env (never the chat); put the values in the config: an `apps` entry { name: stripe, connection: { name: stripe, credentials: { restrictedKey (secret) } } }, secrets as ${ENV} references to the secrets file, then run `liaison config apply` and `liaison config verify --app stripe`.
 
 ### tickets
 

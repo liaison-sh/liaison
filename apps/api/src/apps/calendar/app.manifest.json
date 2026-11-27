@@ -143,6 +143,7 @@
           "type": "boolean",
           "default": false
         },
+        "fullSyncRun": "string?",
         "calaccess": "string"
       },
       "personalScope": {
@@ -205,6 +206,7 @@
         "googleUpdatedAt": "date?",
         "attendeesBase": "json?",
         "pushBase": "json?",
+        "seenSyncRun": "string?",
         "organizerSelf": "boolean?",
         "guestsCanModify": "boolean?",
         "pushError": "string?",
@@ -678,6 +680,13 @@
       "handler": "calendarWatchRenewal",
       "runsFor": {"connection": "google-calendar"},
       "schedule": "0 */3 * * *"
+    },
+    "calendar-list-refresh": {
+      "handler": "calendarListRefresh",
+      "runsFor": {
+        "connection": "google-calendar"
+      },
+      "schedule": "17 4 * * *"
     },
     "calendar-poll-fallback": {
       "handler": "calendarPollFallback",

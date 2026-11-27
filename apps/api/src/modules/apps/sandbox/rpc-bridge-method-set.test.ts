@@ -49,6 +49,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["calendar_createEvent", "async"],
   ["calendar_deleteEvent", "async"],
   ["calendar_finalizeRemoteDelete", "async"],
+  ["calendar_findAccountsForListRefresh", "async"],
   ["calendar_findCalendarsForPollFallback", "async"],
   ["calendar_findCalendarsForWatchRenewal", "async"],
   ["calendar_findStalePendingPushes", "async"],

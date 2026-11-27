@@ -82,7 +82,7 @@ On a managed instance, **Settings › Billing** holds everything about paying fo
 
 On a managed instance, the workspace follows the state of its subscription:
 
-- **Payment failed**: AI use (chat, titles, side calls), web search and dictation stop with a message to pay the open invoice in **Settings › Billing**; a conversation shows it with an **Open Billing** link. Everything else keeps working. Once the invoice is paid they work again.
+- **Payment failed**: AI use (chat, titles, side calls), web search and dictation stop with a message to pay the open invoice in **Settings › Billing**; a conversation shows it with an **Open Billing** link (in the iPhone app, the sentence alone, without the link). Everything else keeps working. Once the invoice is paid they work again.
 - **Suspended** (the invoice stayed unpaid, or the subscription ended): only admins can sign in, and only to use **Settings › Billing** and to export the organization, until the date the refusal names. Everyone else is refused, and so are apps connected through MCP or the API and live updates. The workspace's background jobs and incoming webhooks pause; exports and deletion still run. Paying the open invoice restores everything, and paused routines run again at their next time.
 - **Closed**: nobody can sign in, admins included. The workspace and its data are deleted afterwards, never sooner than 25 days after it was closed.
 

@@ -182,3 +182,4 @@ Answer on the workspace marker, counted by type in the log -> apps/api/src/modul
 Every answer opens the same example company, said on the company page -> packages/shared/src/i18n/locales/en/kernel.json:931
 A routine paused on its own request: the step names it, Do it for me approves it -> apps/web/src/modules/tours/TourPanel.tsx:530
 The request a paused routine run waits on (oldest pending) -> apps/api/src/modules/tours/beat-status.ts:308
+iPhone app: next-steps window keeps only the key, banner entries hidden -> apps/web/src/modules/demo/DemoNextSteps.tsx:199

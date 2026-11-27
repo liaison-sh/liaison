@@ -191,7 +191,8 @@ async function readTextFile(
   deps: FilesReadDeps,
 ): Promise<AgentFileText | FileReadError | null> {
   if (Number(row.encVersion ?? 0) > 0) return null
-  if (row.app === "mail" && (await deps.isPrivateMailFile(ctx.orgId, row.id))) return null
+  // A private mailbox attachment (isMailFilePrivate answers false for any other file).
+  if (await deps.isPrivateMailFile(ctx.orgId, row.id)) return null
   if (!(await deps.isServable({ orgId: ctx.orgId, fileId: row.id, storageKey: row.storageKey }))) {
     throw new FileServiceError("PARENT_NOT_FOUND", "File not visible")
   }

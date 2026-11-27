@@ -20,6 +20,7 @@ import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { apps, connectedAccounts, oauthProviders } from "~/db/schema/kernel"
 import { CryptoContext, decryptSecret, encryptSecret } from "~/lib/crypto"
+import { _setEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { redis } from "~/lib/redis"
 import { connectionConfigRegistry, resetAppRegistries } from "~/modules/apps/app-registries"
@@ -1042,5 +1043,94 @@ describe("kernel OAuth2: authorizeConfigParams + identifierFromUserinfoPath", ()
     const err = await handleOAuthCallback("code-four", await seedState()).catch((e: unknown) => e)
     expect((err as Error).message).toContain("gave access to no account")
     expect(await configuredRows()).toEqual([])
+  })
+})
+
+// The instance's Meta app (managed edition): a workspace with no Meta app of its
+// own connects Instagram (Unified login) with META_APP_ID / META_APP_SECRET and the
+// instance's configuration id (META_INSTAGRAM_CONFIG_ID); its own setting wins,
+// and its own client never gets the instance's configuration id.
+describe("kernel OAuth2: the instance's Meta app for Instagram (Unified login)", () => {
+  const metaEnv = env as {
+    META_APP_ID?: string
+    META_APP_SECRET?: string
+    META_INSTAGRAM_CONFIG_ID?: string
+  }
+  const prior = { ...metaEnv }
+
+  beforeAll(() => {
+    connectionConfigRegistry.set([orgId, "social", "instagram_unified"], {
+      type: "oauth2",
+      authorizationUrl: "https://www.facebook.com/v26.0/dialog/oauth",
+      tokenUrl: "https://graph.facebook.com/v26.0/oauth/access_token",
+      scopes: [],
+      extraParams: { override_default_response_type: "true" },
+      authorizeConfigParams: {
+        config_id: { configKey: "instagramLoginConfigurationId", pattern: "^[0-9]{1,30}$" },
+      },
+      allowedDomains: ["graph.facebook.com", "www.facebook.com"],
+    })
+    metaEnv.META_APP_ID = "instance-meta-app-id"
+    metaEnv.META_APP_SECRET = "instance-meta-app-secret"
+    metaEnv.META_INSTAGRAM_CONFIG_ID = "3000000000000003"
+    _setEdition("managed")
+  })
+
+  afterAll(async () => {
+    metaEnv.META_APP_ID = prior.META_APP_ID
+    metaEnv.META_APP_SECRET = prior.META_APP_SECRET
+    metaEnv.META_INSTAGRAM_CONFIG_ID = prior.META_INSTAGRAM_CONFIG_ID
+    _setEdition(null)
+    await db
+      .delete(oauthProviders)
+      .where(
+        and(eq(oauthProviders.orgId, orgId), eq(oauthProviders.name, "social:instagram_unified")),
+      )
+  })
+
+  async function setSocialConfig(config: Record<string, unknown> | null) {
+    await db
+      .update(apps)
+      .set({ config })
+      .where(and(eq(apps.orgId, orgId), eq(apps.name, "social")))
+  }
+
+  const start = () =>
+    startOAuthFlow(orgId, userId, "social", "instagram_unified", { ownerType: "org" })
+
+  it("start: the instance's client and configuration id when the workspace set none", async () => {
+    await setSocialConfig(null)
+    const url = new URL(await start())
+    expect(url.searchParams.get("client_id")).toBe("instance-meta-app-id")
+    expect(url.searchParams.get("config_id")).toBe("3000000000000003")
+  })
+
+  it("start: the workspace's own configuration id wins over the instance's", async () => {
+    await setSocialConfig({ instagramLoginConfigurationId: "4000000000000004" })
+    const url = new URL(await start())
+    expect(url.searchParams.get("client_id")).toBe("instance-meta-app-id")
+    expect(url.searchParams.get("config_id")).toBe("4000000000000004")
+  })
+
+  it("start: a workspace's own Meta app never gets the instance's configuration id", async () => {
+    await setSocialConfig(null)
+    await db
+      .insert(oauthProviders)
+      .values({
+        orgId,
+        name: "social:instagram_unified",
+        issuerUrl: "https://app-connection.invalid/social:instagram_unified",
+        clientId: "own-meta-app-id",
+        clientSecretEncrypted: encryptSecret(
+          "own-meta-app-secret",
+          env.ENCRYPTION_KEY,
+          CryptoContext.oauthProviderClientSecret,
+        ),
+      })
+      .onConflictDoNothing()
+    const refused = await start().catch((e: unknown) => e)
+    expect(refused).toBeInstanceOf(OAuthStartRefusedError)
+    expect((refused as OAuthStartRefusedError).code).toBe("missing_setting")
+    expect((refused as OAuthStartRefusedError).message).toContain("instagramLoginConfigurationId")
   })
 })

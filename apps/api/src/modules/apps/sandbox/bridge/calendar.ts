@@ -660,6 +660,28 @@ export function createCalendarMethods(
         const calendar = row ? await getCalendarById(txDb, orgId, row.calendar_id) : undefined
         if (calendar) assertWritableCalendar(calendar, "delete_event")
       }
+      if (target.exdate) {
+        // One occurrence of a series Google does not have yet: it leaves the series' rule.
+        const { getEventById, updateLocalEvent } = await import("~/apps/calendar/sync")
+        const row = await getEventById(txDb, orgId, eventId)
+        const lines = Array.isArray(row?.recurrence) ? (row.recurrence as string[]) : []
+        const day = target.exdate.toISOString()
+        const exdate = row?.all_day
+          ? `EXDATE;VALUE=DATE:${day.slice(0, 10).replace(/-/g, "")}`
+          : `EXDATE:${day.slice(0, 19).replace(/[-:]/g, "")}Z`
+        const { syncVersion } = await updateLocalEvent(txDb, orgId, eventId, {
+          recurrence: [...lines, exdate],
+          editorId: personId(userId),
+        })
+        await enqueue(
+          "calendar",
+          "calendar-push",
+          { orgId, eventId },
+          { jobId: `calendar-push:${eventId}:v${syncVersion}:a0` },
+        )
+        await announceEventsChanged({ eventId })
+        return JSON.stringify({ eventId, scope: "occurrence", needsGooglePush: true })
+      }
       if (target.scope === "following" && target.splitAt) {
         const split = await splitSeriesAt(txDb, orgId, eventId, target.splitAt, null)
         if (split.kind === "split") {

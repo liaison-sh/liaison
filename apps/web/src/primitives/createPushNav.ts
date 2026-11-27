@@ -130,6 +130,8 @@ interface DetailOpener {
   from?: string
   /** The tab the record is for (`openDetailFrom`), kept across a re-key of its url. */
   tabId?: string
+  /** The record a detail pushed over this screen replaced: Back from that detail restores it. */
+  parent?: DetailOpener | null
 }
 
 const [opener, setOpener] = createSignal<DetailOpener | null>(null)
@@ -194,7 +196,9 @@ export function createPushNav(): PushNav {
   const detailOpen = () => {
     // Re-derive when a manifest registers tab types after load.
     tabTypeRegistryVersion()
-    return isDetailRoute(location.pathname)
+    // A screen opened from a root one (Work > Help, Work > Projects) is not a
+    // detail route, yet it has somewhere to go back to: the screen that opened it.
+    return isDetailRoute(location.pathname) || currentOpener()?.tabId !== undefined
   }
 
   /** The registered label of the route a Back would land on. */
@@ -232,7 +236,13 @@ export function createPushNav(): PushNav {
   return {
     detailOpen,
     pushDetail: (path: string, opts?: { fromLabel?: string }) => {
-      setOpener({ label: opts?.fromLabel ?? null, returnTo: null, path, from: location.pathname })
+      setOpener({
+        label: opts?.fromLabel ?? null,
+        returnTo: null,
+        path,
+        from: location.pathname,
+        parent: currentOpener(),
+      })
       navigate(path, { state: { [PUSHED_DETAIL]: true } })
     },
     backLabel: () => (detailOpen() ? (currentOpener()?.label ?? masterLabel()) : null),
@@ -244,12 +254,15 @@ export function createPushNav(): PushNav {
     // REPLACING the detail entry, so a later history back does not bounce the
     // user into the detail they just left.
     popDetail: () => {
-      const returnTo = currentOpener()?.returnTo ?? null
-      setOpener(null)
+      const record = currentOpener()
+      const returnTo = record?.returnTo ?? null
       if (historyHasPushedDetail()) {
+        // Back on the screen the detail was pushed over, which keeps its own way back.
+        setOpener(record?.parent ?? null)
         navigate(-1)
         return
       }
+      setOpener(null)
       navigate(returnTo ?? parentRouteForPath(location.pathname), { replace: true })
     },
   }

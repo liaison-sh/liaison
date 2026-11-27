@@ -25,6 +25,7 @@ import {
 } from "~/modules/shell/sidebar-visibility"
 import { resetTabStore, tabStore } from "~/modules/shell/tab-store"
 import { Work } from "~/modules/shell/Work"
+import { createPushNav, resetPushNavOpener } from "~/primitives/createPushNav"
 
 vi.stubGlobal("localStorage", {
   getItem: vi.fn(() => null),
@@ -164,6 +165,35 @@ describe("Work screen", () => {
     const active = tabStore.tabs.find((t) => t.id === tabStore.activeTabId)
     expect(active?.type).toBe("kernel:help")
   })
+
+  // iOS re-walk N2: a screen opened from Work had no back control.
+  it.each(["work-row-help", "work-row-approvals", "work-row-tickets"])(
+    "%s opens its screen with a way back to Work",
+    (row) => {
+      registerModule("tickets", "Tickets")
+      const BackProbe = () => {
+        const nav = createPushNav()
+        return <span data-testid="back-probe">{nav.detailOpen() ? nav.backLabel() : ""}</span>
+      }
+      render(() => (
+        <Router>
+          <Route
+            path="/*"
+            component={() => (
+              <>
+                <Work />
+                <BackProbe />
+              </>
+            )}
+          />
+        </Router>
+      ))
+      expect(screen.getByTestId("back-probe").textContent).toBe("")
+      fireEvent.click(screen.getByTestId(row))
+      expect(screen.getByTestId("back-probe").textContent).toBe("Work")
+      resetPushNavOpener()
+    },
+  )
 
   it("leaves out an app hidden from the sidebar, and shows it again once shown", () => {
     registerModule("tickets", "Tickets")

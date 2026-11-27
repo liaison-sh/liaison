@@ -33,6 +33,7 @@ import {
   orgName,
 } from "~/modules/shell/branding-store"
 import { homeApprovalCount } from "~/modules/shell/home-action-count"
+import { openFromWork } from "~/modules/shell/open-from-work"
 import { isHiddenFromSidebar } from "~/modules/shell/sidebar-visibility"
 import { openTab } from "~/modules/shell/tab-store"
 import { PullToRefresh } from "~/ui/PullToRefresh"
@@ -67,7 +68,9 @@ const WorkRow: Component<{ entry: ActivityBarEntry }> = (props) => {
       type="button"
       data-testid={`work-row-${props.entry.appId}`}
       aria-label={label()}
-      onClick={() => openTab({ ...props.entry.tabAction, preview: false })}
+      onClick={() =>
+        openFromWork(i18n.t, () => openTab({ ...props.entry.tabAction, preview: false }))
+      }
       class="flex h-[46px] w-full shrink-0 items-center gap-3 px-4 text-left text-[16px] text-text hover:bg-surface-hover"
     >
       <span
@@ -111,11 +114,13 @@ const ApprovalsWorkRow: Component = () => {
       data-testid="work-row-approvals"
       aria-label={i18n.t("kernel.workApprovals")}
       onClick={() =>
-        openTab({
-          type: "kernel:approvals",
-          entityId: "approvals",
-          label: i18n.t("kernel.shellUi.approvals"),
-        })
+        openFromWork(i18n.t, () =>
+          openTab({
+            type: "kernel:approvals",
+            entityId: "approvals",
+            label: i18n.t("kernel.shellUi.approvals"),
+          }),
+        )
       }
       class="flex h-[46px] w-full shrink-0 items-center gap-3 px-4 text-left text-[16px] text-text hover:bg-surface-hover"
     >

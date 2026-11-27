@@ -21,6 +21,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { env } from "~/lib/env"
 import { envFlag } from "~/lib/env-boolean"
 import { rootLogger } from "~/lib/logger"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { redis } from "~/lib/redis"
 import { getClientIp } from "~/lib/request-context"
 import { checkRateLimit } from "~/middleware/rate-limiter"
@@ -245,7 +246,7 @@ export const buyerInvoicesRoutes = new Hono<AppEnv>()
         return fail(c, 404, "NOT_FOUND", "No such document for this buyer.")
       }
       await audit(auth.key, "buyer_documents.link_minted", who, { document_id: req.documentId })
-      const origin = env.BASE_URL.replace(/\/+$/, "")
+      const origin = (await orgPublicBaseUrl(auth.key.orgId)).replace(/\/+$/, "")
       c.header("Cache-Control", "no-store")
       return c.json(
         {

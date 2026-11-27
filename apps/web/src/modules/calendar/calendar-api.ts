@@ -149,7 +149,7 @@ export async function respondToEvent(
     occurrenceStart?: string
   },
 ): Promise<void> {
-  await invokeTool(api, "respond_to_event", input)
+  await invokeTool(api, "respond_to_invitation", input)
 }
 
 // --- Connect / settings (kernel connections framework) ---

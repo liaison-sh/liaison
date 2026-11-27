@@ -275,7 +275,7 @@ describe("event tab: existing event", () => {
     openTab("evt-1")
     fireEvent.click(screen.getByTestId("event-rsvp-declined"))
     await waitFor(() => expect(state.api.post).toHaveBeenCalled())
-    expect(params("respond_to_event")).toEqual({ eventId: "evt-1", response: "declined" })
+    expect(params("respond_to_invitation")).toEqual({ eventId: "evt-1", response: "declined" })
     await waitFor(() =>
       expect(screen.getByTestId("event-rsvp-declined").getAttribute("aria-pressed")).toBe("true"),
     )

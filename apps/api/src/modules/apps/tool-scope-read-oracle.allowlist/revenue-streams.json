@@ -8,5 +8,10 @@
     "bundled-apps/invoicing/src/sales/refunds.ts",
     "(fresh.scope as string | null) ?? null,",
     "an invoice document's goods or software split (the credit note's reversal lines)"
+  ],
+  [
+    "bundled-apps/invoicing/src/sales/refunds.ts",
+    "(fresh.scope as string | null) ?? null,",
+    "an invoice document's goods or software split (the credit note's reversal lines)"
   ]
 ]

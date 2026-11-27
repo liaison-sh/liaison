@@ -12,7 +12,10 @@
     },
     {
       "method": "db_findMany",
-      "args": ["stripe_disputes", "{\"where\":{\"status\":\"warning_needs_response\"},\"limit\":500}"],
+      "args": [
+        "stripe_disputes",
+        "{\"where\":{\"status\":\"warning_needs_response\"},\"limit\":500}"
+      ],
       "reply": "[]"
     }
   ],

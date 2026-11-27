@@ -679,6 +679,7 @@
       "description": "Delete a direct-message conversation from Liaison's inbox. LOCAL ONLY: nothing is deleted on Instagram or Facebook, where the conversation stays. Its stored messages are removed and it leaves the inbox; if the person writes again, it comes back with only the new messages. No approval: nothing leaves Liaison.",
       "searchKeywords": ["supprimer", "conversation", "message", "messages", "delete", "instagram", "facebook"],
       "requiredScopes": ["social:dm:write"],
+      "writesToTable": "app_social.dm_conversation",
       "handler": "dmDeleteConversationHandler",
       "params": { "type": "object", "properties": { "conversation_id": { "type": "string" } }, "required": ["conversation_id"] }
     },

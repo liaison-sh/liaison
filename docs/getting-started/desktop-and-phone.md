@@ -67,6 +67,8 @@ The iPhone app shows nothing to buy: no **Plan** or **Billing** page, no way to 
 
 The phone app asks for the microphone only while you dictate a message, and for permission to send notifications.
 
+Turned on its side, a phone keeps the phone layout. On a tablet held upright, **Settings** shows its list of sections beside the page. In a resized iPad window, the top of the app stays clear of the window controls.
+
 A notification about a comment on a task is titled with the task. Tapping it opens the task with the comment brought into view.
 
 When the connection drops, after sleep, a network change or the app coming back to the foreground, the app notices within about 10 seconds and reconnects on its own, in the browser, the desktop app and the phone app alike. The open pages then catch up on what happened while you were away.

@@ -1413,16 +1413,47 @@ export async function applyIncrementalSyncPages(
       calendarId,
       items.map((item) => item.id),
     )
-    const cancelled = items.filter((item) => item.status === "cancelled").map((item) => item.id)
+    // A cancelled occurrence of a series (Google's "delete this event only") is an exception
+    // row with status 'cancelled', exactly as the full sync stores it: the series' expansion
+    // reads it to hide that occurrence (a moved one too). Deleting the row instead would bring
+    // the occurrence back at its original slot. A cancellation wins over a local edit, as a
+    // deleted plain event does; a local tombstone is left alone (the upsert skips it).
+    const cancelledOccurrences = items.filter(
+      (item) => item.status === "cancelled" && item.recurringEventId,
+    )
+    if (cancelledOccurrences.length > 0) {
+      const existing = await getEventsByGoogleIds(
+        db,
+        orgId,
+        calendarId,
+        cancelledOccurrences.map((item) => item.id),
+      )
+      await upsertEventsFromGoogle(
+        db,
+        orgId,
+        calendarId,
+        cancelledOccurrences
+          .filter((item) => !(item.etag && existing.get(item.id)?.etag === item.etag))
+          .map((item) => ({
+            calaccess: existing.get(item.id)?.calaccess ?? calendarCalaccess,
+            item,
+          })),
+      )
+    }
+    // A cancelled plain event or series master is deleted, with the series' exception rows.
+    const cancelled = items
+      .filter((item) => item.status === "cancelled" && !item.recurringEventId)
+      .map((item) => item.id)
     if (cancelled.length > 0) {
       const { sql } = await import("drizzle-orm")
+      const ids = sql.join(
+        cancelled.map((id) => sql`${id}`),
+        sql.raw(", "),
+      )
       await db.execute(sql`
         DELETE FROM ${sql.raw(CALENDAR_SCHEMA())}.events
         WHERE org_id = ${orgId}::uuid AND calendar_id = ${calendarId}::uuid
-          AND google_event_id IN (${sql.join(
-            cancelled.map((id) => sql`${id}`),
-            sql.raw(", "),
-          )})
+          AND (google_event_id IN (${ids}) OR recurring_event_id IN (${ids}))
       `)
     }
     const live = items.filter((item) => item.status !== "cancelled")
@@ -2228,11 +2259,28 @@ export async function recordPushFailure(
   errorKind: string,
   detail: string,
 ): Promise<void> {
+  await recordSyncFailure(db, orgId, calendarId, "push", errorKind, detail)
+  void eventId // pendingPush is left as-is by design — this function only logs + flags the account.
+}
+
+/**
+ * recordSyncFailure — one failed call to Google for a calendar (`operation`: push,
+ * initial-sync, incremental-sync, watch): a sync_log row, and for `AuthRevoked` (Google refused
+ * the refreshed token too) the account is flagged reauth-required so Settings asks to reconnect.
+ */
+export async function recordSyncFailure(
+  db: RlsClient,
+  orgId: string,
+  calendarId: string,
+  operation: string,
+  errorKind: string,
+  detail: string,
+): Promise<void> {
   const { sql } = await import("drizzle-orm")
   const schema = CALENDAR_SCHEMA()
   await db.execute(sql`
     INSERT INTO ${sql.raw(schema)}.sync_log (id, org_id, calendar_id, operation, status, error_kind, detail, calaccess)
-    SELECT gen_random_uuid(), ${orgId}::uuid, ${calendarId}::uuid, 'push', 'error', ${errorKind}, ${detail}, calaccess
+    SELECT gen_random_uuid(), ${orgId}::uuid, ${calendarId}::uuid, ${operation}, 'error', ${errorKind}, ${detail}, calaccess
     FROM ${sql.raw(schema)}.calendars WHERE id = ${calendarId}::uuid AND org_id = ${orgId}::uuid
   `)
   if (errorKind === "AuthRevoked") {
@@ -2243,7 +2291,6 @@ export async function recordPushFailure(
       )
     `)
   }
-  void eventId // pendingPush is left as-is by design — this function only logs + flags the account.
 }
 
 // --- Watch channels, webhook binding, renewal + polling fallback (Task 6) ---
@@ -2314,15 +2361,61 @@ export async function handleGooglePushNotification(
 ): Promise<void> {
   const calendar = await findCalendarByChannelId(db, orgId, channelId, resourceId)
   if (!calendar) return
+  // The change is marked on the calendar before the job is queued: a sync already running
+  // dedups this enqueue (same job id), and re-runs itself when it finds the mark at its end
+  // (claimCalendarSyncPending), so a change Google committed after that sync's last page is
+  // never left for the 30-minute poll.
+  await markCalendarSyncPending(db, orgId, calendar.id)
   await enqueueJob(
     "calendar-incremental-sync",
     { orgId, calendarId: calendar.id },
-    { jobId: `calendar-incremental:${calendar.id}`, removeOnComplete: true },
+    { jobId: incrementalSyncJobId(calendar.id), removeOnComplete: true },
   )
 }
 
-/** findCalendarsForWatchRenewal — calendars with a channel expiring within `withinHours` hours.
- * Boundary is EXCLUSIVE `<` (Design: "pick the inclusive/exclusive boundary explicitly — use <"):
+/** The job id every incremental sync of one calendar runs under (notification and poll alike),
+ * so two never run at once for one calendar. */
+export function incrementalSyncJobId(calendarId: string): string {
+  return `calendar-incremental:${calendarId}`
+}
+
+async function markCalendarSyncPending(
+  db: RlsClient,
+  orgId: string,
+  calendarId: string,
+): Promise<void> {
+  const { sql } = await import("drizzle-orm")
+  const schema = CALENDAR_SCHEMA()
+  await db.execute(sql`
+    UPDATE ${sql.raw(schema)}.calendars SET sync_pending = true
+    WHERE org_id = ${orgId}::uuid AND id = ${calendarId}::uuid
+  `)
+}
+
+/** claimCalendarSyncPending — clears the calendar's "changed on Google" mark and says whether it
+ * was set: an incremental sync claims it before listing and again after, and lists once more
+ * when a notification arrived meanwhile. */
+export async function claimCalendarSyncPending(
+  db: RlsClient,
+  orgId: string,
+  calendarId: string,
+): Promise<boolean> {
+  const { sql } = await import("drizzle-orm")
+  const schema = CALENDAR_SCHEMA()
+  const res: unknown = await db.execute(sql`
+    UPDATE ${sql.raw(schema)}.calendars c SET sync_pending = false
+    FROM (SELECT id, sync_pending FROM ${sql.raw(schema)}.calendars
+          WHERE org_id = ${orgId}::uuid AND id = ${calendarId}::uuid FOR UPDATE) prior
+    WHERE c.id = prior.id
+    RETURNING prior.sync_pending AS was_pending
+  `)
+  const rows = Array.isArray(res) ? res : ((res as { rows?: unknown[] }).rows ?? [])
+  return (rows[0] as { was_pending?: boolean } | undefined)?.was_pending === true
+}
+
+/** findCalendarsForWatchRenewal — selected, synced calendars whose channel expires within
+ * `withinHours` hours, or that have none (its registration failed, or it expired): a calendar
+ * without a live channel would otherwise live on the 30-minute poll for good. Boundary is EXCLUSIVE `<` (Design: "pick the inclusive/exclusive boundary explicitly — use <"):
  * a calendar exactly AT now+withinHours is NOT selected yet (it's selected on the next scan,
  * closer to actual expiry). */
 export async function findCalendarsForWatchRenewal(
@@ -2337,8 +2430,13 @@ export async function findCalendarsForWatchRenewal(
            sync_token, watch_channel_id, watch_resource_id, watch_expiration, last_polled_at,
            sync_pending, calaccess
     FROM ${sql.raw(schema)}.calendars
-    WHERE org_id = ${orgId}::uuid AND selected = true AND watch_channel_id IS NOT NULL
-      AND watch_expiration < (now() + (${withinHours} || ' hours')::interval)
+    WHERE org_id = ${orgId}::uuid AND selected = true
+      AND (
+        watch_channel_id IS NULL OR watch_expiration IS NULL
+        OR watch_expiration < (now() + (${withinHours} || ' hours')::interval)
+      )
+      -- A calendar still in its first sync gets its channel from that sync.
+      AND sync_token IS NOT NULL
       AND ${notImportedCalendar(sql, schema)}
   `)) as unknown as { rows?: CalendarRow[] } | CalendarRow[]
   return Array.isArray(rows) ? rows : (rows.rows ?? [])

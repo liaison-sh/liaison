@@ -66,6 +66,17 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
   /** Every enqueue dropped by the job id rule. */
   const deduped: HarnessJob[] = []
   const logs: HarnessLog[] = []
+  const accountIds: string[] = []
+  /** The accounts this harness connected, as a SQL list (a never-matching id before connect). */
+  const ownAccounts = () =>
+    drizzleSql.join(
+      (accountIds.length > 0 ? accountIds : ["00000000-0000-0000-0000-000000000000"]).map(
+        (id) => drizzleSql`${id}::uuid`,
+      ),
+      drizzleSql.raw(", "),
+    )
+  /** Runs after each Google answer, inside the job that made the call (a concurrent change). */
+  let afterFetch: ((url: string, method: string) => Promise<void>) | null = null
 
   function enqueueLocal(job: HarnessJob): void {
     if (job.jobId && (active.has(job.jobId) || queue.some((q) => q.jobId === job.jobId))) {
@@ -95,11 +106,19 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
     },
   }
 
-  function bridgeFor(
+  const rlsContext = (actor: { scopes: string[] }) => ({
+    actorType: "user" as const,
+    userId,
+    orgId,
+    scopes: actor.scopes,
+    dimensionGrants: { "*": ["*"] },
+  })
+
+  function methodsOn(
     txDb: Parameters<typeof createCalendarMethods>[0]["txDb"],
     actor: { userId: string; scopes: string[] },
   ) {
-    const methods = createCalendarMethods(
+    return createCalendarMethods(
       {
         appName: "calendar",
         callerScopes: actor.scopes,
@@ -110,6 +129,35 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
       },
       { enqueue },
     )
+  }
+
+  /**
+   * The bridge of one run. `txDb` given: every call runs on that transaction (a tool call, which
+   * holds one). `txDb` null: each call opens and commits its own transaction, as a job's or a
+   * webhook's bridge does in production, so a change another run commits meanwhile is seen.
+   */
+  async function bridgeFor(
+    txDb: Parameters<typeof createCalendarMethods>[0]["txDb"] | null,
+    actor: { userId: string; scopes: string[] },
+  ) {
+    let methods: ReturnType<typeof createCalendarMethods>
+    if (txDb) {
+      methods = methodsOn(txDb, actor)
+    } else {
+      const names = await withRlsContext(rlsContext(actor), async (tx) =>
+        Object.keys(methodsOn(tx, actor)),
+      )
+      methods = Object.fromEntries(
+        names.map((name) => [
+          name,
+          (...args: unknown[]) =>
+            withRlsContext(rlsContext(actor), (tx) => {
+              const fn = methodsOn(tx, actor)[name] as (...a: unknown[]) => Promise<unknown>
+              return fn(...args)
+            }),
+        ]),
+      )
+    }
     const log =
       (level: HarnessLog["level"]) =>
       (msg: string, dataJson?: string): void => {
@@ -119,7 +167,14 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
       ...methods,
       getOrgId: () => orgId,
       getUserId: () => actor.userId,
-      fetch: google.fetch,
+      fetch: async (url: string, optsJson: string) => {
+        const res = await google.fetch(url, optsJson)
+        if (afterFetch) {
+          const method = (JSON.parse(optsJson || "{}") as { method?: string }).method ?? "GET"
+          await afterFetch(url, method)
+        }
+        return res
+      },
       connections_getToken: async () => "fake-access-token",
       ...verifyMethods,
       enqueueJob: async (jobName: string, payloadJson: string, optsJson?: string) => {
@@ -139,32 +194,26 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
   }
 
   /** Runs one handler export with the bridge of an actor: the system for jobs and webhooks,
-   * the harness user for tools. */
+   * the harness user for tools. Runs like production: see bridgeFor. */
   async function run(
     exportName: string,
     params: unknown,
     actor: { userId: string; scopes: string[] },
     extraArgs?: unknown[],
   ): Promise<unknown> {
-    return withRlsContext(
-      {
-        actorType: "user",
-        userId,
-        orgId,
-        scopes: actor.scopes,
-        dimensionGrants: { "*": ["*"] },
-      },
-      (tx) =>
-        runCoreHandler({
-          module: CORE_APP_MODULES.calendar!,
-          appName: "calendar",
-          exportName,
-          params,
-          extraArgs,
-          bridge: bridgeFor(tx, actor),
-          holdsTx: true,
-        }),
-    )
+    const invoke = async (txDb: Parameters<typeof bridgeFor>[0]) =>
+      runCoreHandler({
+        module: CORE_APP_MODULES.calendar!,
+        appName: "calendar",
+        exportName,
+        params,
+        extraArgs,
+        bridge: await bridgeFor(txDb, actor),
+        holdsTx: txDb !== null,
+      })
+    // A tool call holds one transaction; a job or a webhook commits per bridge call.
+    if (actor === person) return withRlsContext(rlsContext(actor), (tx) => invoke(tx))
+    return invoke(null)
   }
 
   const system = { userId: "system:calendar:job", scopes: ["*"] }
@@ -172,6 +221,11 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
 
   const harness = {
     google,
+    accountIds,
+    /** Sets (or clears) the hook run after each Google answer, inside the calling job. */
+    afterFetch(hook: ((url: string, method: string) => Promise<void>) | null): void {
+      afterFetch = hook
+    },
     queue,
     ran,
     deduped,
@@ -202,6 +256,7 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
       )
       const accountId = rows[0]?.id
       if (!accountId) throw new Error(`harness: no account row for ${email} after connect`)
+      accountIds.push(accountId)
       return accountId
     },
 
@@ -294,21 +349,24 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
       )
     },
 
-    /** The local calendar row for a Google calendar id. */
+    /** The local calendar row for a Google calendar id, on the accounts this harness connected
+     * (several harnesses may share an org, each with its own account). */
     async calendar(googleCalendarId: string): Promise<Record<string, unknown> | null> {
       const rows = await harness.sql<Record<string, unknown>>(
         drizzleSql`SELECT * FROM app_calendar.calendars
-                   WHERE org_id = ${orgId}::uuid AND google_calendar_id = ${googleCalendarId}`,
+                   WHERE org_id = ${orgId}::uuid AND google_calendar_id = ${googleCalendarId}
+                     AND account_id IN (${ownAccounts()})`,
       )
       return rows[0] ?? null
     },
 
-    /** Local event rows of one Google calendar (tombstones included), oldest first. */
-    async events(googleCalendarId: string): Promise<Array<Record<string, unknown>>> {
-      return harness.sql<Record<string, unknown>>(
+    /** Local event rows of one Google calendar (tombstones included), by Google id. */
+    async events<T = Record<string, unknown>>(googleCalendarId: string): Promise<T[]> {
+      return harness.sql<T>(
         drizzleSql`SELECT e.* FROM app_calendar.events e
                    JOIN app_calendar.calendars c ON c.id = e.calendar_id
                    WHERE e.org_id = ${orgId}::uuid AND c.google_calendar_id = ${googleCalendarId}
+                     AND c.account_id IN (${ownAccounts()})
                    ORDER BY e.google_event_id NULLS LAST, e.id`,
       )
     },

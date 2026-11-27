@@ -47,7 +47,7 @@
  * (and what the burst held so far is summarized at once).
  */
 import { createHash } from "node:crypto"
-import type { ShippedLocale } from "@liaison/shared"
+import { burstSummaryNotificationRoute, type ShippedLocale } from "@liaison/shared"
 import type Redis from "ioredis"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
 import { rootLogger } from "~/lib/logger"
@@ -90,6 +90,8 @@ export interface BurstItem {
   conversation: string
   /** "task" when the conversation is a task's discussion. */
   conversationKind: "task" | "conversation"
+  /** What a click on this item alone opens (its notification route). */
+  route?: string
   /** A chat message, or any other attention item. */
   kind: "message" | "notification"
   /** A mention of the person, or an urgent item (an approval they decide). */
@@ -105,6 +107,8 @@ interface StoredEntry {
   an: string | null
   c: string
   ck: "task" | "conversation"
+  /** The item's own route (absent on entries stored before it was kept). */
+  o?: string
   k: "message" | "notification"
   r: boolean
   /** The router delivered push / desktop for it. */
@@ -395,6 +399,7 @@ function storedOf(item: BurstItem, decision: RouterDecision): StoredEntry {
     an: item.actorName,
     c: item.conversation,
     ck: item.conversationKind,
+    ...(item.route ? { o: item.route } : {}),
     k: item.kind,
     r: item.redacted,
     pushOn: decision.channels.push.deliver,
@@ -486,6 +491,8 @@ export interface BurstSummary {
   body: string
   /** The one conversation of the burst, when there is only one. */
   conversation: string | null
+  /** What a click on the summary opens: that one conversation, else Home. */
+  route: string
 }
 
 /** One actor "dominates" a burst when at least this share of its items are theirs. */
@@ -495,7 +502,8 @@ const DOMINANT_SHARE = 2 / 3
 export function burstSummaryText(
   locale: ShippedLocale,
   total: number,
-  entries: readonly Pick<StoredEntry, "a" | "an" | "c" | "ck" | "k" | "r">[],
+  entries: readonly (Pick<StoredEntry, "a" | "an" | "c" | "ck" | "k" | "r"> &
+    Pick<Partial<StoredEntry>, "o">)[],
 ): BurstSummary {
   const conversations = new Set(entries.map((e) => e.c))
   const byActor = new Map<string, { name: string | null; count: number }>()
@@ -531,6 +539,9 @@ export function burstSummaryText(
     title: actor ?? serverT(locale, "kernel.notifications.burst.title"),
     body,
     conversation: conversations.size === 1 ? ([...conversations][0] ?? null) : null,
+    route: burstSummaryNotificationRoute(
+      entries.map((e) => ({ conversation: e.c, route: e.o ?? null })),
+    ),
   }
 }
 
@@ -678,6 +689,8 @@ export async function runBurstFlush(
         type: "attention",
         ...(threadId ? { threadId } : {}),
         deepLink: threadId ? `liaison://thread/${threadId}` : "liaison://attention",
+        // A browser's Web Push click opens what the desktop click opens.
+        route: summary.route,
         badgeCount,
         title: summary.title,
         body: summary.body,
@@ -691,7 +704,8 @@ export async function runBurstFlush(
         notifyId,
         title: summary.title,
         body: summary.body,
-        route: threadId ? `thread/${threadId}` : "",
+        // One conversation opens it (a task's, on the task); several, Home.
+        route: summary.route,
         tag: collapseId,
       })
     }

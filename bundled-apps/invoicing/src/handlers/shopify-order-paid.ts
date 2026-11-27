@@ -1199,7 +1199,7 @@ export async function issueOrderFlow(
   const reviewEach = src?.stream.mode === "review"
   if (!ctx.approval && (reviewEach || (threshold != null && invoiceTotal > threshold))) {
     const approval = await ctx.requestApproval({
-      tool_name: src ? "invoicing:onSaleApproved" : "invoicing:onShopifyOrderPaid",
+      tool_name: src ? "invoicing:revenue_stream_sale_issue" : "invoicing:onShopifyOrderPaid",
       summary: `Issue invoice for ${customer.legal_name ?? customer.email}, ${formatMoneyMinor(invoiceTotal, payload.currency)}${orderNumber ? `, order ${String(orderNumber).startsWith("#") ? "" : "#"}${orderNumber}` : ""}`,
       summary_detail: {
         subtitle: `Issue and send to ${customer.legal_name ?? customer.email}`,

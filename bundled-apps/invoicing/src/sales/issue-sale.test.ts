@@ -250,7 +250,7 @@ describe("onSaleEvent", () => {
     expect(r.status).toBe("pending_approval")
     expect(first.approvals).toEqual([
       {
-        tool_name: "invoicing:onSaleApproved",
+        tool_name: "invoicing:revenue_stream_sale_issue",
         current_payload: {
           kind: "revenue_stream_sale",
           stream_id: "stream-1",

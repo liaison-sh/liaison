@@ -1,0 +1,19 @@
+{
+  "entry": "tool:revenue_stream_sale_issue",
+  "params": {
+    "kind": "revenue_stream_sale",
+    "stream_id": "00000000-0000-4000-8000-0000000005a3",
+    "external_id": "S-1"
+  },
+  "recordedFrom": "an install with no stream (contract replay, no provider call)",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "revenue_streams",
+        "{\"where\":{\"id\":\"00000000-0000-4000-8000-0000000005a3\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

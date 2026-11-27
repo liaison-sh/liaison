@@ -1471,6 +1471,17 @@ export function summarizeIssuerStreamSet(
   })
 }
 
+export function summarizeRevenueStreamSaleIssue(
+  params: Record<string, unknown>,
+): Promise<ApprovalSummaryShape> {
+  return done({
+    kind: "revenue_stream_sale_issue",
+    title: `Issue the invoice of the sale ${String(params.external_id ?? "")}`,
+    subtitle: "A legal invoice: it cannot be deleted, only credited",
+    lines: ["The sale is read again from its app when you approve, and invoiced as it is then."],
+  })
+}
+
 export function summarizeRevenueStreamBind(
   params: Record<string, unknown>,
 ): Promise<ApprovalSummaryShape> {

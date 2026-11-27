@@ -141,6 +141,7 @@ import {
   recurringScheduleUpdate,
   retainerTermsRenew,
 } from "./recurring/tools"
+import { onSaleApproved } from "./sales/issue-sale"
 import {
   type BindInput,
   revenueStreamBind,
@@ -175,7 +176,11 @@ function fromWire<T extends { counterparty?: Counterparty | null }>(params: T): 
 export { onShopifyOrderCreated, onShopifyOrderPaid } from "./handlers/shopify-order-paid"
 // Revenue streams (sales/): every revenue-stream@1 provider's `sale:paid`, through one issuing flow;
 // onSaleApproved is the re-entry of a stream sale's approval card.
-export { onSaleApproved, onSaleEvent } from "./sales/issue-sale"
+export { onSaleEvent } from "./sales/issue-sale"
+export const revenueStreamSaleIssueHandler = (
+  params: Parameters<typeof onSaleApproved>[0],
+  ctx: Parameters<typeof onSaleApproved>[1],
+) => onSaleApproved(params ?? {}, ctx)
 export const revenueStreamsListHandler = (_params: unknown, ctx: StreamToolsCtx) =>
   revenueStreamsList(ctx)
 export const revenueStreamBindHandler = (params: BindInput, ctx: StreamToolsCtx) =>

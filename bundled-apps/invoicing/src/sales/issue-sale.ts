@@ -290,7 +290,8 @@ export async function onSaleEvent(
 
 /**
  * A stream sale parked or awaiting approval, run again: the sale is read again from its source.
- * The approval of a stream sale re-enters here (`invoicing:onSaleApproved`) with `ctx.approval`.
+ * The approval of a stream sale re-enters here (`invoicing:revenue_stream_sale_issue`, a gated
+ * tool, so its card is decided by a holder of its own scope) with `ctx.approval`.
  */
 export async function rerunStreamSale(
   payload: { stream_id?: unknown; external_id?: unknown },

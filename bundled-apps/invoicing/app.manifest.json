@@ -2007,6 +2007,7 @@
       "deferLoading": true,
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "revenueStreamSaleIssueHandler",
+      "agentVisible": false,
       "timeoutMs": 60000,
       "gated": true,
       "noAutoApprove": true,

@@ -164,6 +164,10 @@ const LISTED = new Map<string, string>([
   ],
   ["invoicing:settings_tax_regime_list", `org settings: ${NONE}`],
   [
+    "invoicing:revenue_streams_list",
+    `which sales apps are bound and how, set by the org's people, and the installed apps' names: ${NONE}`,
+  ],
+  [
     "invoicing:issuer_stream_get",
     `who issues each stream and who confirmed the card processor's own emails, set by the org's people: ${NONE}`,
   ],

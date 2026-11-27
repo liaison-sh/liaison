@@ -99,6 +99,13 @@ const EXCLUDED: ReadonlyArray<{ tool: string; reason: Reason; why: string }> = [
     reason: "contract-only op" as const,
     why: "an e-invoicing provider op the invoicing app calls through its contract; marked contractOnly and internal",
   })),
+  ...["shopify"].flatMap((app) =>
+    ["rs_sale_get", "rs_sales_list"].map((op) => ({
+      tool: `${app}:${op}`,
+      reason: "contract-only op" as const,
+      why: "a revenue-stream provider op the invoicing app calls through its contract to read a sale; marked contractOnly and internal",
+    })),
+  ),
   {
     tool: "github:github_read_file",
     reason: "trust boundary",

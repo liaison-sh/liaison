@@ -2818,6 +2818,22 @@
     "any": ["stripe__card_update_link"]
   },
   {
+    "id": "RS1",
+    "set": "seed",
+    "lang": "en",
+    "say": "which apps have their sales invoiced automatically",
+    "typed": ["revenue streams", "sales apps invoiced", "bound sales apps"],
+    "any": ["invoicing__revenue_streams_list"]
+  },
+  {
+    "id": "RS2",
+    "set": "seed",
+    "lang": "fr",
+    "say": "je veux que chaque vente de notre boutique en ligne ait sa facture",
+    "typed": ["lier un flux de ventes", "facturer les ventes d'une app", "bind revenue stream"],
+    "any": ["invoicing__revenue_stream_bind"]
+  },
+  {
     "id": "WI1",
     "set": "seed",
     "lang": "en",

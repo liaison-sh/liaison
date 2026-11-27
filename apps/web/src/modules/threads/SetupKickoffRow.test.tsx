@@ -87,7 +87,7 @@ describe("SetupKickoffRow", () => {
 
 describe("SetupKickoffRow on Cloud", () => {
   const SELF_HOSTED_INTRO =
-    "Your agent sets this workspace up with you here, one step at a time. It first asks which features you want, then starts with the basics: your mailbox, Google sign-in, the support inbox and imports from your other tools. Each step says how long it takes, and you can skip any of them and come back any time."
+    "Your agent sets this workspace up with you here, one step at a time. It first asks which features you want, then starts with a quick brief on your company: your agent asks a few questions, or reads your website or a document you give it, and keeps what it learns as company knowledge. Then you invite your team, so your colleagues arrive in a workspace whose agent already knows the company. After that come your mailbox, Google sign-in, the support inbox and imports from your other tools. Each step says how long it takes, and you can skip any of them, or invite your team first, and come back any time."
 
   it("managed without a goal: the managed intro and three goal buttons, no mail-first intro", async () => {
     sendMock.mockReset()
@@ -96,7 +96,9 @@ describe("SetupKickoffRow on Cloud", () => {
     if (!view) throw new Error("not read")
     render(() => <SetupKickoffRow messageId="m-4" threadId="t-4" view={view} />)
     const row = screen.getByTestId("setup-kickoff-row")
-    expect(row.textContent).toContain("Where do you want to start?")
+    // The company brief first, then the team, then the goal the buttons ask for.
+    expect(row.textContent).toContain("starting with a quick brief on your company")
+    expect(row.textContent).toContain("Where do you want to go from there?")
     expect(row.textContent).not.toContain("your mailbox, Google sign-in")
     for (const goal of ["knowledge", "support", "projects"]) {
       expect(screen.getByTestId(`setup-goal-${goal}`)).toBeTruthy()
@@ -106,7 +108,7 @@ describe("SetupKickoffRow on Cloud", () => {
     expect(sendMock).toHaveBeenCalledTimes(1)
     const [, threadId, content] = sendMock.mock.calls[0]!
     expect(threadId).toBe("t-4")
-    expect(content).toBe("I want to start with projects.")
+    expect(content).toBe("My goal: projects.")
     expect(document.querySelector("[role=dialog]")).toBeNull()
     await waitFor(() => expect(screen.queryByTestId("setup-goal-knowledge")).toBeNull())
   })
@@ -131,7 +133,7 @@ describe("SetupKickoffRow on Cloud", () => {
     if (!view) throw new Error("not read")
     render(() => <SetupKickoffRow messageId="m-5" threadId="t-5" view={view} />)
     expect(screen.getByTestId("setup-kickoff-row").textContent).toContain(
-      "starting with your company knowledge",
+      "starting with a quick brief on your company",
     )
     expect(screen.queryByTestId("setup-goal-knowledge")).toBeNull()
   })
@@ -149,7 +151,7 @@ describe("SetupKickoffRow on Cloud", () => {
       </I18nProvider>
     ))
     expect(screen.getByTestId("setup-kickoff-row").textContent).toContain(
-      "Par où voulez-vous commencer ?",
+      "Et ensuite, par où voulez-vous continuer ?",
     )
     expect(screen.getByTestId("setup-goal-support").textContent).toBe("Support client")
   })

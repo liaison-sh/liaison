@@ -1,12 +1,12 @@
 {
   "kickoff": {
     "title": "Configurez votre espace",
-    "intro": "Votre agent configure cet espace avec vous ici, étape par étape. Il vous demande d'abord quelles fonctionnalités vous voulez, puis commence par l'essentiel : votre boîte mail, la connexion avec Google, la boîte de support et l'import depuis vos autres outils. Chaque étape indique sa durée, et vous pouvez passer n'importe laquelle et y revenir à tout moment.",
-    "introManaged": "Votre agent configure cet espace avec vous ici, étape par étape. Par où voulez-vous commencer ? Choisissez ci-dessous, ou dites-le simplement à votre agent. La connexion de votre boîte mail vient en dernier, quand vous le voulez.",
+    "intro": "Votre agent configure cet espace avec vous ici, étape par étape. Il vous demande d'abord quelles fonctionnalités vous voulez, puis commence par un rapide brief sur votre entreprise : votre agent vous pose quelques questions, ou lit votre site web ou un document que vous lui donnez, et garde ce qu'il apprend dans les connaissances de l'entreprise. Vous invitez ensuite votre équipe : vos collègues arrivent ainsi dans un espace dont l'agent connaît déjà l'entreprise. Viennent ensuite votre boîte mail, la connexion avec Google, la boîte de support et l'import depuis vos autres outils. Chaque étape indique sa durée, et vous pouvez passer n'importe laquelle, ou inviter votre équipe d'abord, et y revenir à tout moment.",
+    "introManaged": "Votre agent configure cet espace avec vous ici, étape par étape, en commençant par un rapide brief sur votre entreprise : votre agent vous pose quelques questions, ou lit votre site web ou un document que vous lui donnez, et garde ce qu'il apprend dans les connaissances de l'entreprise. Vous invitez ensuite votre équipe : vos collègues arrivent ainsi dans un espace dont l'agent connaît déjà l'entreprise. Et ensuite, par où voulez-vous continuer ? Choisissez ci-dessous, ou dites-le simplement à votre agent. La connexion de votre boîte mail vient en dernier, quand vous le voulez.",
     "introManagedGoal": {
-      "knowledge": "Votre agent configure cet espace avec vous ici, étape par étape, en commençant par les connaissances de votre entreprise : une page que vous écrivez ou collez, puis une question à votre agent à son sujet. Viennent ensuite l'invitation de votre équipe, puis, en dernier, la connexion de votre boîte mail, quand vous le voulez.",
-      "support": "Votre agent configure cet espace avec vous ici, étape par étape, en commençant par le support client : une boîte de support, sur l'adresse de votre choix. Viennent ensuite l'invitation de votre équipe, puis, en dernier, la connexion de votre boîte mail, quand vous le voulez.",
-      "projects": "Votre agent configure cet espace avec vous ici, étape par étape, en commençant par les projets : un projet à vous, ou un import depuis Jira. Viennent ensuite l'invitation de votre équipe, puis, en dernier, la connexion de votre boîte mail, quand vous le voulez."
+      "knowledge": "Votre agent configure cet espace avec vous ici, étape par étape, en commençant par un rapide brief sur votre entreprise : votre agent vous pose quelques questions, ou lit votre site web ou un document que vous lui donnez, et garde ce qu'il apprend dans les connaissances de l'entreprise, puis une question à votre agent à son sujet. Vous invitez ensuite votre équipe : vos collègues arrivent ainsi dans un espace dont l'agent connaît déjà l'entreprise. La connexion de votre boîte mail vient en dernier, quand vous le voulez.",
+      "support": "Votre agent configure cet espace avec vous ici, étape par étape, en commençant par un rapide brief sur votre entreprise : votre agent vous pose quelques questions, ou lit votre site web ou un document que vous lui donnez, et garde ce qu'il apprend dans les connaissances de l'entreprise. Vous invitez ensuite votre équipe : vos collègues arrivent ainsi dans un espace dont l'agent connaît déjà l'entreprise. Puis le support client : une boîte de support, sur l'adresse de votre choix. La connexion de votre boîte mail vient en dernier, quand vous le voulez.",
+      "projects": "Votre agent configure cet espace avec vous ici, étape par étape, en commençant par un rapide brief sur votre entreprise : votre agent vous pose quelques questions, ou lit votre site web ou un document que vous lui donnez, et garde ce qu'il apprend dans les connaissances de l'entreprise. Vous invitez ensuite votre équipe : vos collègues arrivent ainsi dans un espace dont l'agent connaît déjà l'entreprise. Puis les projets : un projet à vous, ou un import depuis Jira. La connexion de votre boîte mail vient en dernier, quand vous le voulez."
     },
     "goal": {
       "knowledge": "Connaissances de l'entreprise",
@@ -14,9 +14,9 @@
       "projects": "Projets"
     },
     "goalMessage": {
-      "knowledge": "Je veux commencer par les connaissances de l'entreprise.",
-      "support": "Je veux commencer par le support client.",
-      "projects": "Je veux commencer par les projets."
+      "knowledge": "Mon objectif : les connaissances de l'entreprise.",
+      "support": "Mon objectif : le support client.",
+      "projects": "Mon objectif : les projets."
     },
     "keyFirst": "D'abord, une clé de modèle d'IA : votre agent en a besoin pour répondre. Saisissez-la dans la carte ci-dessous ; l'agent ne la voit jamais.",
     "demoTitle": "Envie de le voir fonctionner d'abord ?",
@@ -33,12 +33,15 @@
     "start": "Commencer",
     "startLabel": "Commencer : {{step}}",
     "startMessage": "Faisons cette étape maintenant : {{step}}.",
+    "teamAfterBrief": "Mieux après le brief sur l'entreprise : vos collègues arrivent alors dans un espace dont l'agent connaît déjà l'entreprise.",
+    "inviteNow": "Inviter maintenant quand même",
+    "inviteNowLabel": "Inviter votre équipe maintenant, avant le brief sur l'entreprise",
     "action": {
       "aiKey": "Ajouter une clé de modèle d'IA",
       "apps": "Activer les applications utiles",
       "mail": "Connecter votre boîte mail",
       "team": "Inviter votre équipe",
-      "knowledge": "Ajouter les connaissances de l'entreprise",
+      "knowledge": "Présentez votre entreprise à votre agent",
       "import": "Importer depuis un autre outil",
       "roles": "Configurer les rôles",
       "connector": "Connecter une API"

@@ -10,6 +10,7 @@
 import { app } from "@liaison/host"
 import { type Component, createMemo, createResource, createSignal, For, Show } from "solid-js"
 import { type DmWindowTag, dmWindowTag } from "../dm-window"
+import { gatedResultNote } from "./Findings"
 import {
   Badge,
   type BadgeTone,
@@ -129,13 +130,18 @@ async function loadConversationDetail(conversationId: string): Promise<DmGetResu
 // FRESH conversation + message history via dm_get on selection. The window
 // pill is derived from the fresh conversation row (dm_get's enrichment), not
 // the stale list row, so it doesn't lag behind messages that landed since the
-// list was last fetched.
+// list was last fetched. The compose box sends with send_dm as the person: their
+// own scope decides, so it sends at once unless an org policy parks it, which the
+// note then says ("Waiting for approval"), never "sent".
 export const ConversationDetailPanel: Component<{ conversation: ConversationRow | null }> = (
   props,
 ) => {
   // The source function re-runs whenever `props.conversation?.id` changes,
   // which re-triggers the dm_get fetch — no extra effect needed.
-  const [detail] = createResource(() => props.conversation?.id, loadConversationDetail)
+  const [detail, { refetch }] = createResource(() => props.conversation?.id, loadConversationDetail)
+  const [reply, setReply] = createSignal("")
+  const [busy, setBusy] = createSignal(false)
+  const [note, setNote] = createSignal<{ kind: "ok" | "err"; text: string } | null>(null)
 
   const fresh = createMemo<ConversationRow | null>(
     () => detail()?.conversation ?? props.conversation ?? null,
@@ -144,6 +150,24 @@ export const ConversationDetailPanel: Component<{ conversation: ConversationRow 
   const win = createMemo(() =>
     windowPillState(fresh()?.last_inbound_at ?? null, new Date(), fresh()?.reply_window?.tag),
   )
+
+  const send = async () => {
+    const conversationId = props.conversation?.id
+    const body = reply().trim()
+    if (!conversationId || !body || busy()) return
+    setBusy(true)
+    setNote(null)
+    try {
+      const res = await app.invokeTool("send_dm", { conversation_id: conversationId, body })
+      setReply("")
+      setNote({ kind: "ok", text: gatedResultNote(res, "Message sent.", "Waiting for approval.") })
+      await refetch()
+    } catch (e) {
+      setNote({ kind: "err", text: e instanceof Error ? e.message : "Sending failed" })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <Show
@@ -228,9 +252,27 @@ export const ConversationDetailPanel: Component<{ conversation: ConversationRow 
               data-testid="social-dm-compose-box"
               class="min-h-[64px] w-full rounded-md border border-border-subtle bg-surface px-2 py-1 text-[12.5px] text-text"
               placeholder="Write a reply…"
+              value={reply()}
+              disabled={busy()}
+              onInput={(e) => setReply(e.currentTarget.value)}
             />
-            <Button variant="primary" testid="social-dm-send">
-              Send (approval required)
+            <Show when={note()}>
+              {(n) => (
+                <p
+                  data-testid="social-dm-note"
+                  class={cx("text-[12px]", n().kind === "ok" ? "text-success" : "text-error")}
+                >
+                  {n().text}
+                </p>
+              )}
+            </Show>
+            <Button
+              variant="primary"
+              testid="social-dm-send"
+              disabled={busy() || !reply().trim()}
+              onClick={() => void send()}
+            >
+              {win().tag === "human_agent" ? "Approve & send (human agent)" : "Approve & send"}
             </Button>
           </div>
         </Show>

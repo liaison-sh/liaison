@@ -10,6 +10,8 @@
 // (`ctx.contracts.call`): each op tool must be `trustBoundary:"internal"`, `agentVisible:false`,
 // `gated:false` and `contractOnly:true`, and must declare at least the params listed here.
 
+import { REVENUE_STREAM, revenueStreamV1 } from "./revenue-stream"
+
 export const EINVOICING_PA = "einvoicing-pa@1" as const
 
 export interface ContractOpSpec {
@@ -38,10 +40,26 @@ export interface ContractOpSpec {
   fileTarget?: string
 }
 
+export interface ContractEventSpec {
+  /** A provider must declare it in `events.emits` to register as implementing the contract. */
+  required: boolean
+}
+
 export interface ContractSpec {
   contract: string
   version: number
   ops: Readonly<Record<string, ContractOpSpec>>
+  /**
+   * Events (`entity:action`) a provider emits under the contract. A consumer subscribes to them
+   * once for every provider of the org: `"contract:<name>@<version>/<entity:action>"`.
+   */
+  events?: Readonly<Record<string, ContractEventSpec>>
+  /**
+   * Several providers serve one caller at once: the caller names the provider on each call and
+   * the kernel checks the caller's own binding table holds a row for it (no single administrator
+   * binding). Such a contract has read ops only (no `outbound` op).
+   */
+  multiProvider?: boolean
 }
 
 export const einvoicingPaV1: ContractSpec = {
@@ -165,6 +183,7 @@ export function contractFileParams(contractKey: string, op: string): readonly st
 /** Contracts the kernel knows, keyed `"<contract>@<version>"`. */
 export const KNOWN_CONTRACTS: Readonly<Record<string, ContractSpec>> = {
   [EINVOICING_PA]: einvoicingPaV1,
+  [REVENUE_STREAM]: revenueStreamV1,
 }
 
 // ---------------------------------------------------------------------------------------------

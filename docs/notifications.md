@@ -299,6 +299,9 @@ at all; only a message with no required scopes may carry a title and a short bod
 carries the thread id, the deep link, the badge count and the server origin, so a tap on a
 notification from another server than the one the app is set to is ignored. The origin is the server's `BASE_URL`: a phone set up with a different address for the same server (another hostname, an IP) opens the app on a tap but does not jump to the thread, so give people the `BASE_URL` address.
 
+A tap on a notification about an item the app cannot open (an app this device does not have) opens
+Home and says **This item can't be opened in this app.**
+
 ## A comment on a task
 
 A message in a task's discussion (or in any conversation that belongs to a record, such as a

@@ -22,6 +22,7 @@ import {
   onMount,
   Show,
 } from "solid-js"
+import { appStoreHidden } from "~/lib/native-bridge"
 import { canAccessScope } from "~/modules/auth/auth-store"
 import { openExternal } from "~/modules/desktop/external-links"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -112,12 +113,15 @@ export const ConnectorsPage: Component<{ active?: Accessor<boolean> }> = (props)
           <h1 class="text-lg font-semibold leading-tight">{i18n.t(`${P}.title`)}</h1>
           <p class="mt-1 text-[12.5px] text-text-secondary">{i18n.t(`${P}.intro`)}</p>
         </div>
-        <Button
-          data-testid="connectors-add"
-          onClick={() => navigate("/settings/store?kind=connector")}
-        >
-          + {i18n.t(`${P}.add`)}
-        </Button>
+        {/* Adding a connector goes through the App store, which the iOS app has none of. */}
+        <Show when={!appStoreHidden()}>
+          <Button
+            data-testid="connectors-add"
+            onClick={() => navigate("/settings/store?kind=connector")}
+          >
+            + {i18n.t(`${P}.add`)}
+          </Button>
+        </Show>
       </div>
       <Show
         when={connectors().length + offConnectors().length > 0}

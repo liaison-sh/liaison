@@ -96,6 +96,8 @@ import { billingManagedRoutes, managedBillingOnly } from "~/modules/billing-mana
 import { billingStateRoutes } from "~/modules/billing-state"
 import { brandingRoutes } from "~/modules/branding/routes"
 import { bugReports } from "~/modules/bug-reports/routes"
+import { buyerKeyAdminRoutes } from "~/modules/buyer-invoices/admin-routes"
+import { BUYER_INVOICES_PREFIX, buyerInvoicesRoutes } from "~/modules/buyer-invoices/routes"
 import {
   CLIENT_ACTIONS_PUBLIC_PREFIX,
   clientActionPublicRoutes,
@@ -772,6 +774,11 @@ app.use("/api/auth/account/*", authPlusLimit)
 // keyed on the token's hash, and fails closed when Redis is down.
 app.route(CLIENT_ACTIONS_PUBLIC_PREFIX, clientActionPublicRoutes)
 
+// The buyer invoices API (modules/buyer-invoices): a shop's website, server to server, with its
+// own `linv_` key (never a session). Public, before any auth: each route takes its budgets (per
+// address, then per key) and answers no-store.
+app.route(BUYER_INVOICES_PREFIX, buyerInvoicesRoutes)
+
 app.route("/api/auth", auth)
 app.route("/api/auth/oauth", oauth)
 
@@ -816,6 +823,11 @@ const authAndDemoMw: MiddlewareHandler<AppEnv> = env.LIAISON_DEMO_MODE
 const authMw: MiddlewareHandler<AppEnv> = every(authAndDemoMw, perUserLimiter)
 
 // A staff signer's own "Read and sign" (REST only, no tool).
+// Website access keys of the buyer invoices API: a signed-in person with the issuer admin scope.
+app.use("/api/invoicing/buyer-keys", authMw, orgLimiter)
+app.use("/api/invoicing/buyer-keys/*", authMw, orgLimiter)
+app.route("/api/invoicing/buyer-keys", buyerKeyAdminRoutes)
+
 app.use("/api/client-actions/*", authMw, orgLimiter)
 app.route("/api/client-actions", clientActionRoutes)
 

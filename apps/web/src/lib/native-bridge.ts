@@ -203,6 +203,20 @@ export function purchaseSurfacesHidden(): boolean {
   return nativeShellPlatform() === "ios"
 }
 
+/**
+ * THE ONE CHECK FOR THE APP STORE (App Store guidelines 2.5.2, 3.2.2, 4.7).
+ *
+ * Inside the iOS app there is no catalogue of apps to add and no way to
+ * install one (the App store page, its listings, Install from URL, the
+ * Connectors page's Add button): every such entry asks this and is absent
+ * when it answers true. The apps already in the workspace keep working, their
+ * settings pages included. A browser, the desktop app and the Android app are
+ * unchanged.
+ */
+export function appStoreHidden(): boolean {
+  return nativeShellPlatform() === "ios"
+}
+
 /** Tells the shell the app has painted. Safe to call more than once. */
 export function signalNativeReady(): void {
   try {

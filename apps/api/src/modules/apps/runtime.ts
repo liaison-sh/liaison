@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { appSettingsSchema, type StoreCollectionDeclaration } from "@liaison/app-sdk"
+import { contractEventSource, KNOWN_CONTRACTS } from "@liaison/app-sdk/contracts"
 import { sql as drizzleSql, inArray, type SQL } from "drizzle-orm"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb, withSchemaAdmin } from "~/db/privileged"
@@ -14,6 +15,7 @@ import { schemaRef } from "~/db/schema-ref"
 import {
   currentHandlerSignal,
   HANDLER_TIMEOUT_MS,
+  setContractEventRouter,
   subscribeToEvent,
 } from "~/infra/events/event-bus"
 import { registerJobWorker, unregisterAppJobHandlers } from "~/infra/jobs/jobs"
@@ -1911,6 +1913,17 @@ export const AppSchemaDdlTestAccess = {
  * instead of running or silently dropping. Events received while Off are not
  * replayed on re-enable.
  */
+// An app's event is also delivered to the subscribers of every contract it implements in the org
+// whose spec declares that event (`contract:<name>@<version>/<entity:action>`, see the
+// subscription registration below).
+setContractEventRouter((orgId, app, eventKey) => {
+  const impls = appContractImplementationsRegistry.get([orgId, app])
+  if (!impls) return []
+  return Object.keys(impls)
+    .filter((key) => KNOWN_CONTRACTS[key]?.events?.[eventKey] !== undefined)
+    .map(contractEventSource)
+})
+
 export function gateEventOnAppState(
   appName: string,
   registeringOrgId: string,
@@ -4002,7 +4015,20 @@ async function registerSingleApp(
           let sourceApp: string
           let entity: string
           let action: string
-          if (eventType.includes("/")) {
+          if (eventType.startsWith("contract:")) {
+            // A contract subscription (`contract:<name>@<version>/<entity:action>`): delivered
+            // from EVERY app implementing the contract in the org, with the source app's name in
+            // the envelope (`event.app`). No dependency: a custom app can never be one.
+            // Registration validated the form (provider-contracts/validate.ts).
+            const { parseContractSubscription } = await import("@liaison/app-sdk/contracts")
+            const parsed = parseContractSubscription(eventType)
+            if (!parsed) {
+              log.warn({ app: desc.name, eventType }, "Malformed contract subscription — skipping")
+              continue
+            }
+            sourceApp = contractEventSource(parsed.contract)
+            ;[entity, action] = parsed.event.split(":") as [string, string]
+          } else if (eventType.includes("/")) {
             const [src, rest] = eventType.split("/")
             sourceApp = src
             ;[entity, action] = rest.split(":")

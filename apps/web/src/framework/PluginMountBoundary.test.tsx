@@ -42,3 +42,26 @@ describe("PluginMountBoundary", () => {
     expect(container.textContent).toMatch(/string-thrown/)
   })
 })
+
+describe("PluginMountBoundary and the request limit", () => {
+  it("a 429 is a calm wait with a retry that mounts the part again, not a crash", async () => {
+    const { ApiError } = await import("~/lib/api-error")
+    const { fireEvent } = await import("@solidjs/testing-library")
+    let refuse = true
+    const Limited: Component = () => {
+      if (refuse) throw new ApiError("Too many requests", 429)
+      return <div data-testid="limited-ok">ok</div>
+    }
+    const { container, getByRole, findByTestId } = render(() => (
+      <PluginMountBoundary appName="calendar">
+        <Limited />
+      </PluginMountBoundary>
+    ))
+    expect(container.querySelector("[data-testid=plugin-mount-error-calendar]")).toBeNull()
+    expect(container.querySelector("[data-testid=plugin-mount-busy-calendar]")).not.toBeNull()
+    expect(container.textContent).not.toMatch(/crashed/i)
+    refuse = false
+    fireEvent.click(getByRole("button"))
+    expect((await findByTestId("limited-ok")).textContent).toBe("ok")
+  })
+})

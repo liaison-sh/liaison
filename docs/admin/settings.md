@@ -65,6 +65,8 @@ See [Choose models](../agents/models.md) and [Approve what agents do](../agents/
 | **App store** | Install apps and read each app's listing | `kernel:apps:admin` |
 | **System** | Version and health, **Dependencies**, migration head, **Update checks** | `kernel:org:admin` |
 
+The iPhone and iPad app has no **App store** page, no **View in store** in an app's menu and no **Add** on the **Connectors** page: apps are added from a browser or the desktop app. The apps already in the workspace keep their settings pages on the phone.
+
 See [Invite and manage users](users.md), [Set up roles](roles.md) and [Control data visibility with dimensions](dimensions.md).
 
 ### Pay for a managed workspace

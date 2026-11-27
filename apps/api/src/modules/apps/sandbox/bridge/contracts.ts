@@ -19,7 +19,7 @@
 //     click. The kernel re-checks the grant against the call's params at the dispatch choke point
 //     (execute-tool.ts), so it cannot be widened to another document or op.
 
-import { contractFileParams, isOutboundOp } from "@liaison/app-sdk/contracts"
+import { contractFileParams, isOutboundOp, KNOWN_CONTRACTS } from "@liaison/app-sdk/contracts"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
@@ -199,9 +199,9 @@ export function createContractsMethods(ctx: BridgeContext): Record<string, any> 
       paramsJson?: string,
       optsJson?: string,
     ): Promise<string> => {
-      const { resolveContractProvider } = await import("~/modules/apps/provider-contracts/resolve")
-      const resolution = await resolveContractProvider(orgId, appName, String(contract))
-      if (!resolution.ok) return errorJson(resolution.code, resolution.message)
+      const { resolveContractProvider, resolveNamedContractProvider } = await import(
+        "~/modules/apps/provider-contracts/resolve"
+      )
       let params: unknown
       let opts: { grant?: unknown; provider?: unknown } = {}
       try {
@@ -212,14 +212,21 @@ export function createContractsMethods(ctx: BridgeContext): Record<string, any> 
       } catch {
         return errorJson("invalid_input", "contracts.call params must be a JSON object")
       }
+      const named = typeof opts.provider === "string" && opts.provider !== "" ? opts.provider : null
+      // A multi-provider contract (several sources serve the caller at once): the call names its
+      // provider, which the caller's own binding table must hold (resolve.ts).
+      const multi = KNOWN_CONTRACTS[String(contract)]?.multiProvider === true
+      const resolution = multi
+        ? await resolveNamedContractProvider(orgId, appName, String(contract), named)
+        : await resolveContractProvider(orgId, appName, String(contract))
+      if (!resolution.ok) return errorJson(resolution.code, resolution.message)
       // Work pinned to a provider (a transmission row records which PA it went through) goes
       // through that provider only. After a switch of binding: an outbound op is refused (the
       // person approved it through the other PA); a read goes to the pinned provider, provided it
       // was bound to this caller before and still implements the contract.
       let target = resolution.provider
       let targetOps = resolution.ops
-      const pinned =
-        typeof opts.provider === "string" && opts.provider !== "" ? opts.provider : null
+      const pinned = multi ? null : named
       if (pinned && pinned !== resolution.provider) {
         if (isOutboundOp(String(contract), String(op))) {
           return errorJson(

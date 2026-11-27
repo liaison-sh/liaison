@@ -42,7 +42,7 @@ import { isAppUnavailable, onAppsChanged, setUnavailableApps } from "~/framework
 import { onApiReady } from "~/lib/api-ready"
 import { registerAppDisplayName } from "~/lib/capability-copy"
 import { apiUrl, serverAddressOverride } from "~/lib/env"
-import { purchaseSurfacesHidden } from "~/lib/native-bridge"
+import { appStoreHidden, purchaseSurfacesHidden } from "~/lib/native-bridge"
 import { onSessionStart, onSessionTeardown } from "~/lib/session-lifecycle"
 import { scopeRequestsStore } from "~/modules/admin-scope-requests/scope-requests-store"
 import { registerAgentApp } from "~/modules/agent/agent-app"
@@ -176,9 +176,11 @@ import {
 import { setAppExternalHosts } from "./host-app-calls"
 import {
   browserAppFrameUrl,
+  bundleTokenExpiresSoon,
   isolatedAppExports,
   isolatedFrameUrl,
   originBoundFrameOrigin,
+  resetBundleSources,
 } from "./isolated-app"
 import { importAppModule, verifiedFirstPartyApp } from "./verified-app"
 
@@ -861,20 +863,27 @@ export function bootstrapKernelApps(): void {
           return null
         },
       },
-      {
-        // Workspace > App store (S21): the list, and one app's listing at
-        // `/settings/store/<app>`.
-        id: "store",
-        label: "App store",
-        labelKey: "kernel.nav.section.appStore",
-        href: "/settings/store",
-        component: AppStorePage,
-        group: "admin",
-        adminScope: "kernel:apps:admin",
-        order: 30.5,
-        preserveActiveOnSubpaths: true,
-        resolveRoute: (pathname) => (STORE_DETAIL_PATH.test(pathname) ? AppStoreDetail : null),
-      },
+      // No App store in the iOS app (App Store guidelines 2.5.2, 3.2.2, 4.7):
+      // not registered at all, so a deep link lands on the fallback page.
+      ...(appStoreHidden()
+        ? []
+        : [
+            {
+              // Workspace > App store (S21): the list, and one app's listing at
+              // `/settings/store/<app>`.
+              id: "store",
+              label: "App store",
+              labelKey: "kernel.nav.section.appStore",
+              href: "/settings/store",
+              component: AppStorePage,
+              group: "admin" as const,
+              adminScope: "kernel:apps:admin",
+              order: 30.5,
+              preserveActiveOnSubpaths: true,
+              resolveRoute: (pathname: string) =>
+                STORE_DETAIL_PATH.test(pathname) ? AppStoreDetail : null,
+            },
+          ]),
       {
         id: "system",
         label: "System",
@@ -1607,6 +1616,7 @@ export function resetBootstrap(): void {
   registeredManifestApps.clear()
   heldTabTypes.clear()
   clearCompatMode()
+  resetBundleSources()
 }
 
 export const trustedAppExports: Record<string, () => Promise<Record<string, unknown>>> = {
@@ -1835,7 +1845,22 @@ async function registerManifestAppEntry(
       }
       // The URLs carry a short-lived token fixed now; a frame mounted after it
       // has nearly run out asks the app list again for this app's fresh ones.
+      // The URLs last fetched are kept and handed to every frame mounted while
+      // they still have life left: without that, each frame of a long session
+      // asked the app list again.
+      let lastFresh: { bundleUrl: string; frameUrl: string } | null = null
       const freshUrls = async (): Promise<{ bundleUrl: string; frameUrl: string } | null> => {
+        if (
+          lastFresh &&
+          !bundleTokenExpiresSoon(lastFresh.bundleUrl) &&
+          !(ownOriginFrame && bundleTokenExpiresSoon(lastFresh.frameUrl))
+        ) {
+          return lastFresh
+        }
+        lastFresh = await fetchFreshUrls()
+        return lastFresh
+      }
+      const fetchFreshUrls = async (): Promise<{ bundleUrl: string; frameUrl: string } | null> => {
         const freshEntry = (await freshManifestEntries())?.find((e) => e.name === name)
         const fresh = freshEntry?.uiBundleUrl
         if (!fresh) return null

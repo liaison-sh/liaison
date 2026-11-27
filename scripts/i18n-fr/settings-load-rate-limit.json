@@ -1,0 +1,8 @@
+{
+  "key": {
+    "kernel.settingsPage.loadFailed": "Ces réglages n'ont pas pu être chargés. Réessayez.",
+    "kernel.settingsPage.loadRateLimited": "Trop de requêtes pour l'instant. Patientez un instant, puis réessayez.",
+    "kernel.pluginMount.rateLimited": "Trop de requêtes pour l'instant. Patientez un instant, puis réessayez.",
+    "kernel.pluginMount.retry": "Réessayer"
+  }
+}

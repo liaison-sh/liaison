@@ -26,12 +26,15 @@ import {
   urlToTabInfo,
 } from "~/framework/app-registry"
 import { bootstrapKernelApps, resetBootstrap } from "~/framework/bootstrap"
+import { openTab, resetTabStore } from "~/modules/shell/tab-store"
 import {
   createPushNav,
   isDetailRoute,
   masterRouteFor,
+  openDetailFrom,
   parentRouteForPath,
   patternIsDetail,
+  resetPushNavOpener,
 } from "~/primitives/createPushNav"
 
 describe("createPushNav", () => {
@@ -42,6 +45,7 @@ describe("createPushNav", () => {
     resetRegistry()
     resetBootstrap()
     bootstrapKernelApps()
+    resetPushNavOpener()
   })
 
   afterEach(() => {
@@ -140,6 +144,51 @@ describe("createPushNav", () => {
       expect(navigateSpy).toHaveBeenCalledWith("/projects", { replace: true })
       dispose()
     })
+  })
+
+  it("a label pushed from Chats does not outlive its conversation", () => {
+    // A thread pushed from Chats and left through the tab bar used to name
+    // the NEXT detail's back control: "< Chats" on an agent opened from You.
+    window.history.replaceState(null, "", "/chats")
+    currentPathname = "/chats"
+    createRoot((dispose) => {
+      const nav = createPushNav()
+      nav.pushDetail("/threads/thread-1", { fromLabel: "From Chats" })
+      currentPathname = "/threads/thread-1"
+      expect(nav.backLabel()).toBe("From Chats")
+      // Left through the tab bar, then another conversation, reached elsewhere.
+      currentPathname = "/threads/thread-2"
+      expect(nav.backLabel()).toBe("Chats")
+      dispose()
+    })
+  })
+
+  it("an agent opened from You goes back to You, labelled You", () => {
+    resetTabStore()
+    window.history.replaceState(null, "", "/agents/self")
+    currentPathname = "/agents/self"
+    createRoot((dispose) => {
+      const nav = createPushNav()
+      openDetailFrom({ label: "You", returnTo: "/settings" }, () =>
+        openTab({ type: "agents:agent", entityId: "self", label: "Agent" }),
+      )
+      expect(nav.detailOpen()).toBe(true)
+      expect(nav.backLabel()).toBe("You")
+      nav.popDetail()
+      expect(navigateSpy).toHaveBeenCalledWith("/settings", { replace: true })
+      // Popped: the record is spent, a later deep link goes to the parent.
+      navigateSpy.mockClear()
+      nav.popDetail()
+      expect(navigateSpy).toHaveBeenCalledWith("/work", { replace: true })
+      dispose()
+    })
+    resetTabStore()
+  })
+
+  it("an agent page reached by a link goes back to Work, never to the /agents redirect", () => {
+    // `/agents` redirects straight back to the viewer's own agent: Back there
+    // did nothing at all.
+    expect(parentRouteForPath("/agents/@my-agent")).toBe("/work")
   })
 
   it("pushDetail marks the entry it pushes so popDetail can tell it apart", () => {

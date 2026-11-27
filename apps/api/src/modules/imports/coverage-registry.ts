@@ -199,6 +199,11 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   "app_invoicing.received_einvoices": { exempt: "sync", reason: "e-invoicing and FX sync state" },
   "app_invoicing.received_retry": { exempt: "sync", reason: "e-invoicing and FX sync state" },
   "app_invoicing.received_sync_state": { exempt: "sync", reason: "e-invoicing and FX sync state" },
+  "app_invoicing.sales": {
+    exempt: "derived",
+    reason:
+      "the sales a buyer reads its documents by, with the buyer identity captured from the source when each was sold; written by the issuing path, never imported",
+  },
   "app_invoicing.stripe_sales": {
     exempt: "derived",
     reason:
@@ -377,6 +382,8 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   },
   "kernel.api_adapter_versions": { exempt: "config", reason: "credentials and configuration" },
   "kernel.api_adapters": { exempt: "config", reason: "credentials and configuration" },
+  "kernel.buyer_invoice_keys": { exempt: "config", reason: "credentials and configuration" },
+  "kernel.buyer_invoice_links": { exempt: "system", reason: "five-minute download links" },
   "kernel.app_build_artifacts": {
     exempt: "derived",
     reason: "bytes the app builder built from a draft version, rebuilt from its files",

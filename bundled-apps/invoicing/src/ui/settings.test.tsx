@@ -71,6 +71,7 @@ describe("InvoicingIssuerProfiles (Phase 17 F6)", () => {
     expect(blocks.filter((b) => b.block === "custom").map((b) => b.component)).toEqual([
       "InvoicingIssuerProfiles",
       "InvoicingIssuerStreams",
+      "InvoicingWebsiteAccess",
       "EinvoicingRegistration",
     ])
     // Read-only lists: a list tool and nothing else.

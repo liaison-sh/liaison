@@ -196,7 +196,11 @@ export async function openNotificationRoute(route: unknown, api?: ApiClient): Pr
       await manifestAppsSettled()
       // Nothing here opens that kind of item (an app this client lacks): the
       // click still lands somewhere, on Home, where the attention list is.
-      if (!isOpenable(parsed.app, parsed.entityType)) return openHomeFallback()
+      if (!isOpenable(parsed.app, parsed.entityType)) {
+        // Said, briefly: a tap that silently shows Home reads as a broken link.
+        addToast({ message: tNow("kernel.shellUi.notificationItemUnavailable"), type: "info" })
+        return openHomeFallback()
+      }
     }
     // The entity's discussion brings the message into view once it has loaded
     // (threads/EntityDiscussion.tsx follows the same jump a quote asks for).

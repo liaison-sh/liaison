@@ -158,3 +158,10 @@ A device sign-in is refused on /custom/install and publishes through the builder
 Logs route meta.hidden: count + missing scopes of lines the reader cannot see -> apps/api/src/modules/app-builder/logs.ts (hiddenAppLogs) ; apps/api/src/modules/app-builder/logs-routes.ts
 Manifests list no activity-bar entry for an interface not served here, with pageUnavailable -> apps/api/src/modules/apps/routes.ts (GET /manifests, withoutActivityBar)
 ui-approval refused 409 without org hosts for an org's own app -> apps/api/src/modules/apps/install-routes.ts (POST /:name/ui-approval)
+An app implements revenue-stream@1 with sale_get and sales_list op tools and emits sale:paid -> packages/app-sdk/src/contracts/revenue-stream.ts:25-48 ; apps/api/src/modules/apps/provider-contracts/validate.ts:102-112
+Contract op tools must be internal, not agent visible, contractOnly, not gated and declare the op params -> apps/api/src/modules/apps/provider-contracts/validate.ts:70-100
+Events carry external_id and occurred_at; the consumer reads sale_get before acting -> packages/app-sdk/src/contracts/revenue-stream.ts:14-17 ; packages/app-sdk/src/contracts/revenue-stream.ts:51-56
+The Sale type and saleProblems -> packages/app-sdk/src/contracts/revenue-stream.ts:58-250
+A contract subscription is delivered from every implementing app of the org with the source app in event.app -> apps/api/src/modules/apps/runtime.ts (contract subscription) ; apps/api/src/infra/events/event-bus.ts (contractChannelsOf)
+A contract subscription needs contract_calls for the contract -> apps/api/src/modules/apps/provider-contracts/validate.ts:127-155
+A multi-provider call names its provider, which must have a row in the caller's binding table -> apps/api/src/modules/apps/provider-contracts/resolve.ts (resolveNamedContractProvider) ; apps/api/src/modules/apps/sandbox/bridge/contracts.ts (multi)

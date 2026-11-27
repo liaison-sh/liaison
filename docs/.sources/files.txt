@@ -1,1 +1,2 @@
 A file from an earlier step reads as that step and is attached once it has run -> apps/api/src/modules/files/attach.ts:624 ; packages/shared/src/refs.ts:178
+An agent reads an attached text file directly, up to 100 KB, as content -> apps/api/src/modules/files/text-read.ts:16 ; apps/api/src/modules/agent/tools/file-tools.ts:222

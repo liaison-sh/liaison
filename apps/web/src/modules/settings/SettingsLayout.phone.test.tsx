@@ -210,3 +210,71 @@ describe("phone parity with the desktop column", () => {
     expect(screen.queryByTestId("settings-tablet-sections")).toBeNull()
   })
 })
+
+// N4 (iOS re-walk): You > page > back > next page... ran into the per-user
+// request limit after about 20 pages. Back to the You screen unmounts the
+// section content, but the set of visited pages survived it, so opening the
+// next page mounted EVERY page visited before it again, each one reading its
+// data again: the k-th page cost the requests of all k pages.
+describe("phone walk through settings pages", () => {
+  beforeEach(() => {
+    clearAuth()
+    resetRegistry()
+    resetBootstrap()
+    bootstrapKernelApps()
+    resetPhoneSettingsNav()
+    signIn(["*"])
+  })
+  afterEach(() => {
+    cleanup()
+    setShellTier("desktop")
+  })
+
+  const fetchMock = () => fetch as unknown as { mock: { calls: unknown[][] } }
+  const requested = (needle: string) =>
+    fetchMock().mock.calls.filter(([url]) => String(url).includes(needle)).length
+
+  it("opening N pages one after another reads each page's data once, not N times", async () => {
+    setShellTier("phone")
+    await renderSettings("/settings")
+    await screen.findByTestId("you-screen")
+    const all = [...document.querySelectorAll("button[data-testid^='you-row-']")]
+      .map((el) => el.getAttribute("data-testid") ?? "")
+      .filter((id) => id !== "you-row-agent-app")
+    const usersRow = all.find((id) => /[-:]users$/.test(id))
+    expect(usersRow).toBeDefined()
+    const rowIds = all.filter((id) => !/users|usage/.test(id)).slice(0, 8)
+    expect(rowIds.length).toBeGreaterThanOrEqual(5)
+
+    const open = async (testId: string) => {
+      fireEvent.click(await screen.findByTestId(testId))
+      await waitFor(() => expect(screen.getByTestId("settings-content")).toBeInTheDocument())
+      // Let the page's lazy component mount and issue its reads.
+      await new Promise((r) => setTimeout(r, 30))
+    }
+    const back = async () => {
+      fireEvent.click(screen.getByTestId("settings-phone-back"))
+      await screen.findByTestId("you-screen")
+    }
+
+    // The Users page reads `/admin/users`; open it first, then walk the others.
+    await open(usersRow as string)
+    await waitFor(() => expect(requested("/api/admin/users")).toBeGreaterThan(0))
+    const afterUsers = requested("/api/admin/users")
+    await back()
+
+    const before = fetchMock().mock.calls.length
+    const perVisit: number[] = []
+    for (const id of rowIds) {
+      const start = fetchMock().mock.calls.length
+      await open(id)
+      perVisit.push(fetchMock().mock.calls.length - start)
+      await back()
+    }
+    // The Users page was not on screen again: its reads did not run again.
+    expect(requested("/api/admin/users")).toBe(afterUsers)
+    // A later page costs what its own reads cost, not those of every page before it.
+    const total = fetchMock().mock.calls.length - before
+    expect(total).toBeLessThanOrEqual(perVisit.length * 6)
+  })
+})

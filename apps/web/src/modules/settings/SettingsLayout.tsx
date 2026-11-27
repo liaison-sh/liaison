@@ -8,6 +8,7 @@ import {
   createSignal,
   For,
   on,
+  onCleanup,
   onMount,
   Show,
   Suspense,
@@ -58,6 +59,12 @@ interface SettingsLayoutProps {
 }
 
 // _props is intentionally unused — tab system passes entityId but settings uses URL-based routing internally
+/** Runs `run` when the part of the page it sits in is unmounted. */
+const OnUnmount: Component<{ run: () => void }> = (props) => {
+  onCleanup(() => props.run())
+  return null
+}
+
 const SettingsLayout: Component<SettingsLayoutProps> = (_props) => {
   const i18n = useI18n()
   const location = useLocation()
@@ -244,6 +251,15 @@ const SettingsLayout: Component<SettingsLayoutProps> = (_props) => {
     return visited
   }
 
+  // The visited set says which pages are MOUNTED (kept alive). On the phone,
+  // going back to the You screen unmounts the whole section content, kept
+  // pages included, so the set must go with it: kept, the next page pushed
+  // remounted every page visited before it, each reading its data again, and a
+  // walk through the pages ran into the per-user request limit (iOS re-walk N4).
+  function forgetVisited(): void {
+    visited = new Set()
+  }
+
   // ── Phone: a push stack rooted on the You screen ───────────────────
   //
   // `pushedSection` carries what the URL cannot: the Profile section's href IS
@@ -331,6 +347,7 @@ const SettingsLayout: Component<SettingsLayoutProps> = (_props) => {
             fadeColor="var(--color-bg)"
           >
             <div data-testid="settings-content" class="mx-auto w-full max-w-xl">
+              <OnUnmount run={forgetVisited} />
               <For each={visibleSections()}>
                 {(section) => {
                   const isActive = () => {

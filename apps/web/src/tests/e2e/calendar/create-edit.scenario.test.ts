@@ -70,8 +70,8 @@ test.describe("Calendar — create and edit", () => {
     const pad = (n: number) => String(n).padStart(2, "0")
     const todayValue = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`
     await expect(tab.getByTestId("event-start-input")).toHaveValue(todayValue)
-    // Move it to a fixed day in the shown week's next week so "today" cannot hide the bug.
-    const target = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 9)
+    // Move it to the same weekday next week, so "today" cannot hide the bug.
+    const target = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7)
     const targetValue = `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}`
     await tab.getByTestId("event-start-input").fill(targetValue)
     await tab.getByTestId("event-end-input").fill(targetValue)

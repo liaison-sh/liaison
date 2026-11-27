@@ -6,7 +6,6 @@
 import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
-import { evictTabByEntity } from "~/modules/shell/tab-store"
 import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
 import { Dialog } from "~/ui/Dialog"
@@ -29,7 +28,7 @@ import {
   validateForm,
   withAllDay,
 } from "./event-form"
-import { EVENT_TAB_TYPE, forgetDraft, openedEvent, takeDraft } from "./event-tabs"
+import { closeEventTab, openedEvent, takeDraft } from "./event-tabs"
 
 const RECURRENCE_OPTIONS = ["none", "daily", "weekly", "monthly"] as const
 type RecurrenceChoice = (typeof RECURRENCE_OPTIONS)[number]
@@ -126,8 +125,7 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
   }
 
   function close(): void {
-    forgetDraft(entityId())
-    evictTabByEntity(EVENT_TAB_TYPE, entityId())
+    closeEventTab(entityId())
   }
 
   async function save(): Promise<void> {

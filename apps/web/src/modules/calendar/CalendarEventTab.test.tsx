@@ -15,6 +15,8 @@ const state = vi.hoisted(() => ({
 vi.mock("~/modules/shell/ApiContext", () => ({ useApi: () => state.api }))
 vi.mock("~/modules/shell/tab-store", () => ({
   openTab: vi.fn(),
+  activateTab: vi.fn(),
+  tabStore: { activeTabId: "calendar-tab", tabs: [] },
   evictTabByEntity: (_type: string, id: string) => state.evicted.push(id),
 }))
 vi.mock("~/modules/shell/toast-store", () => ({

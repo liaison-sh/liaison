@@ -5,6 +5,11 @@ import { isTextLikeFile, TEXT_READ_MAX_BYTES } from "~/modules/files/text-read"
 import * as mergeService from "~/modules/pdf/merge"
 import { handleFilesList, handleFilesMergePdfs, handleFilesRead } from "./file-tools"
 
+/** A result's fields, for asserting on whichever shape came back. */
+function fields(res: object): Record<string, unknown> {
+  return { ...res }
+}
+
 const ORG = "00000000-0000-0000-0000-000000000001"
 const USER = "00000000-0000-0000-0000-000000000002"
 
@@ -149,7 +154,7 @@ describe("handleFilesRead: text files", () => {
   it("returns a Markdown file's text (stored as octet-stream), fenced as untrusted, with no URL", async () => {
     const url = spyOn(fileService, "getRelayDownloadUrl")
     const { ctx, deps } = setup(utf8("# Procédure\n\n- étape 1\n"))
-    const res = (await handleFilesRead({ fileId: "f-md" }, ctx, deps)) as Record<string, unknown>
+    const res = fields(await handleFilesRead({ fileId: "f-md" }, ctx, deps))
     expect(res.text).toBe(
       '<external-content source="untrusted">\n# Procédure\n\n- étape 1\n\n</external-content>',
     )
@@ -175,7 +180,7 @@ describe("handleFilesRead: text files", () => {
   it("reads at most the cap from storage and says the rest is cut", async () => {
     const big = utf8("a".repeat(TEXT_READ_MAX_BYTES + 5000))
     const { ctx, deps, ranges } = setup(big, { mimeType: "text/plain" })
-    const res = (await handleFilesRead({ fileId: "f-md" }, ctx, deps)) as Record<string, unknown>
+    const res = fields(await handleFilesRead({ fileId: "f-md" }, ctx, deps))
     expect(ranges).toEqual([{ key: expect.any(String), end: TEXT_READ_MAX_BYTES - 1 }])
     expect(res.truncated).toBe(true)
     expect(String(res.note)).toContain(`first ${TEXT_READ_MAX_BYTES} bytes of ${big.byteLength}`)
@@ -186,7 +191,7 @@ describe("handleFilesRead: text files", () => {
     // "é" is two bytes; place one across the cap.
     const content = utf8(`${"a".repeat(TEXT_READ_MAX_BYTES - 1)}é and more`)
     const { ctx, deps } = setup(content, { mimeType: "text/plain" })
-    const res = (await handleFilesRead({ fileId: "f-md" }, ctx, deps)) as Record<string, unknown>
+    const res = fields(await handleFilesRead({ fileId: "f-md" }, ctx, deps))
     expect(res.truncated).toBe(true)
     expect(String(res.text)).not.toContain("\uFFFD")
     expect(String(res.text)).not.toContain("é")
@@ -195,7 +200,7 @@ describe("handleFilesRead: text files", () => {
   it("refuses a binary file renamed .md (NUL bytes) and does not dump it", async () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13])
     const { ctx, deps } = setup(png)
-    const res = (await handleFilesRead({ fileId: "f-md" }, ctx, deps)) as Record<string, unknown>
+    const res = fields(await handleFilesRead({ fileId: "f-md" }, ctx, deps))
     expect(res).toEqual({ error: { code: "binary_file", message: expect.any(String) } })
     expect(res).not.toHaveProperty("text")
   })
@@ -204,7 +209,7 @@ describe("handleFilesRead: text files", () => {
     const { ctx, deps } = setup(new Uint8Array([0x41, 0xff, 0xfe, 0x42]), {
       mimeType: "text/plain",
     })
-    const res = (await handleFilesRead({ fileId: "f-md" }, ctx, deps)) as Record<string, unknown>
+    const res = fields(await handleFilesRead({ fileId: "f-md" }, ctx, deps))
     expect((res.error as { code: string }).code).toBe("binary_file")
   })
 

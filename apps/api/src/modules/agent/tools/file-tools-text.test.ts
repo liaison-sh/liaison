@@ -84,6 +84,11 @@ function read(orgId: string, userId: string, fileId: string) {
   )
 }
 
+/** A result's fields, for asserting on whichever shape came back. */
+function fields(res: object): Record<string, unknown> {
+  return { ...res }
+}
+
 const utf8 = (s: string) => new TextEncoder().encode(s)
 
 let orgA: string
@@ -114,7 +119,7 @@ afterAll(async () => {
 describe("files_read on text files (real RLS + storage)", () => {
   it("returns a .md attachment's text, fenced as untrusted, with no download URL", async () => {
     const id = await seedFile(orgA, userA, threadA, "procedure.md", utf8("# Procédure\n\nÉtape 1"))
-    const res = (await read(orgA, userA, id)) as Record<string, unknown>
+    const res = fields(await read(orgA, userA, id))
     expect(res.text).toBe(
       '<external-content source="untrusted">\n# Procédure\n\nÉtape 1\n</external-content>',
     )
@@ -155,7 +160,7 @@ describe("files_read on text files (real RLS + storage)", () => {
   it("cuts an oversized text file at the cap and says so", async () => {
     const big = utf8(`${"ligne de journal\n".repeat(Math.ceil((TEXT_READ_MAX_BYTES * 1.5) / 17))}`)
     const id = await seedFile(orgA, userA, threadA, "server.log", big, "text/plain")
-    const res = (await read(orgA, userA, id)) as Record<string, unknown>
+    const res = fields(await read(orgA, userA, id))
     expect(res.truncated).toBe(true)
     expect(String(res.note)).toContain(`first ${TEXT_READ_MAX_BYTES} bytes of ${big.byteLength}`)
     expect(String(res.text).length).toBeLessThanOrEqual(TEXT_READ_MAX_BYTES + 64)
@@ -164,7 +169,7 @@ describe("files_read on text files (real RLS + storage)", () => {
   it("refuses a binary file renamed .md", async () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d])
     const id = await seedFile(orgA, userA, threadA, "image.md", png)
-    const res = (await read(orgA, userA, id)) as Record<string, unknown>
+    const res = fields(await read(orgA, userA, id))
     expect((res.error as { code: string }).code).toBe("binary_file")
     expect(res).not.toHaveProperty("text")
   })

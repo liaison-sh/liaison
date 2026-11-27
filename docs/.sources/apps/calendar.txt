@@ -60,3 +60,9 @@ Primary and editable calendars start selected, read-only ones unselected -> apps
 Calendar list read again once a day -> apps/api/src/apps/calendar/app.manifest.json:585
 Added calendar appears, renamed one updated -> apps/api/src/apps/calendar/handlers.ts:233
 Calendar removed from Google is removed with its events -> apps/api/src/apps/calendar/sync.ts:886
+Only the fields you changed are sent; Google's other edits are kept -> apps/api/src/apps/calendar/handlers.ts:759
+Same field changed on both sides: the newer change wins -> apps/api/src/apps/calendar/handlers.ts:759
+Notice naming the field and the replaced value -> apps/api/src/apps/calendar/sync.ts:2096
+Quiet item on Home after a conflict -> apps/api/src/apps/calendar/app.manifest.json:687
+Times sent with the calendar's time zone -> apps/api/src/apps/calendar/handlers.ts:689
+Read-only calendars refuse new events and edits -> apps/api/src/modules/apps/sandbox/bridge/calendar.ts:70

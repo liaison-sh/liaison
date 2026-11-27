@@ -59,7 +59,9 @@ test.describe("Calendar — drag", () => {
     await drag(page, { x: colX(1), y: atHour(14) + 4 }, { x: colX(1), y: atHour(15.75) + 4 })
     const card = page.getByTestId("calendar-quick-create")
     await expect(card).toBeVisible()
-    await expect(card.getByTestId("quick-create-when")).toContainText(/2:00\s?PM - 4:00\s?PM|14:00 - 16:00/)
+    await expect(card.getByTestId("quick-create-when")).toContainText(
+      /2:00\s?PM - 4:00\s?PM|14:00 - 16:00/,
+    )
     const title = `Dragged ${Date.now()}`
     await card.getByTestId("quick-create-title").fill(title)
     await card.getByTestId("quick-create-title").press("Enter")
@@ -93,11 +95,19 @@ test.describe("Calendar — drag", () => {
     // Resize: the bottom edge down one hour (15:00-17:00 becomes 15:00-18:00).
     const handle = block.getByTestId("calendar-event-resize")
     const h = await handle.boundingBox()
-    await drag(page, { x: h!.x + h!.width / 2, y: h!.y + 2 }, { x: h!.x + h!.width / 2, y: h!.y + 2 + HOUR_PX })
-    await expect.poll(async () => Math.round((await block.boundingBox())!.height)).toBeGreaterThan(3 * HOUR_PX - 8)
+    await drag(
+      page,
+      { x: h!.x + h!.width / 2, y: h!.y + 2 },
+      { x: h!.x + h!.width / 2, y: h!.y + 2 + HOUR_PX },
+    )
+    await expect
+      .poll(async () => Math.round((await block.boundingBox())!.height))
+      .toBeGreaterThan(3 * HOUR_PX - 8)
 
     // Undo the resize: back to two hours.
     await page.getByTestId("toast-info").last().getByTestId("toast-action").click()
-    await expect.poll(async () => Math.round((await block.boundingBox())!.height)).toBeLessThan(2 * HOUR_PX + 4)
+    await expect
+      .poll(async () => Math.round((await block.boundingBox())!.height))
+      .toBeLessThan(2 * HOUR_PX + 4)
   })
 })

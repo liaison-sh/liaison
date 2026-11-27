@@ -269,6 +269,8 @@ export function canMarkPaid(doc: {
     transition({ type: doc.type as DocumentType, status: doc.status }, "mark_paid").status ===
       "ok" &&
     doc.payment_status !== "paid" &&
+    // Settled by its credit notes: nothing is left to pay.
+    doc.payment_status !== "credited" &&
     !stripeCollection(doc.external_refs as Record<string, unknown> | undefined)
   )
 }
@@ -683,6 +685,7 @@ const PAYMENT_TONE: Record<string, BadgeTone> = {
   paid: "success",
   partial: "warning",
   refunded: "muted",
+  credited: "muted",
   unpaid: "neutral",
 }
 
@@ -690,6 +693,7 @@ const PAYMENT_LABEL: Record<string, string> = {
   paid: "Paid",
   partial: "Partial",
   refunded: "Refunded",
+  credited: "Credited",
   unpaid: "Unpaid",
 }
 

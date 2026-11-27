@@ -108,6 +108,69 @@ export async function isFullyCredited(
   return credited >= invoiceTotal
 }
 
+/** The invoice's issued credit notes, by their back-link: the candidates `creditedTotalMinor` reads. */
+export async function creditNotesOf(
+  db: Pick<MutationsDb, "findMany">,
+  invoiceId: string,
+): Promise<Array<Record<string, unknown>>> {
+  return (await db.findMany("documents", {
+    where: { original_document_id: invoiceId, type: "credit_note" },
+    limit: 200,
+  })) as Array<Record<string, unknown>>
+}
+
+/** Invoice statuses that can still be owed: one paid (and perhaps partly refunded) is not. */
+const OWED_STATUSES = new Set(["issued", "overdue"])
+
+/**
+ * After a credit note against `invoiceId` issued: an invoice its issued credit notes now cover in
+ * full is settled (`payment_status: "credited"`), so it is never overdue, chased or offered to mark
+ * as paid. A partial credit leaves the invoice owed; what is due is its total less the credits
+ * (the overdue scan says so). An invoice already paid or refunded is left as it is: what the customer is
+ * owed back is the credit note's business. Returns the credited total and the amount still due.
+ */
+export async function settleAfterCredit(
+  db: Pick<MutationsDb, "findOne" | "findMany" | "update">,
+  invoiceId: string,
+  actor: string | null,
+  at: Date = new Date(),
+): Promise<{ credited: bigint; due: bigint; settled: boolean } | null> {
+  const [doc] = (await db.findMany("documents", { where: { id: invoiceId }, limit: 1 })) as Array<
+    Record<string, unknown>
+  >
+  if (!doc || doc.type !== "invoice") return null
+  // Only an invoice still owed is settled by a credit: one paid already is the credit note's own
+  // business (what the customer is owed back), and is left as it is, before any other read.
+  const owed =
+    String(doc.payment_status ?? "unpaid") === "unpaid" && OWED_STATUSES.has(String(doc.status))
+  if (!owed) return null
+  const log = (Array.isArray(doc.lifecycle_log) ? doc.lifecycle_log : []) as Array<
+    Record<string, unknown>
+  >
+  const credited = await creditedTotalMinor(
+    db,
+    { id: invoiceId, lifecycle_log: log },
+    await creditNotesOf(db, invoiceId),
+  )
+  const grand = toBigInt(doc.grand_total_minor)
+  const total = grand < 0n ? -grand : grand
+  const due = credited >= total ? 0n : total - credited
+  if (total === 0n || due > 0n) return { credited, due, settled: false }
+  await db.update("documents", invoiceId, {
+    payment_status: "credited",
+    lifecycle_log: [
+      ...log,
+      {
+        event: "settled_by_credit_note",
+        actor,
+        ts: at.toISOString(),
+        credited_minor: credited.toString(),
+      },
+    ],
+  })
+  return { credited, due, settled: true }
+}
+
 /**
  * The one-invoice-per-order guard, shared by draftsCreate and invoiceCreateAndIssue so the two
  * can never drift apart again. Ignores credit note documents for the order, ignores a fully

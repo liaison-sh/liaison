@@ -120,6 +120,13 @@ export interface TabTypeRegistration {
    *  own title nor a consistent org placement). The screen renders the org
    *  name itself, as a small muted line under its own title. */
   hidePhoneTopBar?: boolean
+  /** The screen a Back from this detail goes UP to when nothing of ours is
+   *  behind it in history (a push notification tap, a deep link, a cold
+   *  start), when the pattern's own head is not that screen: a conversation
+   *  (`/threads/:entityId`) belongs to the Chats list (`/chats`), and no
+   *  screen answers `/threads`. Unset: the nearest registered screen above
+   *  the entity tail (primitives/createPushNav.ts, `parentRouteForPath`). */
+  parentRoute?: string
 }
 
 const [tabTypeStore, setTabTypeStore] = createStore<Record<string, TabTypeRegistration>>({})

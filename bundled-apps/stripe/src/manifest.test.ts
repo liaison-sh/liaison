@@ -23,8 +23,8 @@ const CARD_PARAM =
   /[cC]ard_?[nN]umber|[cC][vV][cC]|[cC][vV][vV]|(^|_)([pP]an|PAN)($|_|[A-Z])|Pan($|[A-Z_])|[eE]xpir/
 
 describe("stripe manifest", () => {
-  it("is at version 0.1.39", () => {
-    expect(load().version).toBe("0.1.39")
+  it("is at version 0.1.40", () => {
+    expect(load().version).toBe("0.1.40")
   })
 
   it("paces Stripe calls with the connection's shared limits, never inside a run", () => {
@@ -123,6 +123,19 @@ describe("stripe manifest", () => {
     }
     expect(roles.billing.extends).toBe("member")
     expect(roles.admin.scopes).toContain("stripe:admin:connection")
+  })
+
+  it("the billing tier decides the refunds and cancellations it requests; the member tier decides nothing", () => {
+    const m = load()
+    expect(m.scopes).toContain("stripe:approve")
+    expect(m.roles.billing.scopes).toContain("stripe:approve")
+    expect(m.roles.member.scopes).not.toContain("stripe:approve")
+    // Deciding grants billing nothing it cannot already do by its own call:
+    // every tool that waits for approval needs a scope the billing tier holds.
+    const billing = new Set([...m.roles.member.scopes, ...m.roles.billing.scopes])
+    const gated = Object.entries<any>(m.tools).filter(([, t]) => t.gated === true)
+    expect(gated.map(([n]) => n).sort()).toEqual(["refunds_create", "subscription_cancel"])
+    for (const [, t] of gated) for (const s of t.requiredScopes) expect(billing.has(s)).toBe(true)
   })
 
   it("a sync user id column is erased by anonymising it", () => {

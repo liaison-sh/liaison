@@ -90,7 +90,7 @@ On a managed instance whose subscription is suspended (unpaid, or ended), only a
 
 ## Delete an account
 
-There is no admin action that deletes a user. Each person can delete their own account in **Settings › Security › Delete my account**, after confirming a 6-digit code sent by email. Their profile, personal agent and its memory, preferences, connected accounts and registered devices are deleted. What they shared with the team (messages, tickets, documents) stays, without their name. The only admin of an organization cannot delete their account until another member is an admin.
+There is no admin action that deletes a user. Each person can delete their own account in **Settings › Security › Delete my account**, after confirming a 6-digit code sent by email. Their profile, personal agent and its memory, preferences, connected accounts and registered devices are deleted. What they shared with the team (messages, tickets, documents) stays, without their name: it is signed **Deleted user** (in French, "Utilisateur supprimé"). The only admin of an organization cannot delete their account until another member is an admin.
 
 ## Link an imported author to a person
 

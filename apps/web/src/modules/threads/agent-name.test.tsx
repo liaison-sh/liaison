@@ -25,6 +25,31 @@ describe("localizeAgentName", () => {
     ))
     expect(localizeAgentName("Tobias's agent")).toBe("Agent de Tobias")
   })
+
+  // An erased member's messages were signed "deleted-user-<uuid>" (iOS re-walk,
+  // 2026-11): the row now carries the neutral name, read in the reader's language.
+  it("names an erased person in the reader's language", () => {
+    render(() => (
+      <I18nProvider initialLocale="fr">
+        <span />
+      </I18nProvider>
+    ))
+    expect(localizeAgentName("Deleted user")).toBe("Utilisateur supprimé")
+  })
+
+  it("names a DM with an erased person by the whole label, not its first word", async () => {
+    const { threadDisplayName } = await import("./thread-store")
+    render(() => (
+      <I18nProvider initialLocale="fr">
+        <span />
+      </I18nProvider>
+    ))
+    const participants = [
+      { id: "me", name: "Ana Diaz" },
+      { id: "gone", name: "Deleted user" },
+    ]
+    expect(threadDisplayName({ title: null, participants }, "me")).toBe("Utilisateur supprimé")
+  })
 })
 
 // The Chats list named the personal agent DM "Personal agent" under a French UI

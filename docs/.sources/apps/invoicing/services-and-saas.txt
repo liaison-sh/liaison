@@ -73,3 +73,6 @@ Check the amount flag names last time's amount, never on a first invoice -> bund
 Amount check follows an edit of the row -> bundled-apps/invoicing/src/recurring/restage.ts (afterRunWrite)
 Run read names rows billing far from their last invoice -> bundled-apps/invoicing/src/recurring/run-get.ts (recurringRunGet)
 Card line carries the row's note -> bundled-apps/invoicing/src/recurring/run-card.ts (cardItems)
+a credit note covering an unpaid invoice settles it (Credited) -> bundled-apps/invoicing/src/mutations/credit-coverage.ts (settleAfterCredit) ; bundled-apps/invoicing/src/mutations/credit-notes.ts (creditNoteCreateAndIssue, creditNoteIssue)
+never overdue, overdue item says what is still due -> bundled-apps/invoicing/src/handlers/overdue-scan.ts (overdueScanJob) ; bundled-apps/invoicing/app.manifest.json (attention document_overdue)
+no Mark paid, not in Awaiting payment -> bundled-apps/invoicing/src/ui/DocumentDetail.tsx (canMarkPaid) ; bundled-apps/invoicing/src/ui/dashboards/AwaitingPayment.tsx (isOutstanding)

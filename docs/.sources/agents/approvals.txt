@@ -251,3 +251,4 @@ Requests no run staged group by same action, same people, same day in the org's 
 Home row approve of a sequence carries each later step's fingerprint -> apps/api/src/modules/approvals/attention.ts:665
 The row sends them with the approve -> apps/web/src/modules/shell/AttentionRow.tsx:543
 Actions that ask first for some requests (conditionalGate: credit note, quote, purchase order, org knowledge document) keep their own deciding scope after reading scoped data -> apps/api/src/modules/approvals/authority.ts:113 ; apps/api/src/modules/apps/execute-tool.ts:5739
+A custom app's write that stays in the app: card line only when an app scope holder lacks the taint -> apps/api/src/modules/apps/execute-tool.ts (taintCardAppReaders) ; apps/api/src/modules/apps/runtime.ts (customAppWritesStayInApp) ; apps/api/src/modules/approvals/edit.ts

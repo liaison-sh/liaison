@@ -192,6 +192,7 @@ Section `issuers`, scope `org`, edited with `invoicing:settings:read`.
 | --- | --- | --- |
 |  | InvoicingIssuerProfiles | custom |
 |  | InvoicingIssuerStreams | custom |
+|  | InvoicingWebsiteAccess | custom |
 
 ### Shopify shop mappings
 
@@ -416,6 +417,14 @@ Section `connection`, scope `org`, edited with `stripe:admin:connection`.
 | Key | Label | Type |
 | --- | --- | --- |
 |  | stripe | connections |
+
+### Webhook
+
+Section `webhook`, scope `org`, edited with `stripe:admin:connection`.
+
+| Key | Label | Type |
+| --- | --- | --- |
+|  | StripeWebhookSettings | custom |
 
 ## tickets
 

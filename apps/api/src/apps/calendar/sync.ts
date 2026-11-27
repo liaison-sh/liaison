@@ -612,6 +612,8 @@ export interface CalendarRow {
   last_polled_at: string | null
   sync_pending: boolean
   calaccess: string
+  /** Set while a full resync (after an expired sync token) is listing into the rows. */
+  full_sync_run?: string | null
 }
 
 export interface GoogleCalendarListEntry {
@@ -620,6 +622,17 @@ export interface GoogleCalendarListEntry {
   backgroundColor?: string
   timeZone?: string
   accessRole?: string
+  primary?: boolean
+}
+
+/** Whether a newly listed calendar starts selected: the account's primary calendar and the
+ * calendars it can write to. Calendars it only reads (holidays, birthdays, a colleague's shared
+ * calendar) start unselected, so they are neither synced nor watched until someone picks them. */
+export function selectedByDefault(entry: GoogleCalendarListEntry, accountEmail: string): boolean {
+  if (entry.primary === true || entry.id === accountEmail) return true
+  // Google always names the access role; an entry without one is treated as writable.
+  if (!entry.accessRole) return true
+  return entry.accessRole === "owner" || entry.accessRole === "writer"
 }
 
 async function findCalendarsByAccountId(
@@ -645,7 +658,8 @@ async function upsertCalendar(
   accountId: string,
   calaccess: string,
   entry: GoogleCalendarListEntry,
-): Promise<{ id: string; created: boolean }> {
+  selected: boolean,
+): Promise<{ id: string; created: boolean; selected: boolean }> {
   const { sql } = await import("drizzle-orm")
   const schema = CALENDAR_SCHEMA()
   const rows = (await db.execute(sql`
@@ -653,18 +667,18 @@ async function upsertCalendar(
       (id, org_id, account_id, google_calendar_id, name, color, time_zone, access_role, selected, calaccess)
     VALUES
       (gen_random_uuid(), ${orgId}::uuid, ${accountId}::uuid, ${entry.id}, ${entry.summary ?? entry.id},
-       ${entry.backgroundColor ?? null}, ${entry.timeZone ?? null}, ${entry.accessRole ?? null}, true, ${calaccess})
+       ${entry.backgroundColor ?? null}, ${entry.timeZone ?? null}, ${entry.accessRole ?? null}, ${selected}, ${calaccess})
     ON CONFLICT (org_id, account_id, google_calendar_id) DO UPDATE SET
       name = EXCLUDED.name, color = EXCLUDED.color, time_zone = EXCLUDED.time_zone,
       access_role = EXCLUDED.access_role
-    RETURNING id, (xmax = 0) AS inserted
+    RETURNING id, (xmax = 0) AS inserted, selected
   `)) as unknown as
-    | { rows?: Array<{ id: string; inserted: boolean }> }
-    | Array<{ id: string; inserted: boolean }>
+    | { rows?: Array<{ id: string; inserted: boolean; selected: boolean }> }
+    | Array<{ id: string; inserted: boolean; selected: boolean }>
   const list = Array.isArray(rows) ? rows : (rows.rows ?? [])
   const row = list[0]
   if (!row) throw new Error("calendar calendars upsert returned no id")
-  return { id: row.id, created: row.inserted }
+  return { id: row.id, created: row.inserted, selected: row.selected }
 }
 
 /**
@@ -739,7 +753,7 @@ export async function getCalendarById(
   const rows = (await db.execute(sql`
     SELECT id, account_id, google_calendar_id, name, color, time_zone, access_role, selected,
            sync_token, watch_channel_id, watch_resource_id, watch_expiration, last_polled_at,
-           sync_pending, calaccess
+           sync_pending, calaccess, full_sync_run
     FROM ${sql.raw(schema)}.calendars
     WHERE org_id = ${orgId}::uuid AND id = ${calendarId}::uuid
     LIMIT 1
@@ -807,7 +821,7 @@ export async function runCalendarImport(
   accountId: string,
   listCalendars: () => Promise<GoogleCalendarListEntry[]>,
   enqueueJob: (jobName: string, payload: Record<string, unknown>) => Promise<void>,
-): Promise<{ calendarIds: string[] }> {
+): Promise<{ calendarIds: string[]; removed: StaleChannel[] }> {
   const account = await getAccountById(db, orgId, accountId)
   if (!account) throw new Error(`calendar account ${accountId} not found`)
 
@@ -815,22 +829,107 @@ export async function runCalendarImport(
 
   const entries = await listCalendars()
   const calendarIds: string[] = []
+  const toSync: string[] = []
   for (const entry of entries) {
-    const { id: calendarId } = await upsertCalendar(db, orgId, accountId, accountId, entry)
-    calendarIds.push(calendarId)
+    const upserted = await upsertCalendar(
+      db,
+      orgId,
+      accountId,
+      accountId,
+      entry,
+      selectedByDefault(entry, account.email_address),
+    )
+    calendarIds.push(upserted.id)
+    // A calendar nobody selected is not synced (a re-import used to fill deselected ones
+    // again); a selected one already synced keeps its token and is not listed again whole.
+    if (upserted.selected && (upserted.created || !(await hasSyncToken(db, orgId, upserted.id)))) {
+      toSync.push(upserted.id)
+    }
   }
 
-  for (const calendarId of calendarIds) {
+  // Calendars Google no longer lists for this account (unsubscribed, deleted, access removed):
+  // their rows and events go, and their watch channels are returned so the caller stops them on
+  // Google. Until now they stayed, each events.list answering 404 at every poll.
+  const removed = await removeUnlistedCalendars(
+    db,
+    orgId,
+    accountId,
+    entries.map((e) => e.id),
+  )
+
+  for (const calendarId of toSync) {
     await enqueueJob("calendar-initial-sync", { orgId, accountId, calendarId })
   }
 
   // A successful import clears any error a previous failed import left behind.
   await updateAccount(db, orgId, accountId, {
-    sync_status: entries.length > 0 ? "syncing" : "active",
+    sync_status: toSync.length > 0 ? "syncing" : "active",
     last_sync_error: null,
   })
 
-  return { calendarIds }
+  return { calendarIds, removed }
+}
+
+async function hasSyncToken(db: RlsClient, orgId: string, calendarId: string): Promise<boolean> {
+  const calendar = await getCalendarById(db, orgId, calendarId)
+  return Boolean(calendar?.sync_token)
+}
+
+/** A watch channel to stop on Google. */
+export interface StaleChannel {
+  channelId: string
+  resourceId: string
+}
+
+/** Deletes the account's calendars missing from Google's list (and their events: a pending
+ * local change has no calendar left to reach). Returns their live watch channels. */
+async function removeUnlistedCalendars(
+  db: RlsClient,
+  orgId: string,
+  accountId: string,
+  listedGoogleIds: string[],
+): Promise<StaleChannel[]> {
+  const { sql } = await import("drizzle-orm")
+  const schema = CALENDAR_SCHEMA()
+  const listed =
+    listedGoogleIds.length > 0
+      ? sql`AND google_calendar_id NOT IN (${sql.join(
+          listedGoogleIds.map((id) => sql`${id}`),
+          sql.raw(", "),
+        )})`
+      : sql``
+  const gone = (await db.execute(sql`
+    SELECT id, watch_channel_id, watch_resource_id FROM ${sql.raw(schema)}.calendars
+    WHERE org_id = ${orgId}::uuid AND account_id = ${accountId}::uuid ${listed}
+  `)) as unknown as
+    | {
+        rows?: Array<{
+          id: string
+          watch_channel_id: string | null
+          watch_resource_id: string | null
+        }>
+      }
+    | Array<{ id: string; watch_channel_id: string | null; watch_resource_id: string | null }>
+  const rows = Array.isArray(gone) ? gone : (gone.rows ?? [])
+  if (rows.length === 0) return []
+  const ids = sql.join(
+    rows.map((r) => sql`${r.id}::uuid`),
+    sql.raw(", "),
+  )
+  await db.execute(sql`
+    DELETE FROM ${sql.raw(schema)}.events WHERE org_id = ${orgId}::uuid AND calendar_id IN (${ids})
+  `)
+  await db.execute(sql`
+    DELETE FROM ${sql.raw(schema)}.sync_log WHERE org_id = ${orgId}::uuid AND calendar_id IN (${ids})
+  `)
+  await db.execute(sql`
+    DELETE FROM ${sql.raw(schema)}.calendars WHERE org_id = ${orgId}::uuid AND id IN (${ids})
+  `)
+  return rows.flatMap((r) =>
+    r.watch_channel_id && r.watch_resource_id
+      ? [{ channelId: r.watch_channel_id, resourceId: r.watch_resource_id }]
+      : [],
+  )
 }
 
 const MAX_SYNC_ERROR_LENGTH = 1000
@@ -1323,12 +1422,21 @@ export async function applyInitialSyncPages(
   pages: SyncPage[],
 ): Promise<{ syncToken: string | null }> {
   let syncToken: string | null = null
+  // A full resync after an expired sync token (recoverFromSyncTokenGone) lists into the rows
+  // already there instead of deleting them first: each listed event's row is stamped with the
+  // resync's id, and the rows not stamped by the last page are the events Google no longer has.
+  const fullSyncRun = (await getCalendarById(db, orgId, calendarId))?.full_sync_run ?? null
   for (const page of pages) {
+    // A deleted one-off event (showDeleted lists every one ever cancelled) has nothing to show:
+    // it is not stored. Cancelled occurrences of a series are, to hide them in the series.
+    const items = (page.items ?? []).filter(
+      (item) => item.status !== "cancelled" || item.recurringEventId,
+    )
     await attachPendingCreates(
       db,
       orgId,
       calendarId,
-      (page.items ?? []).map((item) => item.id),
+      items.map((item) => item.id),
     )
     // A full sync (first import, re-select, expired sync token) follows the same rules as the
     // incremental one: a pending local edit newer than Google's change is not overwritten.
@@ -1336,8 +1444,9 @@ export async function applyInitialSyncPages(
       db,
       orgId,
       calendarId,
-      await gateInboundItems(db, orgId, calendarId, page.items ?? [], calaccess),
+      await gateInboundItems(db, orgId, calendarId, items, calaccess),
     )
+    if (fullSyncRun) await stampSeenInFullSync(db, orgId, calendarId, fullSyncRun, items)
     // What the person's own calendar says about their away days (only their own primary).
     await applyAwayFromCalendar(db, orgId, calendarId, page.items ?? [])
     if (page.nextSyncToken) syncToken = page.nextSyncToken
@@ -1346,10 +1455,52 @@ export async function applyInitialSyncPages(
   // QuickJS exhausts the sandbox memory cap); only the final page carries nextSyncToken, so a
   // null here means "not the final page yet" — never overwrite a stored token with null.
   if (syncToken !== null) {
+    if (fullSyncRun) await sweepAfterFullSync(db, orgId, calendarId, fullSyncRun)
     await setCalendarSyncToken(db, orgId, calendarId, syncToken)
     await markAccountActiveIfFullySynced(db, orgId, calendarId)
   }
   return { syncToken }
+}
+
+async function stampSeenInFullSync(
+  db: RlsClient,
+  orgId: string,
+  calendarId: string,
+  fullSyncRun: string,
+  items: GoogleEventItem[],
+): Promise<void> {
+  if (items.length === 0) return
+  const { sql } = await import("drizzle-orm")
+  await db.execute(sql`
+    UPDATE ${sql.raw(CALENDAR_SCHEMA())}.events SET seen_sync_run = ${fullSyncRun}
+    WHERE org_id = ${orgId}::uuid AND calendar_id = ${calendarId}::uuid
+      AND google_event_id IN (${sql.join(
+        items.map((item) => sql`${item.id}`),
+        sql.raw(", "),
+      )})
+  `)
+}
+
+/** The end of a full resync: rows of Google events the listing did not name are gone on Google.
+ * Local rows with a change still owed to Google (and local-only rows) stay. */
+async function sweepAfterFullSync(
+  db: RlsClient,
+  orgId: string,
+  calendarId: string,
+  fullSyncRun: string,
+): Promise<void> {
+  const { sql } = await import("drizzle-orm")
+  const schema = CALENDAR_SCHEMA()
+  await db.execute(sql`
+    DELETE FROM ${sql.raw(schema)}.events
+    WHERE org_id = ${orgId}::uuid AND calendar_id = ${calendarId}::uuid
+      AND google_event_id IS NOT NULL AND pending_push = 'none'
+      AND seen_sync_run IS DISTINCT FROM ${fullSyncRun}
+  `)
+  await db.execute(sql`
+    UPDATE ${sql.raw(schema)}.calendars SET full_sync_run = NULL
+    WHERE org_id = ${orgId}::uuid AND id = ${calendarId}::uuid AND full_sync_run = ${fullSyncRun}
+  `)
 }
 
 /** When the last selected calendar of an account receives its initial syncToken, flip the
@@ -1481,11 +1632,10 @@ export async function applyIncrementalSyncPages(
 }
 
 /**
- * recoverFromSyncTokenGone — Task 4.1 410 recovery. Deletes only the calendar's Google-born
- * events (`googleEventId IS NOT NULL AND pendingPush = 'none'`), preserving un-pushed
- * local-born rows and any row with a pending push (Design: "the wipe MUST exclude un-pushed
- * local-born rows ... and any row with pendingPush != 'none'"). Nulls the syncToken and
- * re-enqueues `calendar-initial-sync` exactly once. Keeps the watch channel (does not touch
+ * recoverFromSyncTokenGone — 410 recovery: a full resync that keeps the local event ids. Marks
+ * the calendar with a resync id, nulls the syncToken and re-enqueues `calendar-initial-sync`
+ * exactly once; that sync stamps every listed row and finally deletes only the Google-born rows
+ * it did not list (`pendingPush = 'none'`), preserving local-born rows and pending pushes. Keeps the watch channel (does not touch
  * watch_channel_id/watch_resource_id/watch_expiration — only stopCalendarWatch, used on
  * deselect, clears those).
  */
@@ -1497,16 +1647,17 @@ export async function recoverFromSyncTokenGone(
 ): Promise<void> {
   const { sql } = await import("drizzle-orm")
   const schema = CALENDAR_SCHEMA()
+  // The rows stay (their ids are what open tabs, timelines and links point to): the full
+  // resync lists into them and sweeps the ones Google no longer has (applyInitialSyncPages).
   await db.execute(sql`
-    DELETE FROM ${sql.raw(schema)}.events
-    WHERE org_id = ${orgId}::uuid AND calendar_id = ${calendarId}::uuid
-      AND google_event_id IS NOT NULL AND pending_push = 'none'
+    UPDATE ${sql.raw(schema)}.calendars SET full_sync_run = ${crypto.randomUUID()}
+    WHERE org_id = ${orgId}::uuid AND id = ${calendarId}::uuid
   `)
   await setCalendarSyncToken(db, orgId, calendarId, null)
   await db.execute(sql`
     INSERT INTO ${sql.raw(schema)}.sync_log (id, org_id, calendar_id, operation, status, error_kind, detail, calaccess)
     SELECT gen_random_uuid(), ${orgId}::uuid, ${calendarId}::uuid, 'incremental-sync', 'error', 'SyncTokenGone',
-           'sync token expired; wiped Google-born rows and re-enqueued initial sync', calaccess
+           'sync token expired; full resync queued (rows kept, unlisted ones swept)', calaccess
     FROM ${sql.raw(schema)}.calendars WHERE id = ${calendarId}::uuid AND org_id = ${orgId}::uuid
   `)
   await enqueueJob("calendar-initial-sync", { orgId, calendarId })
@@ -2633,6 +2784,22 @@ export async function handleGooglePushNotification(
     { orgId, calendarId: calendar.id },
     { jobId: incrementalSyncJobId(calendar.id), removeOnComplete: true },
   )
+}
+
+/** findAccountsForListRefresh — connected accounts whose calendar list is refreshed daily:
+ * not disconnected, not imported from a file, not waiting for a reconnect. */
+export async function findAccountsForListRefresh(
+  db: RlsClient,
+  orgId: string,
+): Promise<Array<{ id: string }>> {
+  const { sql } = await import("drizzle-orm")
+  const res: unknown = await db.execute(sql`
+    SELECT id FROM ${sql.raw(CALENDAR_SCHEMA())}.accounts
+    WHERE org_id = ${orgId}::uuid AND disconnected_at IS NULL
+      AND sync_status NOT IN ('imported', 'reauth-required')
+  `)
+  const rows = Array.isArray(res) ? res : ((res as { rows?: unknown[] }).rows ?? [])
+  return rows as Array<{ id: string }>
 }
 
 /** The job id every incremental sync of one calendar runs under (notification and poll alike),

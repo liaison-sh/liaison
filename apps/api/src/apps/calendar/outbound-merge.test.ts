@@ -204,6 +204,9 @@ describe("G8: read-only calendars", () => {
 
   it("update_event and delete_event on a reader calendar's event are refused", async () => {
     const { h } = await connected()
+    // A reader calendar starts unselected: select it so its events are synced.
+    await h.tool("set_selected", { calendarId: (await h.calendar(HOLIDAYS))?.id, selected: true })
+    await h.drain()
     const id = await localId(h, HOLIDAYS, "20261111_holiday")
     await expect(h.tool("update_event", { eventId: id, title: "x" })).rejects.toThrow(/read-only/)
     await expect(h.tool("delete_event", { eventId: id })).rejects.toThrow(/read-only/)

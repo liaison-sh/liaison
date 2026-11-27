@@ -1732,7 +1732,13 @@ export async function resolveUpdateTarget(
   db: RlsClient,
   orgId: string,
   params: UpdateTargetParams,
-): Promise<{ eventId: string; scope: UpdateScope | null; splitAt?: Date }> {
+): Promise<{
+  eventId: string
+  scope: UpdateScope | null
+  splitAt?: Date
+  /** A delete of one occurrence of a series not on Google yet: that occurrence as an EXDATE. */
+  exdate?: Date
+}> {
   const row = await findEventForUpdate(db, orgId, params.eventId, params.calendarId)
   if (!row || row.deleted_at) {
     throw Object.assign(new Error(`calendar event ${params.eventId} not found`), {
@@ -1798,6 +1804,11 @@ export async function resolveUpdateTarget(
     return { eventId: row.id, scope: "following", splitAt: occurrence }
   }
   if (!row.google_event_id) {
+    // A series not on Google yet has no instance to cancel: the occurrence leaves its rule.
+    if (tool === "delete_event") {
+      await probeOccurrence(row, occurrence, title, params.occurrenceStart)
+      return { eventId: row.id, scope: "occurrence", exdate: occurrence }
+    }
     throw invalidParams(
       `${title} has not reached Google yet; its occurrences can be changed once it has (try again in a minute).`,
     )

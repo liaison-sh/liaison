@@ -151,6 +151,30 @@ describe("G14: this and following", () => {
     expect(google.requestsFor("events.insert")).toHaveLength(0)
   })
 
+  it("one occurrence of a series not on Google yet leaves its rule as an EXDATE", async () => {
+    // No drain: the create has not reached Google.
+    const { h } = await connected()
+    const team = await h.calendar("team0001@group.calendar.google.com")
+    const created = (await h.tool("create_event", {
+      calendarId: team?.id,
+      title: "Local weekly",
+      start: "2026-12-07T09:00:00.000Z",
+      end: "2026-12-07T09:30:00.000Z",
+      recurrence: ["RRULE:FREQ=WEEKLY"],
+    })) as { eventId: string }
+    const result = (await h.tool("delete_event", {
+      eventId: created.eventId,
+      scope: "occurrence",
+      occurrenceStart: "2026-12-14T09:00:00.000Z",
+    })) as { scope: string }
+    expect(result.scope).toBe("occurrence")
+    const row = (await h.events("team0001@group.calendar.google.com")).find(
+      (r) => r.id === created.eventId,
+    )
+    expect(row?.recurrence).toEqual(["RRULE:FREQ=WEEKLY", "EXDATE:20261214T090000Z"])
+    expect(row?.deleted_at).toBeNull()
+  })
+
   it("a recurring meeting without a scope names the three choices; a wrong start is refused", async () => {
     const { h, masterId } = await connected()
     await expect(h.tool("update_event", { eventId: masterId, title: "x" })).rejects.toThrow(

@@ -129,7 +129,7 @@ async function tool(name: string, params: Row): Promise<Row> {
 
 /**
  * The app's event as its payment provider's webhook makes it: published by the app, as the
- * system (the way the Stripe and Shopify webhooks reach invoicing).
+ * system (the way a payment provider's webhook reaches invoicing).
  */
 async function announce(action: "paid" | "refunded", externalId: string, at: string) {
   await publishEvent({

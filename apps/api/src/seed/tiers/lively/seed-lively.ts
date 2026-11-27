@@ -816,9 +816,7 @@ export async function runSeedLivelyCli(
     })
   } catch (err) {
     if (profileFraction === null) throw err
-    console.error(
-      `[lively-seed] FAILED: ${err instanceof Error ? err.message : String(err)}`,
-    )
+    console.error(`[lively-seed] FAILED: ${err instanceof Error ? err.message : String(err)}`)
     return { exitCode: 1 }
   }
   const seconds = ((performance.now() - started) / 1000).toFixed(1)

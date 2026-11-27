@@ -116,6 +116,7 @@ const READ_ONLY: Record<string, string[]> = {
     "list_calendars",
     "list_events",
     "search_events",
+    "get_event", // one event by id, the event tab's read
     "list_accounts",
     "activity_read", // a timeline read the kernel makes, in a read-only savepoint
   ],

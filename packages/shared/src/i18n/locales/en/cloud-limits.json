@@ -85,8 +85,8 @@
     }
   },
   "native": {
-    "paymentRequired": "AI features are paused until the open invoice is paid. An admin can pay it from Liaison on the web.",
-    "outOfCredits": "Your workspace has run out of credits, so the assistant has stopped. Everything else keeps working. An admin can add more from Liaison on the web.",
+    "paymentRequired": "AI features are paused until the open invoice is paid.",
+    "outOfCredits": "Your workspace has run out of credits, so the assistant has stopped. Everything else keeps working.",
     "adminUntil": "As an admin you can export the data until {{date}}.",
     "seatLimitReached": "This organization uses all the seats its plan includes. An admin can deactivate someone first.",
     "storageLimitReached": "This organization uses all the storage its plan includes. Free some space first.",

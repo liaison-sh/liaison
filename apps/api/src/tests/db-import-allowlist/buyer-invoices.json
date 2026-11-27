@@ -1,0 +1,8 @@
+{
+  "privileged": {
+    "modules/buyer-invoices/store.ts": "The buyer invoices API: a request names no org, so its linv_ key is looked up org-less by prefix and compared by hash in constant time; every later read and write (keys, links, invoicing sales and documents) is pinned to that key's org and issuer profile in SQL, and which sales a buyer sees is decided by the matching rule.",
+    "modules/buyer-invoices/file.ts": "Streams the one PDF a live download link names: reads that file row's storage key in the link's org, never a sealed file, and lets no storage key or URL out.",
+    "modules/buyer-invoices/routes.ts": "Writes the audit row of a buyer API call (list, link, download) in the key's org; no read.",
+    "modules/buyer-invoices/admin-routes.ts": "Writes the audit row of a website access key's creation or revocation in the admin's own org; no read."
+  }
+}

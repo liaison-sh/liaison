@@ -1420,8 +1420,12 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/issue-date.test.ts",
             "src/state.test.ts",
             "src/tax.test.ts",
+            // The sales a buyer reads its documents by, and the identity each keeps (pure).
+            "src/sales-ledger.test.ts",
             // A source-taxed sale checked against OSS, reverse charge and location evidence (pure).
             "src/sale-tax.test.ts",
+            // The sale's mail: the branded thank-you or the plain invoice mail (pure).
+            "src/sale-thanks.test.ts",
             // What the order-created auto-flow would park, asked before a draft order is staged (pure).
             "src/order-invoiceability.test.ts",
             // E-invoicing pure core (territory, identity, regime classifier, operation type).

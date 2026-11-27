@@ -982,7 +982,7 @@
     },
     "invoicing__settings_issuer_profile_create": {
       "desc": 194,
-      "schema": 700
+      "schema": 710
     },
     "invoicing__settings_issuer_profile_delete": {
       "desc": 114,
@@ -994,7 +994,7 @@
     },
     "invoicing__settings_issuer_profile_update": {
       "desc": 254,
-      "schema": 710
+      "schema": 720
     },
     "invoicing__settings_shop_mapping_list": {
       "desc": 1401,
@@ -1946,7 +1946,7 @@
     },
     "mail__composeForApp": {
       "desc": 153,
-      "schema": 274
+      "schema": 347
     },
     "mail__convertToTicket": {
       "desc": 134,

@@ -102,6 +102,8 @@ const EXPECTED_CLOSURE: Record<string, string> = {
   "kernel.agents": "direct",
   "kernel.api_adapter_versions": "direct",
   "kernel.api_adapters": "direct",
+  "kernel.buyer_invoice_keys": "direct",
+  "kernel.buyer_invoice_links": "direct",
   "kernel.app_document_usage": "direct",
   "kernel.app_build_artifacts": "direct",
   "kernel.app_code_modules": "direct",

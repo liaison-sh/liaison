@@ -382,6 +382,12 @@ export const KERNEL_USER_COLUMN_DISPOSITION: Record<string, KernelColumnDisposit
     kind: "handled",
     reason: "delete (per-user attention rules)",
   },
+  "buyer_invoice_keys.created_by": {
+    kind: "retain",
+    reason:
+      "RETAIN: who created a website access key (a credential into the org's invoices) is part " +
+      "of that credential's security record, as its audit row is",
+  },
   "client_actions.created_by_user_id": {
     kind: "retain",
     reason:

@@ -47,6 +47,12 @@ Invoicing issues the invoice of a Shopify order as soon as the order is paid. Yo
 3. Set `invoiceApprovalThresholdMinor` on the profile. A paid order over the threshold waits for approval; one under it issues straight away.
 4. Set `autoEmail: true` if the invoice should be emailed to the customer when it issues.
 
+### The thank-you mail
+
+Turn on **Thank-you mail for each sale** on the issuer profile to send each buyer one mail per sale, from the profile's **Send invoices from** mailbox: your logo, what was bought, the total, the invoice number or numbers, and your legal details, with every invoice of the sale attached as a PDF. It is written in French for a French-speaking buyer and in English otherwise, following the profile's **Default language** when the buyer's is unknown. The words are yours to change: `email_templates.sale_thanks` (and `sale_thanks_fr` for French) on the profile take a `subject`, an `html` greeting and a `text` greeting, with `{{buyer_name}}`, `{{numbers}}`, `{{total}}`, `{{sale_date}}` and `{{issuer_name}}`.
+
+With it off, the profile keeps the plain invoice mail, sent only when `autoEmail` is on. With no mailbox chosen, no mail goes: the order waits under **Deferred** for one.
+
 **Settings › Invoicing › Shopify shop mappings** lists each **Shop URL** with its **Issuer profile**. Without a mapping, paid orders are parked and no invoice issues.
 
 When an order cannot be invoiced automatically, it appears under **Deferred** in the Invoicing sidebar (the row shows only when something is waiting). An order whose tax needs a decision offers **Issue with Shopify's tax** and **Issue as computed**. Both file an approval.
@@ -289,6 +295,19 @@ When **Subscriptions paid by card** is issued by **Liaison**, each Stripe invoic
 - **Before a decision.** Stripe invoices finalized while nobody had decided who issues stay waiting; once a person picks Liaison, an attention item lists them, and each is issued only on a person's click.
 - **Missed events.** Every 10 minutes Liaison asks Stripe what an event may have missed (invoicing turned off, an event that failed) and hands it to the same steps: the missing invoice, a payment, a credit note. It never issues anything by itself beyond that.
 
+
+## Show buyers their invoices on your website
+
+Your own website can list a signed-in buyer's invoices and credit notes and let them download each PDF, from its server, with a website access key.
+
+1. Open **Settings > Invoicing**, **Website access**. You need the issuer admin permission (`invoicing:issuer:admin`).
+2. Under the issuer profile, name the key and choose **Create key**. Copy it into your website's server settings: it starts with `linv_` and is shown only once.
+3. Your server calls `POST /api/buyer-invoices/list` with `Authorization: Bearer <key>` and the buyer it holds for the signed-in person (`email`, `shopifyCustomerId`, `hubUserId`), and `POST /api/buyer-invoices/link` with a document id for a download link that lives 5 minutes.
+
+- A key reads one issuer profile's invoices and credit notes, nothing else. At most two keys are active per profile, so you can move your website to a new key before you revoke the old one. **Revoke** stops the key and its open download links at once.
+- A buyer sees a sale when a strong id matches (the Shopify customer id, or your website's user id recorded with the sale), or by email only for a sale that has no strong id (a guest checkout). One id that differs hides the sale, whatever the email says.
+- A paid sale not invoiced yet shows as pending, with no number and no link.
+- Each key may make 120 requests a minute. Every list, link and download is written to the audit log, without the buyer's email.
 
 ## Settings
 

@@ -41,6 +41,7 @@ const ISSUER_WRITE_COLUMNS = [
   "po_approval_threshold_minor",
   "require_two_eyes",
   "auto_email_enabled",
+  "sale_thanks_enabled",
   "prices_include_tax",
   "mail_account_id",
   "timezone",
@@ -108,6 +109,7 @@ export const ISSUER_SENSITIVE_COLUMNS: ReadonlyArray<string> = [
   "po_approval_threshold_minor",
   "require_two_eyes",
   "auto_email_enabled",
+  "sale_thanks_enabled",
   "mail_account_id",
 ]
 

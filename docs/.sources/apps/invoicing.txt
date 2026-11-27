@@ -226,6 +226,26 @@ project unreadable refused before anything is drafted -> bundled-apps/invoicing/
 issued invoice company: contact's, else the project's -> bundled-apps/invoicing/src/issue.ts:1416
 A late run whose remaining rows all need a fix has no card; its page lists each with why and Fix; fixing one stages the Late card; the run closes once every row is issued or taken out -> bundled-apps/invoicing/src/recurring/run-card.ts:399 ; bundled-apps/invoicing/src/ui/RunDetail.tsx:179 ; bundled-apps/invoicing/src/ui/RunDetail.tsx:379 ; bundled-apps/invoicing/src/recurring/run-card.ts:254
 billing draft issue approval decided by invoicing:approve -> bundled-apps/invoicing/src/mutations/billing-plan.ts:778
+Thank-you mail for each sale toggle -> bundled-apps/invoicing/src/ui/settings.tsx:666
+thank-you mail only when opted in, else plain mail only with auto-email -> bundled-apps/invoicing/src/sale-thanks.ts:275
+no mailbox, no mail -> bundled-apps/invoicing/src/sale-thanks.ts:277
+French for a French buyer, else the issuer's language -> bundled-apps/invoicing/src/sale-thanks.ts:115
+template placeholders -> bundled-apps/invoicing/src/sale-thanks.ts:135
+Website access block, Create key, Revoke -> bundled-apps/invoicing/src/ui/WebsiteAccess.tsx:167
+Create key button -> bundled-apps/invoicing/src/ui/WebsiteAccess.tsx:150
+Revoke button -> bundled-apps/invoicing/src/ui/WebsiteAccess.tsx:123
+website access keys need invoicing:issuer:admin -> apps/api/src/modules/buyer-invoices/admin-routes.ts:33
+a restricted device session cannot create a key -> apps/api/src/modules/buyer-invoices/admin-routes.ts:90
+keys start with linv_ and are shown once -> apps/api/src/modules/buyer-invoices/store.ts:21
+at most two active keys per issuer profile -> apps/api/src/modules/buyer-invoices/store.ts:24
+download links live 5 minutes -> apps/api/src/modules/buyer-invoices/store.ts:25
+revoking a key deletes its links -> apps/api/src/modules/buyer-invoices/store.ts:122
+list and link routes -> apps/api/src/modules/buyer-invoices/routes.ts:187
+link route -> apps/api/src/modules/buyer-invoices/routes.ts:221
+120 requests a minute per key -> apps/api/src/modules/buyer-invoices/routes.ts:45
+audit without the buyer's email -> apps/api/src/modules/buyer-invoices/routes.ts:173
+matching rule: strong id, else email for a sale with none; a conflicting id hides -> apps/api/src/modules/buyer-invoices/match.ts:50
+pending sale has no number and no link -> apps/api/src/modules/buyer-invoices/store.ts:388
 Date of sale printed when it differs from the issue date, invoices only -> bundled-apps/invoicing/templates/shared.ts:963
 sale date stored only when it differs, never on other types -> bundled-apps/invoicing/src/issue.ts:869
 Factur-X delivery date (BT-72) from the sale date -> bundled-apps/invoicing/src/facturx/cii.ts:498

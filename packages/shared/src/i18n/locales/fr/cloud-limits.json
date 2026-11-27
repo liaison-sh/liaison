@@ -85,8 +85,8 @@
     }
   },
   "native": {
-    "paymentRequired": "Les fonctions d'IA sont suspendues jusqu'au paiement de la facture en attente. Un administrateur peut la régler depuis Liaison sur le web.",
-    "outOfCredits": "Votre espace de travail n'a plus de crédits, l'assistant s'est donc arrêté. Tout le reste fonctionne. Un administrateur peut en ajouter depuis Liaison sur le web.",
+    "paymentRequired": "Les fonctions d'IA sont suspendues jusqu'au paiement de la facture en attente.",
+    "outOfCredits": "Votre espace de travail n'a plus de crédits, l'assistant s'est donc arrêté. Tout le reste fonctionne.",
     "adminUntil": "En tant qu'administrateur, vous pouvez exporter les données jusqu'au {{date}}.",
     "seatLimitReached": "Cette organisation utilise toutes les places incluses dans son offre. Un administrateur peut d'abord désactiver quelqu'un.",
     "storageLimitReached": "Cette organisation utilise tout le stockage inclus dans son offre. Libérez d'abord de l'espace.",

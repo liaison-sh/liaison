@@ -1754,6 +1754,47 @@ describe("mail:composeForApp (B8) — internal companion tool", () => {
     expect(mime.attachments[0].filename).toBe("invoice.pdf")
   })
 
+  it("an app's inline image (an issuer's logo) goes inline with its content id; compose ignores it", async () => {
+    const bridge = makeComposeBridge()
+    await runMail({
+      exportName: "agentMailComposeForApp",
+      params: {
+        accountId: "account-1",
+        to: ["customer@example.com"],
+        subject: "Thank you",
+        textBody: "Thank you.",
+        htmlBody: '<p><img src="cid:issuer-logo"></p>',
+        attachments: ["invoicing-pdf-id"],
+        inlineImages: [{ fileId: "logo-file-id", contentId: "issuer-logo" }],
+        originating_approval_id: "approval-abc",
+      },
+      bridge,
+    })
+    expect(bridge._calls.staged.map((c: any) => c.sourceFileId)).toEqual([
+      "invoicing-pdf-id",
+      "logo-file-id",
+    ])
+    const mime = bridge._getSentMime()
+    expect(mime.attachments.map((a: any) => [a.disposition, a.contentId ?? null])).toEqual([
+      ["attachment", null],
+      ["inline", "issuer-logo"],
+    ])
+
+    const agent = makeComposeBridge()
+    await runMail({
+      exportName: "agentMailCompose",
+      params: {
+        accountId: "account-1",
+        to: ["customer@example.com"],
+        subject: "Hi",
+        textBody: "Hi.",
+        inlineImages: [{ fileId: "logo-file-id", contentId: "issuer-logo" }],
+      },
+      bridge: agent,
+    })
+    expect(agent._calls.staged).toHaveLength(0)
+  })
+
   it("agentMailCompose and agentMailComposeForApp share _doCompose (refactor invariant)", async () => {
     // Static-source assertion: both wrappers route through the shared helper.
     // If a future change re-inlines either body, this fails and forces the

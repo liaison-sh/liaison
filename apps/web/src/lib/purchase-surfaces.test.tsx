@@ -93,7 +93,8 @@ describe("credits ran out / unpaid invoice in a conversation", () => {
       expect(screen.queryByTestId("payment-required-billing-link")).toBeNull()
       expect(notice.querySelector("a, button")).toBeNull()
       expect(notice.textContent).not.toMatch(/Billing|buy|Open/)
-      expect(notice.textContent).toContain("Liaison on the web")
+      // The fact only: no pointer to where it can be bought.
+      expect(notice.textContent).not.toMatch(/on the web|website/i)
       cleanup()
     }
   })

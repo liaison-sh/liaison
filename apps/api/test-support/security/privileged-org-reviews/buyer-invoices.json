@@ -1,0 +1,7 @@
+{
+  "trustedSources": {
+    "authenticateBuyerKey": "the org of the buyer invoices key the request presents: kernel.buyer_invoice_keys matched by its prefix, then its SHA-256 compared in constant time, active keys only; every later read and write of the request is pinned to that key's org and issuer profile (modules/buyer-invoices/store.ts)",
+    "lookupBuyerLink": "the org of a live download link: kernel.buyer_invoice_links matched on the SHA-256 of the 32-byte random token in the URL, joined to its still active key of the same org; the PDF route serves that one document of that org and issuer profile alone",
+    "authenticate": "the route wrapper around authenticateBuyerKey: it returns that key, or a refusal, and nothing else"
+  }
+}

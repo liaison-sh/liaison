@@ -31,6 +31,7 @@ Pin / Pin for all -> apps/web/src/modules/threads/ThreadHeader.tsx:448
 Mute -> apps/web/src/modules/threads/ThreadHeader.tsx:484
 Archive / Unarchive thread -> apps/web/src/modules/threads/ThreadHeader.tsx:501
 Archived threads -> packages/shared/src/i18n/locales/en/kernel.json:492
+The next message by a person or an agent brings an archived thread back, unless the member muted it -> apps/api/src/modules/threads/message.ts:782
 Set topic / Edit description -> apps/web/src/modules/threads/ThreadHeader.tsx:523
 Discoverable and help -> packages/shared/src/i18n/locales/en/kernel.json:1855
 Leave thread -> apps/web/src/modules/threads/ThreadHeader.tsx:745

@@ -3,7 +3,7 @@ import { agentSpeakerName, maskWithNote, PERSONAL_AGENT_DISPLAY_NAME } from "@li
 import { and, sql as drizzleSql, eq, inArray, isNull } from "drizzle-orm"
 import { alias } from "drizzle-orm/pg-core"
 import { HTTPException } from "hono/http-exception"
-import type { RlsClient } from "~/db"
+import type { RlsClient, RlsTx } from "~/db"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import {
@@ -28,6 +28,7 @@ import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { isRestrictedScope } from "~/modules/permissions/restricted-scope"
 import { deleteMessageAndWindowDocuments } from "~/modules/search/message-indexer"
 import { seatMentionedMembers } from "~/modules/threads/participant"
+import { queueReadState } from "~/modules/threads/read-state-broadcast"
 import { threadAnchorIds } from "~/modules/threads/thread-anchor"
 import { assertDisclosureUserIds } from "~/services/security/disclosure-list"
 import {
@@ -508,6 +509,41 @@ export function agentPostMetadata(
   }
 }
 
+/**
+ * Clear the archive flag of every member (muted ones excepted) of a thread a
+ * message was just written in, and queue each member's `thread_state` frame.
+ * Runs inside the send transaction: the database function acts only for a
+ * transaction that wrote a channel line in this thread.
+ */
+export async function resurfaceThreadForMembers(
+  tx: RlsTx,
+  orgId: string,
+  threadId: string,
+): Promise<string[]> {
+  const rows = extractRows<{
+    user_id: string
+    is_muted: boolean
+    is_pinned: boolean
+    notify_all_posts: boolean
+  }>(
+    await tx.execute(
+      drizzleSql`SELECT user_id, is_muted, is_pinned, notify_all_posts
+                   FROM ${K()}.resurface_thread_for_members(${threadId}::uuid)`,
+    ),
+  )
+  for (const r of rows) {
+    await queueReadState(tx, orgId, r.user_id, {
+      kind: "thread_state",
+      threadId,
+      isArchived: false,
+      isMuted: r.is_muted,
+      isPinned: r.is_pinned,
+      notifyAllPosts: r.notify_all_posts,
+    })
+  }
+  return rows.map((r) => r.user_id)
+}
+
 export async function sendMessage(db: RlsClient, params: SendMessageParams) {
   const {
     orgId,
@@ -733,6 +769,17 @@ export async function sendMessage(db: RlsClient, params: SendMessageParams) {
         actorUserId: userId,
         userIds: mentionedUserIds,
       })
+    }
+
+    // A new channel line by a person or an agent brings the thread back to the
+    // list of every member who had archived it (mute keeps it archived: that
+    // is the "do not bring this to me" switch). Row level security lets a
+    // writer change only its own state row, so a SECURITY DEFINER function
+    // (0357) clears the flags, and only for a transaction that has just written
+    // a line in this thread. Each member's devices hear it on their own
+    // `thread_state` frame, sent once the write commits, and reload the list.
+    if (!hiddenFromChannel && (authorType === "user" || authorType === "agent")) {
+      await resurfaceThreadForMembers(tx, orgId, threadId)
     }
 
     // FOLLOWERS (S5, A2): the root's author, the replier, and every member

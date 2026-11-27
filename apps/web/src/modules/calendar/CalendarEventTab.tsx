@@ -38,6 +38,7 @@ import {
   withAllDay,
 } from "./event-form"
 import { closeEventTab, openedEvent, parseEventTabEntityId, takeDraft } from "./event-tabs"
+import { FindATime } from "./FindATime"
 import {
   buildRepeat,
   NO_REPEAT,
@@ -801,6 +802,14 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
                 />
                 {i18n.t("calendar.sendInvitations")}
               </label>
+            </Show>
+            <Show when={attendees().length > 0 && !form().allDay}>
+              <FindATime
+                attendees={attendees().map((a) => a.email)}
+                startLocal={form().startLocal}
+                endLocal={form().endLocal}
+                onPick={(slot) => update(slot)}
+              />
             </Show>
           </div>
 

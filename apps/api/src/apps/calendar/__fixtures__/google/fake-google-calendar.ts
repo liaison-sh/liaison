@@ -87,6 +87,7 @@ export type GoogleOp =
   | "events.delete"
   | "events.watch"
   | "channels.stop"
+  | "freebusy.query"
   | "unknown"
 
 export interface FakeRequest {
@@ -270,6 +271,13 @@ export class FakeGoogleCalendar {
   private clock: number
   private idCounter = 0
   private authRevoked = false
+  /** Other people's busy times or errors, as freebusy.query reports them, by address. */
+  private readonly freeBusy = new Map<
+    string,
+    { busy: { start: string; end: string }[] } | { errors: { domain: string; reason: string }[] }
+  >()
+  /** Whether the token carries the free/busy scope (false: freebusy.query answers 403). */
+  private freeBusyGranted = true
 
   constructor(opts: FakeGoogleCalendarOptions = {}) {
     this.accountEmail = opts.accountEmail ?? "owner@example.test"
@@ -550,6 +558,71 @@ export class FakeGoogleCalendar {
     )
   }
 
+  // --- free/busy ---------------------------------------------------------------------------
+
+  /** Someone's busy times as Google's free/busy shows them to this account. */
+  setBusy(email: string, busy: { start: string; end: string }[]): void {
+    this.freeBusy.set(email.toLowerCase(), { busy: cloneJson(busy) })
+  }
+
+  /** Google cannot tell this account about someone (another organization's calendar). */
+  setFreeBusyError(email: string, reason = "notFound"): void {
+    this.freeBusy.set(email.toLowerCase(), { errors: [{ domain: "global", reason }] })
+  }
+
+  /** The token lacks (false) or carries (true) the free/busy scope. */
+  grantFreeBusy(granted: boolean): void {
+    this.freeBusyGranted = granted
+  }
+
+  private serveFreeBusy(req: FakeRequest): FakeResponse {
+    if (!this.freeBusyGranted) {
+      return {
+        status: 403,
+        headers: { "content-type": "application/json; charset=UTF-8" },
+        body: JSON.stringify({
+          error: {
+            code: 403,
+            message: "Request had insufficient authentication scopes.",
+            errors: [{ domain: "global", reason: "insufficientPermissions" }],
+            status: "PERMISSION_DENIED",
+          },
+        }),
+      }
+    }
+    const body = (req.body ?? {}) as {
+      timeMin?: string
+      timeMax?: string
+      items?: { id?: string }[]
+    }
+    const min = Date.parse(body.timeMin ?? "")
+    const max = Date.parse(body.timeMax ?? "")
+    const calendars: Record<string, unknown> = {}
+    for (const item of body.items ?? []) {
+      const id = item.id ?? ""
+      const known = this.freeBusy.get(id.toLowerCase())
+      if (!known) {
+        calendars[id] = { errors: [{ domain: "global", reason: "notFound" }], busy: [] }
+      } else if ("errors" in known) {
+        calendars[id] = { errors: cloneJson(known.errors), busy: [] }
+      } else {
+        calendars[id] = {
+          busy: known.busy.filter((b) => Date.parse(b.start) < max && Date.parse(b.end) > min),
+        }
+      }
+    }
+    return {
+      status: 200,
+      headers: { "content-type": "application/json; charset=UTF-8" },
+      body: JSON.stringify({
+        kind: "calendar#freeBusy",
+        timeMin: body.timeMin,
+        timeMax: body.timeMax,
+        calendars,
+      }),
+    }
+  }
+
   /** Serves one request. */
   handle(input: {
     method: string
@@ -591,6 +664,8 @@ export class FakeGoogleCalendar {
         return this.serveWatch(req)
       case "channels.stop":
         return this.serveStop(req)
+      case "freebusy.query":
+        return this.serveFreeBusy(req)
       default:
         this.unhandled.push(req)
         return googleError("notFound")
@@ -630,6 +705,8 @@ export class FakeGoogleCalendar {
       segs.length === 3
     ) {
       if (method === "GET") op = "calendarList.list"
+    } else if (segs[0] === "freeBusy" && segs.length === 1 && method === "POST") {
+      op = "freebusy.query"
     } else if (segs[0] === "channels" && segs[1] === "stop" && method === "POST") {
       op = "channels.stop"
     } else if (segs[0] === "calendars" && segs[2] === "events") {

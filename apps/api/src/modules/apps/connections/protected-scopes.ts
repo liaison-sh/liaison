@@ -130,3 +130,26 @@ export async function existingAccountGrant(
   const latest = matching.reduce((a, b) => (b.updatedAt.getTime() > a.updatedAt.getTime() ? b : a))
   return recordedGrant(latest.metadata)
 }
+
+/**
+ * Optional scopes (`optionalScopes` in the manifest): asked for only once a feature needs one
+ * (incremental consent, Calendar's free/busy for "Find a time"). An authorize request adds an
+ * optional scope when the flow asks for it (`requested`, refused unless declared) or when the
+ * re-authorized account's recorded grant already holds it, so a reconnect keeps what the person
+ * consented to. An unknown grant adds nothing: the person never chose it, and asking would put a
+ * new scope on every reconnect's consent screen.
+ */
+export function withOptionalScopes(
+  scopes: readonly string[],
+  optional: readonly string[],
+  requested: readonly string[],
+  existingGrant: readonly string[] | "unknown" | null,
+): string[] {
+  const out = [...scopes]
+  for (const scope of optional) {
+    if (out.includes(scope)) continue
+    const held = Array.isArray(existingGrant) && existingGrant.includes(scope)
+    if (held || requested.includes(scope)) out.push(scope)
+  }
+  return out
+}

@@ -309,6 +309,10 @@ const connectionSchema = {
     tokenUrl: { type: "string" },
     userinfoUrl: { type: "string" },
     scopes: { type: "array", items: { type: "string" } },
+    // Scopes asked for only once a feature needs them (incremental consent): the
+    // authorize request adds one when the flow names it or the re-authorized account
+    // already holds it (connections/protected-scopes.ts `withOptionalScopes`).
+    optionalScopes: { type: "array", items: { type: "string" } },
     // Scopes the provider grants only once it approved the app (Shopify's
     // `read_all_orders`). Never in `scopes` nor the generated provider app
     // configuration; the authorize request asks for one when the org turned on

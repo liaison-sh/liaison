@@ -66,6 +66,20 @@ Notice naming the field and the replaced value -> apps/api/src/apps/calendar/syn
 Quiet item on Home after a conflict -> apps/api/src/apps/calendar/app.manifest.json:687
 Times sent with the calendar's time zone -> apps/api/src/apps/calendar/handlers.ts:689
 Read-only calendars refuse new events and edits -> apps/api/src/modules/apps/sandbox/bridge/calendar.ts:70
+Free/busy scope calendar.freebusy is optional, asked on first use -> apps/api/src/apps/calendar/app.manifest.json:30
+Optional scope added only when the flow asks or the grant holds it -> apps/api/src/modules/apps/connections/protected-scopes.ts:142
+Google guide lists optional scopes with the others -> apps/api/src/modules/connection-guides/google.ts:291
+find_free_slots -> apps/api/src/apps/calendar/app.manifest.json:395
+Working hours default Monday to Friday 09:00-18:00 -> apps/api/src/apps/calendar/free-slots.ts:28
+Free events, declined meetings, unmarked all-day events never block -> apps/api/src/apps/calendar/free-slots.ts:164
+Guests' busy times from Google freebusy as the caller's account -> apps/api/src/apps/calendar/handlers.ts:1659
+Without the permission slots cover only your calendar -> apps/api/src/apps/calendar/handlers.ts:1720
+Guest Google cannot share reported unknown -> apps/api/src/apps/calendar/handlers.ts:1687
+Find a time button in the event tab once it has attendees -> apps/web/src/modules/calendar/CalendarEventTab.tsx:499
+Find a time label, Allow -> packages/shared/src/i18n/locales/en/calendar.json:103
+Next week, event length, working hours -> apps/web/src/modules/calendar/FindATime.tsx:26
+Allow reconnects with the free/busy scope only -> apps/web/src/modules/calendar/FindATime.tsx:77
+Picked slot sets Start and End -> apps/web/src/modules/calendar/FindATime.tsx:128
 Teammates and contacts suggested as guests, any address accepted -> apps/web/src/modules/calendar/attendee-search.ts:22
 Send invitations ticked when guests are added -> apps/web/src/modules/calendar/CalendarEventTab.tsx:134
 Going? Yes Maybe No for an invitation you received -> apps/web/src/modules/calendar/CalendarEventTab.tsx:138

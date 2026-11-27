@@ -4,6 +4,7 @@ import {
   authorizeScopes,
   optedInScopes,
   recordedGrant,
+  withOptionalScopes,
 } from "~/modules/apps/connections/protected-scopes"
 
 const DECLARED = [{ scope: "read_all_orders", setting: "fullOrderHistory" }]
@@ -54,5 +55,19 @@ describe("protected scopes", () => {
     expect(recordedGrant({})).toBe("unknown")
     expect(recordedGrant({ grantedOAuthScopes: [] })).toBe("unknown")
     expect(recordedGrant({ grantedOAuthScopes: ["a", 1, "b"] })).toEqual(["a", "b"])
+  })
+})
+
+describe("withOptionalScopes", () => {
+  const FB = "https://www.googleapis.com/auth/calendar.freebusy"
+  it("adds an optional scope only when the flow asks for it or the grant holds it", () => {
+    expect(withOptionalScopes(["a"], [FB], [], null)).toEqual(["a"])
+    expect(withOptionalScopes(["a"], [FB], [FB], null)).toEqual(["a", FB])
+    expect(withOptionalScopes(["a"], [FB], [], ["a", FB])).toEqual(["a", FB])
+  })
+  it("never adds an undeclared scope, nor one on an unknown grant", () => {
+    expect(withOptionalScopes(["a"], [], ["https://evil.example/all"], null)).toEqual(["a"])
+    expect(withOptionalScopes(["a"], [FB], [], "unknown")).toEqual(["a"])
+    expect(withOptionalScopes(["a", FB], [FB], [FB], null)).toEqual(["a", FB])
   })
 })

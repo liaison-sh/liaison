@@ -1526,8 +1526,10 @@ export const connectionConfigRegistry = createTypedRegistry<
     tokenUrl?: string
     userinfoUrl?: string
     scopes?: string[]
-    /** Scopes the app may ask for later, never in the base grant (Shopify `read_users`).
-     *  Never written to a generated provider app configuration. */
+    /** Scopes the app may ask for later, never in the base grant (Shopify `read_users`,
+     *  Calendar's free/busy): an authorize request adds one when the flow asks for it
+     *  (`addScopes`) or the re-authorized account holds it. Never written to a generated
+     *  provider app configuration. */
     optionalScopes?: string[]
     /** Scopes the provider grants only after approving the app (Shopify
      *  `read_all_orders`): requested only when the org's `setting` toggle is on or

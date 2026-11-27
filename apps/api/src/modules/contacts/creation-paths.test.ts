@@ -132,6 +132,8 @@ describe("contact creation paths", () => {
         "modules/mail/sender-contacts.ts",
         // The seed engine's volume writer: load data on a private box, never a real org.
         "seed/bulk/volume.ts",
+        // The lively tier's search profile: the same, a busy team's volume for a capacity run.
+        "seed/bulk/search-profile.ts",
         // Seeds fixtures for demo orgs only (never a real org).
         ...inserters.filter((f) => f.startsWith("modules/demo/")),
       ].sort(),

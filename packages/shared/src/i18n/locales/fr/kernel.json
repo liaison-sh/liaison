@@ -3512,6 +3512,7 @@
     "allowPopups": "Autorisez les fenêtres pop-up pour ouvrir cet élément.",
     "couldNotOpen": "Impossible d'ouvrir cet élément.",
     "openNotification": "Ouvrir",
+    "notificationItemUnavailable": "Cet élément ne peut pas s'ouvrir dans cette application.",
     "kind": {
       "inbound": "Du client",
       "inboundVisibility": "Reçu du client",

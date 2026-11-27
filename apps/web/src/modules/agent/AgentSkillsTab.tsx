@@ -172,6 +172,7 @@ const AgentSkillsTab: Component<Props> = (props) => {
           <button
             type="button"
             data-testid="agent-skills-back"
+            data-phone-back
             onClick={() => {
               setCreating(false)
               setSelected(null)

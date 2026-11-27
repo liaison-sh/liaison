@@ -3515,6 +3515,7 @@
     "allowPopups": "Allow pop-ups to open this item.",
     "couldNotOpen": "Couldn't open this item.",
     "openNotification": "Open",
+    "notificationItemUnavailable": "This item can't be opened in this app.",
     "kind": {
       "inbound": "From customer",
       "inboundVisibility": "Received from the customer",

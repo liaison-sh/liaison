@@ -138,6 +138,7 @@ const AgentRoutinesTab: Component<Props> = (props) => {
           <button
             type="button"
             data-testid="agent-routines-back"
+            data-phone-back
             onClick={() => setSelected(null)}
             class="flex min-h-11 items-center gap-1 px-4 text-[13px] text-text-secondary"
           >

@@ -379,6 +379,41 @@ function channelName(app: string, entity: string, action: string): string {
   return `${REDIS_PREFIX}events:${app}:${entity}:${action}`
 }
 
+/**
+ * The contract sources (`contract:<name>@<version>`) an app's event is also delivered on: the
+ * contracts the app implements in that org whose spec declares the event. Set by the apps runtime
+ * (which holds the contract registry); the bus knows nothing of apps.
+ */
+export type ContractEventRouter = (orgId: string, app: string, eventKey: string) => string[]
+let contractEventRouter: ContractEventRouter | null = null
+
+export function setContractEventRouter(fn: ContractEventRouter | null): void {
+  contractEventRouter = fn
+}
+
+/** The channels of the contract subscriptions an event reaches (none for a contract source). */
+function contractChannelsOf(event: AppEvent): string[] {
+  if (!contractEventRouter || !event.orgId || event.app.startsWith("contract:")) return []
+  try {
+    return contractEventRouter(event.orgId, event.app, `${event.entity}:${event.action}`).map(
+      (src) => channelName(src, event.entity, event.action),
+    )
+  } catch (err) {
+    log.error({ err, app: event.app }, "Contract event routing failed")
+    return []
+  }
+}
+
+/** True when some contract subscription listens for `entity:action` (any contract, any org). */
+function hasContractSubscribers(entity: string, action: string): boolean {
+  const head = `${REDIS_PREFIX}events:contract:`
+  const tail = `:${entity}:${action}`
+  for (const [key, list] of handlers) {
+    if (list.length > 0 && key.startsWith(head) && key.endsWith(tail)) return true
+  }
+  return false
+}
+
 /** Reset all in-process state — for test isolation only */
 export function resetEventBus(): void {
   globalHandlers.length = 0
@@ -548,7 +583,14 @@ async function publishCounted(event: AppEvent, endOrgWork: () => void): Promise<
   // Snapshot handler arrays at publish time so concurrent resetEventBus() calls
   // don't clear them before the async dispatch executes.
   const snapshotGlobal = [...globalHandlers]
-  let channelHandlers = [...(handlers.get(channel) ?? [])]
+  // The source app's own channel, plus the contract channels its event is delivered on (an app
+  // implementing a contract that declares this event: `contract:<name>@<version>` subscribers).
+  const collectChannelHandlers = (): RegisteredHandler[] => [
+    ...(handlers.get(channel) ?? []),
+    ...contractChannelsOf(event).flatMap((c) => handlers.get(c) ?? []),
+  ]
+  let channelHandlers = collectChannelHandlers()
+  const contractSubscribers = hasContractSubscribers(entity, action)
   const dispatchHandlers = async () => {
     // A `once` handler acts for the event's org (routines, app subscriptions):
     // boot registers no org, so the org is set up here first (H3). Free for an
@@ -556,14 +598,15 @@ async function publishCounted(event: AppEvent, endOrgWork: () => void): Promise<
     if (
       event.orgId &&
       (snapshotGlobal.some((e) => e.delivery === "once") ||
-        channelHandlers.some((e) => e.delivery === "once"))
+        channelHandlers.some((e) => e.delivery === "once") ||
+        contractSubscribers)
     ) {
       try {
         await ensureEventOrg(event.orgId)
-        // The org's setup subscribes its apps' handlers to this channel: read
-        // the list again, or the event that set the org up would miss them.
-        const current = handlers.get(channel)
-        if (current) channelHandlers = [...current]
+        // The org's setup subscribes its apps' handlers to this channel (and registers the
+        // contracts its apps implement): read the lists again, or the event that set the org up
+        // would miss them.
+        channelHandlers = collectChannelHandlers()
       } catch (err) {
         log.error({ err, orgId: event.orgId, channel }, "Org setup before event dispatch failed")
       }

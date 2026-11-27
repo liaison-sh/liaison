@@ -2,6 +2,7 @@
 // Provider contracts: definitions shared by the kernel (registration, dispatch) and the apps
 // that implement or call them.
 export * from "./einvoicing-pa"
+export * from "./revenue-stream"
 
 /** What `ctx.contracts.call(contract, op, params)` answers (always pass `params` as an object). */
 export type ContractEnvelope<T = unknown> =
@@ -18,7 +19,11 @@ export interface ContractsAccessor {
     contract: string,
     op: string,
     params: Record<string, unknown>,
-    opts?: { grant?: string | null },
+    /**
+     * `provider`: for a multi-provider contract (`revenue-stream@1`), the provider app this call
+     * goes to; for a single-provider one, a provider the work was pinned to before a switch.
+     */
+    opts?: { grant?: string | null; provider?: string | null },
   ): Promise<ContractEnvelope<T>>
   /**
    * Mint a dispatch grant for the outbound `ops`, binding `subject` (param name → value that each

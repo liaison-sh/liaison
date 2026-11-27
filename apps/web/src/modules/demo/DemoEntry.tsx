@@ -5,8 +5,8 @@
 //
 // ONE DOOR, THREE PAGES, counted in the header. First the visitor says what
 // they want to see (the needs picker, with a bar showing the picks, their
-// minutes and Continue); then meets the company: what it makes and sells, how
-// each part of it runs on Liaison, the team, and the scenarios picked. Last,
+// minutes and Continue); then meets the company: who it is, who the visitor
+// is in it, and what they will try, each pick with one moment of it. Last,
 // a name and an address beside Start, and a workspace of their own, seeded
 // with that fictional company and the guided scenarios for those needs. The
 // first verification code is mailed in the same request. There is no shared workspace
@@ -40,20 +40,8 @@ import {
   presetNeeds,
 } from "@liaison/shared"
 import { useNavigate, useSearchParams } from "@solidjs/router"
-import {
-  BookOpen,
-  Building2,
-  CreditCard,
-  FileText,
-  FolderKanban,
-  Mail,
-  Receipt,
-  ShoppingBag,
-  Ticket,
-} from "lucide-solid"
 import { type Component, createSignal, For, Match, onMount, Show, Switch } from "solid-js"
 import { consumeDemoEndedNotice } from "~/lib/demo-expired"
-import { DemoExampleLine } from "~/modules/demo/DemoExampleLine"
 import {
   createDemoWorkspace,
   type DemoSignupError,
@@ -72,23 +60,6 @@ import { Button } from "~/ui/Button"
 import { Input } from "~/ui/Input"
 
 export { DEMO_COMPANY_NAME } from "~/modules/demo/door-company"
-
-/** The icon each operations row wears: its app's, as the product draws it. */
-const OPS_ICON: Readonly<Record<string, Component<{ size?: number }>>> = {
-  payments: CreditCard,
-  product: FolderKanban,
-  support: Ticket,
-  orders: ShoppingBag,
-  invoicing: FileText,
-  sales: Mail,
-  projects: FolderKanban,
-  knowledge: BookOpen,
-  agreements: FileText,
-  delivery: FolderKanban,
-  billing: Receipt,
-  clients: Building2,
-  portal: Ticket,
-}
 
 const STEPS = ["scenarios", "company", "details"] as const
 
@@ -496,15 +467,15 @@ export const DemoEntry: Component<DemoEntryProps> = (props) => {
             </div>
           </section>
         </Match>
-        {/* What the workspace is a copy of: what the company makes and sells,
-            how each part of it runs on Liaison, the team, and what the visitor
-            picked. The facts are the seed's (door-company.ts says where). */}
+        {/* Three blocks: who the company is, who the visitor is in it, and
+            what they will try, each pick with one moment from its tour. The
+            facts are the seed's (door-company.ts says where). */}
         <Match when={step() === 2}>
           <section
             data-testid="demo-company-step"
             class="flex flex-1 justify-center px-4 pb-6 pt-2 sm:px-6"
           >
-            <div class="flex w-full max-w-[1000px] flex-col gap-3.5">
+            <div class="flex w-full max-w-[620px] flex-col gap-5">
               <button
                 type="button"
                 data-testid="demo-change-picks"
@@ -516,151 +487,86 @@ export const DemoEntry: Component<DemoEntryProps> = (props) => {
               >
                 ← {i18n.t("kernel.demo.changePicks")}
               </button>
-              <div class="flex items-center gap-4">
-                <span
-                  aria-hidden="true"
-                  class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-text font-mono text-[15px] font-semibold text-bg"
-                >
-                  {company().initials}
-                </span>
-                <div class="flex min-w-0 flex-col gap-1">
-                  <h1 class="text-2xl font-semibold leading-tight text-text sm:text-[26px]">
-                    {company().name}
-                  </h1>
-                  <p class="text-[13.5px] text-text-tertiary">{i18n.t(`${copy()}.companyFacts`)}</p>
-                </div>
-              </div>
-              <DemoExampleLine world={world()} class="text-[13.5px] text-text-secondary" />
-              <div class="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-9">
-                <div data-testid="demo-intro" class="flex min-w-0 flex-col gap-3">
-                  <p class="text-[14.5px] leading-relaxed text-text-secondary">
-                    {i18n.t(`${copy()}.companyAbout`)}
-                  </p>
-                  <h2 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-text-tertiary">
-                    {i18n.t("kernel.demo.companyHow")}
-                  </h2>
-                  <ul
-                    data-testid="demo-company-ops"
-                    class="grid gap-x-[22px] gap-y-2.5 sm:grid-cols-2"
+              <div data-testid="demo-intro" class="flex flex-col gap-3">
+                <div class="flex items-center gap-4">
+                  <span
+                    aria-hidden="true"
+                    class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-text font-mono text-[15px] font-semibold text-bg"
                   >
-                    <For each={company().opsList}>
-                      {(op) => {
-                        const Icon = OPS_ICON[op.key]
-                        return (
-                          <li
-                            data-testid={`demo-company-op-${op.key}`}
-                            class="grid grid-cols-[26px_minmax(0,1fr)] items-start gap-2.5"
-                          >
-                            <span
-                              aria-hidden="true"
-                              class="inline-flex h-[26px] w-[26px] items-center justify-center rounded-md text-white"
-                              style={{ "background-color": appSquareColor(op.app) }}
-                            >
-                              <Icon size={14} />
-                            </span>
-                            <span class="min-w-0">
-                              <span class="block text-[13px] font-semibold text-text">
-                                {i18n.t(`${copy()}.companyOps.${op.key}.title`)}
-                              </span>
-                              <span class="block text-[12.5px] leading-snug text-text-secondary">
-                                {i18n.t(`${copy()}.companyOps.${op.key}.body`)}
-                              </span>
-                            </span>
-                          </li>
-                        )
-                      }}
-                    </For>
-                  </ul>
-                  <p class="text-[14px] leading-relaxed text-text-secondary">
-                    {i18n.t(`${copy()}.companyYou`)}
-                  </p>
-                </div>
-                <aside
-                  data-testid="demo-company-side"
-                  class="flex min-w-0 flex-col gap-3.5 rounded-[10px] border border-border bg-surface p-4"
-                >
-                  <h2 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-text-tertiary">
-                    {i18n.t("kernel.demo.teamTitle")}
-                  </h2>
-                  <ul data-testid="demo-team" class="flex flex-col gap-[5px] text-[12.5px]">
-                    <li class="flex justify-between gap-2.5 font-semibold text-text">
-                      {i18n.t("kernel.demo.teamYou")}
-                      <span class="text-right text-text-tertiary">
-                        {company().youRoleKey
-                          ? i18n.t(`${copy()}.${company().youRoleKey}`)
-                          : i18n.t("kernel.demo.teamCeo")}
-                      </span>
-                    </li>
-                    <For each={company().team}>
-                      {(person) => (
-                        <li class="flex justify-between gap-2.5 text-text">
-                          {person.name}
-                          <span class="text-right text-text-tertiary">
-                            {i18n.t(`${copy()}.teamRole.${person.key}`)}
-                          </span>
-                        </li>
-                      )}
-                    </For>
-                    <Show when={company().othersKey}>
-                      {(key) => (
-                        <li
-                          data-testid="demo-team-others"
-                          class="flex justify-between gap-2.5 text-text"
-                        >
-                          {i18n.t(`${copy()}.${key()}.name`)}
-                          <span class="text-right text-text-tertiary">
-                            {i18n.t(`${copy()}.${key()}.role`)}
-                          </span>
-                        </li>
-                      )}
-                    </Show>
-                  </ul>
-                  <div>
-                    <p class="mb-1.5 text-[12px] text-text-tertiary">
-                      {i18n.t("kernel.demo.youllSee")}
+                    {company().initials}
+                  </span>
+                  <div class="flex min-w-0 flex-col gap-1">
+                    <h1 class="text-2xl font-semibold leading-tight text-text sm:text-[26px]">
+                      {company().name}
+                    </h1>
+                    <p data-testid="demo-company-facts" class="text-[13.5px] text-text-tertiary">
+                      {i18n.t(`${copy()}.companyFacts`)}
                     </p>
-                    <ul
-                      data-testid="demo-picked"
-                      class="flex flex-wrap gap-1.5"
-                      aria-label={i18n.t("kernel.demo.youllSee")}
-                    >
-                      <Show
-                        when={!everything()}
-                        fallback={
-                          <li
-                            data-testid="demo-picked-all"
-                            class="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-0.5 text-[12.5px] font-medium text-accent-foreground"
-                          >
-                            {explore()
-                              ? i18n.t("kernel.demo.exploreChip")
-                              : `${i18n.t("kernel.demo.needEverything")} · ${minutes()}`}
-                          </li>
-                        }
-                      >
-                        <For each={needs()}>
-                          {(need, i) => (
-                            <li
-                              data-testid={`demo-picked-${need}`}
-                              class="inline-flex items-center gap-1.5 rounded-full border border-border bg-elevated py-0.5 pl-0.5 pr-2.5 text-[12.5px] font-medium text-text"
-                            >
-                              <span
-                                class="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full font-mono text-[10px] font-semibold text-white"
-                                style={{ "background-color": appSquareColor(needAppId(need)) }}
-                              >
-                                {i() + 1}
-                              </span>
-                              {i18n.t(`kernel.demo.needShort.${need}`)}
-                            </li>
-                          )}
-                        </For>
-                      </Show>
-                    </ul>
                   </div>
-                </aside>
+                </div>
+                <p
+                  data-testid="demo-company-about"
+                  class="text-[14.5px] leading-relaxed text-text-secondary"
+                >
+                  {i18n.t(`${copy()}.companyAbout`)}
+                </p>
+              </div>
+              <p data-testid="demo-company-you" class="text-[14.5px] font-medium text-text">
+                {i18n.t(`${copy()}.companyYou`)}
+              </p>
+              <div class="flex flex-col gap-2.5">
+                <h2
+                  id="demo-try-title"
+                  class="text-[11px] font-semibold uppercase tracking-[0.1em] text-text-tertiary"
+                >
+                  {i18n.t("kernel.demo.tryTitle")}
+                </h2>
+                <Show
+                  when={!explore()}
+                  fallback={
+                    <p data-testid="demo-picked-all" class="text-[14px] text-text-secondary">
+                      {i18n.t("kernel.demo.exploreChip")}
+                    </p>
+                  }
+                >
+                  <ol
+                    data-testid="demo-picked"
+                    aria-labelledby="demo-try-title"
+                    class="flex flex-col gap-3"
+                  >
+                    <For each={needs()}>
+                      {(need, i) => (
+                        <li
+                          data-testid={`demo-picked-${need}`}
+                          class="grid grid-cols-[22px_minmax(0,1fr)] items-start gap-3"
+                        >
+                          <span
+                            aria-hidden="true"
+                            class="mt-px inline-flex h-[22px] w-[22px] items-center justify-center rounded-full font-mono text-[11px] font-semibold text-white"
+                            style={{ "background-color": appSquareColor(needAppId(need)) }}
+                          >
+                            {i() + 1}
+                          </span>
+                          <span class="min-w-0">
+                            <span class="block text-[14px] font-semibold text-text">
+                              {i18n.t(`kernel.demo.needShort.${need}`)}
+                            </span>
+                            <span
+                              data-testid={`demo-picked-moment-${need}`}
+                              class="block text-[13.5px] leading-snug text-text-secondary"
+                            >
+                              {i18n.t(`${copy()}.pickMoment.${need}`)}
+                            </span>
+                          </span>
+                        </li>
+                      )}
+                    </For>
+                  </ol>
+                </Show>
               </div>
               <p
                 data-testid="demo-company-simulated"
-                class="border-t border-border pt-3.5 text-[13px] text-text-tertiary"
+                class="border-t border-border pt-3.5 text-[12.5px] text-text-tertiary"
               >
                 {i18n.t(`${copy()}.companySimulated`)}
               </p>

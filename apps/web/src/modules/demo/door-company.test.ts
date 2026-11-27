@@ -2,14 +2,13 @@
 //
 // The door describes the seeded company in words, and the web bundle cannot
 // import the seed. So every fact it states is pinned here to the seed itself:
-// the company, its price range, its dealers, its people and its desk agents.
+// the company, its dealers, the people its picks name and its desk agents.
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import en from "../../../../../packages/shared/src/i18n/locales/en/kernel.json"
 import fr from "../../../../../packages/shared/src/i18n/locales/fr/kernel.json"
 import {
-  DEMO_CATALOG,
   DEMO_COMPANY,
   DEMO_DEALERS,
   DEMO_ROLE_AGENTS,
@@ -17,7 +16,7 @@ import {
 } from "../../../../api/src/seed/world/fiction"
 import { SAAS_COMPANY, SAAS_PLANS, SAAS_TEAM } from "../../../../api/src/seed/worlds/saas/fiction"
 import { STUDIO_COMPANY, STUDIO_TEAM } from "../../../../api/src/seed/worlds/studio/fiction"
-import { DEMO_COMPANY_NAME, DEMO_DOOR, DEMO_DOOR_TEAM, doorCompanyOf } from "./door-company"
+import { DEMO_COMPANY_NAME, DEMO_DOOR, doorCompanyOf } from "./door-company"
 
 const copy = en.demo
 
@@ -35,22 +34,6 @@ describe("the company page states the seed's facts", () => {
     expect(fr.demo.companyExample).toContain(DEMO_COMPANY.name)
   })
 
-  it("gives the flagship price range of the catalog", () => {
-    const flagships = DEMO_CATALOG.filter((sku) => sku.tier === "flagship").map(
-      (sku) => sku.priceMinor / 100,
-    )
-    const euros = (n: number) => `€${n.toLocaleString("en-US")}`
-    expect(copy.companyAbout).toContain(
-      `from ${euros(Math.min(...flagships))} to ${euros(Math.max(...flagships))}`,
-    )
-    expect(copy.companyAbout).toContain("the Kestrel line")
-    expect(
-      DEMO_CATALOG.filter((sku) => sku.tier === "flagship").every((sku) =>
-        sku.title.startsWith("Kestrel"),
-      ),
-    ).toBe(true)
-  })
-
   it("counts the dealers and the territories they cover", () => {
     expect(DEMO_DEALERS).toHaveLength(6)
     expect(copy.companyAbout).toContain("six dealers in Europe, North America and Japan")
@@ -58,25 +41,12 @@ describe("the company page states the seed's facts", () => {
     expect(countries.has("US") && countries.has("JP")).toBe(true)
   })
 
-  it("lists every seeded teammate but the founder, with a title taken from theirs", () => {
-    const seeded = DEMO_TEAM.filter((p) => p.role !== "founder_admin")
-    expect(DEMO_DOOR_TEAM.map((p) => [p.key, p.name])).toEqual(seeded.map((p) => [p.key, p.name]))
-    const roles: Record<string, string> = copy.teamRole
-    for (const person of seeded) {
-      const short = roles[person.key]
-      expect(short, person.key).toBeTruthy()
-      expect(person.jobTitle, person.key).toContain(short)
-    }
-  })
-
   it("names the desk agents the seed creates", () => {
     const desks = DEMO_ROLE_AGENTS.map((a) => a.displayName)
     for (const desk of ["Support Desk", "Operations Desk", "Finance Desk"]) {
       expect(desks).toContain(desk)
     }
-    expect(copy.companyOps.support.body).toContain("The Support Desk agent")
-    expect(copy.companyOps.orders.body).toContain("The Operations Desk agent")
-    expect(copy.companyOps.invoicing.body).toContain("The Finance Desk agent")
+    expect(copy.pickMoment.commerce).toContain("the Operations Desk")
   })
 })
 
@@ -107,27 +77,9 @@ describe("the software company's page states its pack's facts", () => {
     const paying = Number(/\bpaying: (\d+)/.exec(planSource)?.[1])
     expect(paying).toBeGreaterThan(0)
     expect(saas.companyAbout).toContain(`${paying} customers pay by card`)
-    expect(saas.companyOps.payments.body).toContain(`${paying} customers`)
   })
 
-  it("lists every teammate of the pack, with a title taken from theirs", () => {
-    expect(DEMO_DOOR.saas.team.map((p) => [p.key, p.name])).toEqual(
-      SAAS_TEAM.map((p) => [p.key, p.name]),
-    )
-    const roles: Record<string, string> = saas.teamRole
-    for (const person of SAAS_TEAM) {
-      expect(roles[person.key], person.key).toBeTruthy()
-      expect(person.jobTitle, person.key).toContain(roles[person.key])
-    }
-  })
-
-  it("has a line for every operations row, in both languages, and reads as products for any other world", () => {
-    for (const op of DEMO_DOOR.saas.opsList) {
-      expect(saas.companyOps[op.key as keyof typeof saas.companyOps].body, op.key).toBeTruthy()
-      expect(
-        fr.demo.world.saas.companyOps[op.key as keyof typeof saas.companyOps].body,
-      ).toBeTruthy()
-    }
+  it("reads as products for any other world", () => {
     expect(doorCompanyOf("saas")).toBe(DEMO_DOOR.saas)
     expect(doorCompanyOf("studio")).toBe(DEMO_DOOR.studio)
     expect(doorCompanyOf("unknown")).toBe(DEMO_DOOR.products)
@@ -150,29 +102,9 @@ describe("the services door matches its pack's people and counts", () => {
     expect(fr.demo.world.studio.companyFacts).toContain(String(STUDIO_TEAM.length + 1))
   })
 
-  it("lists the five people the board names, with titles from theirs, and counts the others", () => {
-    const listed = DEMO_DOOR.studio.team
-    const seeded = new Map(STUDIO_TEAM.map((p) => [p.key, p]))
-    for (const person of listed) {
-      const seededPerson = seeded.get(person.key)
-      expect(seededPerson?.name, person.key).toBe(person.name)
-      const role = (studio.teamRole as Record<string, string>)[person.key]
-      expect(role, person.key).toBeTruthy()
-      expect(seededPerson?.jobTitle.toLowerCase(), person.key).toContain(role.toLowerCase())
-    }
-    expect(listed.map((p) => p.key)).toEqual(["bastien", "nadia", "mathis", "sofia", "anais"])
-    // The others are every seeded person the door does not list.
-    expect(studio.teamOthers.name).toBe(`${STUDIO_TEAM.length - listed.length} others`)
-    expect(fr.demo.world.studio.teamOthers.name).toBe(
-      `${STUDIO_TEAM.length - listed.length} autres`,
-    )
-    expect(DEMO_DOOR.studio.othersKey).toBe("teamOthers")
-  })
-
   it("says the visitor takes a co-founder's seat, not the products company's CEO", () => {
-    expect(studio.teamYouRole).toBe("Co-founder")
-    expect(DEMO_DOOR.studio.youRoleKey).toBe("teamYouRole")
     expect(studio.companyYou).toContain("co-founder")
+    expect(studio.companyYou).not.toContain("CEO")
   })
 
   it("bills in the three ways the pack's agreements do", () => {
@@ -188,24 +120,35 @@ describe("the services door matches its pack's people and counts", () => {
     expect(studio.companyAbout).toContain("monthly retainer")
   })
 
-  it("has a title and a body for every operations row, in both languages", () => {
-    expect(DEMO_DOOR.studio.opsList).toHaveLength(6)
-    for (const op of DEMO_DOOR.studio.opsList) {
-      const en_ = (studio.companyOps as Record<string, { title: string; body: string }>)[op.key]
-      const fr_ = (
-        fr.demo.world.studio.companyOps as Record<string, { title: string; body: string }>
-      )[op.key]
-      expect(en_?.title, op.key).toBeTruthy()
-      expect(en_?.body, op.key).toBeTruthy()
-      expect(fr_?.title, op.key).toBeTruthy()
-      expect(fr_?.body, op.key).toBeTruthy()
-    }
-  })
-
   it("names no other world's company", () => {
     const all = JSON.stringify([studio, fr.demo.world.studio])
     for (const other of [DEMO_COMPANY_NAME, DEMO_DOOR.saas.name, "Kestrel", "Stripe", "Shopify"]) {
       expect(all).not.toContain(other)
     }
+  })
+})
+
+describe("each pick's moment names people of its own pack", () => {
+  const firstNames = (team: readonly { name: string }[]) =>
+    new Set(team.map((p) => p.name.split(" ")[0]))
+  const named = (moments: Record<string, string>) =>
+    Object.values(moments).flatMap((line) =>
+      [...line.matchAll(/\b([A-ZÉ][a-zé]+)'s\b/g)].map((m) => m[1]),
+    )
+
+  it("every possessive name in a moment is a seeded teammate of that world", () => {
+    const cases = [
+      [copy.pickMoment, firstNames(DEMO_TEAM)],
+      [en.demo.world.saas.pickMoment, firstNames(SAAS_TEAM)],
+      [en.demo.world.studio.pickMoment, firstNames(STUDIO_TEAM)],
+    ] as const
+    for (const [moments, team] of cases) {
+      const names = named(moments)
+      for (const name of names) expect(team.has(name), name).toBe(true)
+    }
+    expect(named(copy.pickMoment)).toContain("Tobias")
+    expect(firstNames(DEMO_TEAM).has("Lucas")).toBe(true)
+    expect(firstNames(SAAS_TEAM).has("Clémence")).toBe(true)
+    expect(firstNames(STUDIO_TEAM).has("Mathis")).toBe(true)
   })
 })

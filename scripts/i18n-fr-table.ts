@@ -6705,41 +6705,8 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.demo.step.company": "L'entreprise",
   "kernel.demo.step.details": "Vos coordonnées",
   "kernel.demo.companyFacts": "Entreprise fictive · Paris · 7 personnes",
-  "kernel.demo.companyAbout":
-    "Resonant Audio Labs conçoit des enregistreurs de terrain portables pour le cinéma et la prise de son en extérieur : la gamme Kestrel, de 399 € à 1 349 €, ainsi que des étuis, des câbles et des bonnettes. Elle vend en direct sur sa boutique en ligne et par six revendeurs en Europe, en Amérique du Nord et au Japon.",
-  "kernel.demo.companyHow": "Comment elle fonctionne avec Liaison",
-  "kernel.demo.companyOps.support.title": "Support",
-  "kernel.demo.companyOps.support.body":
-    "Les mails des clients arrivent dans Tickets. L'agent Support Desk rédige chaque réponse ; Amina ou Lucas l'approuve.",
-  "kernel.demo.companyOps.orders.title": "Commandes et expéditions",
-  "kernel.demo.companyOps.orders.body":
-    "Les commandes de la boutique en ligne arrivent de Shopify. L'agent Operations Desk prépare l'expédition avec le transporteur pour Margot.",
-  "kernel.demo.companyOps.invoicing.title": "Facturation",
-  "kernel.demo.companyOps.invoicing.body":
-    "Chaque commande reçoit sa facture. L'agent Finance Desk gère les remboursements et les comptes revendeurs avec Henrik.",
-  "kernel.demo.companyOps.sales.title": "Ventes",
-  "kernel.demo.companyOps.sales.body":
-    "Le pipeline revendeurs de Giulia se trouve dans le CRM. Une routine se renseigne sur chaque nouveau prospect et rédige la réponse.",
-  "kernel.demo.companyOps.projects.title": "Projets et messagerie",
-  "kernel.demo.companyOps.projects.body":
-    "L'équipe planifie le travail produit dans Projets et échange dans la messagerie, avec ses agents dans la discussion.",
-  "kernel.demo.companyOps.knowledge.title": "Connaissances de l'entreprise",
-  "kernel.demo.companyOps.knowledge.body":
-    "Les manuels depuis GitLab, les finances depuis Google Drive, les procédures écrites dans Liaison. Chaque agent ne lit que ce que la personne qu'il sert peut ouvrir.",
-  "kernel.demo.companyYou":
-    "Vous la dirigez en tant que PDG, avec votre propre agent. Demandez-lui ce que vous demanderiez pour diriger l'entreprise, et regardez les équipes travailler.",
   "kernel.demo.companySimulated":
     "Seul le monde extérieur est simulé : aucun mail ne part, et les comptes de la boutique et du transporteur sont fictifs.",
-  "kernel.demo.teamTitle": "L'équipe",
-  "kernel.demo.teamYou": "Vous",
-  "kernel.demo.teamCeo": "PDG",
-  "kernel.demo.teamRole.tobias": "Responsable des opérations",
-  "kernel.demo.teamRole.amina": "Responsable du support",
-  "kernel.demo.teamRole.lucas": "Spécialiste du support",
-  "kernel.demo.teamRole.margot": "Logistique",
-  "kernel.demo.teamRole.henrik": "Finance",
-  "kernel.demo.teamRole.giulia": "Ventes et partenariats",
-  "kernel.demo.youllSee": "Vous verrez",
   "kernel.demo.detailsBack": "Retour",
   "kernel.demo.needDesc.support":
     "Un client écrit : une routine prépare la réponse, vous l'approuvez.",

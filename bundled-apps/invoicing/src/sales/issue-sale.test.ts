@@ -185,6 +185,8 @@ describe("onSaleEvent", () => {
       sold_at: "2026-11-20T10:00:00.000Z",
     })
     expect(refs.shopify_order_id).toBeUndefined()
+    // Sold on 20 November, issued today: the sale date is on the invoice.
+    expect(doc?.supply_date).toBe("2026-11-20")
     // A replayed event issues nothing more.
     expect((await onSaleEvent(event("hubshop", "pi_1"), ctx)).status).toBe("skipped")
     expect(await docs(db)).toHaveLength(1)

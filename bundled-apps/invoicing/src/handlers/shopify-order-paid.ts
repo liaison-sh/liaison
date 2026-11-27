@@ -49,6 +49,7 @@ import { deliveryFileId } from "../legal-originals/delivery"
 import { formatMoneyMinor, lineSubtotal, lineTax, majorDecimalToMinor, netOfTax } from "../money"
 import { isFullyCredited } from "../mutations"
 import { isUniqueViolation } from "../mutations/quote-proforma-po"
+import { supplyDateOf } from "../sale-tax"
 import { classify, EXEMPT_TREATMENTS, isUntaxedIntraEuSaleWithoutVat } from "../tax"
 
 export interface OrderPaidPayload {
@@ -1002,6 +1003,11 @@ export async function issueOrderFlow(
   const claimWith = claimOpsOf
     ? (scope: "goods" | "software") => (scope === splits[0]?.scope ? claimOpsOf() : [])
     : null
+  // The sale date of a stream sale, the issuer's civil date of its payment; the shop's documents
+  // keep what they always had.
+  const soldAt = src ? src.documentRefs.sold_at : null
+  const supplyDate =
+    typeof soldAt === "string" && soldAt !== "" ? await supplyDateOf(ctx, issuer, soldAt) : null
   const buildIssueInput = (
     scope: "goods" | "software",
     items: OrderPaidPayload["line_items"],
@@ -1031,6 +1037,8 @@ export async function issueOrderFlow(
       year_of_issue: when.year_of_issue,
       issued_at: when.issued_at,
       due_at: null,
+      // A stream sale states its sale date (kept only when it is not the issue date).
+      ...(supplyDate ? { source: { supply_date: supplyDate } } : {}),
       // `shopify_shop_domain` (the store's myshopify domain, carried as
       // `payload.shop_id`) is persisted alongside the order id so the invoice
       // detail view can build a deep link back to the Shopify admin order page

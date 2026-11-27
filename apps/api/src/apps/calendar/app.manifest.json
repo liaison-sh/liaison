@@ -400,9 +400,6 @@
       "searchKeywords": ["rdv", "rendez", "réunion", "meeting", "planifier", "schedule", "événement", "agenda", "nouvel", "créer"],
       "requiredScopes": ["calendar:events:write"],
       "trustBoundary": "user",
-      "conditionalGate": true,
-      "approvalImpact": "external",
-      "approvalCard": { "summary": "Create calendar event {{params.title}} and email its guests" },
       "handler": "calendarCreateEvent",
       "params": {
         "type": "object",
@@ -459,9 +456,6 @@
       "searchKeywords": ["déplacer", "reporter", "modifier", "reschedule", "rdv", "réunion", "meeting", "événement"],
       "requiredScopes": ["calendar:events:write"],
       "trustBoundary": "user",
-      "conditionalGate": true,
-      "approvalImpact": "external",
-      "approvalCard": { "summary": "Update calendar event {{params.title}} and email its guests" },
       "handler": "calendarUpdateEvent",
       "params": {
         "type": "object",

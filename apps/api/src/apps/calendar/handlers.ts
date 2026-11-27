@@ -1621,8 +1621,10 @@ export async function calendarSearchEvents(params: unknown, ctx: CalendarCtx): P
 //
 // A person in the app sends invitations and deletes events directly. When an agent asks a write
 // to email the guests (`sendUpdates` "all" or "externalOnly"), or deletes an event, the call parks
-// behind a human approval first (the kernel's gated-tool mechanism, `ctx.requestApproval`). A
-// person's own call is granted inline by the kernel, so only agents wait.
+// behind a human approval first (the kernel's handler gate, `ctx.requestApproval`). A person's
+// own call is granted inline by the kernel, so only agents wait. create_event and update_event
+// are not `conditionalGate`: the rest of their calls stay ordinary writes, which the scope taint
+// still parks on a turn that read scoped data (an event goes to Google).
 
 function notifies(value: unknown): value is "all" | "externalOnly" {
   return value === "all" || value === "externalOnly"

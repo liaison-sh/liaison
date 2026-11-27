@@ -73,6 +73,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["calendar_recordSyncFailure", "async"],
   ["calendar_recordWatchChannel", "async"],
   ["calendar_recoverFromSyncTokenGone", "async"],
+  ["calendar_respondToEvent", "async"],
   ["calendar_restoreRefusedDelete", "async"],
   ["calendar_retryImport", "async"],
   ["calendar_revertToRemote", "async"],

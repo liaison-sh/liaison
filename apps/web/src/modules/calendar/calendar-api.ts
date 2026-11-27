@@ -82,6 +82,8 @@ export interface CreateEventInput {
   allDay?: boolean
   attendees?: string[]
   recurrence?: string[]
+  /** "google_meet" adds a Meet link; "none" removes one. */
+  conference?: "google_meet" | "none"
 }
 
 export async function createEvent(
@@ -102,6 +104,7 @@ export interface UpdateEventInput {
   attendees?: string[]
   /** Required by the API for an event that belongs to a recurring meeting. */
   scope?: "occurrence" | "series"
+  conference?: "google_meet" | "none"
 }
 
 export async function updateEvent(

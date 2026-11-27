@@ -6,6 +6,7 @@ import { lazy } from "solid-js"
 export { CalendarIcon } from "./CalendarIcon"
 export const CalendarMonthTab = lazy(() => import("./CalendarMonthTab"))
 export const CalendarWeekTab = lazy(() => import("./CalendarWeekTab"))
+export const CalendarEventTab = lazy(() => import("./CalendarEventTab"))
 export const CalendarSidebar = lazy(() => import("./CalendarSidebar"))
 export const CalendarChoices = lazy(() =>
   import("./CalendarChoices").then((m) => ({ default: m.CalendarChoices })),

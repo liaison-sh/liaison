@@ -801,6 +801,15 @@
         "urlPattern": "/calendar/week",
         "singleton": true,
         "referenceable": false
+      },
+      "event": {
+        "component": "CalendarEventTab",
+        "label": "Event",
+        "labelKey": "calendar.eventTabLabel",
+        "sidebar": "CalendarSidebar",
+        "icon": "CalendarIcon",
+        "urlPattern": "/calendar/event/:entityId",
+        "referenceable": false
       }
     },
     "activityBar": {

@@ -37,6 +37,7 @@ const ToastItem: Component<{ toast: ToastType }> = (props) => {
         {(action) => (
           <button
             type="button"
+            data-testid="toast-action"
             class="shrink-0 rounded border border-border px-2 py-1 font-medium text-accent text-xs transition-colors hover:bg-hover"
             onClick={() => {
               action().onClick()

@@ -13,7 +13,7 @@ export interface DeriveKindInput {
   company?: string | null
   legal_name?: string | null
   country?: string | null
-  origin: "shopify" | "manual"
+  origin: "shopify" | "manual" | "checkout"
 }
 
 const LEGAL_SET = new Set(LEGAL_FORM_TOKENS)
@@ -47,7 +47,7 @@ export function deriveKind(input: DeriveKindInput): CustomerKind | null {
   const country = (input.country ?? "").trim().toUpperCase()
   if (!country) return null
   if (country !== "FR") return "individual"
-  return input.origin === "shopify" ? "individual" : null
+  return input.origin === "shopify" || input.origin === "checkout" ? "individual" : null
 }
 
 interface IdentityDb {

@@ -141,6 +141,13 @@ import {
   recurringScheduleUpdate,
   retainerTermsRenew,
 } from "./recurring/tools"
+import { onSaleApproved } from "./sales/issue-sale"
+import {
+  type BindInput,
+  revenueStreamBind,
+  revenueStreamsList,
+  type StreamToolsCtx,
+} from "./sales/stream-tools"
 import {
   cardStreamIssuer,
   issuerEmailsConfirm,
@@ -167,6 +174,17 @@ function fromWire<T extends { counterparty?: Counterparty | null }>(params: T): 
 // onShopifyOrderCreated is the manifest-subscribed entry for shopify/order:created
 // (adapts the event → OrderPaidPayload, then delegates to onShopifyOrderPaid).
 export { onShopifyOrderCreated, onShopifyOrderPaid } from "./handlers/shopify-order-paid"
+// Revenue streams (sales/): every revenue-stream@1 provider's `sale:paid`, through one issuing flow;
+// onSaleApproved is the re-entry of a stream sale's approval card.
+export { onSaleEvent } from "./sales/issue-sale"
+export const revenueStreamSaleIssueHandler = (
+  params: Parameters<typeof onSaleApproved>[0],
+  ctx: Parameters<typeof onSaleApproved>[1],
+) => onSaleApproved(params ?? {}, ctx)
+export const revenueStreamsListHandler = (_params: unknown, ctx: StreamToolsCtx) =>
+  revenueStreamsList(ctx)
+export const revenueStreamBindHandler = (params: BindInput, ctx: StreamToolsCtx) =>
+  revenueStreamBind(ctx, params ?? {})
 // Syncs Shopify product customs (HS code + country of origin + customs-description
 // metafield) into product_customs_overlay so export invoices auto-carry them.
 export { onShopifyProductChanged } from "./handlers/shopify-product-changed"

@@ -1,72 +1,43 @@
 {
-  "entry": "event:shopify/order:created",
+  "entry": "event:contract:revenue-stream@1/sale:paid",
   "params": {
-    "entity": "order",
-    "action": "created",
+    "app": "shopify",
+    "entity": "sale",
+    "action": "paid",
     "entityId": "12992208404646",
     "data": {
-      "orderId": "12992208404646",
-      "name": "#2745",
-      "customer": {
-        "id": "24929659846822",
-        "email": "marie@example.com",
-        "first_name": "Marie",
-        "last_name": "Dupont",
-        "country": "FR",
-        "external_ids": {
-          "shopify": "24929659846822"
-        }
-      },
-      "customerId": "24929659846822",
-      "poNumber": null,
-      "buyerTaxId": null,
-      "note": null,
-      "totalPrice": {
-        "amount": "885.95",
-        "currencyCode": "USD"
-      },
-      "taxesIncluded": false,
-      "billingAddress": null,
-      "shippingAddress": {
-        "firstName": "Marie",
-        "lastName": "Dupont",
-        "company": null,
-        "address1": "12 Rue de Rivoli",
-        "address2": null,
-        "city": "Paris",
-        "zip": "75004",
-        "province": null,
-        "countryCode": "FR",
-        "phone": null
-      },
-      "lineItems": [
-        {
-          "id": "37391682109606",
-          "title": "The Minimal Snowboard",
-          "quantity": 1,
-          "priceSet": {
-            "amount": "885.95",
-            "currencyCode": "USD"
-          },
-          "requiresShipping": true,
-          "taxLines": [],
-          "discountAllocations": [],
-          "variant": {
-            "id": "56534760784038",
-            "title": null,
-            "sku": null
-          }
-        }
-      ],
-      "shippingLines": [],
-      "fulfillmentStatus": null,
-      "financialStatus": "paid",
-      "marketId": null,
-      "shopDomain": "contract-shop.myshopify.com"
+      "external_id": "12992208404646",
+      "occurred_at": "2026-11-12T10:41:00.000Z"
     }
   },
-  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts; the invoice's external_ref added by hand to its issuing batch; the issue's kernel:contacts_identity read (company stamp) added by hand from the recorded contact, which has no company",
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts; the invoice's external_ref added by hand to its issuing batch; the issue's kernel:contacts_identity read (company stamp) added by hand from the recorded contact, which has no company; moved onto the revenue stream: the shop's sale:paid, its stream read and its sale read through revenue-stream@1 (saleFromOrder of the recorded order) added by hand in front of the recorded calls, which follow unchanged",
   "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "revenue_streams",
+        "{\"where\":{\"provider_app\":\"shopify\"},\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":50}"
+      ],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-0000000005a1\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"provider_app\":\"shopify\",\"source_ref\":null,\"label\":\"Shopify\",\"issuer_profile_id\":null,\"mode\":\"auto\",\"issue_from\":null,\"mail\":\"invoice_only\",\"decided_by\":null,\"decided_at\":\"2026-11-12 10:41:00.495344+00\",\"created_at\":\"2026-11-12 10:41:00.495344+00\"}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "revenue_streams",
+        "{\"where\":{\"provider_app\":\"shopify\"},\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":50}"
+      ],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-0000000005a1\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"provider_app\":\"shopify\",\"source_ref\":null,\"label\":\"Shopify\",\"issuer_profile_id\":null,\"mode\":\"auto\",\"issue_from\":null,\"mail\":\"invoice_only\",\"decided_by\":null,\"decided_at\":\"2026-11-12 10:41:00.495344+00\",\"created_at\":\"2026-11-12 10:41:00.495344+00\"}]"
+    },
+    {
+      "method": "contracts_call",
+      "args": [
+        "revenue-stream@1",
+        "sale_get",
+        "{\"external_id\":\"12992208404646\"}",
+        "{\"provider\":\"shopify\"}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"found\":true,\"sale\":{\"external_id\":\"12992208404646\",\"refs\":{\"order_name\":\"#2745\",\"po_number\":null,\"account\":\"contract-shop.myshopify.com\"},\"sold_at\":\"2026-11-12T10:41:00.000Z\",\"paid\":{\"status\":\"paid\",\"source_status\":\"paid\"},\"currency\":\"USD\",\"prices_include_tax\":false,\"buyer\":{\"email\":\"marie@example.com\",\"name\":\"Marie Dupont\",\"vat_id\":null,\"customer_id\":\"24929659846822\",\"billing\":null,\"delivery\":{\"name\":null,\"company\":null,\"line1\":\"12 Rue de Rivoli\",\"line2\":null,\"postcode\":\"75004\",\"city\":\"Paris\",\"region\":null,\"country\":null},\"ids\":{\"shopify_customer_id\":\"24929659846822\"},\"tax_evidence\":{\"destination_country\":\"FR\"}},\"lines\":[{\"description\":\"The Minimal Snowboard\",\"quantity\":\"1\",\"unit_price_minor\":\"88595\",\"discount_minor\":\"0\",\"kind\":\"goods\",\"variant_ref\":\"gid://shopify/ProductVariant/56534760784038\",\"tax\":{\"rate_bp\":0,\"amount_minor\":\"0\",\"line_count\":0,\"reported_by_source\":true}}],\"totals\":{\"total_minor\":\"88595\"}}},\"provider\":\"shopify\"}"
+    },
     {
       "method": "resolveContact",
       "args": [

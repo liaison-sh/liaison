@@ -4056,6 +4056,8 @@
       "recurring_schedule_create": "create recurring schedule",
       "recurring_schedule_update": "update recurring schedule",
       "recurring_schedule_pause": "pause recurring schedule",
+      "revenue_stream_sale_issue": "issue a sale invoice",
+      "revenue_stream_bind": "bind a revenue stream",
       "issuer_stream_set": "set issuer stream",
       "issuer_emails_confirm": "confirm issuer emails",
       "invoice_from_stripe_payment": "invoice Stripe payment",

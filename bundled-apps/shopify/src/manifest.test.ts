@@ -984,6 +984,7 @@ describe("Shopify app.manifest.json", () => {
     // instead of re-sending it, and refuses a closed fulfillment order in plain words.
     // 0.4.30, 0.4.31 (main): automatic discounts, and discounts limited to markets.
     // 0.4.32: the branch's 0.4.30 and main's 0.4.31, merged.
+    // 0.4.33: implements revenue-stream@1 (each order's sale: sale_get, sales_list, sale:paid).
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 

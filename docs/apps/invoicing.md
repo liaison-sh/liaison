@@ -61,6 +61,18 @@ A retried order reads the Shopify order as it is now: a VAT number added as a cu
 
 An order to a customer in another EU country that Shopify charged no VAT (tax exempt, or 0%) and that carries no VAT number is not invoiced: it would be neither a reverse charge nor a consumer invoice. It waits under **Deferred** for a tax decision. For a business, add its VAT number to the Shopify order (custom attribute `VAT number`), then choose **Issue with Shopify's tax**: the invoice is a reverse charge. For a consumer, **Issue as computed** charges the VAT of the customer's country.
 
+## Invoice the sales of another app
+
+Any app that reports its sales to invoicing (it implements `revenue-stream@1`, see [app development](../app-development.md)) can have each sale invoiced, the same way as a paid Shopify order: same numbering, tax checks, approvals and **Deferred** list.
+
+1. Ask an agent to bind the app (`revenue_stream_bind` with the app, the issuer profile and a mode). A person approves it; it is never approved automatically. `revenue_streams_list` shows the bound apps and the apps that could be bound.
+2. Pick the mode: `auto` invoices each sale at once (the issuer profile's approval threshold still applies), `review` asks a person for every sale, `off` invoices nothing.
+3. A bound app's sales are invoiced from the moment it was bound. Earlier sales are invoiced only through a catch-up, never by an event.
+
+Invoicing reads each sale from its app before it invoices it, so a late or repeated event invoices nothing twice. A sale whose lines do not add up to its totals, or that is not a well formed sale, waits under **Deferred**.
+
+Your Shopify store is such an app: its orders reach invoicing the same way, and its issuer stays the one the shop mapping names.
+
 ## Create a quote, proforma or purchase order
 
 Only quotes, proformas and purchase orders are started by hand. Invoices come from paid orders or from converting a quote or proforma.

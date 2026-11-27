@@ -1,0 +1,17 @@
+{
+  "entry": "tool:revenue_streams_list",
+  "params": {},
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["revenue_streams", "{\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":200}"],
+      "reply": "[]"
+    },
+    {
+      "method": "contracts_providers",
+      "args": ["revenue-stream@1"],
+      "reply": "[\"shopify\"]"
+    }
+  ],
+  "recordedFrom": "an install with no stream yet and the shop connected (contract replay, no provider call)"
+}

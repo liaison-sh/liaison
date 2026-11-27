@@ -3218,6 +3218,10 @@
     "requestedOutboundDomains": "Hosts this app can reach (granted by installing)",
     "newOutboundDomains": "New hosts this version can reach (granted by upgrading)"
   },
+  "pluginMount": {
+    "rateLimited": "Too many requests just now. Wait a moment, then try again.",
+    "retry": "Try again"
+  },
   "settingsPage": {
     "appSecrets": {
       "webhookAddress": "Endpoint URL",
@@ -3247,6 +3251,8 @@
     "savedToast": "Saved",
     "notSaved": "Not saved",
     "retry": "Retry",
+    "loadFailed": "These settings could not be loaded. Try again.",
+    "loadRateLimited": "Too many requests just now. Wait a moment, then try again.",
     "waitingApproval": "Waiting for approval",
     "fieldUnavailable": "Couldn't read this value: {{message}}",
     "noSettings": "Nothing to set up here for you.",

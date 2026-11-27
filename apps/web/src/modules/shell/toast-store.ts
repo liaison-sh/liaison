@@ -29,6 +29,12 @@ interface ToastInput {
   action?: ToastAction
   /** Auto-dismiss after this many ms, even with an action (an Undo window). */
   durationMs?: number
+  /**
+   * While the same plain notice is already on screen, it is not stacked again:
+   * it stays up for a fresh while instead (the shell's global API error toast,
+   * where one burst of refused requests stacked three "Too many requests").
+   */
+  once?: boolean
 }
 
 let nextId = 0
@@ -38,8 +44,22 @@ const [store, setStore] = createSignal<Toast[]>([])
 export const toasts = store
 
 export function addToast(input: ToastInput): string {
+  const { durationMs, once, ...rest } = input
+  if (once && !rest.action) {
+    const same = store().find(
+      (t) => !t.action && t.message === rest.message && t.type === rest.type,
+    )
+    if (same) {
+      const timer = timers.get(same.id)
+      if (timer) clearTimeout(timer)
+      timers.set(
+        same.id,
+        setTimeout(() => dismissToast(same.id), durationMs ?? AUTO_DISMISS_MS),
+      )
+      return same.id
+    }
+  }
   const id = String(++nextId)
-  const { durationMs, ...rest } = input
   const toast: Toast = {
     id,
     ...rest,

@@ -12,11 +12,14 @@ import { parseFrameMessage } from "../app-frame/protocol"
 import {
   answerFrameCall,
   browserAppFrameUrl,
+  fetchBundleSource,
   frameCallState,
   ISOLATED_APP_SANDBOX,
   type IsolatedHost,
+  isOptionalExportProbe,
   isolatedAppExports,
   ORIGIN_BOUND_APP_SANDBOX,
+  resetBundleSources,
 } from "./isolated-app"
 
 vi.mock("~/modules/auth/auth-store", async (importOriginal) => {
@@ -924,5 +927,53 @@ describe("the typed host calls a frame may make (host API 1.3)", () => {
     expect(host.openRecord).toHaveBeenCalledWith("acme", "invoicing", "document", "d1")
     await answerFrameCall("acme", "openApprovals", [], host)
     expect(host.openApprovals).toHaveBeenCalled()
+  })
+})
+
+describe("optional exports the kernel only probes for", () => {
+  const opts = {
+    app: "acme",
+    bundleUrl: "https://box.example.com/api/apps/acme/1.0.0/ui.js",
+    frameUrl: FRAME_URL,
+  }
+
+  it("a section note or settingsChangeEvents gets no frame (no bundle load, no missing-export error)", () => {
+    const exports = isolatedAppExports(manifest, opts)
+    expect(exports.ConnectionSettingsNote).toBeUndefined()
+    expect(exports["Alert-sourceSettingsNote"]).toBeUndefined()
+    expect(exports.settingsChangeEvents).toBeUndefined()
+    expect(isOptionalExportProbe("IssuersSettingsNote")).toBe(true)
+    expect(isOptionalExportProbe("AcmeHome")).toBe(false)
+  })
+
+  it("a name the manifest itself declares is still the frame, whatever it is called", () => {
+    const declared = {
+      name: "acme",
+      settings: {
+        sections: [{ id: "s", blocks: [{ block: "custom", component: "OddSettingsNote" }] }],
+      },
+    }
+    const exports = isolatedAppExports(declared, opts)
+    expect(typeof exports.OddSettingsNote).toBe("function")
+    expect(typeof exports.AcmeHome).toBe("function")
+  })
+})
+
+describe("the bundle's text is fetched once per app version", () => {
+  afterEach(() => resetBundleSources())
+
+  it("frames of the same version share one fetch, whatever their token; a failure is retried", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("boom", { status: 429 }))
+      .mockImplementation(async () => new Response("export const A = 1"))
+    const url = (t: string) => `https://box.example.com/api/apps/acme/1.0.0/ui.js?t=${t}`
+    await expect(fetchBundleSource(url("a"))).rejects.toThrow("429")
+    const [one, two] = await Promise.all([fetchBundleSource(url("a")), fetchBundleSource(url("b"))])
+    expect(one).toBe("export const A = 1")
+    expect(two).toBe(one)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await fetchBundleSource("https://box.example.com/api/apps/acme/1.0.1/ui.js?t=a")
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 })

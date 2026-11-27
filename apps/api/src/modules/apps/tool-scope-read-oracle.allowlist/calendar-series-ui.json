@@ -1,0 +1,27 @@
+[
+  [
+    "apps/web/src/modules/calendar/CalendarShell.tsx",
+    "scope: target.scope,",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/web/src/modules/calendar/CalendarEventTab.tsx",
+    "...(scoped ? { scope: scoped.scope } : {}),",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/web/src/modules/calendar/CalendarEventTab.tsx",
+    "...(scoped ? { scope: scoped.scope } : {}),",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/web/src/modules/calendar/CalendarEventTab.tsx",
+    "...(scoped && scoped.scope !== \"following\" ? { scope: scoped.scope } : {}),",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/web/src/modules/calendar/CalendarEventTab.tsx",
+    "...(scoped && scoped.scope !== \"following\" ? { scope: scoped.scope } : {}),",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ]
+]

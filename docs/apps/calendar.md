@@ -44,12 +44,24 @@ The view keeps itself up to date: an event that changes in Google, or that an ag
 
 1. Click an empty slot in the **Day** or **Week** view (or a day in **Month**). A small card opens at that spot with the time already chosen.
 2. Type a title and press Enter. Pick another **Calendar** or tick **Add a Google Meet video call** first if you need to.
-3. For everything else, click **More options**: the event opens in its own tab with **Title**, **Start** and **End** (or **All day**), **Calendar**, **Recurrence** (**Does not repeat**, **Daily**, **Weekly**, **Monthly**), **Location**, **Description** and **Attendees**.
+3. For everything else, click **More options**: the event opens in its own tab with **Title**, **Start** and **End** (or **All day**), **Calendar**, **Recurrence** (**Does not repeat**, **Daily**, **Weekly**, **Monthly**, **Yearly**, then **Every** so many days or weeks, the weekdays, and **Ends** **Never**, **On** a date or **After (times)**), **Location**, **Description** and **Attendees**.
 4. Click an existing event to open it in its tab. **Save**, **Cancel** and **Delete** sit at the top. **Delete** asks first, and **Undo** in the note that follows puts the event back.
 
 **New event** opens the tab directly, starting at the next half hour. Only calendars you can write to are offered. An all-day event keeps its days when you edit it: the end you see is its last day.
 
-Attendees are not emailed: changes in Liaison do not send Google invitations. Only the organizer can change an event's guest list. A recurring event cannot be edited here yet, because a change would affect the whole series; one occurrence that was already changed in Google can be. An event with a Meet link shows **Join with Google Meet**.
+An event with a Meet link shows **Join with Google Meet**.
+
+### Guests and invitations
+
+Type a name or an address under **Attendees**: teammates and contacts are suggested, and any email address works. Only the organizer can change an event's guest list.
+
+Guests are emailed only when **Send invitations: Google emails the guests** is ticked. It is ticked for you when you add guests; untick it to save without emailing anyone. When you delete an event with guests, **Email the guests that it is cancelled** sends Google's cancellation.
+
+When someone invited you, **Going?** shows **Yes**, **Maybe** and **No**. Your answer goes to Google, which tells the organizer. Events you declined show struck through and faded in the calendar.
+
+### Recurring events
+
+Clicking an occurrence of a recurring event opens it at that occurrence. **Save** and **Delete** then ask which occurrences they apply to: **This event**, **This and following events** or **All events**. **This and following events** ends the series before that occurrence and starts a new one with your change, as in Google Calendar. A change to the repeat rule applies to **This and following events** or **All events** only. A repeat rule this editor cannot show (for example "the last Friday of the month") is kept as it is.
 
 ### When the event also changed in Google
 
@@ -64,7 +76,7 @@ Times are sent with the calendar's time zone, so a weekly meeting at 09:00 stays
 - **Resize:** drag the bottom edge of an event.
 - Press Esc while dragging to cancel. After a move, **Undo** in the note puts the event back.
 
-Drags snap to a quarter hour. A recurring event and an all-day event cannot be dragged yet: open them to edit.
+Drags snap to a quarter hour. An all-day event moves to another day in **Month** and keeps its length in days. Dropping an occurrence of a recurring event asks which occurrences move: **This event**, **This and following events** or **All events**.
 
 ## Away days from your calendar
 

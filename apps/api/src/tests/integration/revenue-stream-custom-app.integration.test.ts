@@ -285,7 +285,7 @@ describe("an organization's own sales app reports its sales to invoicing (revenu
     expect(list.availableProviders).toContain("salesbook")
     expect((list.streams as Row[]).map((s) => s.streamId)).toContain(streamId)
     const before = (await docs()).length
-    const preview = await tool("invoicing:revenue_stream_catch_up_preview", {
+    const preview = await tool("invoicing:sales_catch_up_preview", {
       streamId,
       paidFrom: "2026-11-01T00:00:00.000Z",
       paidTo: "2026-12-01T00:00:00.000Z",

@@ -543,7 +543,7 @@ export function createCalendarMethods(
         allDay?: boolean
         conference?: string
         calendarId?: string
-        scope?: "occurrence" | "series"
+        scope?: "occurrence" | "following" | "series"
         occurrenceStart?: string
       }
       const { conference, location } = resolveConferenceIntent(params, "update")
@@ -561,13 +561,12 @@ export function createCalendarMethods(
         occurrenceStart: params.occurrenceStart,
         changesRecurrence: params.recurrence !== undefined,
       })
-      const eventId = target.eventId
-      const { getCalendarById, getEventById } = await import("~/apps/calendar/sync")
-      const row = await getEventById(txDb, orgId, eventId)
+      const { getCalendarById, getEventById, splitSeriesAt } = await import("~/apps/calendar/sync")
+      const row = await getEventById(txDb, orgId, target.eventId)
       const calendar = row ? await getCalendarById(txDb, orgId, row.calendar_id) : undefined
       if (calendar) assertWritableCalendar(calendar, "update_event")
       const points = eventPoints(params, calendar?.time_zone)
-      const { syncVersion } = await updateLocalEvent(txDb, orgId, eventId, {
+      const edit = {
         title: params.title,
         description: params.description,
         location,
@@ -579,7 +578,41 @@ export function createCalendarMethods(
         end: params.end !== undefined || params.allDay === undefined ? points.end : undefined,
         conference,
         editorId: personId(userId),
-      })
+      }
+      let scope = target.scope
+      if (target.scope === "following" && target.splitAt) {
+        // This and the following occurrences: the series ends before this one and a new series
+        // with the edit starts there. Both rows are pushed.
+        const split = await splitSeriesAt(txDb, orgId, target.eventId, target.splitAt, edit)
+        if (split.kind === "split") {
+          await enqueue(
+            "calendar",
+            "calendar-push",
+            { orgId, eventId: split.oldEventId },
+            { jobId: `calendar-push:${split.oldEventId}:v${split.oldSyncVersion}:a0` },
+          )
+          const newEventId = split.newEventId as string
+          await enqueue(
+            "calendar",
+            "calendar-push",
+            { orgId, eventId: newEventId },
+            {
+              jobId: `calendar-push:${newEventId}:v1:a0`,
+              ...(conference ? { delay: CONFERENCE_PUSH_BACKUP_DELAY_MS } : {}),
+            },
+          )
+          await announceEventsChanged({ eventId: newEventId })
+          return JSON.stringify({
+            eventId: newEventId,
+            scope: "following",
+            previousSeriesId: split.oldEventId,
+            conference: conference ?? null,
+          })
+        }
+        scope = "series"
+      }
+      const eventId = target.eventId
+      const { syncVersion } = await updateLocalEvent(txDb, orgId, eventId, edit)
       await enqueue(
         "calendar",
         "calendar-push",
@@ -592,7 +625,7 @@ export function createCalendarMethods(
       await announceEventsChanged({ eventId })
       return JSON.stringify({
         eventId,
-        ...(target.scope ? { scope: target.scope } : {}),
+        ...(scope ? { scope } : {}),
         conference: conference ?? null,
       })
     },
@@ -603,12 +636,14 @@ export function createCalendarMethods(
       const params = JSON.parse(paramsJson) as {
         eventId: string
         calendarId?: string
-        scope?: "occurrence" | "series"
+        scope?: "occurrence" | "following" | "series"
         occurrenceStart?: string
       }
       // A recurring meeting needs an explicit scope, as for update_event: one occurrence (Google
-      // cancels that instance only) or the whole series (the master is deleted).
-      let target: { eventId: string; scope: "occurrence" | "series" | null }
+      // cancels that instance only), this and the following ones (the series ends before it),
+      // or the whole series (the master is deleted).
+      const { splitSeriesAt } = await import("~/apps/calendar/sync")
+      let target: Awaited<ReturnType<typeof resolveUpdateTarget>>
       try {
         target = await resolveUpdateTarget(txDb, orgId, { ...params, tool: "delete_event" })
       } catch (err) {
@@ -624,6 +659,21 @@ export function createCalendarMethods(
         const row = await getEventById(txDb, orgId, eventId)
         const calendar = row ? await getCalendarById(txDb, orgId, row.calendar_id) : undefined
         if (calendar) assertWritableCalendar(calendar, "delete_event")
+      }
+      if (target.scope === "following" && target.splitAt) {
+        const split = await splitSeriesAt(txDb, orgId, eventId, target.splitAt, null)
+        if (split.kind === "split") {
+          await enqueue(
+            "calendar",
+            "calendar-push",
+            { orgId, eventId: split.oldEventId },
+            { jobId: `calendar-push:${split.oldEventId}:v${split.oldSyncVersion}:a0` },
+          )
+          await announceEventsChanged({ eventId: split.oldEventId })
+          return JSON.stringify({ eventId, scope: "following", needsGooglePush: true })
+        }
+        // From the first occurrence on: the whole series goes.
+        target = { eventId, scope: "series" }
       }
       // An event Google has (or may have: a create in flight) becomes a tombstone that the push
       // deletes on Google, retrying like any push; the import cannot resurrect it meanwhile.

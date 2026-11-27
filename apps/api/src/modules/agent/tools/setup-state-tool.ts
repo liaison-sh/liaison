@@ -75,18 +75,20 @@ export function connectionSetupCall(
   return `ask for its OAuth client (kernel__request_secret kind oauth_client, app ${app}, connection ${connection}), then ${connectCard}`
 }
 
-/** Cloud's order, said before everything else: the goal's step, the team, mail last. */
+/** Cloud's order, said before everything else: the company brief, the team, the goal's step, mail last. */
 function cloudOrder(goal: KickoffGoal | null): string {
+  const brief =
+    "First the company brief (the knowledge item) unless it is already done: a few short questions, or their website or a document they give you, saved as company knowledge. Then invite the team, so colleagues arrive with an agent that already knows the company; if the person wants to invite first, do it at once."
   const tail =
-    "then invite the team, then offer mail connection last (the setup-guide skill, On Cloud). Do not ask which features they want, and leave the checklist order until then."
+    "then offer mail connection last (the setup-guide skill, On Cloud). Do not ask which features they want, and leave the checklist order until then."
   return goal
-    ? `This Cloud workspace's person chose to start with ${goal}: do that step first unless it is already done, ${tail} `
-    : `This is a Cloud workspace: the setup card already asked which one goal to start with, knowledge, support or projects; start with the one they named (ask only when they named none, never repeating the card), do that step, ${tail} `
+    ? `This Cloud workspace's person chose the goal ${goal}. ${brief} ${goal === "knowledge" ? "End the brief by inviting them to ask their agent a question about it. After the team," : `After the team, the ${goal} step,`} ${tail} `
+    : `This is a Cloud workspace: the setup card already asked which goal comes after the brief and the team, knowledge, support or projects; take the one they named (ask only when they named none, never repeating the card). ${brief} After the team, that goal's step, ${tail} `
 }
 
 /** The next action: what is left of the features the person chose (connections
  *  first, when the person asked for them), then the checklist; the rest is a menu.
- *  `cloud` is given on the managed edition only: its goal-first order leads. */
+ *  `cloud` is given on the managed edition only: its brief-first order leads. */
 export function setupNextAction(state: SetupState, cloud?: { goal: KickoffGoal | null }): string {
   if (cloud) return `${cloudOrder(cloud.goal)}${nextActionFor(state, false)}`
   return nextActionFor(state, true)

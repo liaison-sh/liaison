@@ -363,3 +363,8 @@ sidebar tools: another member needs kernel:users:admin -> apps/api/src/modules/u
 Agent post: DM always posted, one approval covers later posts of the same data in that conversation, also for a connected app -> apps/api/src/modules/agent/scopes/post-disclosure.ts:167 ; apps/api/src/modules/agent/scopes/post-disclosure.ts:60 ; apps/api/src/modules/mcp/tool-call.ts:510
 A connected app as you waits only on its messages; its other writes run as yours -> apps/api/src/modules/agent/scopes/scope-taint.ts:1080 ; apps/api/src/modules/apps/execute-tool.ts:3808
 open_app opens the kernel Help tab -> apps/api/src/modules/agent/tools/open-targets.ts:118
+files_read returns a text file's text, the first 100 KB, with a note when cut -> apps/api/src/modules/files/text-read.ts:16 ; apps/api/src/modules/agent/tools/file-tools.ts:209
+files_read fences the text as outside content -> apps/api/src/modules/agent/tools/file-tools.ts:222
+A non-UTF-8 file named as text is refused -> apps/api/src/modules/files/text-read.ts:150 ; apps/api/src/modules/agent/tools/file-tools.ts:211
+Encrypted or private mailbox attachments keep the download link -> apps/api/src/modules/agent/tools/file-tools.ts:196
+A generic-typed upload counts as text by its extension -> apps/api/src/modules/files/text-read.ts:139

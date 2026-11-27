@@ -1,6 +1,6 @@
 ---
 title: Set up your organization
-description: Sign in as the admin, invite your team, connect a mailbox and create your first agent in a new Liaison organization.
+description: Sign in as the admin, tell your agent about your company, invite your team, connect a mailbox and create your first agent in a new Liaison organization.
 ---
 
 Once Liaison is running, you have an organization and an admin account. This page takes you from the first sign-in to a working agent.
@@ -12,6 +12,10 @@ Once Liaison is running, you have an organization and an admin account. This pag
 3. Enter the 6-digit **Sign-in code** and click **Verify code**. The code expires in 10 minutes.
 
 On a local trial without SMTP, the code is in the app log. See [Install Liaison](install.md#sign-in-the-first-time).
+
+## Tell your agent about your company
+
+Your first sign-in opens a pinned **Set up your space** conversation with your agent. Its first step is **Tell your agent about your company**: the agent asks a few short questions, or reads your website or a document you give it, and saves what it learns as company knowledge once you approve. Do it before you invite your team: your colleagues then arrive in a workspace whose agent already knows the company. You can still invite them first (**Invite now anyway** on the checklist). See [Set up a new workspace with your agent](../agents/how-agents-work.md#set-up-a-new-workspace-with-your-agent).
 
 ## Invite your team
 

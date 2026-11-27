@@ -1,0 +1,100 @@
+{
+  "layout": {
+    "codeIntro": "Your verification code is"
+  },
+  "signIn": {
+    "subject": "{{code}} is your Liaison sign-in code",
+    "eyebrow": "Sign in",
+    "heading": "Your sign-in code",
+    "body": "Enter it to sign in. The code expires in 10 minutes and can be used once. You can also just tap the button below on this device.",
+    "ignore": "If you didn't try to sign in, you can safely ignore this email: no one can access your account without this code or link.",
+    "cta": "Sign in to Liaison",
+    "footer": "You're receiving this because a sign-in was requested for this email address."
+  },
+  "invite": {
+    "subject": "You're invited to {{org}}",
+    "eyebrow": "Invitation",
+    "heading": "Join {{org}}",
+    "body": "You've been invited to join {{org}} on Liaison, the workspace for your team's support and communication.",
+    "expiry": "Click the button below to accept your invitation and set up your account. This invitation expires in 7 days.",
+    "cta": "Accept invitation",
+    "footer": "If you weren't expecting this invitation, you can safely ignore this email."
+  },
+  "passwordReset": {
+    "subject": "Reset your password",
+    "eyebrow": "Security",
+    "heading": "Reset your password",
+    "body": "We received a request to reset the password for your account. Click the button below to choose a new one.",
+    "expiry": "This link expires in 1 hour and can only be used once. If you didn't request a reset, you can safely ignore this email: your password won't change.",
+    "cta": "Reset your password",
+    "footer": "You're receiving this because a password reset was requested for this email address."
+  },
+  "stepUp": {
+    "eyebrow": "Security",
+    "default": {
+      "subject": "{{code}} is your Liaison verification code",
+      "heading": "Confirm it's you",
+      "p1": "Use the code above to continue.",
+      "p2": "It expires in 10 minutes. If you didn't request this, you can safely ignore this email.",
+      "footer": "You're receiving this because a two-factor change was requested on your account."
+    },
+    "accountDelete": {
+      "subject": "{{code}} is your code to delete your Liaison account",
+      "heading": "Confirm deleting your account",
+      "p1": "Use the code above to delete your Liaison account.",
+      "p2": "Deleting your account erases your profile, your private data and your connected devices in this organisation, and signs you out everywhere. What you shared with your team stays, without your name. Your accounts in other organisations are not affected. This cannot be undone.",
+      "p3": "The code expires in 10 minutes. If you didn't ask for this, do not use it, and change your Liaison password.",
+      "footer": "You're receiving this because deleting your account was requested."
+    },
+    "mailboxRotate": {
+      "subject": "{{code}} is your code to change your Liaison mailbox key",
+      "heading": "Confirm the mailbox key change",
+      "p1": "Use the code above to change the encryption key of your mailbox.",
+      "p2": "From then on, new mail is sealed to the new key. If you didn't ask for this, do not use the code, and change your Liaison password.",
+      "p3": "The code expires in 10 minutes.",
+      "footer": "You're receiving this because a mailbox key change was requested on your account."
+    },
+    "mailboxTransparent": {
+      "subject": "{{code}} is your code to make your Liaison mailbox transparent",
+      "heading": "Confirm making your mailbox transparent",
+      "p1": "Use the code above to make your private mailbox transparent.",
+      "p2": "A transparent mailbox is encrypted with a key the server holds, so you and your agent read it without the mailbox password. If you didn't ask for this, do not use the code, and change your Liaison password.",
+      "p3": "The code expires in 10 minutes.",
+      "footer": "You're receiving this because making a private mailbox transparent was requested on your account."
+    },
+    "mcpConnect": {
+      "subject": "{{code}} is your code to connect an AI tool to Liaison",
+      "heading": "Confirm connecting an AI tool",
+      "p1": "Use the code above to connect an AI tool to your Liaison account with full access.",
+      "p2": "The tool will be able to act as you, with everything you can access, until you disconnect it in Settings. If you didn't ask for this, do not use the code, and change your Liaison password.",
+      "p3": "The code expires in 10 minutes.",
+      "footer": "You're receiving this because connecting an AI tool was requested on your account."
+    },
+    "mailboxReset": {
+      "subject": "{{code}} is your code to reset your Liaison mailbox",
+      "heading": "Confirm the mailbox reset",
+      "p1": "Use the code above to reset your encrypted mailbox.",
+      "p2": "Resetting deletes the encrypted copy of your mail in Liaison; it downloads again from Gmail. Drafts written in Liaison and emails waiting for your approval are deleted for good, and you will choose a new mailbox password.",
+      "p3": "The code expires in 10 minutes. If you didn't ask for this, do not use it, and change your Liaison password.",
+      "footer": "You're receiving this because a mailbox reset was requested on your account."
+    }
+  },
+  "connectLink": {
+    "subject": "Connect your account to Liaison ({{what}})",
+    "eyebrow": "Connect",
+    "heading": "Connect your own account",
+    "senderFallback": "Your Liaison admin",
+    "body": "{{sender}} asks you to connect your own account for {{what}}. It stays yours: a personal connection only you and your agent use.",
+    "signIn": "Open the link and sign in to Liaison as {{email}}. It works only for you, once, for the next {{minutes}} minutes.",
+    "cta": "Connect my account",
+    "footer": "If you weren't expecting this, ignore it: nothing happens until you sign in and consent."
+  },
+  "csat": {
+    "subject": "How did we do? {{subject}}",
+    "eyebrow": "Feedback",
+    "heading": "How did we do?",
+    "body": "Thanks for contacting support about \"{{subject}}\" ({{handle}}).",
+    "ask": "We'd love your feedback: it only takes a moment to rate your experience from 1 to 5.",
+    "cta": "Rate your experience"
+  }
+}

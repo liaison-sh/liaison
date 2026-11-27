@@ -3288,7 +3288,7 @@ export function attachedFilesNote(
   opts: { fenced?: boolean } = {},
 ): string {
   if (atts.length === 0) return ""
-  return `\n\n[Attached files: ${attachmentNames(atts, opts.fenced ?? true)}. Use kernel__files_read or kernel__analyze_media to inspect them.]`
+  return `\n\n[Attached files: ${attachmentNames(atts, opts.fenced ?? true)}. kernel__files_read returns the text of a text file (.md, .txt, .csv, .json) and a download link for anything else; kernel__analyze_media views an image, video or PDF.]`
 }
 
 export function convertToCoreMessages(
@@ -3377,7 +3377,7 @@ export function convertToCoreMessages(
         if (atts.length === 0) continue
         result.push({
           role: "user",
-          content: `[The user sent an attachment-only message (no text): ${attachmentNames(atts)}. Use kernel__analyze_media with the file id to view its content if relevant.]`,
+          content: `[The user sent an attachment-only message (no text): ${attachmentNames(atts)}. Read a text file (.md, .txt, .csv, .json) with kernel__files_read and view an image, video or PDF with kernel__analyze_media, by its file id, if relevant.]`,
         })
         continue
       }

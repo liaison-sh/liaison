@@ -26,9 +26,64 @@ export function isCalendarAdmin(callerScopes: string[] | undefined): boolean {
 function isoStringToCalendarPoint(
   iso: string | undefined,
   allDay: boolean | undefined,
-): { dateTime: string } | { date: string } | undefined {
+  timeZone?: string | null,
+): { dateTime: string; timeZone?: string } | { date: string } | undefined {
   if (!iso) return undefined
-  return allDay ? { date: iso.slice(0, 10) } : { dateTime: iso }
+  if (allDay) return { date: iso.slice(0, 10) }
+  // A timed point names its zone (the calendar's): Google requires it on a recurring event, and
+  // the series expands in it, so a weekly 09:00 stays at 09:00 across a daylight saving change.
+  return timeZone ? { dateTime: iso, timeZone } : { dateTime: iso }
+}
+
+/** The day after a YYYY-MM-DD date. */
+function nextDay(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * The start and end points of an edit. An all-day event's end is exclusive (Google's rule): an
+ * end on or before the start day (a one-day event given as start = end) becomes the day after
+ * the start, never the empty range Google refuses.
+ */
+function eventPoints(
+  params: { start?: string; end?: string; allDay?: boolean },
+  timeZone: string | null | undefined,
+): {
+  start: ReturnType<typeof isoStringToCalendarPoint>
+  end: ReturnType<typeof isoStringToCalendarPoint>
+} {
+  const start = isoStringToCalendarPoint(params.start, params.allDay, timeZone)
+  let end = isoStringToCalendarPoint(params.end, params.allDay, timeZone)
+  if (params.allDay && start && "date" in start) {
+    if (!end || ("date" in end && end.date <= start.date)) end = { date: nextDay(start.date) }
+  }
+  return { start, end }
+}
+
+/** Google lets an account write only to calendars it owns or may edit. */
+const WRITABLE_ACCESS_ROLES = new Set(["owner", "writer"])
+
+/** Refuses a write on a calendar the account may only read (a holiday or a shared calendar):
+ * Google would refuse it (403), leaving a local event that never reaches Google. */
+function assertWritableCalendar(
+  calendar: { id: string; name?: string | null; access_role?: string | null },
+  tool: string,
+): void {
+  const role = calendar.access_role
+  if (!role || WRITABLE_ACCESS_ROLES.has(role)) return
+  throw Object.assign(
+    new Error(
+      `${tool}: calendar "${calendar.name ?? calendar.id}" is read-only for this account (access ${role}). Call list_calendars and pick a calendar whose accessRole is owner or writer.`,
+    ),
+    { status: 422, code: "invalid_params" },
+  )
+}
+
+/** A person's id, or undefined for a system or agent actor id. */
+function personId(userId: string | undefined): string | undefined {
+  return userId && /^[0-9a-f-]{36}$/i.test(userId) ? userId : undefined
 }
 
 /** A create/update carrying a conference change is pushed by the tool handler itself, so the
@@ -40,7 +95,9 @@ const CONFERENCE_PUSH_BACKUP_DELAY_MS = 60_000
 export type CalendarBridgeContext = Pick<
   BridgeContext,
   "appName" | "callerScopes" | "orgId" | "requireApp" | "txDb" | "userId"
->
+> &
+  // Optional: a harness without a socket fan-out simply announces nothing.
+  Partial<Pick<BridgeContext, "queueAppEvent">>
 
 /** How the calendar surface queues its jobs: the job queue in production; a test harness
  * passes its own queue to run the jobs in process (`apps/calendar/__fixtures__/google`). */
@@ -55,6 +112,39 @@ export function createCalendarMethods(
 ): Record<string, any> {
   const { callerScopes, orgId, requireApp, txDb, userId } = ctx
   const enqueue = deps.enqueue ?? enqueueAppJob
+
+  /**
+   * Tells the open calendar views that a calendar's events changed (a sync page, a push result,
+   * a write by an agent), so a visible week refetches instead of waiting for a navigation. One
+   * `calendar/event:changed` frame per write, queued in the write's transaction so it goes out
+   * after the commit. It names the calendar and nothing of the events; its `calendar:calaccess`
+   * value holds the socket fan-out to the readers of that account, as the rows' RLS does.
+   * Deliberately not `event:update`: it names a calendar, not an event, so no event routine
+   * keyed on an event fires on it.
+   */
+  async function announceEventsChanged(ref: { calendarId: string } | { eventId: string }) {
+    const { sql } = await import("drizzle-orm")
+    const { schemaRef } = await import("~/db/schema-ref")
+    const schema = sql.raw(schemaRef("app_calendar"))
+    const result = (await txDb.execute(
+      "calendarId" in ref
+        ? sql`SELECT id AS calendar_id, calaccess FROM ${schema}.calendars
+              WHERE org_id = ${orgId}::uuid AND id = ${ref.calendarId}::uuid`
+        : sql`SELECT calendar_id, calaccess FROM ${schema}.events
+              WHERE org_id = ${orgId}::uuid AND id = ${ref.eventId}::uuid`,
+    )) as unknown as { rows?: unknown[] } | unknown[]
+    const rows = (Array.isArray(result) ? result : (result.rows ?? [])) as Array<{
+      calendar_id: string
+      calaccess: string | null
+    }>
+    const row = rows[0]
+    if (!row || !ctx.queueAppEvent) return
+    await ctx.queueAppEvent("calendar", "event", "changed", row.calendar_id, {
+      calendarId: row.calendar_id,
+      ...(row.calaccess ? { "calendar:calaccess": row.calaccess } : {}),
+    })
+  }
+
   return {
     /** Rows for a company's or a contact's timeline, read under the caller's row security. */
     calendar_activityRead: async (paramsJson: string): Promise<string> => {
@@ -123,6 +213,9 @@ export function createCalendarMethods(
       const { applyInitialSyncPages } = await import("~/apps/calendar/sync")
       const pages = JSON.parse(pagesJson)
       const result = await applyInitialSyncPages(txDb, orgId, calendarId, calaccess, pages)
+      if (pages.some((p: { items?: unknown[] }) => (p.items?.length ?? 0) > 0)) {
+        await announceEventsChanged({ calendarId })
+      }
       return JSON.stringify(result)
     },
 
@@ -134,6 +227,9 @@ export function createCalendarMethods(
       const { applyIncrementalSyncPages } = await import("~/apps/calendar/sync")
       const pages = JSON.parse(pagesJson)
       const result = await applyIncrementalSyncPages(txDb, orgId, calendarId, pages)
+      if (pages.some((p: { items?: unknown[] }) => (p.items?.length ?? 0) > 0)) {
+        await announceEventsChanged({ calendarId })
+      }
       return JSON.stringify(result)
     },
 
@@ -143,6 +239,7 @@ export function createCalendarMethods(
       await recoverFromSyncTokenGone(txDb, orgId, calendarId, async (jobName, payload) => {
         await enqueue("calendar", jobName, payload)
       })
+      await announceEventsChanged({ calendarId })
     },
 
     calendar_getAccount: async (accountId: string): Promise<string> => {
@@ -228,7 +325,10 @@ export function createCalendarMethods(
       const headers = JSON.parse(headersJson) as Record<string, string>
       const channelId = headers["x-goog-channel-id"] ?? headers["X-Goog-Channel-ID"] ?? ""
       const resourceId = headers["x-goog-resource-id"] ?? headers["X-Goog-Resource-ID"] ?? ""
+      const state = headers["x-goog-resource-state"] ?? headers["X-Goog-Resource-State"] ?? ""
       if (!channelId || !resourceId) return
+      // The handshake Google posts once a channel is created: no change to fetch.
+      if (state === "sync") return
       await handleGooglePushNotification(
         txDb,
         orgId,
@@ -280,6 +380,23 @@ export function createCalendarMethods(
       const { findCalendarsForPollFallback } = await import("~/apps/calendar/sync")
       const rows = await findCalendarsForPollFallback(txDb, orgId, staleMinutes)
       return JSON.stringify(rows)
+    },
+
+    calendar_claimSyncPending: async (calendarId: string): Promise<string> => {
+      requireApp("calendar", "calendar_claimSyncPending")
+      const { claimCalendarSyncPending } = await import("~/apps/calendar/sync")
+      return JSON.stringify(await claimCalendarSyncPending(txDb, orgId, calendarId))
+    },
+
+    calendar_recordSyncFailure: async (
+      calendarId: string,
+      operation: string,
+      errorKind: string,
+      detail: string,
+    ): Promise<void> => {
+      requireApp("calendar", "calendar_recordSyncFailure")
+      const { recordSyncFailure } = await import("~/apps/calendar/sync")
+      await recordSyncFailure(txDb, orgId, calendarId, operation, errorKind, detail)
     },
 
     calendar_markCalendarPolled: async (calendarId: string): Promise<void> => {
@@ -375,6 +492,8 @@ export function createCalendarMethods(
       }
       const calendar = await getCalendarById(txDb, orgId, params.calendarId)
       if (!calendar) throw new Error(`calendar ${params.calendarId} not found`)
+      assertWritableCalendar(calendar, "create_event")
+      const points = eventPoints(params, calendar.time_zone)
       const { eventId } = await createLocalEvent(
         txDb,
         orgId,
@@ -387,8 +506,8 @@ export function createCalendarMethods(
           attendees: params.attendees,
           recurrence: params.recurrence,
           allDay: params.allDay,
-          start: isoStringToCalendarPoint(params.start, params.allDay),
-          end: isoStringToCalendarPoint(params.end, params.allDay),
+          start: points.start,
+          end: points.end,
           conference,
         },
       )
@@ -404,6 +523,7 @@ export function createCalendarMethods(
           ...(conference ? { delay: CONFERENCE_PUSH_BACKUP_DELAY_MS } : {}),
         },
       )
+      await announceEventsChanged({ eventId })
       return JSON.stringify({ eventId, conference: conference ?? null })
     },
 
@@ -442,6 +562,11 @@ export function createCalendarMethods(
         changesRecurrence: params.recurrence !== undefined,
       })
       const eventId = target.eventId
+      const { getCalendarById, getEventById } = await import("~/apps/calendar/sync")
+      const row = await getEventById(txDb, orgId, eventId)
+      const calendar = row ? await getCalendarById(txDb, orgId, row.calendar_id) : undefined
+      if (calendar) assertWritableCalendar(calendar, "update_event")
+      const points = eventPoints(params, calendar?.time_zone)
       const { syncVersion } = await updateLocalEvent(txDb, orgId, eventId, {
         title: params.title,
         description: params.description,
@@ -449,9 +574,11 @@ export function createCalendarMethods(
         attendees: params.attendees,
         recurrence: params.recurrence,
         allDay: params.allDay,
-        start: isoStringToCalendarPoint(params.start, params.allDay),
-        end: isoStringToCalendarPoint(params.end, params.allDay),
+        start: points.start,
+        // A start alone on an all-day event keeps its own end (not a one-day default).
+        end: params.end !== undefined || params.allDay === undefined ? points.end : undefined,
         conference,
+        editorId: personId(userId),
       })
       await enqueue(
         "calendar",
@@ -462,6 +589,7 @@ export function createCalendarMethods(
           ...(conference ? { delay: CONFERENCE_PUSH_BACKUP_DELAY_MS } : {}),
         },
       )
+      await announceEventsChanged({ eventId })
       return JSON.stringify({
         eventId,
         ...(target.scope ? { scope: target.scope } : {}),
@@ -491,6 +619,12 @@ export function createCalendarMethods(
         throw err
       }
       const eventId = target.eventId
+      {
+        const { getCalendarById, getEventById } = await import("~/apps/calendar/sync")
+        const row = await getEventById(txDb, orgId, eventId)
+        const calendar = row ? await getCalendarById(txDb, orgId, row.calendar_id) : undefined
+        if (calendar) assertWritableCalendar(calendar, "delete_event")
+      }
       // An event Google has (or may have: a create in flight) becomes a tombstone that the push
       // deletes on Google, retrying like any push; the import cannot resurrect it meanwhile.
       const { needsGooglePush, syncVersion } = await deleteLocalEvent(txDb, orgId, eventId)
@@ -502,6 +636,7 @@ export function createCalendarMethods(
           { jobId: `calendar-push:${eventId}:v${syncVersion}:a0` },
         )
       }
+      await announceEventsChanged({ eventId })
       return JSON.stringify({
         eventId,
         ...(target.scope ? { scope: target.scope } : {}),
@@ -517,16 +652,16 @@ export function createCalendarMethods(
     ): Promise<string> => {
       requireApp("calendar", "calendar_restoreRefusedDelete")
       const { restoreRefusedDelete } = await import("~/apps/calendar/sync")
-      return JSON.stringify(
-        await restoreRefusedDelete(
-          txDb,
-          orgId,
-          eventId,
-          message,
-          syncVersion,
-          JSON.parse(remoteJson || "null"),
-        ),
+      const restored = await restoreRefusedDelete(
+        txDb,
+        orgId,
+        eventId,
+        message,
+        syncVersion,
+        JSON.parse(remoteJson || "null"),
       )
+      await announceEventsChanged({ eventId })
+      return JSON.stringify(restored)
     },
 
     calendar_finalizeRemoteDelete: async (eventId: string): Promise<void> => {
@@ -546,7 +681,9 @@ export function createCalendarMethods(
       requireApp("calendar", "calendar_applyPushResult")
       const { applyPushResult } = await import("~/apps/calendar/sync")
       const result = JSON.parse(resultJson)
-      return JSON.stringify(await applyPushResult(txDb, orgId, eventId, result))
+      const applied = await applyPushResult(txDb, orgId, eventId, result)
+      await announceEventsChanged({ eventId })
+      return JSON.stringify(applied)
     },
 
     calendar_handlePushConflict: async (eventId: string, inputJson: string): Promise<string> => {
@@ -577,6 +714,7 @@ export function createCalendarMethods(
       requireApp("calendar", "calendar_markPushRejected")
       const { markPushRejected } = await import("~/apps/calendar/sync")
       await markPushRejected(txDb, orgId, eventId, message, syncVersion)
+      await announceEventsChanged({ eventId })
     },
 
     calendar_notePushFailure: async (eventId: string, syncVersion: number): Promise<string> => {
@@ -594,6 +732,7 @@ export function createCalendarMethods(
       requireApp("calendar", "calendar_revertToRemote")
       const { revertEventToGoogle } = await import("~/apps/calendar/sync")
       await revertEventToGoogle(txDb, orgId, eventId, JSON.parse(remoteJson), detail, syncVersion)
+      await announceEventsChanged({ eventId })
     },
 
     calendar_recordPushFailure: async (

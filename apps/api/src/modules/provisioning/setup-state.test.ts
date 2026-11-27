@@ -130,8 +130,10 @@ describe("computeSetupState: the Liaison team item", () => {
       const state = await computeSetupState(orgId)
       expect(state.items.map((i) => i.key)).not.toContain("aiKey")
       expect(state.next).not.toBe("aiKey")
-      // The card says the mailbox comes last: the list agrees (team and knowledge first).
+      // The card says the company brief first, then the team, the mailbox last: the list agrees.
       expect(state.items.map((i) => i.key).slice(0, 7)).toEqual([...MANAGED_ITEM_KEYS])
+      expect(state.items.map((i) => i.key).slice(0, 2)).toEqual(["knowledge", "team"])
+      expect(state.next).toBe("knowledge")
       expect(state.items.map((i) => i.key).indexOf("mail")).toBeGreaterThan(
         state.items.map((i) => i.key).indexOf("knowledge"),
       )
@@ -163,6 +165,10 @@ describe("computeSetupState", () => {
   test("a fresh org has nothing done and the key comes first", async () => {
     const state = await computeSetupState(orgId)
     expect(state.items.map((i) => i.key)).toEqual([...SETUP_ITEM_KEYS])
+    // The agent learns the company before the colleagues are invited, and the
+    // mailbox after both; only the key and the apps come before the brief.
+    const keys = state.items.map((i) => i.key)
+    expect(keys.slice(0, 5)).toEqual(["aiKey", "apps", "knowledge", "team", "mail"])
     for (const i of state.items) {
       expect({ key: i.key, done: i.done }).toEqual({ key: i.key, done: false })
     }

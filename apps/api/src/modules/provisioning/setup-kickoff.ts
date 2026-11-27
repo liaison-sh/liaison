@@ -74,9 +74,9 @@ export interface SetupKickoffMetadata {
   demoUrl: string | null
   /** The key card, when the workspace has no model key the agent could use. */
   secretRequestId?: string
-  /** Set on the managed edition (Cloud) only: the card asks for one goal, mail last. */
+  /** Set on the managed edition (Cloud) only: brief, team, one goal, mail last. */
   managed?: true
-  /** Cloud: the goal the person chose at signup; the setup starts there. */
+  /** Cloud: the goal the person chose at signup; it follows the brief and the team. */
   goal?: KickoffGoal
 }
 
@@ -264,7 +264,8 @@ export async function runSetupKickoff(payload: SetupKickoffPayload): Promise<Set
   const state = await computeSetupState(orgId)
   const demoUrl = demoOfferUrl()
   const { locale, agentId } = prep
-  // Cloud asks for one goal and puts it first, mail last. A self-hosted card
+  // Cloud starts with the company brief, then the team, then the one goal it
+  // asks for, mail last. A self-hosted card
   // stays exactly as it was, whatever the payload says. The payload comes back
   // from the queue: the goal is checked against the closed list again.
   const managed = isManagedEdition()

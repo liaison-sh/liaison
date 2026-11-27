@@ -305,6 +305,8 @@ async function touchesEncryptedMailbox(orgId: string, result: unknown): Promise<
 export const FILE_ANALYSIS_TOOLS: ReadonlySet<string> = new Set([
   "analyze_media",
   "mail_attachment_read",
+  // Returns a text file's content (`text`); its handler keeps private mailbox files on the URL path.
+  "files_read",
 ])
 
 /**
@@ -315,7 +317,7 @@ export const FILE_ANALYSIS_TOOLS: ReadonlySet<string> = new Set([
 async function redactFileAnalysisResult(orgId: string, result: unknown): Promise<unknown> {
   if (!result || typeof result !== "object" || Array.isArray(result)) return result
   const record = result as Record<string, unknown>
-  if (typeof record.summary !== "string") return result
+  if (typeof record.summary !== "string" && typeof record.text !== "string") return result
   const fileId = typeof record.fileId === "string" ? record.fileId : null
   if (fileId && UUID_RE.test(fileId)) {
     const isPrivate = await withPrivilegedDb(orgId, "agent-file-analysis-redaction", (tx) =>

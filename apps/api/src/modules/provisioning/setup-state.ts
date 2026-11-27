@@ -51,26 +51,32 @@ import { DEFAULT_ROLES } from "~/modules/permissions/default-roles"
 
 const log = rootLogger.child({ module: "setup-state" })
 
-/** The checklist, in the order the agent proposes it. */
+/**
+ * The checklist, in the order the agent proposes it. The company brief
+ * (`knowledge`) comes before the team: colleagues then arrive in a workspace
+ * whose agent already knows the company. Only what the agent needs to run at
+ * all (a model key, the apps the knowledge lives in) comes before it. The order
+ * proposes, it never blocks: any step can be started first.
+ */
 export const SETUP_ITEM_KEYS = [
   "aiKey",
   "apps",
-  "mail",
-  "team",
   "knowledge",
+  "team",
+  "mail",
   "import",
   "roles",
   "connector",
 ] as const
 /**
  * The checklist on the managed edition (Liaison Cloud): no model-key step (it runs on the
- * server's own key), and the mailbox after the team and the company knowledge, as the setup
- * card's intro and the setup-guide skill say ("connecting your mailbox comes last").
+ * server's own key), the company brief first, then the team, and the mailbox last, as the
+ * setup card's intro and the setup-guide skill say ("connecting your mailbox comes last").
  */
 export const MANAGED_ITEM_KEYS = [
-  "apps",
-  "team",
   "knowledge",
+  "team",
+  "apps",
   "mail",
   "import",
   "roles",

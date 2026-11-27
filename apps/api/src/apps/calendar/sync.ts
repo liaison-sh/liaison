@@ -1028,6 +1028,9 @@ export interface EventRow {
   /** The attendee list as last synced, recorded when a local edit first changes attendees and
    * cleared once that edit reaches Google. Null = attendees not edited locally. */
   attendees_base?: unknown
+  /** The modelled fields (and the editor) when the first local edit since the last sync began;
+   * the push merges field by field against it. Null: nothing edited locally. */
+  push_base?: unknown
   organizer_self?: boolean | null
   guests_can_modify?: boolean | null
   /** Why Google refused this row's last push (400 and the like); null when none. */
@@ -1167,7 +1170,8 @@ async function upsertEventsFromGoogle(
         updated_at = COALESCE(EXCLUDED.google_updated_at, now()), pending_push = 'none',
         organizer_self = EXCLUDED.organizer_self, guests_can_modify = EXCLUDED.guests_can_modify,
         event_type = EXCLUDED.event_type,
-        attendees_base = NULL, push_error = NULL, push_notice = NULL, conference_request = NULL
+        attendees_base = NULL, push_base = NULL, push_error = NULL, push_notice = NULL,
+        conference_request = NULL
       -- A local delete waiting to reach Google is not undone by the import.
       WHERE ${sql.raw(schema)}.events.deleted_at IS NULL
     `)
@@ -1413,16 +1417,47 @@ export async function applyIncrementalSyncPages(
       calendarId,
       items.map((item) => item.id),
     )
-    const cancelled = items.filter((item) => item.status === "cancelled").map((item) => item.id)
+    // A cancelled occurrence of a series (Google's "delete this event only") is an exception
+    // row with status 'cancelled', exactly as the full sync stores it: the series' expansion
+    // reads it to hide that occurrence (a moved one too). Deleting the row instead would bring
+    // the occurrence back at its original slot. A cancellation wins over a local edit, as a
+    // deleted plain event does; a local tombstone is left alone (the upsert skips it).
+    const cancelledOccurrences = items.filter(
+      (item) => item.status === "cancelled" && item.recurringEventId,
+    )
+    if (cancelledOccurrences.length > 0) {
+      const existing = await getEventsByGoogleIds(
+        db,
+        orgId,
+        calendarId,
+        cancelledOccurrences.map((item) => item.id),
+      )
+      await upsertEventsFromGoogle(
+        db,
+        orgId,
+        calendarId,
+        cancelledOccurrences
+          .filter((item) => !(item.etag && existing.get(item.id)?.etag === item.etag))
+          .map((item) => ({
+            calaccess: existing.get(item.id)?.calaccess ?? calendarCalaccess,
+            item,
+          })),
+      )
+    }
+    // A cancelled plain event or series master is deleted, with the series' exception rows.
+    const cancelled = items
+      .filter((item) => item.status === "cancelled" && !item.recurringEventId)
+      .map((item) => item.id)
     if (cancelled.length > 0) {
       const { sql } = await import("drizzle-orm")
+      const ids = sql.join(
+        cancelled.map((id) => sql`${id}`),
+        sql.raw(", "),
+      )
       await db.execute(sql`
         DELETE FROM ${sql.raw(CALENDAR_SCHEMA())}.events
         WHERE org_id = ${orgId}::uuid AND calendar_id = ${calendarId}::uuid
-          AND google_event_id IN (${sql.join(
-            cancelled.map((id) => sql`${id}`),
-            sql.raw(", "),
-          )})
+          AND (google_event_id IN (${ids}) OR recurring_event_id IN (${ids}))
       `)
     }
     const live = items.filter((item) => item.status !== "cancelled")
@@ -1496,6 +1531,8 @@ export interface LocalEventInput {
   /** Local edits: "add" asks Google for a Meet, "remove" drops the event's conference;
    * undefined leaves the conference as it is. */
   conference?: "add" | "remove"
+  /** Local edits: the person editing (told when the edit meets a Google change). */
+  editorId?: string
 }
 
 const EVENT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -1517,7 +1554,7 @@ export async function getEventById(
            all_day, status, attendees, recurrence, recurring_event_id, original_start_time,
            extended_props, hangout_link, liaison_sync_version, pending_push, updated_at, google_updated_at, calaccess,
            attendees_base, organizer_self, guests_can_modify, push_error, deleted_at,
-           pending_before_delete, push_notice, conference_request
+           pending_before_delete, push_notice, conference_request, push_base
     FROM ${sql.raw(schema)}.events
     WHERE org_id = ${orgId}::uuid AND id = ${eventId}::uuid
     LIMIT 1
@@ -1864,6 +1901,12 @@ export async function updateLocalEvent(
           THEN COALESCE(attendees, '[]'::jsonb)
         ELSE attendees_base
       END,
+      -- First local edit since the last sync: remember the modelled fields it started from (and
+      -- who edited), so the push changes on Google only what this edit changed (per-field merge).
+      push_base = COALESCE(push_base, jsonb_build_object(
+        'title', title, 'description', description, 'location', location,
+        'start', start, 'end', "end", 'recurrence', recurrence,
+        'editorId', ${input.editorId ?? null}::text)),
       conference_request = COALESCE(${input.conference ?? null}, conference_request),
       liaison_sync_version = liaison_sync_version + 1,
       pending_push = ${nextPendingPush},
@@ -2041,6 +2084,24 @@ export interface PushResult {
    * local edit landed while the push was in flight), only Google's identifiers are stored:
    * the row stays pending, with its attendee base, so the queued push sends the newer edit. */
   syncVersion?: number
+  /** The push merged the local edit onto Google's event field by field (`remote` is the
+   * merged result): the row takes Google's stored title, times and so on. */
+  merged?: boolean
+  /** Fields both sides changed to different values: the newer change was kept. */
+  conflicts?: Array<{ field: string; kept: "google" | "liaison"; lostValue: string }>
+}
+
+/** The calm notice an event shows after a true conflict (D5): which version was kept, and the
+ * value that was replaced. */
+export function conflictNotice(
+  conflicts: Array<{ field: string; kept: "google" | "liaison"; lostValue: string }>,
+): string {
+  const parts = conflicts.map((c) =>
+    c.kept === "google"
+      ? `${c.field}: kept the change made in Google; yours was "${c.lostValue}"`
+      : `${c.field}: kept your change; Google had "${c.lostValue}"`,
+  )
+  return `Changed in Google while you edited. ${parts.join("; ")}.`.slice(0, 500)
 }
 
 /**
@@ -2090,12 +2151,23 @@ export async function applyPushResult(
     const moved = Array.isArray(rows) ? rows : (rows.rows ?? [])
     if (moved.length > 0) return { rowExists: true }
   }
-  await db.execute(sql`
+  const adopt = result.merged === true && remoteMapped !== null
+  const conflicts = result.conflicts ?? []
+  const notice = conflicts.length > 0 ? conflictNotice(conflicts) : null
+  const applied: unknown = await db.execute(sql`
     UPDATE ${sql.raw(schema)}.events SET
       google_event_id = ${result.googleEventId}, etag = ${result.etag},
       google_updated_at = ${result.googleUpdatedAt}, pending_push = 'none',
       updated_at = COALESCE(${result.googleUpdatedAt}::timestamptz, now()),
-      attendees_base = NULL, push_error = NULL, push_notice = NULL, push_attempts = 0,
+      title = CASE WHEN ${adopt}::boolean THEN ${remoteMapped?.title ?? null} ELSE title END,
+      description = CASE WHEN ${adopt}::boolean THEN ${remoteMapped?.description ?? null} ELSE description END,
+      location = CASE WHEN ${adopt}::boolean THEN ${remoteMapped?.location ?? null} ELSE location END,
+      start = CASE WHEN ${adopt}::boolean THEN ${JSON.stringify(remoteMapped?.start ?? null)}::jsonb ELSE start END,
+      "end" = CASE WHEN ${adopt}::boolean THEN ${JSON.stringify(remoteMapped?.end ?? null)}::jsonb ELSE "end" END,
+      all_day = CASE WHEN ${adopt}::boolean THEN ${remoteMapped?.allDay ?? false}::boolean ELSE all_day END,
+      recurrence = CASE WHEN ${adopt}::boolean THEN ${JSON.stringify(remoteMapped?.recurrence ?? null)}::jsonb ELSE recurrence END,
+      push_base = NULL,
+      attendees_base = NULL, push_error = NULL, push_notice = ${notice}, push_attempts = 0,
       last_push_attempt_at = NULL, first_push_failure_at = NULL, conference_request = NULL,
       hangout_link = CASE WHEN ${result.hangoutLink !== undefined}::boolean
         THEN ${result.hangoutLink ?? null} ELSE hangout_link END,
@@ -2106,7 +2178,30 @@ export async function applyPushResult(
       guests_can_modify = CASE WHEN ${remoteMapped !== null}::boolean
         THEN ${remoteMapped?.guestsCanModify ?? null}::boolean ELSE guests_can_modify END
     WHERE org_id = ${orgId}::uuid AND id = ${eventId}::uuid${await versionGuard(result.syncVersion)}
+    RETURNING id, title
   `)
+  const appliedRows = Array.isArray(applied)
+    ? applied
+    : ((applied as { rows?: unknown[] }).rows ?? [])
+  const editorId = (current.push_base as { editorId?: unknown } | null)?.editorId
+  if (notice && appliedRows.length > 0 && typeof editorId === "string") {
+    // A quiet attention item for the person whose edit met a Google change (the manifest's
+    // `event:sync_conflict` translation), besides the notice on the event itself.
+    await db.queueEvent({
+      app: "calendar",
+      entity: "event",
+      action: "sync_conflict",
+      entityId: eventId,
+      orgId,
+      actorType: "system",
+      data: {
+        eventId,
+        title: (appliedRows[0] as { title?: string | null }).title ?? "",
+        notice,
+        editorId,
+      },
+    })
+  }
   return { rowExists: true }
 }
 
@@ -2228,11 +2323,28 @@ export async function recordPushFailure(
   errorKind: string,
   detail: string,
 ): Promise<void> {
+  await recordSyncFailure(db, orgId, calendarId, "push", errorKind, detail)
+  void eventId // pendingPush is left as-is by design — this function only logs + flags the account.
+}
+
+/**
+ * recordSyncFailure — one failed call to Google for a calendar (`operation`: push,
+ * initial-sync, incremental-sync, watch): a sync_log row, and for `AuthRevoked` (Google refused
+ * the refreshed token too) the account is flagged reauth-required so Settings asks to reconnect.
+ */
+export async function recordSyncFailure(
+  db: RlsClient,
+  orgId: string,
+  calendarId: string,
+  operation: string,
+  errorKind: string,
+  detail: string,
+): Promise<void> {
   const { sql } = await import("drizzle-orm")
   const schema = CALENDAR_SCHEMA()
   await db.execute(sql`
     INSERT INTO ${sql.raw(schema)}.sync_log (id, org_id, calendar_id, operation, status, error_kind, detail, calaccess)
-    SELECT gen_random_uuid(), ${orgId}::uuid, ${calendarId}::uuid, 'push', 'error', ${errorKind}, ${detail}, calaccess
+    SELECT gen_random_uuid(), ${orgId}::uuid, ${calendarId}::uuid, ${operation}, 'error', ${errorKind}, ${detail}, calaccess
     FROM ${sql.raw(schema)}.calendars WHERE id = ${calendarId}::uuid AND org_id = ${orgId}::uuid
   `)
   if (errorKind === "AuthRevoked") {
@@ -2243,7 +2355,6 @@ export async function recordPushFailure(
       )
     `)
   }
-  void eventId // pendingPush is left as-is by design — this function only logs + flags the account.
 }
 
 // --- Watch channels, webhook binding, renewal + polling fallback (Task 6) ---
@@ -2314,15 +2425,61 @@ export async function handleGooglePushNotification(
 ): Promise<void> {
   const calendar = await findCalendarByChannelId(db, orgId, channelId, resourceId)
   if (!calendar) return
+  // The change is marked on the calendar before the job is queued: a sync already running
+  // dedups this enqueue (same job id), and re-runs itself when it finds the mark at its end
+  // (claimCalendarSyncPending), so a change Google committed after that sync's last page is
+  // never left for the 30-minute poll.
+  await markCalendarSyncPending(db, orgId, calendar.id)
   await enqueueJob(
     "calendar-incremental-sync",
     { orgId, calendarId: calendar.id },
-    { jobId: `calendar-incremental:${calendar.id}`, removeOnComplete: true },
+    { jobId: incrementalSyncJobId(calendar.id), removeOnComplete: true },
   )
 }
 
-/** findCalendarsForWatchRenewal — calendars with a channel expiring within `withinHours` hours.
- * Boundary is EXCLUSIVE `<` (Design: "pick the inclusive/exclusive boundary explicitly — use <"):
+/** The job id every incremental sync of one calendar runs under (notification and poll alike),
+ * so two never run at once for one calendar. */
+export function incrementalSyncJobId(calendarId: string): string {
+  return `calendar-incremental:${calendarId}`
+}
+
+async function markCalendarSyncPending(
+  db: RlsClient,
+  orgId: string,
+  calendarId: string,
+): Promise<void> {
+  const { sql } = await import("drizzle-orm")
+  const schema = CALENDAR_SCHEMA()
+  await db.execute(sql`
+    UPDATE ${sql.raw(schema)}.calendars SET sync_pending = true
+    WHERE org_id = ${orgId}::uuid AND id = ${calendarId}::uuid
+  `)
+}
+
+/** claimCalendarSyncPending — clears the calendar's "changed on Google" mark and says whether it
+ * was set: an incremental sync claims it before listing and again after, and lists once more
+ * when a notification arrived meanwhile. */
+export async function claimCalendarSyncPending(
+  db: RlsClient,
+  orgId: string,
+  calendarId: string,
+): Promise<boolean> {
+  const { sql } = await import("drizzle-orm")
+  const schema = CALENDAR_SCHEMA()
+  const res: unknown = await db.execute(sql`
+    UPDATE ${sql.raw(schema)}.calendars c SET sync_pending = false
+    FROM (SELECT id, sync_pending FROM ${sql.raw(schema)}.calendars
+          WHERE org_id = ${orgId}::uuid AND id = ${calendarId}::uuid FOR UPDATE) prior
+    WHERE c.id = prior.id
+    RETURNING prior.sync_pending AS was_pending
+  `)
+  const rows = Array.isArray(res) ? res : ((res as { rows?: unknown[] }).rows ?? [])
+  return (rows[0] as { was_pending?: boolean } | undefined)?.was_pending === true
+}
+
+/** findCalendarsForWatchRenewal — selected, synced calendars whose channel expires within
+ * `withinHours` hours, or that have none (its registration failed, or it expired): a calendar
+ * without a live channel would otherwise live on the 30-minute poll for good. Boundary is EXCLUSIVE `<` (Design: "pick the inclusive/exclusive boundary explicitly — use <"):
  * a calendar exactly AT now+withinHours is NOT selected yet (it's selected on the next scan,
  * closer to actual expiry). */
 export async function findCalendarsForWatchRenewal(
@@ -2337,8 +2494,13 @@ export async function findCalendarsForWatchRenewal(
            sync_token, watch_channel_id, watch_resource_id, watch_expiration, last_polled_at,
            sync_pending, calaccess
     FROM ${sql.raw(schema)}.calendars
-    WHERE org_id = ${orgId}::uuid AND selected = true AND watch_channel_id IS NOT NULL
-      AND watch_expiration < (now() + (${withinHours} || ' hours')::interval)
+    WHERE org_id = ${orgId}::uuid AND selected = true
+      AND (
+        watch_channel_id IS NULL OR watch_expiration IS NULL
+        OR watch_expiration < (now() + (${withinHours} || ' hours')::interval)
+      )
+      -- A calendar still in its first sync gets its channel from that sync.
+      AND sync_token IS NOT NULL
       AND ${notImportedCalendar(sql, schema)}
   `)) as unknown as { rows?: CalendarRow[] } | CalendarRow[]
   return Array.isArray(rows) ? rows : (rows.rows ?? [])

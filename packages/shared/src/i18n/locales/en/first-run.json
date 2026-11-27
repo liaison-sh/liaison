@@ -1,12 +1,12 @@
 {
   "kickoff": {
     "title": "Set up your space",
-    "intro": "Your agent sets this workspace up with you here, one step at a time. It first asks which features you want, then starts with the basics: your mailbox, Google sign-in, the support inbox and imports from your other tools. Each step says how long it takes, and you can skip any of them and come back any time.",
-    "introManaged": "Your agent sets this workspace up with you here, one step at a time. Where do you want to start? Pick one below, or just tell your agent. Connecting your mailbox comes last, whenever you want it.",
+    "intro": "Your agent sets this workspace up with you here, one step at a time. It first asks which features you want, then starts with a quick brief on your company: your agent asks a few questions, or reads your website or a document you give it, and keeps what it learns as company knowledge. Then you invite your team, so your colleagues arrive in a workspace whose agent already knows the company. After that come your mailbox, Google sign-in, the support inbox and imports from your other tools. Each step says how long it takes, and you can skip any of them, or invite your team first, and come back any time.",
+    "introManaged": "Your agent sets this workspace up with you here, one step at a time, starting with a quick brief on your company: your agent asks a few questions, or reads your website or a document you give it, and keeps what it learns as company knowledge. Then you invite your team, so your colleagues arrive in a workspace whose agent already knows the company. Where do you want to go from there? Pick one below, or just tell your agent. Connecting your mailbox comes last, whenever you want it.",
     "introManagedGoal": {
-      "knowledge": "Your agent sets this workspace up with you here, one step at a time, starting with your company knowledge: one page you write or paste, then a question to your agent about it. Inviting your team comes next, and connecting your mailbox last, whenever you want it.",
-      "support": "Your agent sets this workspace up with you here, one step at a time, starting with customer support: one support inbox, on the address you choose. Inviting your team comes next, and connecting your mailbox last, whenever you want it.",
-      "projects": "Your agent sets this workspace up with you here, one step at a time, starting with projects: one project of your own, or an import from Jira. Inviting your team comes next, and connecting your mailbox last, whenever you want it."
+      "knowledge": "Your agent sets this workspace up with you here, one step at a time, starting with a quick brief on your company: your agent asks a few questions, or reads your website or a document you give it, and keeps what it learns as company knowledge, then a question to your agent about it. Then you invite your team, so your colleagues arrive in a workspace whose agent already knows the company. Connecting your mailbox comes last, whenever you want it.",
+      "support": "Your agent sets this workspace up with you here, one step at a time, starting with a quick brief on your company: your agent asks a few questions, or reads your website or a document you give it, and keeps what it learns as company knowledge. Then you invite your team, so your colleagues arrive in a workspace whose agent already knows the company. Then customer support: one support inbox, on the address you choose. Connecting your mailbox comes last, whenever you want it.",
+      "projects": "Your agent sets this workspace up with you here, one step at a time, starting with a quick brief on your company: your agent asks a few questions, or reads your website or a document you give it, and keeps what it learns as company knowledge. Then you invite your team, so your colleagues arrive in a workspace whose agent already knows the company. Then projects: one project of your own, or an import from Jira. Connecting your mailbox comes last, whenever you want it."
     },
     "goal": {
       "knowledge": "Company knowledge",
@@ -14,9 +14,9 @@
       "projects": "Projects"
     },
     "goalMessage": {
-      "knowledge": "I want to start with company knowledge.",
-      "support": "I want to start with customer support.",
-      "projects": "I want to start with projects."
+      "knowledge": "My goal: company knowledge.",
+      "support": "My goal: customer support.",
+      "projects": "My goal: projects."
     },
     "keyFirst": "First, an AI model key: your agent needs one to answer. Type it into the card below; the agent never sees it.",
     "demoTitle": "Want to see it working first?",
@@ -33,12 +33,15 @@
     "start": "Start",
     "startLabel": "Start: {{step}}",
     "startMessage": "Let's do this step now: {{step}}.",
+    "teamAfterBrief": "Best after the company brief: your colleagues then arrive in a workspace whose agent already knows the company.",
+    "inviteNow": "Invite now anyway",
+    "inviteNowLabel": "Invite your team now, before the company brief",
     "action": {
       "aiKey": "Add an AI model key",
       "apps": "Turn on the apps you need",
       "mail": "Connect your mailbox",
       "team": "Invite your team",
-      "knowledge": "Add your company knowledge",
+      "knowledge": "Tell your agent about your company",
       "import": "Import from another tool",
       "roles": "Set up roles",
       "connector": "Connect an API"

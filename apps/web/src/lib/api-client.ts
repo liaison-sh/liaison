@@ -305,6 +305,11 @@ function isBinaryContentType(contentType: string): boolean {
   )
 }
 
+/** A parsed JSON (or text) answer, copied for a caller that shared another's read. */
+function copyOfRead(value: unknown): unknown {
+  return value === null || typeof value !== "object" ? value : structuredClone(value)
+}
+
 async function parseSuccessResponse<T>(response: Response): Promise<T> {
   if (response.status === 204 || response.status === 205) {
     return undefined as T
@@ -861,9 +866,31 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     return json as { data: T; meta?: Record<string, unknown> }
   }
 
+  // Identical reads in flight together share one request: two parts of a page
+  // (or two pages mounting at once) asking for the same path no longer cost two
+  // requests of the person's per-user budget. Each caller after the first gets
+  // its own copy, so one that edits its answer never changes another's. A read
+  // with its own abort signal, a person's Try again and a keepalive send go out
+  // on their own; whether the global error toast shows is part of the key.
+  const readsInFlight = new Map<string, Promise<unknown>>()
+  function sharedGet<T>(path: string, init?: RequestInitLike): Promise<T> {
+    if (init?.signal || init?.userInitiated || init?.keepalive) {
+      return request<T>("GET", path, undefined, init)
+    }
+    const key = `${init?.suppressGlobalError ? "quiet" : "toast"} ${path}`
+    const pending = readsInFlight.get(key)
+    if (pending) return pending.then((value) => copyOfRead(value) as T)
+    const read = request<T>("GET", path, undefined, init)
+    readsInFlight.set(key, read)
+    const forget = () => {
+      if (readsInFlight.get(key) === read) readsInFlight.delete(key)
+    }
+    read.then(forget, forget)
+    return read
+  }
+
   return {
-    get: <T = unknown>(path: string, init?: RequestInitLike) =>
-      request<T>("GET", path, undefined, init),
+    get: <T = unknown>(path: string, init?: RequestInitLike) => sharedGet<T>(path, init),
     post: <T = unknown>(path: string, body?: unknown, init?: RequestInitLike) =>
       request<T>("POST", path, body, init),
     put: <T = unknown>(path: string, body?: unknown, init?: RequestInitLike) =>

@@ -1339,7 +1339,7 @@ describe("context-assembler", () => {
         atts,
       )
       expect(result[0]!.content).toBe(
-        'please import this\n\n[Attached files: <external-content source="untrusted">\ninvoices.zip\n</external-content> (file id: file-zip). Use kernel__files_read or kernel__analyze_media to inspect them.]',
+        'please import this\n\n[Attached files: <external-content source="untrusted">\ninvoices.zip\n</external-content> (file id: file-zip). kernel__files_read returns the text of a text file (.md, .txt, .csv, .json) and a download link for anything else; kernel__analyze_media views an image, video or PDF.]',
       )
       expect(String(result[1]!.content).match(/file-pdf/g)).toHaveLength(1)
     })

@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
     accounts: [] as any[],
     accountsLoaded: true,
     accountsError: null as string | null,
+    loading: false,
+    error: null as string | null,
   },
 }))
 
@@ -100,6 +102,23 @@ describe("CalendarShell home with no calendars", () => {
     expect(screen.getByTestId("calendar-accounts-load-error")).toHaveTextContent(
       "calendar_listAccounts failed (500)",
     )
+  })
+
+  it("says when the events could not be loaded, calmly, with a retry", () => {
+    mocks.store.error = "list_events failed (502)"
+    render(() => <CalendarShell initialView="month" testId="calendar-month-tab" />)
+    const banner = screen.getByTestId("calendar-events-error")
+    expect(banner).toHaveAttribute("role", "status")
+    expect(screen.getByTestId("calendar-events-retry")).toBeInTheDocument()
+    mocks.store.error = null
+  })
+
+  it("shows the loading bar while a window is on its way", () => {
+    mocks.store.loading = true
+    render(() => <CalendarShell initialView="month" testId="calendar-month-tab" />)
+    expect(screen.getByTestId("calendar-loading")).toBeInTheDocument()
+    expect(screen.getByTestId("calendar-month-tab")).toHaveAttribute("aria-busy", "true")
+    mocks.store.loading = false
   })
 
   it("shows Connect when the user has no account", () => {

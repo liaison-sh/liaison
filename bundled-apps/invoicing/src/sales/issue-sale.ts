@@ -43,6 +43,7 @@ import {
 type Row = Record<string, unknown>
 
 export interface SaleCtx extends OrderPaidCtx {
+  logger?: { warn(message: string, meta?: Record<string, unknown>): void }
   contracts?: {
     call<T = unknown>(
       contract: string,
@@ -176,8 +177,11 @@ async function withContact(
       externalId: c.id ?? undefined,
     })) as { id?: string } | null
     c.contact_id = resolved?.id ?? null
-  } catch {
-    // Left null: the flow parks the sale awaiting its contact.
+  } catch (err) {
+    // Left null: the flow parks the sale awaiting its contact; the cause is logged.
+    ctx.logger?.warn("revenue stream: the buyer's contact could not be resolved", {
+      error: err instanceof Error ? err.message : String(err),
+    })
   }
 }
 

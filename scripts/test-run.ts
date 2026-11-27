@@ -642,6 +642,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/invoicing-imported-original.test.ts",
             "src/tests/integration/shopify-invoicing-po-number-seam.test.ts",
             "src/tests/integration/shopify-invoicing-refund-seam.test.ts",
+            // An organization's own sales app reporting its sales through revenue-stream@1:
+            // invoice, refund credit note and lists on the real pipeline.
+            "src/tests/integration/revenue-stream-custom-app.integration.test.ts",
             "src/tests/integration/shopify-oauth-callback.test.ts",
             // An instance-provided Shopify app: OAuth and webhook HMAC with its client.
             "src/tests/integration/shopify-instance-client.test.ts",

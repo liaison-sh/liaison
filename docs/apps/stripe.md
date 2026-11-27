@@ -240,7 +240,7 @@ Every request goes to `api.stripe.com` only, with a pinned API version. The key 
 | Role of the app | Can |
 |---|---|
 | Member | Read customers, subscriptions, invoices, payments, refunds and disputes |
-| Billing | Also link customers to companies and contacts, and request refunds and cancellations |
+| Billing | Also link customers to companies and contacts, request refunds and cancellations, and decide the ones agents request |
 | Admin | Also connect the account, check its key and manage its webhook |
 
 | Scope | Lets a person or an agent |
@@ -253,7 +253,7 @@ Every request goes to `api.stripe.com` only, with a pinned API version. The key 
 | `stripe:payments:read` | Read payments, refunds and disputes |
 | `stripe:refunds:write` | Request a refund (approved by a person) |
 | `stripe:admin:connection` | Connect the account, check its key and manage its webhook |
-| `stripe:approve` | Decide Stripe approvals |
+| `stripe:approve` | Decide Stripe approvals: the refunds and cancellations agents request |
 | `stripe:internal` | Used by the app itself |
 
 Connecting needs `stripe:admin:connection`. See [Connect apps](../connecting-apps.md).
@@ -270,6 +270,7 @@ Connecting needs `stripe:admin:connection`. See [Connect apps](../connecting-app
 | `stripe:refunds:write` | Request refunds |
 | `stripe:subscriptions:write` | Request cancellations |
 | `stripe:admin:connection` | Connect the account and manage its key and webhook |
+| `stripe:approve` | Decide the refunds and cancellations agents request |
 | `stripe:internal` | Used by the app itself |
 
-Member holds the four read scopes, Billing adds the three write scopes, Admin adds the connection.
+Member holds the four read scopes, Billing adds the three write scopes and `stripe:approve`, Admin adds the connection. A person in Billing can already refund or cancel by their own request, so deciding an agent's request gives them nothing more: a refund or cancellation an agent stages for finance waits for the people in Billing, not only for administrators.

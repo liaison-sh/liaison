@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
+import type { RsvpResponse, SendUpdates } from "~/apps/calendar/sync"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { hasScope } from "~/modules/permissions/permissions"
@@ -99,6 +100,8 @@ export type CalendarBridgeContext = Pick<
   // Optional: a harness without a socket fan-out simply announces nothing.
   Partial<Pick<BridgeContext, "queueAppEvent">>
 
+const RSVP_RESPONSES: RsvpResponse[] = ["accepted", "declined", "tentative"]
+
 /** How the calendar surface queues its jobs: the job queue in production; a test harness
  * passes its own queue to run the jobs in process (`apps/calendar/__fixtures__/google`). */
 export interface CalendarBridgeDeps {
@@ -143,6 +146,12 @@ export function createCalendarMethods(
       calendarId: row.calendar_id,
       ...(row.calaccess ? { "calendar:calaccess": row.calaccess } : {}),
     })
+  }
+
+  async function accountEmailOf(accountId: string): Promise<string | null> {
+    const { getAccountById } = await import("~/apps/calendar/sync")
+    const account = await getAccountById(txDb, orgId, accountId)
+    return account?.email_address ?? null
   }
 
   return {
@@ -483,6 +492,7 @@ export function createCalendarMethods(
         end?: string
         allDay?: boolean
         conference?: string
+        sendUpdates?: SendUpdates
       }
       const { conference, location } = resolveConferenceIntent(params, "create")
       for (const email of params.attendees ?? []) {
@@ -509,6 +519,7 @@ export function createCalendarMethods(
           start: points.start,
           end: points.end,
           conference,
+          sendUpdates: params.sendUpdates,
         },
       )
       // One job per row version: a duplicate request does not push twice. A conference change
@@ -545,6 +556,7 @@ export function createCalendarMethods(
         calendarId?: string
         scope?: "occurrence" | "following" | "series"
         occurrenceStart?: string
+        sendUpdates?: SendUpdates
       }
       const { conference, location } = resolveConferenceIntent(params, "update")
       for (const email of params.attendees ?? []) {
@@ -578,6 +590,7 @@ export function createCalendarMethods(
         end: params.end !== undefined || params.allDay === undefined ? points.end : undefined,
         conference,
         editorId: personId(userId),
+        sendUpdates: params.sendUpdates,
       }
       let scope = target.scope
       if (target.scope === "following" && target.splitAt) {
@@ -638,6 +651,7 @@ export function createCalendarMethods(
         calendarId?: string
         scope?: "occurrence" | "following" | "series"
         occurrenceStart?: string
+        sendUpdates?: SendUpdates
       }
       // A recurring meeting needs an explicit scope, as for update_event: one occurrence (Google
       // cancels that instance only), this and the following ones (the series ends before it),
@@ -661,7 +675,9 @@ export function createCalendarMethods(
         if (calendar) assertWritableCalendar(calendar, "delete_event")
       }
       if (target.scope === "following" && target.splitAt) {
-        const split = await splitSeriesAt(txDb, orgId, eventId, target.splitAt, null)
+        const split = await splitSeriesAt(txDb, orgId, eventId, target.splitAt, null, {
+          sendUpdates: params.sendUpdates,
+        })
         if (split.kind === "split") {
           await enqueue(
             "calendar",
@@ -677,7 +693,9 @@ export function createCalendarMethods(
       }
       // An event Google has (or may have: a create in flight) becomes a tombstone that the push
       // deletes on Google, retrying like any push; the import cannot resurrect it meanwhile.
-      const { needsGooglePush, syncVersion } = await deleteLocalEvent(txDb, orgId, eventId)
+      const { needsGooglePush, syncVersion } = await deleteLocalEvent(txDb, orgId, eventId, {
+        sendUpdates: params.sendUpdates,
+      })
       if (needsGooglePush && syncVersion !== null) {
         await enqueue(
           "calendar",
@@ -691,6 +709,75 @@ export function createCalendarMethods(
         eventId,
         ...(target.scope ? { scope: target.scope } : {}),
         needsGooglePush,
+      })
+    },
+
+    calendar_respondToEvent: async (paramsJson: string): Promise<string> => {
+      requireApp("calendar", "calendar_respondToEvent")
+      const { getCalendarById, getEventById, resolveUpdateTarget, updateLocalEvent } = await import(
+        "~/apps/calendar/sync"
+      )
+      const params = JSON.parse(paramsJson) as {
+        eventId: string
+        response: string
+        calendarId?: string
+        scope?: "occurrence" | "series"
+        occurrenceStart?: string
+      }
+      if (!RSVP_RESPONSES.includes(params.response as RsvpResponse)) {
+        throw Object.assign(
+          new Error(`response must be one of ${RSVP_RESPONSES.join(", ")} (yes, no, maybe).`),
+          { status: 422, code: "invalid_params" },
+        )
+      }
+      const response = params.response as RsvpResponse
+      const target = await resolveUpdateTarget(txDb, orgId, {
+        eventId: params.eventId,
+        calendarId: params.calendarId,
+        scope: params.scope,
+        occurrenceStart: params.occurrenceStart,
+        tool: "respond_to_event",
+      })
+      const row = await getEventById(txDb, orgId, target.eventId)
+      if (!row) throw new Error(`calendar event ${params.eventId} not found`)
+      // The account's own entry is the attendee Google marks `self`; else the account's address.
+      const calendar = await getCalendarById(txDb, orgId, row.calendar_id)
+      const accountEmail = calendar ? await accountEmailOf(calendar.account_id) : null
+      const attendees = Array.isArray(row.attendees)
+        ? (row.attendees as Array<Record<string, unknown>>)
+        : []
+      const isSelf = (a: Record<string, unknown>) =>
+        a.self === true ||
+        (accountEmail !== null &&
+          typeof a.email === "string" &&
+          a.email.toLowerCase() === accountEmail.toLowerCase())
+      if (!attendees.some(isSelf)) {
+        throw Object.assign(
+          new Error(
+            `${row.title ? `"${row.title}"` : "This event"} has no invitation for this calendar's account to answer: only a guest can reply yes, no or maybe.`,
+          ),
+          { status: 422, code: "not_a_guest" },
+        )
+      }
+      const next = attendees.map((a) =>
+        isSelf(a) ? { ...a, self: true, responseStatus: response } : a,
+      )
+      const { syncVersion } = await updateLocalEvent(txDb, orgId, row.id, {
+        attendees: next,
+        rsvp: response,
+        editorId: personId(userId),
+      })
+      await enqueue(
+        "calendar",
+        "calendar-push",
+        { orgId, eventId: row.id },
+        { jobId: `calendar-push:${row.id}:v${syncVersion}:a0` },
+      )
+      await announceEventsChanged({ eventId: row.id })
+      return JSON.stringify({
+        eventId: row.id,
+        response,
+        ...(target.scope ? { scope: target.scope } : {}),
       })
     },
 

@@ -38,6 +38,10 @@ export interface CalendarMethods {
   calendar_createEvent: (paramsJson: string) => Promise<string>
   calendar_updateEvent: (paramsJson: string) => Promise<string>
   calendar_deleteEvent: (paramsJson: string) => Promise<string>
+  calendar_respondToEvent: (paramsJson: string) => Promise<string>
+  /** Handler-conditional gating: park this call behind a human approval (granted inline for a
+   * person's own call by someone holding the deciding scope). */
+  requestApproval?: (inputJson: string) => Promise<string>
   calendar_getAccount: (accountId: string) => Promise<string>
   calendar_importCalendars: (accountId: string, entriesJson: string) => Promise<string>
   calendar_recordImportFailure: (accountId: string, status: number, body: string) => Promise<string>
@@ -537,6 +541,35 @@ interface EventRowShape {
   conference_request?: string | null
   hangout_link?: string | null
   push_error?: string | null
+  /** Who Google emails about this push ("all", "externalOnly"); null/absent = nobody. */
+  send_updates?: string | null
+  /** The account's own answer to the invitation, waiting to reach Google. */
+  rsvp_request?: string | null
+}
+
+/** Google's `sendUpdates` for a row's push: who the person or the approved agent chose to email
+ * (the guests, or only those outside the account's domain); nobody by default. */
+function sendUpdatesOf(event: EventRowShape): "all" | "externalOnly" | "none" {
+  return event.send_updates === "all" || event.send_updates === "externalOnly"
+    ? event.send_updates
+    : "none"
+}
+
+/** The attendee list with the connected account's own answer set: the attendee Google marks
+ * `self: true`, or the one the local row marks as the account. Unchanged when not a guest. */
+function withOwnResponse(attendees: unknown, local: unknown, response: string): unknown {
+  if (!Array.isArray(attendees)) return attendees
+  const own = new Set(
+    (Array.isArray(local) ? local : [])
+      .filter((a) => a && typeof a === "object" && (a as { self?: unknown }).self === true)
+      .map((a) => String((a as { email?: unknown }).email ?? "").toLowerCase()),
+  )
+  return attendees.map((a) => {
+    if (!a || typeof a !== "object") return a
+    const entry = a as Record<string, unknown>
+    const isOwn = entry.self === true || own.has(String(entry.email ?? "").toLowerCase())
+    return isOwn ? { ...entry, responseStatus: response } : a
+  })
 }
 
 /** Google's createRequest for a Meet. The requestId is stable per row version, so a retried push
@@ -615,7 +648,8 @@ function buildGoogleEventBody(
  * calendarPush — the `calendar-push` job. Handles create/update/delete against Google with
  * markers + If-Match, per Task 5.1. Update does get -> merge local changes onto the full
  * Google resource -> events.update (preserving unmodelled fields like colorId/conferenceData).
- * `sendUpdates: 'none'` on every write (attendees never emailed by sync/tool writes).
+ * `sendUpdates` is 'none' unless the write chose to notify the guests (a person's choice, or an
+ * agent's approved one): the row's `send_updates`, cleared once Google answers.
  */
 export async function calendarPush(payload: unknown, ctx: CalendarCtx): Promise<void> {
   const params = (payload ?? {}) as {
@@ -1043,7 +1077,7 @@ async function pushCreate(
   // conferenceDataVersion=1: without it Google ignores conferenceData and creates no Meet.
   const res = await pushFetch(
     ctx,
-    `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(googleCalendarId)}/events?sendUpdates=none${wantsMeet ? "&conferenceDataVersion=1" : ""}`,
+    `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(googleCalendarId)}/events?sendUpdates=${sendUpdatesOf(event)}${wantsMeet ? "&conferenceDataVersion=1" : ""}`,
     JSON.stringify({
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -1185,6 +1219,10 @@ async function pushUpdate(
     }
   }
   merged.attendees = mergeAttendeesForPush(event.attendees, event.attendees_base, remote.attendees)
+  // The account's own RSVP: set on Google's attendee marked self (an attendee may change only
+  // their own answer; Google ignores the rest of a guest's write).
+  if (event.rsvp_request)
+    merged.attendees = withOwnResponse(merged.attendees, event.attendees, event.rsvp_request)
   if (merged.attendees === undefined) delete merged.attendees
   // Conference changes are sent only when asked for (conferenceDataVersion=1); otherwise Google
   // keeps the event's conference as it is.
@@ -1210,7 +1248,7 @@ async function pushUpdate(
 
   const putRes = await pushFetch(
     ctx,
-    `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(googleCalendarId)}/events/${encodeURIComponent(event.google_event_id!)}?sendUpdates=none${conferenceChange ? "&conferenceDataVersion=1" : ""}`,
+    `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(googleCalendarId)}/events/${encodeURIComponent(event.google_event_id!)}?sendUpdates=${sendUpdatesOf(event)}${conferenceChange ? "&conferenceDataVersion=1" : ""}`,
     JSON.stringify({
       method: "PUT",
       headers: putHeaders,
@@ -1336,7 +1374,7 @@ async function pushDeleteTombstone(
 ): Promise<void> {
   const res = await pushFetch(
     ctx,
-    `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(googleCalendarId)}/events/${encodeURIComponent(event.google_event_id!)}?sendUpdates=none`,
+    `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(googleCalendarId)}/events/${encodeURIComponent(event.google_event_id!)}?sendUpdates=${sendUpdatesOf(event)}`,
     JSON.stringify({ method: "DELETE", headers: { Authorization: `Bearer ${token}` } }),
   )
   if ((res.status >= 200 && res.status < 300) || res.status === 404 || res.status === 410) {
@@ -1547,7 +1585,82 @@ export async function calendarSearchEvents(params: unknown, ctx: CalendarCtx): P
   return JSON.parse(await ctx.calendar_searchEvents(JSON.stringify(params ?? {})))
 }
 
+// --- Who may email guests or delete: people directly, agents after a human approval ---
+//
+// A person in the app sends invitations and deletes events directly. When an agent asks a write
+// to email the guests (`sendUpdates` "all" or "externalOnly"), or deletes an event, the call parks
+// behind a human approval first (the kernel's gated-tool mechanism, `ctx.requestApproval`). A
+// person's own call is granted inline by the kernel, so only agents wait.
+
+function notifies(value: unknown): value is "all" | "externalOnly" {
+  return value === "all" || value === "externalOnly"
+}
+
+function describeWhen(p: Record<string, unknown>): string | null {
+  if (typeof p.start !== "string") return null
+  return typeof p.end === "string" ? `${p.start} to ${p.end}` : p.start
+}
+
+/** Stage the approval; null when the kernel granted it inline (a person's own call). */
+async function parkForApproval(
+  ctx: CalendarCtx,
+  input: { tool: string; summary: string; lines: string[]; payload: unknown; note: string },
+): Promise<unknown | null> {
+  if (!ctx.requestApproval) {
+    // Without the approval channel the gate cannot be enforced: fail closed, never email guests
+    // or delete ungated.
+    throw new Error(
+      `${input.tool} needs an approval here (it emails guests or deletes an event), but no approval channel is available in this context.`,
+    )
+  }
+  const res = JSON.parse(
+    await ctx.requestApproval(
+      JSON.stringify({
+        tool_name: `calendar:${input.tool}`,
+        summary: input.summary,
+        summary_detail: { lines: input.lines },
+        current_payload: input.payload,
+      }),
+    ),
+  ) as { approval_id: string | null; auto_approved?: true }
+  if (res.auto_approved === true) return null
+  return { status: "pending_approval", approval_id: res.approval_id, note: input.note }
+}
+
+const PENDING_NOTE =
+  "Nothing has been sent or changed yet: this waits for a human approval. Report it as pending, never as done."
+
+async function gateNotifyingWrite(
+  tool: "create_event" | "update_event",
+  params: unknown,
+  ctx: CalendarCtx,
+): Promise<unknown | null> {
+  const p = (params ?? {}) as Record<string, unknown>
+  if (ctx.approval || !notifies(p.sendUpdates)) return null
+  const guests = Array.isArray(p.attendees) ? p.attendees.map(String) : []
+  const title = typeof p.title === "string" && p.title ? p.title : null
+  const when = describeWhen(p)
+  const who = p.sendUpdates === "externalOnly" ? "guests outside the organization" : "every guest"
+  return parkForApproval(ctx, {
+    tool,
+    summary:
+      tool === "create_event"
+        ? `Send invitations for ${title ? `"${title}"` : "a new event"}`
+        : `Update ${title ? `"${title}"` : "an event"} and email its guests`,
+    lines: [
+      ...(title ? [`Title: ${title}`] : []),
+      ...(when ? [`When: ${when}`] : []),
+      ...(guests.length > 0 ? [`Guests: ${guests.join(", ")}`] : []),
+      `Google emails ${who} once approved.`,
+    ],
+    payload: p,
+    note: PENDING_NOTE,
+  })
+}
+
 export async function calendarCreateEvent(params: unknown, ctx: CalendarCtx): Promise<unknown> {
+  const parked = await gateNotifyingWrite("create_event", params, ctx)
+  if (parked !== null) return parked
   const result = JSON.parse(await ctx.calendar_createEvent(JSON.stringify(params ?? {}))) as {
     eventId: string
     conference?: string | null
@@ -1556,6 +1669,8 @@ export async function calendarCreateEvent(params: unknown, ctx: CalendarCtx): Pr
 }
 
 export async function calendarUpdateEvent(params: unknown, ctx: CalendarCtx): Promise<unknown> {
+  const parked = await gateNotifyingWrite("update_event", params, ctx)
+  if (parked !== null) return parked
   const result = JSON.parse(await ctx.calendar_updateEvent(JSON.stringify(params ?? {}))) as {
     eventId: string
     conference?: string | null
@@ -1620,7 +1735,43 @@ async function withConferenceOutcome(
 }
 
 export async function calendarDeleteEvent(params: unknown, ctx: CalendarCtx): Promise<unknown> {
-  return JSON.parse(await ctx.calendar_deleteEvent(JSON.stringify(params ?? {})))
+  const p = (params ?? {}) as Record<string, unknown>
+  if (!ctx.approval) {
+    let title: string | null = null
+    try {
+      const row = JSON.parse(await ctx.calendar_getEvent(String(p.eventId ?? ""))) as {
+        title?: string | null
+      } | null
+      title = row?.title ?? null
+    } catch {
+      title = null
+    }
+    const scope = typeof p.scope === "string" ? p.scope : null
+    const parked = await parkForApproval(ctx, {
+      tool: "delete_event",
+      summary: `Delete ${title ? `"${title}"` : "a calendar event"}`,
+      lines: [
+        ...(title ? [`Event: ${title}`] : [`Event: ${String(p.eventId ?? "")}`]),
+        ...(scope === "occurrence"
+          ? [`Only the occurrence of ${String(p.occurrenceStart ?? "")}`]
+          : scope === "series"
+            ? ["Every occurrence of the series"]
+            : []),
+        notifies(p.sendUpdates)
+          ? "Google emails the guests that it is cancelled."
+          : "Guests are not emailed.",
+      ],
+      payload: p,
+      note: PENDING_NOTE,
+    })
+    if (parked !== null) return parked
+  }
+  return JSON.parse(await ctx.calendar_deleteEvent(JSON.stringify(p)))
+}
+
+/** The connected account's own answer to an invitation (yes, no, maybe), synced to Google. */
+export async function calendarRespondToEvent(params: unknown, ctx: CalendarCtx): Promise<unknown> {
+  return JSON.parse(await ctx.calendar_respondToEvent(JSON.stringify(params ?? {})))
 }
 
 /** Manifest `export` slot — export the connected Calendar accounts. */

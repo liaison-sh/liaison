@@ -1045,7 +1045,16 @@ export interface EventRow {
   /** A conference change waiting to reach Google: "add" (create a Google Meet) or "remove";
    * null when none. Cleared once Google answers the push. */
   conference_request?: string | null
+  /** Who Google emails about the pending push ("all", "externalOnly"); null = nobody. Set by a
+   * write that chose to notify the guests, cleared once Google answers. */
+  send_updates?: string | null
+  /** The connected account's own answer to the invitation waiting to reach Google
+   * ("accepted", "declined", "tentative"); null when none. */
+  rsvp_request?: string | null
 }
+
+export type SendUpdates = "all" | "externalOnly" | "none"
+export type RsvpResponse = "accepted" | "declined" | "tentative"
 
 export async function getEventByGoogleId(
   db: RlsClient,
@@ -1533,6 +1542,15 @@ export interface LocalEventInput {
   conference?: "add" | "remove"
   /** Local edits: the person editing (told when the edit meets a Google change). */
   editorId?: string
+  /** Local writes: who Google emails about this change (default nobody). */
+  sendUpdates?: SendUpdates
+  /** Local edits: the connected account's own answer to the invitation. */
+  rsvp?: RsvpResponse
+}
+
+/** The stored notify choice: only a notifying one is kept ("none" is the default). */
+function storedSendUpdates(value: SendUpdates | undefined): string | null {
+  return value === "all" || value === "externalOnly" ? value : null
 }
 
 const EVENT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -1554,7 +1572,8 @@ export async function getEventById(
            all_day, status, attendees, recurrence, recurring_event_id, original_start_time,
            extended_props, hangout_link, liaison_sync_version, pending_push, updated_at, google_updated_at, calaccess,
            attendees_base, organizer_self, guests_can_modify, push_error, deleted_at,
-           pending_before_delete, push_notice, conference_request, push_base
+           pending_before_delete, push_notice, conference_request, push_base, send_updates,
+           rsvp_request
     FROM ${sql.raw(schema)}.events
     WHERE org_id = ${orgId}::uuid AND id = ${eventId}::uuid
     LIMIT 1
@@ -1579,7 +1598,7 @@ export async function createLocalEvent(
   const rows = (await db.execute(sql`
     INSERT INTO ${sql.raw(schema)}.events
       (id, org_id, calendar_id, title, description, location, start, "end", all_day, attendees,
-       recurrence, liaison_sync_version, pending_push, calaccess, conference_request)
+       recurrence, liaison_sync_version, pending_push, calaccess, conference_request, send_updates)
     VALUES
       (gen_random_uuid(), ${orgId}::uuid, ${calendarId}::uuid, ${input.title ?? null}, ${input.description ?? null},
        ${input.location ?? null}, ${JSON.stringify(input.start ?? null)}::jsonb, ${JSON.stringify(input.end ?? null)}::jsonb,
@@ -1587,7 +1606,7 @@ export async function createLocalEvent(
          input.attendees !== undefined ? normalizeAttendees(input.attendees, null) : null,
        )}::jsonb,
        ${JSON.stringify(input.recurrence ?? null)}::jsonb, 1, 'create', ${calaccess},
-       ${input.conference === "add" ? "add" : null})
+       ${input.conference === "add" ? "add" : null}, ${storedSendUpdates(input.sendUpdates)})
     RETURNING id
   `)) as unknown as { rows?: Array<{ id: string }> } | Array<{ id: string }>
   const list = Array.isArray(rows) ? rows : (rows.rows ?? [])
@@ -1614,7 +1633,7 @@ export interface UpdateTargetParams {
   /** The edit sets a recurrence rule (only a series has one). */
   changesRecurrence?: boolean
   /** The tool asking, named in the messages (default update_event). */
-  tool?: "update_event" | "delete_event"
+  tool?: "update_event" | "delete_event" | "respond_to_event"
 }
 
 function invalidParams(message: string): Error {
@@ -1726,7 +1745,8 @@ export async function resolveUpdateTarget(
 
   const title = row.title ? `"${row.title}"` : "This event"
   const tool = params.tool ?? "update_event"
-  const verb = tool === "delete_event" ? "delete" : "change"
+  const verb =
+    tool === "delete_event" ? "delete" : tool === "respond_to_event" ? "answer" : "change"
   if (params.scope !== "occurrence" && params.scope !== "following" && params.scope !== "series") {
     const which = isException
       ? `${title} is one occurrence of a recurring meeting.`
@@ -1877,7 +1897,9 @@ export async function splitSeriesAt(
   masterId: string,
   at: Date,
   edit: LocalEventInput | null,
+  opts: { sendUpdates?: SendUpdates } = {},
 ): Promise<SeriesSplitResult> {
+  const sendUpdates = edit?.sendUpdates ?? opts.sendUpdates
   const master = await getEventById(db, orgId, masterId)
   if (!master || master.deleted_at || !isRecurringMaster(master)) {
     throw Object.assign(new Error(`calendar series ${masterId} not found`), {
@@ -1955,6 +1977,7 @@ export async function splitSeriesAt(
   const { syncVersion } = await updateLocalEvent(db, orgId, master.id, {
     recurrence: split.before,
     editorId: edit?.editorId,
+    sendUpdates,
   })
 
   const removedExceptionIds = exceptions.map((r) => r.id)
@@ -1990,6 +2013,7 @@ export async function splitSeriesAt(
       start: newStart,
       end: newEnd,
       conference: conference === "remove" ? undefined : conference,
+      sendUpdates,
     })
     newEventId = created.eventId
   }
@@ -2095,6 +2119,8 @@ export async function updateLocalEvent(
         'start', start, 'end', "end", 'recurrence', recurrence,
         'editorId', ${input.editorId ?? null}::text)),
       conference_request = COALESCE(${input.conference ?? null}, conference_request),
+      send_updates = COALESCE(${storedSendUpdates(input.sendUpdates)}, send_updates),
+      rsvp_request = COALESCE(${input.rsvp ?? null}, rsvp_request),
       liaison_sync_version = liaison_sync_version + 1,
       pending_push = ${nextPendingPush},
       push_error = NULL, push_notice = NULL, push_attempts = 0, last_push_attempt_at = NULL,
@@ -2142,6 +2168,7 @@ export async function deleteLocalEvent(
   db: RlsClient,
   orgId: string,
   eventId: string,
+  opts: { sendUpdates?: SendUpdates } = {},
 ): Promise<{ needsGooglePush: boolean; googleEventId: string | null; syncVersion: number | null }> {
   const existing = await getEventById(db, orgId, eventId)
   if (!existing || existing.deleted_at) {
@@ -2161,6 +2188,7 @@ export async function deleteLocalEvent(
   const rows = (await db.execute(sql`
     UPDATE ${sql.raw(schema)}.events SET
       deleted_at = now(), pending_push = 'delete', google_event_id = ${googleEventId},
+      send_updates = ${storedSendUpdates(opts.sendUpdates)},
       pending_before_delete = CASE WHEN pending_push IN ('create', 'update') THEN pending_push END,
       liaison_sync_version = liaison_sync_version + 1, updated_at = now(),
       push_error = NULL, push_attempts = 0, last_push_attempt_at = NULL, first_push_failure_at = NULL
@@ -2356,6 +2384,7 @@ export async function applyPushResult(
       push_base = NULL,
       attendees_base = NULL, push_error = NULL, push_notice = ${notice}, push_attempts = 0,
       last_push_attempt_at = NULL, first_push_failure_at = NULL, conference_request = NULL,
+      send_updates = NULL, rsvp_request = NULL,
       hangout_link = CASE WHEN ${result.hangoutLink !== undefined}::boolean
         THEN ${result.hangoutLink ?? null} ELSE hangout_link END,
       attendees = CASE WHEN ${remoteMapped !== null}::boolean
@@ -2757,7 +2786,7 @@ export async function markPushRejected(
   await db.execute(sql`
     UPDATE ${sql.raw(schema)}.events SET pending_push = 'none', push_error = ${message.slice(0, 500)},
       -- A refused conference request is not re-sent with every later edit.
-      conference_request = NULL,
+      conference_request = NULL, send_updates = NULL, rsvp_request = NULL,
       -- A refused delete brings the event back, with the refusal on it.
       deleted_at = NULL
     WHERE org_id = ${orgId}::uuid AND id = ${eventId}::uuid${await versionGuard(syncVersion)}

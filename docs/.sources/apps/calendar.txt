@@ -68,3 +68,7 @@ update_event and delete_event take this and the following occurrences -> apps/ap
 Series split: old series ends before the occurrence, a new one starts there -> apps/api/src/apps/calendar/sync.ts:1874
 Split keeps cancellations, edited occurrences take the change -> apps/api/src/apps/calendar/sync.ts:1912
 Split rule arithmetic (UNTIL or shared COUNT) -> packages/shared/src/calendar-recurrence.ts:508
+Agent writes email nobody unless sendUpdates asks -> apps/api/src/apps/calendar/app.manifest.json:409
+Notifying agent write waits for approval -> apps/api/src/apps/calendar/handlers.ts:1633
+Every agent delete waits for approval -> apps/api/src/apps/calendar/handlers.ts:1737
+Answer an invitation (yes, no, maybe), Google tells the organizer -> apps/api/src/apps/calendar/app.manifest.json:555

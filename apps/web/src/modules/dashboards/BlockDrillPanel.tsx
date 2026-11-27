@@ -45,6 +45,8 @@ export interface BlockDrillPanelProps {
   open: (link: RecordLink) => void
   onClose: () => void
   locale?: string
+  /** The org's time zone: timestamps read in it. */
+  timeZone?: string
   /** The range and filters the rows are read under: a change goes back to the first page. */
   contextKey?: string
   /** The days a comparison bar's rows come from, shown under the title. */
@@ -158,7 +160,11 @@ export const BlockDrillPanel: Component<BlockDrillPanelProps> = (props) => {
     return p.columns.map((c: DashboardColumn, i: number) => {
       const numeric = c.format !== undefined && NUMERIC.has(c.format)
       const value = (r: KeyedRow) =>
-        formatValue(r.row[c.field], { format: c.format, locale: locale() })
+        formatValue(r.row[c.field], {
+          format: c.format,
+          locale: locale(),
+          timeZone: props.timeZone,
+        })
       return {
         key: c.field,
         header: c.label,

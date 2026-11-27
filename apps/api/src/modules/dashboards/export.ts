@@ -11,6 +11,7 @@
 // can change the layout.
 
 import { randomUUID } from "node:crypto"
+import { formatDateCell } from "@liaison/shared"
 import { and, eq, sql } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
@@ -529,7 +530,12 @@ export async function renderDashboardPdf(
         const rows = d.rows
           .slice(0, PDF_MAX_ROWS)
           .map((r) =>
-            Object.fromEntries(cols.map((col, j) => [`c${j}`, scalarWords(r[col.field])])),
+            Object.fromEntries(
+              cols.map((col, j) => [
+                `c${j}`,
+                tableCellWords(r[col.field], col.format, d.meta.currency, c.view.timeZone),
+              ]),
+            ),
           )
         if (!rows.length) {
           body.push({ type: "paragraph", text: text(`${p}.empty`, "No rows.") })
@@ -601,6 +607,28 @@ export async function renderDashboardPdf(
 function scalarWords(v: Scalar | undefined): string {
   if (v === null || v === undefined || v === "") return ""
   return typeof v === "string" ? v : String(v)
+}
+
+/**
+ * A printed table cell, by the rule the screen uses (`@liaison/shared` date-cell): a date or a
+ * timestamp reads as the date (and the time, unless midnight) in the org's zone, never the
+ * source's raw text; a figure under a number format reads as one. The PDF is in English.
+ */
+function tableCellWords(
+  v: Scalar | undefined,
+  format: string | undefined,
+  currency: string | undefined,
+  timeZone: string,
+): string {
+  if (v === null || v === undefined || v === "") return ""
+  if (typeof v === "string" && (format === undefined || format === "date")) {
+    const when = formatDateCell(v, { locale: "en-US", timeZone, dateOnly: format === "date" })
+    if (when) return when
+  }
+  if (typeof v === "number" && (format === "number" || format === "currency")) {
+    return formatNumber(v, { format, currency })
+  }
+  return scalarWords(v)
 }
 
 /** Markdown as plain text: marks dropped, links as their words. */

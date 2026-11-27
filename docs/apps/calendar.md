@@ -12,7 +12,7 @@ Calendar brings your Google calendars into Liaison. You see your events by day, 
 1. Open **Settings › Apps › Calendar**, section **Calendar accounts**. From an empty calendar you can also click **Connect Google Calendar**.
 2. Click **Connect**. You are sent to Google's consent screen.
 3. Approve calendar access. Liaison stores only the tokens Google returns, never your password.
-4. Under **Calendars to sync**, tick the calendars to import. Only selected calendars are synced and show events. Your primary calendar and the calendars you can edit start ticked; calendars you can only read (holidays, birthdays, a colleague's calendar) start unticked.
+4. Under **Calendars to sync**, tick the calendars to import. Only selected calendars are synced and show events. Your primary calendar and the calendars you can edit start ticked; calendars you can only read (holidays, birthdays, a colleague's calendar) start unticked. Unticking a calendar hides its events at once; Liaison keeps them for 30 days, so ticking it again brings the same events back (links and open event tabs still work) with Google's changes applied. After 30 days they are removed.
 
 Liaison reads your list of calendars again once a day: a calendar you add in Google appears (ticked if you can edit it), a renamed or recoloured one is updated, and one you remove from Google is removed from Liaison with its events.
 

@@ -483,6 +483,9 @@ export async function searchEventsForCaller(
     SELECT id, calendar_id, title, start, "end", hangout_link, attendees
     FROM ${sql.raw(schema)}.events
     WHERE org_id = ${orgId}::uuid AND status != 'cancelled' AND deleted_at IS NULL
+      AND calendar_id NOT IN (
+        SELECT id FROM ${sql.raw(schema)}.calendars WHERE org_id = ${orgId}::uuid AND selected = false
+      )
       AND (title ILIKE ${pattern} OR description ILIKE ${pattern} OR location ILIKE ${pattern})
     ORDER BY start
     LIMIT ${safeLimit}

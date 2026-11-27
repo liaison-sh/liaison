@@ -66,3 +66,6 @@ Notice naming the field and the replaced value -> apps/api/src/apps/calendar/syn
 Quiet item on Home after a conflict -> apps/api/src/apps/calendar/app.manifest.json:687
 Times sent with the calendar's time zone -> apps/api/src/apps/calendar/handlers.ts:689
 Read-only calendars refuse new events and edits -> apps/api/src/modules/apps/sandbox/bridge/calendar.ts:70
+Unticking hides the events but keeps them -> apps/api/src/apps/calendar/sync.ts:1086
+Kept 30 days -> apps/api/src/apps/calendar/sync.ts:1093
+Ticking again lists into the same rows -> apps/api/src/apps/calendar/sync.ts:1075

@@ -43,9 +43,11 @@ afterAll(async () => {
 
 describe("calendar sync harness against the fake Google Calendar", () => {
   it("connect imports the calendars, syncs their events and watches them", async () => {
-    const google = FakeGoogleCalendar.fromFixtures({ accountEmail: OWNER })
+    // Each test connects its own Google account (the org is shared by the file's tests).
+    const email = `owner-${crypto.randomUUID().slice(0, 8)}@example.test`
+    const google = FakeGoogleCalendar.fromFixtures({ accountEmail: email })
     const h = createCalendarSyncHarness({ orgId, userId, google })
-    await h.connect(OWNER)
+    await h.connect(email)
     await h.drain()
 
     expect(h.ran.map((j) => j.name)).toContain("calendar-import")
@@ -63,9 +65,11 @@ describe("calendar sync harness against the fake Google Calendar", () => {
   })
 
   it("a Google-side edit reaches Liaison through the push notification", async () => {
-    const google = FakeGoogleCalendar.fromFixtures({ accountEmail: OWNER })
+    // Each test connects its own Google account (the org is shared by the file's tests).
+    const email = `owner-${crypto.randomUUID().slice(0, 8)}@example.test`
+    const google = FakeGoogleCalendar.fromFixtures({ accountEmail: email })
     const h = createCalendarSyncHarness({ orgId, userId, google })
-    await h.connect(OWNER)
+    await h.connect(email)
     await h.drain()
 
     google.updateEvent(TEAM, "teamlunch01", { summary: "Team lunch (moved upstairs)" })
@@ -76,9 +80,11 @@ describe("calendar sync harness against the fake Google Calendar", () => {
   })
 
   it("a Liaison create is pushed to Google, and its echo does not change the row", async () => {
-    const google = FakeGoogleCalendar.fromFixtures({ accountEmail: OWNER })
+    // Each test connects its own Google account (the org is shared by the file's tests).
+    const email = `owner-${crypto.randomUUID().slice(0, 8)}@example.test`
+    const google = FakeGoogleCalendar.fromFixtures({ accountEmail: email })
     const h = createCalendarSyncHarness({ orgId, userId, google })
-    await h.connect(OWNER)
+    await h.connect(email)
     await h.drain()
     const team = await h.calendar(TEAM)
 

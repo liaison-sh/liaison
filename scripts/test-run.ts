@@ -1200,6 +1200,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/seed/tiers/lively/seed-lively.integration.test.ts",
             // ...and into an org someone else made, with the caller's people seated.
             "src/seed/tiers/lively/seed-lively-existing-org.integration.test.ts",
+            // The realistic search profile on a lively org (2 % of the heavy
+            // workspace): every kind written and indexed, vectors, a re-run adopts.
+            "src/seed/bulk/search-profile.integration.test.ts",
             // The dashboards factory: a spec checked, then written once (the lively dashboard).
             "src/seed/factories/dashboards/dashboards.integration.test.ts",
             // The load tier: synthetic orgs with their expiry, the bulk volume and

@@ -298,7 +298,9 @@ describe("calendar app registration", () => {
     expect(instructions).toContain("Never tell the user to do it themselves in Google Calendar")
     expect(instructions).toContain("Microsoft Teams")
     expect(instructions).toContain("RECURRING MEETINGS")
-    expect(instructions).toContain("only this occurrence, this and the following ones, or the whole series")
+    expect(instructions).toContain(
+      "only this occurrence, this and the following ones, or the whole series",
+    )
     expect(instructions).toContain("delete_event takes the same scope")
   })
 

@@ -191,7 +191,7 @@ export function renderDigestEmail(args: {
     .join("")
 
   const html = `<!doctype html>
-<html lang="en">
+<html lang="${locale}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -227,7 +227,7 @@ export function renderDigestEmail(args: {
               Liaison
             </td>
             <td align="right" class="muted" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;color:#7a786f;">
-              ${escapeHtml(formatHeaderDate(now))}
+              ${escapeHtml(formatHeaderDate(now, locale))}
             </td>
           </tr>
         </table>
@@ -299,8 +299,8 @@ export function renderDigestEmail(args: {
   }
 }
 
-function formatHeaderDate(now: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
+function formatHeaderDate(now: Date, locale: ShippedLocale): string {
+  return new Intl.DateTimeFormat(locale === "en" ? "en-US" : locale, {
     weekday: "short",
     month: "short",
     day: "numeric",

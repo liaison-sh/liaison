@@ -12,6 +12,10 @@ Liaison never asks for your secret key. It uses a restricted key. The steps and 
 
 A secret key (`sk_`) is refused before anything is stored. The key is stored encrypted, and only `api.stripe.com` is called.
 
+## Optional: invoice one-off Checkout payments
+
+To have Invoicing invoice payments taken through Stripe Checkout with no Stripe invoice (a revenue stream, see [Invoicing](../apps/invoicing.md#invoice-the-sales-of-another-app)), also give **Read** to **Checkout Sessions** and **PaymentIntents**. Without them, those payments stay in the unmatched queue.
+
 ## Optional: let the agent cancel subscriptions
 
 The default key cannot cancel a subscription. To allow it, give the key **Write** on **Subscriptions**, then run the check again. A cancellation still waits for a person's approval.

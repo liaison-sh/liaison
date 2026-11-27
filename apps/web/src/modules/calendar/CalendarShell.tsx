@@ -16,6 +16,7 @@ import {
   Switch,
   untrack,
 } from "solid-js"
+import { onEntityChange } from "~/framework/entity-changes"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { shellTier } from "~/modules/shell/shell-tier"
@@ -38,11 +39,14 @@ import {
   loadEventsForWindow,
   loadPreferredView,
   persistPreferredView,
+  reloadCurrentWindow,
   setFocusedDate,
 } from "./calendar-store"
 import { startOfMonthGrid, startOfWeek, weekDays, weekStartsOn } from "./date-utils"
-import { EventDialog } from "./EventDialog"
+import { nextHalfHour } from "./event-form"
+import { openEventTab, openNewEventTab } from "./event-tabs"
 import { MonthView } from "./MonthView"
+import { QuickCreate, type QuickCreateRequest } from "./QuickCreate"
 import { expandEvents } from "./rrule-expand"
 import { TimeGridView } from "./TimeGridView"
 
@@ -95,9 +99,7 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
   const i18n = useI18n()
   const firstDay = () => weekStartsOn(i18n.locale())
   const [view, setView] = createSignal<CalendarView>(loadPreferredView() ?? props.initialView)
-  const [dialogOpen, setDialogOpen] = createSignal(false)
-  const [editingEventId, setEditingEventId] = createSignal<string | null>(null)
-  const [defaultStart, setDefaultStart] = createSignal<Date | undefined>(undefined)
+  const [quick, setQuick] = createSignal<QuickCreateRequest | null>(null)
   // At phone width the grid is replaced by an agenda; the view switcher and
   // the grid navigation belong to a surface that has columns to switch between.
   const phone = () => shellTier() === "phone"
@@ -161,20 +163,22 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
     if (!id || !calendarStore.events.some((e) => e.eventId === id)) return
     untrack(() => {
       setRequestedEventId(null)
-      setEditingEventId(id)
-      setDialogOpen(true)
+      selectEvent(id)
     })
   })
 
-  // Sidebar "+ Create" requests open the dialog here (cross-tree signal).
-  createEffect(() => {
-    if (createRequestedAt() === 0) return
-    untrack(() => {
-      setEditingEventId(null)
-      setDefaultStart(new Date())
-      setDialogOpen(true)
-    })
-  })
+  // Sidebar "+ Create" requests open a new event tab (cross-tree signal). Only a request made
+  // while this shell is mounted counts: the effect used to fire on the shell's first run too, so
+  // reopening the calendar tab reopened the create form unasked.
+  createEffect(
+    on(
+      createRequestedAt,
+      (at) => {
+        if (at !== 0) untrack(() => openCreate())
+      },
+      { defer: true },
+    ),
+  )
 
   const range = createMemo(() => {
     const d = focusedDate()
@@ -230,10 +234,6 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
     return map
   })
 
-  const editingEvent = createMemo(
-    () => calendarStore.events.find((e) => e.eventId === editingEventId()) ?? null,
-  )
-
   const title = createMemo(() => {
     const d = focusedDate()
     if (phone()) return d.toLocaleDateString(i18n.locale(), { month: "long", year: "numeric" })
@@ -282,32 +282,71 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
     persistPreferredView(v)
   }
 
-  function openCreate(start?: Date): void {
-    setEditingEventId(null)
-    setDefaultStart(start ?? new Date())
-    setDialogOpen(true)
+  /** A new event: the quick-create card at `anchor` when the grid was clicked, else the full tab. */
+  function openCreate(start?: Date, anchor?: { x: number; y: number }, allDay = false): void {
+    const from = start ?? nextHalfHour()
+    if (!anchor || phone()) {
+      openNewEventTab({ start: from, allDay }, i18n.t("calendar.newEvent"))
+      return
+    }
+    const end = allDay
+      ? new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1)
+      : new Date(from.getTime() + 30 * 60_000)
+    setQuick({ start: from, end, allDay, x: anchor.x, y: anchor.y })
+  }
+
+  function selectEvent(eventId: string): void {
+    const event = calendarStore.events.find((e) => e.eventId === eventId)
+    if (event) openEventTab(event, i18n.t("calendar.untitledEvent"))
   }
 
   function refresh(): void {
-    const { start, end } = range()
-    const pad = end.getTime() - start.getTime()
-    void loadEventsForWindow(
-      api,
-      new Date(start.getTime() - pad).toISOString(),
-      new Date(end.getTime() + pad).toISOString(),
-    )
+    void reloadCurrentWindow(api)
   }
+
+  // Live: a sync page, a push result, an agent's or a teammate's write announces
+  // `calendar/event:changed` (or another event entity change); the open window refetches once per
+  // burst. A reconnect's resync arrives here too, so whatever was missed while offline heals.
+  onEntityChange(
+    ["calendar:event", "calendar:calendar", "calendar:account"],
+    (events) => {
+      if (events.some((e) => e.resync || e.entity !== "event")) {
+        void loadCalendarsList(api)
+        void loadAccountsList(api)
+      }
+      refresh()
+    },
+    { debounceMs: 400, maxWaitMs: 2000 },
+  )
 
   // `calendars` lists unticked calendars too (for Settings); the views show the ticked ones.
   const selectedCalendars = createMemo(() => calendarStore.calendars.filter((c) => c.selected))
   const hasAnyCalendars = createMemo(() => selectedCalendars().length > 0)
 
   return (
-    <div class="flex h-full min-h-0 flex-col" data-testid={props.testId}>
+    <div
+      class="flex h-full min-h-0 flex-col"
+      data-testid={props.testId}
+      aria-busy={calendarStore.loading}
+    >
       {/* Header */}
       <div
-        class={`flex items-center border-b border-border px-3 py-2 ${phone() ? "gap-2" : "gap-3"}`}
+        class={`relative flex items-center border-b border-border px-3 py-2 ${phone() ? "gap-2" : "gap-3"}`}
       >
+        {/* Loading: a thin bar over the header's bottom edge, only while a window with nothing
+            cached is on its way (a cached window paints at once and refreshes silently). It
+            overlays the border, so nothing below moves. */}
+        <Show when={calendarStore.loading}>
+          <div
+            class="pointer-events-none absolute inset-x-0 -bottom-px h-0.5 overflow-hidden"
+            aria-hidden="true"
+          >
+            <div
+              class="calendar-loading-bar absolute inset-y-0 w-1/3 bg-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]"
+              data-testid="calendar-loading"
+            />
+          </div>
+        </Show>
         <Button variant="ghost" size="sm" onClick={() => setFocusedDate(new Date())}>
           {i18n.t("calendar.today")}
         </Button>
@@ -384,6 +423,31 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
           </Button>
         </Show>
       </div>
+
+      <Show when={calendarStore.error}>
+        {(message) => (
+          <div
+            class="flex items-center gap-3 border-b border-border-subtle bg-[color-mix(in_srgb,var(--color-border)_20%,transparent)] px-3 py-1.5 text-xs text-text-secondary"
+            role="status"
+            data-testid="calendar-events-error"
+          >
+            <span class="min-w-0 flex-1 truncate" title={message()}>
+              {i18n.t("calendar.eventsLoadFailed")}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="calendar-events-retry"
+              onClick={() => {
+                void loadCalendarsList(api)
+                refresh()
+              }}
+            >
+              {i18n.t("calendar.retry")}
+            </Button>
+          </div>
+        )}
+      </Show>
 
       <Show
         when={hasAnyCalendars()}
@@ -514,10 +578,7 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
               locale={i18n.locale()}
               allDayLabel={i18n.t("calendar.allDay")}
               emptyLabel={i18n.t("kernel.calendarAgendaEmpty")}
-              onSelectEvent={(eventId) => {
-                setEditingEventId(eventId)
-                setDialogOpen(true)
-              }}
+              onSelectEvent={selectEvent}
               onSelectDay={(day) => setFocusedDate(new Date(day))}
             />
           </Match>
@@ -527,11 +588,8 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
               month={focusedDate().getMonth()}
               occurrences={occurrences()}
               calendarColors={calendarColors()}
-              onSelectEvent={(eventId) => {
-                setEditingEventId(eventId)
-                setDialogOpen(true)
-              }}
-              onSelectDay={(day) => openCreate(new Date(day.setHours(9, 0, 0, 0)))}
+              onSelectEvent={selectEvent}
+              onSelectDay={(day, anchor) => openCreate(day, anchor, true)}
               onFocusDay={(day) => {
                 setFocusedDate(new Date(day))
                 switchView("day")
@@ -546,24 +604,22 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
               dayCount={view() === "week" ? 7 : 1}
               occurrences={occurrences()}
               calendarColors={calendarColors()}
-              onSelectEvent={(eventId) => {
-                setEditingEventId(eventId)
-                setDialogOpen(true)
-              }}
-              onSelectSlot={(start) => openCreate(start)}
+              onSelectEvent={selectEvent}
+              onSelectSlot={(start, anchor) => openCreate(start, anchor)}
             />
           </Match>
         </Switch>
       </Show>
 
-      <EventDialog
-        open={dialogOpen()}
-        onOpenChange={setDialogOpen}
-        calendars={selectedCalendars()}
-        event={editingEvent()}
-        defaultStart={defaultStart()}
-        onSaved={refresh}
-      />
+      <Show when={quick()}>
+        {(request) => (
+          <QuickCreate
+            request={request()}
+            calendars={selectedCalendars()}
+            onClose={() => setQuick(null)}
+          />
+        )}
+      </Show>
     </div>
   )
 }

@@ -15,6 +15,7 @@ import { execFileSync, spawnSync } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
+import { ERASED_USER_DISPLAY_NAME } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { ensureAppsForOrg } from "~/modules/apps/init"
@@ -317,7 +318,7 @@ describe("liaison erase-user (real CLI, cascade + idempotent)", () => {
     const after = await userRow(uid)
     expect(after).not.toBeNull()
     expect(after!.email).toBe(`deleted-user-${uid}`)
-    expect(after!.name).toBe(`deleted-user-${uid}`)
+    expect(after!.name).toBe(ERASED_USER_DISPLAY_NAME)
 
     // G4: no app-schema row/field still holds the user's id (rows deleted for
     // `delete`; NOT NULL anonymize cols re-pointed at the per-org sentinel).

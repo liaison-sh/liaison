@@ -1,0 +1,4 @@
+A one-off payment is also announced as a revenue-stream@1 sale -> bundled-apps/stripe/src/dispatch.ts (sale:paid) ; bundled-apps/stripe/src/sales.ts:1-18
+The sale is read from the Checkout Session; no session keeps the unmatched path -> bundled-apps/stripe/src/sales.ts (rs_sale_get)
+The payment leaves the unmatched queue once the stream invoices it -> bundled-apps/invoicing/src/sales/issue-sale.ts (invoiced_by_revenue_stream)
+Checkout Sessions Read and PaymentIntents Read are needed -> bundled-apps/stripe/src/sales.ts:17-18

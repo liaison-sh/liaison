@@ -1,0 +1,7 @@
+A small card opens at that spot with the time already chosen: apps/web/src/modules/calendar/QuickCreate.tsx (QuickCreate), apps/web/src/modules/calendar/CalendarShell.tsx (openCreate)
+Type a title and press Enter; Add a Google Meet video call: apps/web/src/modules/calendar/QuickCreate.tsx (create), packages/shared/src/i18n/locales/en/calendar.json (addMeet)
+More options opens its own tab: apps/web/src/modules/calendar/event-tabs.ts (openNewEventTab), apps/web/src/modules/calendar/CalendarEventTab.tsx
+Save, Cancel and Delete at the top; Delete asks first; Undo: apps/web/src/modules/calendar/CalendarEventTab.tsx (remove, event-delete-confirm)
+New event starts at the next half hour: apps/web/src/modules/calendar/event-form.ts (nextHalfHour)
+Only calendars you can write to: apps/web/src/modules/calendar/event-form.ts (isWritableCalendar)
+An all-day event keeps its days; the end shown is its last day: apps/web/src/modules/calendar/event-form.ts (formFromEvent, timesPayload)

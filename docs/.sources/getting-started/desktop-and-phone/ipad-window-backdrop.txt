@@ -1,0 +1,1 @@
+The band above a resized or zoomed iPad window takes the app's background: apps/mobile/ios/App/App/MainViewController.swift (paintBehindThePage) ; apps/mobile/src/native/status-bar.ts (createStatusBarController) ; apps/mobile/src/native/liaison-native.ts (nativeBackdrop)

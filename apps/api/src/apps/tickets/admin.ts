@@ -20,6 +20,7 @@ import {
   saveSegmentConfig,
   type TicketIdSegment,
 } from "~/apps/tickets/display-handle"
+import { ticketEmailLocale } from "~/apps/tickets/render"
 import { requireUuid, resolveTicketRef } from "~/apps/tickets/resolve-ticket-ref"
 import { kernelRel, ticketsRel } from "~/apps/tickets/schema-refs"
 import { extractRows, type PrivilegedDb, type RlsClient, type RlsTx } from "~/db"
@@ -32,6 +33,7 @@ import { base32Token } from "~/lib/random-token"
 import { pgErrorFacts } from "~/lib/transient-db-error"
 import { UUID_RE } from "~/lib/uuid"
 import { FileServiceError, moveFilesToParent } from "~/modules/files/service"
+import { serverT } from "~/modules/i18n/server-i18n"
 import { getOrgSenderTransport } from "~/modules/org/email-from"
 import { hasScope } from "~/modules/permissions/permissions"
 
@@ -1176,6 +1178,19 @@ async function templatesDelete(
 // only when the customer responds (a separate ingest path), so freshly-dispatched surveys are
 // 'pending' and csat.summary reports averageScore=null until responses accrue. The agent must
 // report dispatch + honest-pending, never fabricate a CSAT score.
+
+/** The org's default language (deny-all under RLS, so read privileged). */
+async function orgDefaultLocaleOf(orgId: string): Promise<string | null> {
+  return withPrivilegedDb(orgId, "tickets-csat-locale", async (tx) => {
+    const row = extractRows<{ default_locale: string | null }>(
+      await tx.execute(drizzleSql`
+        SELECT default_locale FROM ${kernelRel("organizations")} WHERE id = ${orgId}::uuid LIMIT 1
+      `),
+    )[0]
+    return row?.default_locale ?? null
+  })
+}
+
 async function csatRequest(
   tx: SqlClient,
   orgId: string,
@@ -1199,7 +1214,13 @@ async function csatRequest(
   // BL-194 delivery: collect the (recipient, token, subject) tuples for the surveys we actually
   // insert, then SEND the tokenized survey emails best-effort AFTER the loop (a send failure must
   // never block the dispatch record — fire-and-forget, exactly like the kernel transactional path).
-  const toDeliver: Array<{ email: string; token: string; subject: string; handle: string }> = []
+  const toDeliver: Array<{
+    email: string
+    token: string
+    subject: string
+    handle: string
+    language: string | null
+  }> = []
   for (const ticketId of ticketIds) {
     const trows = extractRows<{
       id: string
@@ -1208,9 +1229,10 @@ async function csatRequest(
       subject: string
       handle: string
       contact_email: string | null
+      language: string | null
     }>(
       await tx.execute(drizzleSql`
-        SELECT t.id, t.status, t.contact_id, t.subject, t.handle,
+        SELECT t.id, t.status, t.contact_id, t.subject, t.handle, t.language,
                -- The ticket's stored requester (who it is for), else the linked
                -- contact's address, else the sender of the first inbound message
                -- by RECEIVED time (a ticket need not link a contact: intake
@@ -1267,6 +1289,7 @@ async function csatRequest(
         token,
         subject: t.subject,
         handle: t.handle,
+        language: t.language,
       })
     }
     if (row.id) {
@@ -1281,18 +1304,21 @@ async function csatRequest(
   // Managed edition: the org's own verified sender, else "<Org> via Liaison"
   // (S29). Null elsewhere: the survey goes out exactly as before.
   const orgSender = toDeliver.length > 0 ? await getOrgSenderTransport(orgId) : null
+  const orgDefaultLocale = toDeliver.length > 0 ? await orgDefaultLocaleOf(orgId) : null
   for (const d of toDeliver) {
     const link = `${await orgPublicBaseUrl(orgId)}/csat/${orgId}/${d.token}`
-    const subject = `How did we do? -- ${d.subject}`
+    // The customer's language, as every ticket email: the ticket's, else the org's.
+    const locale = ticketEmailLocale(d.language, orgDefaultLocale)
+    const t = (key: string) =>
+      serverT(locale, `system-mail.csat.${key}`, { subject: d.subject, handle: d.handle })
+    const subject = t("subject")
     const { html, text } = renderBrandedEmail({
       subject,
-      eyebrow: "Feedback",
-      heading: "How did we do?",
-      paragraphs: [
-        `Thanks for contacting support about "${d.subject}" (${d.handle}).`,
-        "We'd love your feedback -- it only takes a moment to rate your experience from 1 to 5.",
-      ],
-      cta: { label: "Rate your experience", href: link },
+      locale,
+      eyebrow: t("eyebrow"),
+      heading: t("heading"),
+      paragraphs: [t("body"), t("ask")],
+      cta: { label: t("cta"), href: link },
     })
     try {
       await (orgSender?.provider ?? getEmailProvider()).send({

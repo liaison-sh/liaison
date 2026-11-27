@@ -7,6 +7,8 @@ import { renderBrandedEmail } from "~/infra/email-layout"
 import { generateToken, hashToken } from "~/lib/crypto"
 import { authLogger as log } from "~/lib/logger"
 import { orgPublicBaseUrl } from "~/lib/org-public-url"
+import { systemMailLocale } from "~/modules/i18n/recipient-locale"
+import { serverT } from "~/modules/i18n/server-i18n"
 import { assertSeatRoomSoft } from "~/modules/org/caps"
 import {
   getOrgDisplayName,
@@ -153,17 +155,18 @@ export async function createInvitation(
   // Managed edition: the org's own verified sender, else "<Org> via Liaison"
   // (S29). Null elsewhere: the self-hosted send is unchanged.
   const orgSender = await getOrgSenderTransport(orgId)
-  const subject = `You're invited to ${orgName}`
+  // The invitee has no account yet: the org's language, else the inviter's.
+  const locale = await systemMailLocale(orgId, { inviterId: invitedBy })
+  const t = (key: string) => serverT(locale, `system-mail.invite.${key}`, { org: orgName })
+  const subject = t("subject")
   const { html, text } = renderBrandedEmail({
     subject,
-    eyebrow: "Invitation",
-    heading: `Join ${orgName}`,
-    paragraphs: [
-      `You've been invited to join ${orgName} on Liaison, the workspace for your team's support and communication.`,
-      "Click the button below to accept your invitation and set up your account. This invitation expires in 7 days.",
-    ],
-    cta: { label: "Accept invitation", href: inviteUrl },
-    footer: ["If you weren't expecting this invitation, you can safely ignore this email."],
+    locale,
+    eyebrow: t("eyebrow"),
+    heading: t("heading"),
+    paragraphs: [t("body"), t("expiry")],
+    cta: { label: t("cta"), href: inviteUrl },
+    footer: [t("footer")],
   })
   try {
     await (orgSender?.provider ?? getSystemEmailProvider()).send({

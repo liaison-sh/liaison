@@ -1,0 +1,3 @@
+A signed-in phone whose server does not answer waits on Can't reach your workspace, never the sign-in form: apps/web/src/modules/auth/ProtectedRoute.tsx (waitingForServer) ; apps/web/src/modules/auth/WorkspaceUnreachable.tsx (WorkspaceUnreachable) ; packages/shared/src/i18n/locales/en/kernel.json (workspaceUnreachable)
+It opens on its own when the server answers: apps/web/src/modules/auth/auth-store.ts (noteRestoreFailure, retryRestore)
+The same screen offers the other saved servers: apps/web/src/modules/auth/WorkspaceUnreachable.tsx (LoginServerChoice)

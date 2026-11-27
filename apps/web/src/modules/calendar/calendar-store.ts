@@ -102,8 +102,12 @@ export const [calendarStore, setCalendarStore] = createStore<CalendarStoreState>
 })
 
 export async function loadCalendarsList(api: ApiClient): Promise<void> {
-  const calendars = await listCalendars(api)
-  setCalendarStore("calendars", calendars)
+  try {
+    setCalendarStore("calendars", await listCalendars(api))
+  } catch (err) {
+    // Shown by the events banner: a failed calendar list leaves the previous one in place.
+    setCalendarStore("error", err instanceof Error ? err.message : String(err))
+  }
 }
 
 export async function loadAccountsList(api: ApiClient): Promise<void> {
@@ -117,21 +121,73 @@ export async function loadAccountsList(api: ApiClient): Promise<void> {
   }
 }
 
+/** How many fetched windows are kept for instant back-and-forth navigation. */
+const WINDOW_CACHE_SIZE = 12
+
+/** The events of the windows fetched this session, most recent last. A cached window paints at
+ * once and is refetched behind it (stale while revalidate), so navigating back never flashes
+ * empty and never shows stale data for longer than one fetch. */
+const windowCache = new Map<string, CalendarEventDto[]>()
+/** The window the views asked for last: only its answer may write the store. */
+let latestWindowKey: string | null = null
+let latestRequestId = 0
+
+function windowKey(timeMin: string, timeMax: string): string {
+  return `${timeMin}|${timeMax}`
+}
+
+function rememberWindow(key: string, events: CalendarEventDto[]): void {
+  windowCache.delete(key)
+  windowCache.set(key, events)
+  while (windowCache.size > WINDOW_CACHE_SIZE) {
+    const oldest = windowCache.keys().next().value
+    if (oldest === undefined) break
+    windowCache.delete(oldest)
+  }
+}
+
+/** Forget every fetched window (a change arrived): the next read of each goes to the server. */
+export function invalidateEventWindows(): void {
+  windowCache.clear()
+}
+
+/**
+ * loadEventsForWindow — the events of one window. A window already fetched paints from the
+ * cache at once; the fetch still runs and replaces it. Only the answer to the LATEST request
+ * writes the store, so two quick "next" clicks cannot leave the older, slower week on screen.
+ * While a window with no cached copy loads, the previous events stay (the views cut them to
+ * their own range) and `loading` is set; a failed fetch sets `error` and keeps what is shown.
+ */
 export async function loadEventsForWindow(
   api: ApiClient,
   timeMin: string,
   timeMax: string,
 ): Promise<void> {
-  setCalendarStore("loading", true)
-  setCalendarStore("error", null)
+  const key = windowKey(timeMin, timeMax)
+  const requestId = ++latestRequestId
+  latestWindowKey = key
+  const cached = windowCache.get(key)
+  if (cached) setCalendarStore("events", cached)
+  else setCalendarStore("loading", true)
   try {
     const events = await listEvents(api, { timeMin, timeMax })
-    setCalendarStore("events", events)
+    rememberWindow(key, events)
+    if (requestId !== latestRequestId) return
+    setCalendarStore({ events, error: null })
   } catch (err) {
+    if (requestId !== latestRequestId) return
     setCalendarStore("error", err instanceof Error ? err.message : String(err))
   } finally {
-    setCalendarStore("loading", false)
+    if (requestId === latestRequestId) setCalendarStore("loading", false)
   }
+}
+
+/** Refetch the window the views show, after a change (a sync, a save, a teammate's edit). */
+export async function reloadCurrentWindow(api: ApiClient): Promise<void> {
+  if (!latestWindowKey) return
+  invalidateEventWindows()
+  const [timeMin, timeMax] = latestWindowKey.split("|") as [string, string]
+  await loadEventsForWindow(api, timeMin, timeMax)
 }
 
 export function toggleCalendarVisibility(calendarId: string): void {
@@ -168,6 +224,9 @@ export async function deleteCalendarEvent(
  * per-user localStorage display preference, so they are re-read from storage rather than wiped.
  */
 export function resetCalendarStore(): void {
+  invalidateEventWindows()
+  latestWindowKey = null
+  latestRequestId++
   setCalendarStore({
     calendars: [],
     accounts: [],

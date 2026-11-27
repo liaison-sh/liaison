@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test"
 import { AsyncLocalStorage } from "node:async_hooks"
 import crypto from "node:crypto"
+import { ERASED_USER_DISPLAY_NAME } from "@liaison/shared"
 import { sql as drizzleSql, type SQL } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { withSystemDb } from "~/db/privileged"
@@ -530,7 +531,7 @@ describe("erase-user cascade (G2–G6)", () => {
     const u = await readUserRow(userId)
     expect(u).not.toBeNull()
     expect(u!.email).toBe(`deleted-user-${userId}`)
-    expect(u!.name).toBe(`deleted-user-${userId}`)
+    expect(u!.name).toBe(ERASED_USER_DISPLAY_NAME)
   })
 
   test("writes exactly one system audit entry (G5)", async () => {

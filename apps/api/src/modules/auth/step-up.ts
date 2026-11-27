@@ -17,10 +17,12 @@
 // autofill there, and accounts that sign in by link or Google have no password.
 
 import { timingSafeEqual } from "node:crypto"
+import type { ShippedLocale } from "@liaison/shared"
 import { HTTPException } from "hono/http-exception"
 import { hashToken, verifyPassword } from "~/lib/crypto"
 import { redis } from "~/lib/redis"
 import { accountFailureBudgetExhausted, recordAccountFailure } from "~/middleware/brute-force"
+import { serverT } from "~/modules/i18n/server-i18n"
 import { emitSecurityEvent } from "~/modules/security/security-events"
 
 /**
@@ -119,83 +121,32 @@ export function stepUpResendCooldownKey(userId: string, purpose: StepUpPurpose):
   return `totp-stepup-cooldown:${userId}:${purpose}`
 }
 
-/** The email that carries a step-up code, worded for what the code confirms. */
+/** The `system-mail.stepUp.*` copy block of each purpose; absent: the generic one. */
+const STEP_UP_COPY_KEY: Partial<Record<StepUpPurpose, string>> = {
+  account_delete: "accountDelete",
+  mailbox_rotate: "mailboxRotate",
+  mailbox_transparent: "mailboxTransparent",
+  mcp_connect: "mcpConnect",
+  mailbox_reset: "mailboxReset",
+}
+
+/** The email that carries a step-up code, worded for what the code confirms, in `locale`. */
 export function stepUpEmailCopy(
   code: string,
   purpose?: StepUpPurpose,
-): { subject: string; heading: string; paragraphs: string[]; footer: string[] } {
-  if (purpose === "account_delete") {
-    return {
-      subject: `${code} is your code to delete your Liaison account`,
-      heading: "Confirm deleting your account",
-      paragraphs: [
-        "Use the code above to delete your Liaison account.",
-        "Deleting your account erases your profile, your private data and your connected devices in this organisation, and signs you out everywhere. What you shared with your team stays, without your name. Your accounts in other organisations are not affected. This cannot be undone.",
-        "The code expires in 10 minutes. If you didn't ask for this, do not use it, and change your Liaison password.",
-      ],
-      footer: ["You're receiving this because deleting your account was requested."],
-    }
-  }
-  if (purpose === "mailbox_rotate") {
-    return {
-      subject: `${code} is your code to change your Liaison mailbox key`,
-      heading: "Confirm the mailbox key change",
-      paragraphs: [
-        "Use the code above to change the encryption key of your mailbox.",
-        "From then on, new mail is sealed to the new key. If you didn't ask for this, do not use the code, and change your Liaison password.",
-        "The code expires in 10 minutes.",
-      ],
-      footer: ["You're receiving this because a mailbox key change was requested on your account."],
-    }
-  }
-  if (purpose === "mailbox_transparent") {
-    return {
-      subject: `${code} is your code to make your Liaison mailbox transparent`,
-      heading: "Confirm making your mailbox transparent",
-      paragraphs: [
-        "Use the code above to make your private mailbox transparent.",
-        "A transparent mailbox is encrypted with a key the server holds, so you and your agent read it without the mailbox password. If you didn't ask for this, do not use the code, and change your Liaison password.",
-        "The code expires in 10 minutes.",
-      ],
-      footer: [
-        "You're receiving this because making a private mailbox transparent was requested on your account.",
-      ],
-    }
-  }
-  if (purpose === "mcp_connect") {
-    return {
-      subject: `${code} is your code to connect an AI tool to Liaison`,
-      heading: "Confirm connecting an AI tool",
-      paragraphs: [
-        "Use the code above to connect an AI tool to your Liaison account with full access.",
-        "The tool will be able to act as you, with everything you can access, until you disconnect it in Settings. If you didn't ask for this, do not use the code, and change your Liaison password.",
-        "The code expires in 10 minutes.",
-      ],
-      footer: [
-        "You're receiving this because connecting an AI tool was requested on your account.",
-      ],
-    }
-  }
-  if (purpose === "mailbox_reset") {
-    return {
-      subject: `${code} is your code to reset your Liaison mailbox`,
-      heading: "Confirm the mailbox reset",
-      paragraphs: [
-        "Use the code above to reset your encrypted mailbox.",
-        "Resetting deletes the encrypted copy of your mail in Liaison; it downloads again from Gmail. Drafts written in Liaison and emails waiting for your approval are deleted for good, and you will choose a new mailbox password.",
-        "The code expires in 10 minutes. If you didn't ask for this, do not use it, and change your Liaison password.",
-      ],
-      footer: ["You're receiving this because a mailbox reset was requested on your account."],
-    }
-  }
+  locale: ShippedLocale = "en",
+): { subject: string; eyebrow: string; heading: string; paragraphs: string[]; footer: string[] } {
+  const block = (purpose && STEP_UP_COPY_KEY[purpose]) ?? "default"
+  const key = (k: string) => `system-mail.stepUp.${block}.${k}`
+  const t = (k: string) => serverT(locale, key(k), { code })
+  // p3 exists for some purposes only: a missing key comes back as the key itself.
+  const paragraphs = ["p1", "p2", "p3"].map(t).filter((p, i) => p !== key(`p${i + 1}`))
   return {
-    subject: `${code} is your Liaison verification code`,
-    heading: "Confirm it's you",
-    paragraphs: [
-      "Use the code above to continue.",
-      "It expires in 10 minutes. If you didn't request this, you can safely ignore this email.",
-    ],
-    footer: ["You're receiving this because a two-factor change was requested on your account."],
+    subject: t("subject"),
+    eyebrow: serverT(locale, "system-mail.stepUp.eyebrow"),
+    heading: t("heading"),
+    paragraphs,
+    footer: [t("footer")],
   }
 }
 

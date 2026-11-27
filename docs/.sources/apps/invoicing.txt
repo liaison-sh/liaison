@@ -259,3 +259,7 @@ revenue_stream_bind is gated and never auto-approved; revenue_streams_list lists
 Modes auto, review, off; issue_from is the moment of binding -> bundled-apps/invoicing/src/sales/streams.ts:1-17 ; bundled-apps/invoicing/src/sales/stream-tools.ts (issue_from)
 The sale is read from its app before invoicing; invalid or mismatched sales park -> bundled-apps/invoicing/src/sales/issue-sale.ts (readSale, totalsMismatch, sale_invalid)
 The shop's orders go through the stream; issuer from the shop mapping -> bundled-apps/invoicing/src/sales/streams.ts (ensureShopifyStream) ; bundled-apps/shopify/src/sales.ts:1-12
+A refund the app reports gives one credit note keyed by the refund -> bundled-apps/invoicing/src/sales/refunds.ts (onSaleRefunded, refundRef)
+Catch-up preview lists every sale oldest first with blockers and writes nothing -> bundled-apps/invoicing/src/sales/catch-up.ts (revenueStreamCatchUpPreview)
+Catch-up run is gated never automatic, issues oldest first then credit notes, stops at the first refusal -> bundled-apps/invoicing/src/sales/catch-up.ts (revenueStreamCatchUp) ; bundled-apps/invoicing/app.manifest.json (sales_catch_up)
+Stripe one-off payments are read from their Checkout Session -> bundled-apps/stripe/src/sales.ts:1-18

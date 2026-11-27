@@ -213,7 +213,7 @@ describe("kernel__setup_state", () => {
   })
 })
 
-describe("kernel__setup_state on Cloud: the goal first, mail last", () => {
+describe("kernel__setup_state on Cloud: the company brief, the team, the goal, mail last", () => {
   const state = {
     items: [],
     next: "mail" as const,
@@ -230,17 +230,34 @@ describe("kernel__setup_state on Cloud: the goal first, mail last", () => {
     expect(setupNextAction(state)).toContain("First ask which features")
   })
 
-  test("managed with a goal: that goal's step first, then the team, then mail", () => {
-    const action = setupNextAction(state, { goal: "knowledge" })
-    expect(action).toContain("chose to start with knowledge")
-    expect(action).toContain("then invite the team, then offer mail connection last")
+  test("managed with a goal: the company brief first, then the team, then the goal's step, then mail", () => {
+    const action = setupNextAction(state, { goal: "support" })
+    expect(action).toContain("chose the goal support")
+    const at = (s: string) => {
+      const i = action.indexOf(s)
+      expect(i).toBeGreaterThan(-1)
+      return i
+    }
+    expect(at("First the company brief")).toBeLessThan(at("Then invite the team"))
+    expect(at("Then invite the team")).toBeLessThan(at("the support step"))
+    expect(at("the support step")).toBeLessThan(at("offer mail connection last"))
+    // Inviting first stays one sentence away: never a gate.
+    expect(action).toContain("if the person wants to invite first, do it at once")
+    expect(setupNextAction(state, { goal: "knowledge" })).toContain(
+      "End the brief by inviting them to ask their agent a question about it",
+    )
     expect(action).not.toContain("First ask which features")
     expect(action).not.toContain("Next checklist item: mail")
   })
 
   test("managed without a goal: ask for one goal first, unless the conversation already says it", () => {
     const action = setupNextAction(state, { goal: null })
-    expect(action).toContain("the setup card already asked which one goal to start with")
+    expect(action).toContain(
+      "the setup card already asked which goal comes after the brief and the team",
+    )
+    expect(action.indexOf("First the company brief")).toBeLessThan(
+      action.indexOf("Then invite the team"),
+    )
     expect(action).toContain("knowledge, support or projects")
     expect(action).not.toContain("First ask which features")
   })
@@ -250,5 +267,19 @@ describe("kernel__setup_state on Cloud: the goal first, mail last", () => {
     expect(body).toContain("**On Cloud")
     expect(body).toContain("`edition` is `managed`")
     for (const goal of ["`knowledge`", "`support`", "`projects`"]) expect(body).toContain(goal)
+  })
+
+  // The agent learns the company before the colleagues arrive, in both editions,
+  // and inviting first is never refused.
+  test("the setup guide puts the company brief before the team, never as a gate", () => {
+    const body = skillRegistry.get([orgId, "kernel", "setup-guide"])?.body ?? ""
+    expect(body).toContain("**The company brief before the team.**")
+    expect(body).toContain("Never propose the invitations before the brief is done or skipped")
+    expect(body).toContain("When the person wants to invite their colleagues first, do it at once")
+    const basics = body.slice(body.indexOf("**Basics first.**"))
+    expect(basics.indexOf("(`knowledge`")).toBeLessThan(basics.indexOf("(`team`)"))
+    expect(basics.indexOf("(`team`)")).toBeLessThan(basics.indexOf("(`mail`"))
+    const cloud = body.slice(body.indexOf("**On Cloud"), body.indexOf("**The company brief before"))
+    expect(cloud.indexOf("1. The company brief")).toBeLessThan(cloud.indexOf("2. The team"))
   })
 })

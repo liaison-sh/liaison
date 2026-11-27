@@ -25,10 +25,8 @@ const tableRef = (schema: string, name: string) =>
 const COLUMNS =
   drizzleSql.raw(`e.id, e.calendar_id, e.google_event_id, e.title, e.start, e."end", e.all_day,
   e.recurrence, e.recurring_event_id, e.original_start_time, e.status, e.attendees`)
-const START = drizzleSql.raw(`(CASE
-    WHEN e.start->>'dateTime' ~ '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}' THEN (e.start->>'dateTime')::timestamptz
-    WHEN e.start->>'date' ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN ((e.start->>'date')::date)::timestamp AT TIME ZONE 'UTC'
-  END)`)
+/** `start` as an instant, kept by the events table's `point_time_columns` trigger. */
+const START = drizzleSql.raw("e.start_at")
 
 export async function calendarActivityRows(
   db: RlsClient,

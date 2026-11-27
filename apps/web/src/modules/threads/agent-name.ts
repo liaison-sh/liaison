@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { PERSONAL_AGENT_DISPLAY_NAME } from "@liaison/shared"
+import { ERASED_USER_DISPLAY_NAME, PERSONAL_AGENT_DISPLAY_NAME } from "@liaison/shared"
 import { type Translate, tNow } from "~/modules/i18n/i18n-context"
 
 /**
@@ -18,12 +18,23 @@ export function agentStateLabel(state: string | null | undefined): string {
   return s === "active" || s === "archived" ? tNow(`kernel.agents.agentState.${s}`) : s
 }
 
+/**
+ * An author's or participant's name as the viewer reads it: the product's own
+ * English defaults (a personal agent's default name, "{Owner}'s agent", an
+ * erased person's "Deleted user") in the viewer's language, any other name as
+ * it is.
+ */
 export function localizeAgentName(name: string): string {
   return localizeAgentNameWith(name, tNow)
 }
 
 /** `localizeAgentName` with the caller's own translate function. */
 export function localizeAgentNameWith(name: string, t: Translate): string {
+  // An erased person's row is named "Deleted user" by the server (the neutral
+  // name erasure stores), and their messages, notes and comments stay signed
+  // with it. Every author or participant name goes through here, so this is
+  // where it is read in the viewer's language.
+  if (name === ERASED_USER_DISPLAY_NAME) return t("kernel.deletedUser")
   if (name === PERSONAL_AGENT_DISPLAY_NAME) return t("kernel.agents.kindPersonal")
   // A personal agent's post is signed "{Owner}'s agent" by the server, in English.
   const owner = OWNERS_AGENT.exec(name)?.[1]

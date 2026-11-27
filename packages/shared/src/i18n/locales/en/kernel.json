@@ -928,6 +928,7 @@
     "done": "Export downloaded."
   },
   "deactivated": "Deactivated",
+  "deletedUser": "Deleted user",
   "dictationErrors": {
     "demoKeyRequired": "Dictation on this demo instance runs on your own OpenRouter or Google key. Add one in Settings, AI models.",
     "empty": "No speech was recognised in the recording.",
@@ -2563,6 +2564,11 @@
   "workHoursStart": "Work hours start",
   "workModules": "Modules",
   "workTitle": "Work",
+  "workspaceUnreachable": {
+    "title": "Can't reach your workspace",
+    "body": "Liaison at {{host}} is not answering. You are still signed in: it opens as soon as the server answers.",
+    "bodyNoHost": "The server is not answering. You are still signed in: Liaison opens as soon as it answers."
+  },
   "writeAMessage": "Write a message",
   "writeAMessageHint": "Write a message... (@ people, # threads)",
   "youAdminBestOnLargerScreen": "Best on a larger screen",
@@ -4058,6 +4064,7 @@
       "recurring_schedule_pause": "pause recurring schedule",
       "revenue_stream_sale_issue": "issue a sale invoice",
       "revenue_stream_bind": "bind a revenue stream",
+      "sales_catch_up": "invoice earlier sales",
       "issuer_stream_set": "set issuer stream",
       "issuer_emails_confirm": "confirm issuer emails",
       "invoice_from_stripe_payment": "invoice Stripe payment",

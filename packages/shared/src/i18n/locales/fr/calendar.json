@@ -88,5 +88,16 @@
       "fromCalendar": "Lire mes absences dans mon agenda",
       "fromCalendarHelp": "Activé, un message d'absence dans votre agenda Google principal vous marque absent, et un événement d'une journée qui ressemble à un congé vous est demandé une fois sur l'accueil. Pendant votre absence, les approbations qui vous attendent passent à la personne suivante. Désactivé, votre agenda ne change rien."
     }
-  }
+  },
+  "eventsLoadFailed": "Impossible de charger les événements. L'affichage n'est peut-être pas à jour.",
+  "retry": "Réessayer",
+  "eventTabLabel": "Événement",
+  "addTitle": "Ajouter un titre",
+  "addMeet": "Ajouter une visio Google Meet",
+  "moreOptions": "Plus d'options",
+  "eventNotFound": "Cet événement n'est plus dans le calendrier chargé. Fermez cet onglet et rouvrez-le depuis le calendrier.",
+  "deleteConfirmTitle": "Supprimer cet événement ?",
+  "deleteConfirmBody": "« {{title}} » sera retiré du calendrier et de Google.",
+  "eventDeleted": "Événement supprimé",
+  "undo": "Annuler"
 }

@@ -34,6 +34,7 @@ import {
   onMount,
   Show,
 } from "solid-js"
+import { isFeatureOff } from "~/framework/org-features"
 import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
 import { disambiguatedLabel, markAmbiguousNames } from "~/lib/name-collision"
@@ -734,8 +735,16 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                 </div>
 
                 {/* A deal (a top-level task of a sales pipeline): its own panel,
-                    which fails on its own without touching the task page. */}
-                <Show when={project()?.kind === "pipeline" && !t().parentTaskId}>
+                    which fails on its own without touching the task page. With
+                    deals off for the workspace the board stays, the panel does
+                    not: its tools refuse to run then. */}
+                <Show
+                  when={
+                    project()?.kind === "pipeline" &&
+                    !t().parentTaskId &&
+                    !isFeatureOff("projects", "deals")
+                  }
+                >
                   <DealPanel
                     api={api}
                     taskId={t().id}

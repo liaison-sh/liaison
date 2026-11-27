@@ -212,14 +212,17 @@ describe("the decision lifecycle reaches the agent's transcript", () => {
 describe("the setup card on Cloud carries the person's goal", () => {
   const base = { content: "Set up your space", metadata: { type: "setup-kickoff", agentId: "a-1" } }
 
-  it("each goal gets its own line: start there, mail connection last", () => {
+  it("each goal gets its own line: the brief, the team, the goal, mail connection last", () => {
     for (const goal of ["knowledge", "support", "projects"] as const) {
       const line = systemEventLine({
         ...base,
         metadata: { ...base.metadata, managed: true, goal },
       })
       expect(line).toBe(setupKickoffLine({ managed: true, goal, demoOffered: false }))
-      expect(line).toContain(`their goal: ${goal}; start there`)
+      expect(line).toContain(`their goal: ${goal}.`)
+      expect(line).toContain(
+        "Start with the company brief, then invite the team, then the goal's step",
+      )
       expect(line).toContain("offer mail connection last")
       expect(line).toContain("kernel__setup_state")
     }
@@ -227,7 +230,10 @@ describe("the setup card on Cloud carries the person's goal", () => {
 
   it("without a goal it asks for one; an unknown goal reads as none", () => {
     const none = systemEventLine({ ...base, metadata: { ...base.metadata, managed: true } })
-    expect(none).toContain("already asked them which one goal to start with")
+    expect(none).toContain(
+      "already asked them which goal comes after the company brief and the team",
+    )
+    expect(none).toContain("Start with the company brief, then invite the team")
     expect(none).toContain("offer mail connection last")
     expect(
       systemEventLine({

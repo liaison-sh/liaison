@@ -16,6 +16,11 @@ Liaison emails the person an **Accept invitation** link. The invitation expires 
 
 On a local trial with no SMTP server, the email is written to the app log instead of being sent (see [Install Liaison](../getting-started/install.md#sign-in-the-first-time)). To invite many people from a file, list them under `users` in a config file and run `liaison config apply`: its report gives each invite link as `users[].inviteUrl`. See [Provision from a config file](../provisioning-cli.md).
 
+
+## Which language Liaison's emails use
+
+Sign-in codes, invitations, password resets, security codes, connect links and the client portal's emails are written in the recipient's language: the language they picked themselves (**Language**, under **You**), else their account's language, else the organization's default language. An invitation goes to someone who has no account yet, so it follows the organization's language, then the language of the person who invited them. English is used only when none of these is a language Liaison ships (English and French today). A hosted workspace starts with the language it was created in, as its default and its owner's.
+
 ## Change what a user can do
 
 1. In the users list, click the person.
@@ -90,7 +95,7 @@ On a managed instance whose subscription is suspended (unpaid, or ended), only a
 
 ## Delete an account
 
-There is no admin action that deletes a user. Each person can delete their own account in **Settings › Security › Delete my account**, after confirming a 6-digit code sent by email. Their profile, personal agent and its memory, preferences, connected accounts and registered devices are deleted. What they shared with the team (messages, tickets, documents) stays, without their name. The only admin of an organization cannot delete their account until another member is an admin.
+There is no admin action that deletes a user. Each person can delete their own account in **Settings › Security › Delete my account**, after confirming a 6-digit code sent by email. Their profile, personal agent and its memory, preferences, connected accounts and registered devices are deleted. What they shared with the team (messages, tickets, documents) stays, without their name: it is signed **Deleted user** (in French, "Utilisateur supprimé"). The only admin of an organization cannot delete their account until another member is an admin.
 
 ## Link an imported author to a person
 

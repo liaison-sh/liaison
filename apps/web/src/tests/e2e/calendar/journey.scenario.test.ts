@@ -102,32 +102,26 @@ test.describe("Calendar — UI journey + visual baselines", () => {
     await toggle.click()
     await expect(toggle).toBeChecked()
 
-    // Open the first event, edit its title, save, and confirm the dialog/grid
-    // reflect the change.
+    // Open the first event in its tab, edit its title, save: the tab closes and the grid shows
+    // the change. Reopening shows the persisted edit.
     await eventChips.first().click()
-    const dialog = page.getByRole("dialog")
-    await expect(dialog).toBeVisible({ timeout: 15000 })
-    await expect(dialog.getByRole("heading", { name: "Edit event" })).toBeVisible()
-    await page.waitForTimeout(250)
-    if (PIXEL_BASELINES) await expect(dialog).toHaveScreenshot("event-dialog.png", SHOT)
-
-    const titleInput = dialog.getByTestId("event-title-input")
+    const eventTab = page.getByTestId("calendar-event-tab")
+    await expect(eventTab).toBeVisible({ timeout: 15000 })
+    const titleInput = eventTab.getByTestId("event-title-input")
     const originalTitle = await titleInput.inputValue()
     const newTitle = `${originalTitle} (edited)`
     await titleInput.fill(newTitle)
-    await dialog.getByRole("button", { name: "Save" }).click()
-    await expect(dialog).not.toBeVisible({ timeout: 15000 })
+    await eventTab.getByTestId("event-save").click()
+    await expect(eventTab).not.toBeVisible({ timeout: 15000 })
     await expect(page.getByTestId("calendar-event-chip").filter({ hasText: newTitle })).toBeVisible(
       { timeout: 15000 },
     )
 
-    // Re-open the same event — dialog reflects the persisted edit.
     await page.getByTestId("calendar-event-chip").filter({ hasText: newTitle }).first().click()
-    const dialog2 = page.getByRole("dialog")
-    await expect(dialog2).toBeVisible({ timeout: 15000 })
-    await expect(dialog2.getByTestId("event-title-input")).toHaveValue(newTitle)
-    await dialog2.getByRole("button", { name: "Cancel" }).click()
-    await expect(dialog2).not.toBeVisible({ timeout: 15000 })
+    const reopened = page.getByTestId("calendar-event-tab")
+    await expect(reopened.getByTestId("event-title-input")).toHaveValue(newTitle)
+    await reopened.getByTestId("event-cancel").click()
+    await expect(reopened).not.toBeVisible({ timeout: 15000 })
 
     // Week view — same seeded data, different layout.
     await page.goto(`${viteUrl}/calendar/week`)

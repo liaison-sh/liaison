@@ -47,19 +47,22 @@ export function appBundle(
   sections: NavSection[],
 ): { index: HelpDocsIndex; pages: HelpDocsPage[] } {
   const byId = new Map(rendered.map((r) => [r.page.nav.id, r.page]))
+  const landingPage = rendered[0]?.page
   const pages = rendered.map(({ page, html }): HelpDocsPage => {
     const body = rewriteLinks(html, page.nav.url)
     return {
       url: page.nav.url,
       title: page.title,
       description: page.description,
-      showLede: page.ownDescription,
+      // As on the site (template.ts): the landing page writes its own lede in its
+      // hero, and a stub has none, so neither repeats the description above it.
+      showLede: page.ownDescription && page !== landingPage && !page.stub,
       section: page.section?.title ?? "",
       html: body,
       headings: page.headings.filter((h) => h.depth === 2 || h.depth === 3),
     }
   })
-  const landing = rendered[0]?.page
+  const landing = landingPage
   const index: HelpDocsIndex = {
     landing: { url: "", title: landing?.title ?? "Documentation" },
     sections: sections.map((s) => ({

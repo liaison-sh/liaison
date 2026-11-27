@@ -26,6 +26,7 @@ import {
   urlToTabInfo,
 } from "~/framework/app-registry"
 import { bootstrapKernelApps, resetBootstrap } from "~/framework/bootstrap"
+import { openFromWork } from "~/modules/shell/open-from-work"
 import { openTab, resetTabStore } from "~/modules/shell/tab-store"
 import {
   createPushNav,
@@ -180,6 +181,51 @@ describe("createPushNav", () => {
       navigateSpy.mockClear()
       nav.popDetail()
       expect(navigateSpy).toHaveBeenCalledWith("/work", { replace: true })
+      dispose()
+    })
+    resetTabStore()
+  })
+
+  // iOS re-walk N2: a module root opened from the Work list (Help, Projects)
+  // is no detail route, and had no back control and no edge swipe.
+  it("a screen opened from the Work list goes back to it, labelled Work", () => {
+    currentPathname = "/help"
+    createRoot((dispose) => {
+      const nav = createPushNav()
+      expect(nav.detailOpen()).toBe(false)
+      openFromWork(
+        (key) => (key === "kernel.phoneTabWork" ? "Work" : key),
+        () => openTab({ type: "kernel:help", entityId: "help", label: "Help" }),
+      )
+      expect(nav.detailOpen()).toBe(true)
+      expect(nav.backLabel()).toBe("Work")
+      nav.popDetail()
+      expect(navigateSpy).toHaveBeenCalledWith("/work", { replace: true })
+      // Spent: the help root on its own is a root screen again.
+      expect(nav.detailOpen()).toBe(false)
+      dispose()
+    })
+    resetTabStore()
+  })
+
+  it("a detail pushed over a screen opened from Work hands its way back to Work on return", () => {
+    currentPathname = "/projects"
+    createRoot((dispose) => {
+      const nav = createPushNav()
+      openFromWork(
+        () => "Work",
+        () => openTab({ type: "kernel:help", entityId: "help", label: "Help" }),
+      )
+      window.history.replaceState(null, "", "/projects")
+      nav.pushDetail("/threads/thread-1", { fromLabel: "Projects" })
+      currentPathname = "/threads/thread-1"
+      window.history.pushState({ pushNavDetail: true }, "", "/threads/thread-1")
+      expect(nav.backLabel()).toBe("Projects")
+      nav.popDetail()
+      expect(navigateSpy).toHaveBeenLastCalledWith(-1)
+      currentPathname = "/projects"
+      expect(nav.detailOpen()).toBe(true)
+      expect(nav.backLabel()).toBe("Work")
       dispose()
     })
     resetTabStore()

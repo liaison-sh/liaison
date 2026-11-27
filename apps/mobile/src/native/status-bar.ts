@@ -47,7 +47,15 @@ export interface StatusBarController {
  * platform (or refused by a webview) must never take down a theme change, and
  * there is nothing to retry.
  */
-export function createStatusBarController(plugin: StatusBarPlugin): StatusBarController {
+export function createStatusBarController(
+  plugin: StatusBarPlugin,
+  /**
+   * Paints what shows AROUND the page in the same theme: a windowed or zoomed
+   * iPad leaves a band above the page that the native view behind it fills,
+   * and it drew black above a light app (liaison-native.ts, nativeBackdrop).
+   */
+  paintBackdrop: (theme: ResolvedTheme) => void = () => {},
+): StatusBarController {
   let last: ResolvedTheme | null = null
   return {
     setTheme(theme: ResolvedTheme): void {
@@ -57,6 +65,11 @@ export function createStatusBarController(plugin: StatusBarPlugin): StatusBarCon
       if (theme === last) return
       last = theme
       void plugin.setStyle({ style: statusBarStyleFor(theme) }).catch(() => {})
+      try {
+        paintBackdrop(theme)
+      } catch {
+        // Cosmetic, like the style.
+      }
     },
     async start(): Promise<void> {
       try {

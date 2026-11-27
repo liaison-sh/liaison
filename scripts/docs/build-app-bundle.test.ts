@@ -32,5 +32,9 @@ describe("writeAppBundle", () => {
     expect(mail.html).not.toMatch(/href="\.\.?\//)
     const landing = JSON.parse(readFileSync(join(out, "pages/index.json"), "utf8")) as HelpDocsPage
     expect(landing.url).toBe("")
+    // The landing's hero carries its lede: the description is not drawn above it too.
+    expect(landing.showLede).toBe(false)
+    expect(landing.html.match(/class="lede"/g)).toHaveLength(1)
+    expect(mail.showLede).toBe(true)
   })
 })

@@ -1,0 +1,1 @@
+One-off Checkout payments need Checkout Sessions Read and PaymentIntents Read -> bundled-apps/stripe/src/sales.ts:17-18

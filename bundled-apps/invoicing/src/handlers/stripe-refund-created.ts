@@ -129,7 +129,12 @@ export async function onStripeRefundCreated(
   const p = payloadOf<StripeRefundPayload>(event)
   if (!p || typeof p.charge_id !== "string" || !p.charge_id)
     return { status: "skipped", reason: "invalid_payload", refunds: [] }
-  if ((await cardStreamIssuer(ctx)).issuer !== "liaison") {
+  // A one-off sale of a bound revenue stream (sales/issue-sale.ts) is always Liaison's invoice,
+  // whoever issues the card subscriptions: its refunds are credited whatever the card stream says.
+  const streamSale = await saleDocument(ctx, [p.charge_id])
+  const isStreamSale =
+    typeof (streamSale?.external_refs as Row | null | undefined)?.revenue_stream_id === "string"
+  if (!isStreamSale && (await cardStreamIssuer(ctx)).issuer !== "liaison") {
     const ids =
       Array.isArray(p.refunds) && p.refunds.length > 0
         ? p.refunds.map((r) => r.id)

@@ -1573,6 +1573,20 @@ export const envSchema = z
     MEILISEARCH_HOST: z.string().default("http://localhost:7700"),
     MEILISEARCH_API_KEY: z.string().default(""),
     MEILI_INDEX_PREFIX: z.string().default(""),
+    // Width of the memory search vectors (document and query embeddings, and
+    // the search index's embedder): 768, 1536 or 3072. 768 needs a quarter of
+    // 3072's memory and disk for nearly the same recall. Changing it on a
+    // running instance rebuilds the search index once (search keeps working,
+    // keyword only for meaning matches) and then re-embeds the documents that
+    // had vectors, in the background (modules/search/embedding-dimensions.ts).
+    EMBEDDING_DIMENSIONS: z.preprocess(
+      unsetIfEmpty,
+      z.coerce
+        .number()
+        .int()
+        .refine((n) => n === 768 || n === 1536 || n === 3072, "must be 768, 1536 or 3072")
+        .default(768),
+    ),
     // Phase 10: Object storage (S3-compatible)
     OBJECT_STORAGE_ENDPOINT: z.string().default("http://localhost:9000"),
     OBJECT_STORAGE_REGION: z.string().default("us-east-1"),

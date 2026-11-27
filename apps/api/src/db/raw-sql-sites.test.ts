@@ -97,11 +97,6 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/apps/calendar/sync.ts#updateAccount": {
     col: "column keys are literals at both callers (sync.ts:813,883)",
   },
-  "apps/api/src/apps/calendar/tools.ts#listEventsForCaller": {
-    'pointTimestampSql("start")': IDENT_FROM_CODE,
-    'pointTimestampSql(`"end"`)': IDENT_FROM_CODE,
-    'pointTimestampSql("original_start_time")': IDENT_FROM_CODE,
-  },
   "apps/api/src/modules/apps/connections/sql/transports/postgres-direct.ts#PostgresDirect.begin": {
     timeoutMs: "timeout is a validated integer",
   },

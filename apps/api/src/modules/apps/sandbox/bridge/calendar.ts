@@ -95,7 +95,9 @@ const CONFERENCE_PUSH_BACKUP_DELAY_MS = 60_000
 export type CalendarBridgeContext = Pick<
   BridgeContext,
   "appName" | "callerScopes" | "orgId" | "requireApp" | "txDb" | "userId"
->
+> &
+  // Optional: a harness without a socket fan-out simply announces nothing.
+  Partial<Pick<BridgeContext, "queueAppEvent">>
 
 /** How the calendar surface queues its jobs: the job queue in production; a test harness
  * passes its own queue to run the jobs in process (`apps/calendar/__fixtures__/google`). */
@@ -110,6 +112,39 @@ export function createCalendarMethods(
 ): Record<string, any> {
   const { callerScopes, orgId, requireApp, txDb, userId } = ctx
   const enqueue = deps.enqueue ?? enqueueAppJob
+
+  /**
+   * Tells the open calendar views that a calendar's events changed (a sync page, a push result,
+   * a write by an agent), so a visible week refetches instead of waiting for a navigation. One
+   * `calendar/event:changed` frame per write, queued in the write's transaction so it goes out
+   * after the commit. It names the calendar and nothing of the events; its `calendar:calaccess`
+   * value holds the socket fan-out to the readers of that account, as the rows' RLS does.
+   * Deliberately not `event:update`: it names a calendar, not an event, so no event routine
+   * keyed on an event fires on it.
+   */
+  async function announceEventsChanged(ref: { calendarId: string } | { eventId: string }) {
+    const { sql } = await import("drizzle-orm")
+    const { schemaRef } = await import("~/db/schema-ref")
+    const schema = sql.raw(schemaRef("app_calendar"))
+    const result = (await txDb.execute(
+      "calendarId" in ref
+        ? sql`SELECT id AS calendar_id, calaccess FROM ${schema}.calendars
+              WHERE org_id = ${orgId}::uuid AND id = ${ref.calendarId}::uuid`
+        : sql`SELECT calendar_id, calaccess FROM ${schema}.events
+              WHERE org_id = ${orgId}::uuid AND id = ${ref.eventId}::uuid`,
+    )) as unknown as { rows?: unknown[] } | unknown[]
+    const rows = (Array.isArray(result) ? result : (result.rows ?? [])) as Array<{
+      calendar_id: string
+      calaccess: string | null
+    }>
+    const row = rows[0]
+    if (!row || !ctx.queueAppEvent) return
+    await ctx.queueAppEvent("calendar", "event", "changed", row.calendar_id, {
+      calendarId: row.calendar_id,
+      ...(row.calaccess ? { "calendar:calaccess": row.calaccess } : {}),
+    })
+  }
+
   return {
     /** Rows for a company's or a contact's timeline, read under the caller's row security. */
     calendar_activityRead: async (paramsJson: string): Promise<string> => {
@@ -178,6 +213,9 @@ export function createCalendarMethods(
       const { applyInitialSyncPages } = await import("~/apps/calendar/sync")
       const pages = JSON.parse(pagesJson)
       const result = await applyInitialSyncPages(txDb, orgId, calendarId, calaccess, pages)
+      if (pages.some((p: { items?: unknown[] }) => (p.items?.length ?? 0) > 0)) {
+        await announceEventsChanged({ calendarId })
+      }
       return JSON.stringify(result)
     },
 
@@ -189,6 +227,9 @@ export function createCalendarMethods(
       const { applyIncrementalSyncPages } = await import("~/apps/calendar/sync")
       const pages = JSON.parse(pagesJson)
       const result = await applyIncrementalSyncPages(txDb, orgId, calendarId, pages)
+      if (pages.some((p: { items?: unknown[] }) => (p.items?.length ?? 0) > 0)) {
+        await announceEventsChanged({ calendarId })
+      }
       return JSON.stringify(result)
     },
 
@@ -198,6 +239,7 @@ export function createCalendarMethods(
       await recoverFromSyncTokenGone(txDb, orgId, calendarId, async (jobName, payload) => {
         await enqueue("calendar", jobName, payload)
       })
+      await announceEventsChanged({ calendarId })
     },
 
     calendar_getAccount: async (accountId: string): Promise<string> => {
@@ -488,6 +530,7 @@ export function createCalendarMethods(
           ...(conference ? { delay: CONFERENCE_PUSH_BACKUP_DELAY_MS } : {}),
         },
       )
+      await announceEventsChanged({ eventId })
       return JSON.stringify({ eventId, conference: conference ?? null })
     },
 
@@ -553,6 +596,7 @@ export function createCalendarMethods(
           ...(conference ? { delay: CONFERENCE_PUSH_BACKUP_DELAY_MS } : {}),
         },
       )
+      await announceEventsChanged({ eventId })
       return JSON.stringify({
         eventId,
         ...(target.scope ? { scope: target.scope } : {}),
@@ -599,6 +643,7 @@ export function createCalendarMethods(
           { jobId: `calendar-push:${eventId}:v${syncVersion}:a0` },
         )
       }
+      await announceEventsChanged({ eventId })
       return JSON.stringify({
         eventId,
         ...(target.scope ? { scope: target.scope } : {}),
@@ -614,16 +659,16 @@ export function createCalendarMethods(
     ): Promise<string> => {
       requireApp("calendar", "calendar_restoreRefusedDelete")
       const { restoreRefusedDelete } = await import("~/apps/calendar/sync")
-      return JSON.stringify(
-        await restoreRefusedDelete(
-          txDb,
-          orgId,
-          eventId,
-          message,
-          syncVersion,
-          JSON.parse(remoteJson || "null"),
-        ),
+      const restored = await restoreRefusedDelete(
+        txDb,
+        orgId,
+        eventId,
+        message,
+        syncVersion,
+        JSON.parse(remoteJson || "null"),
       )
+      await announceEventsChanged({ eventId })
+      return JSON.stringify(restored)
     },
 
     calendar_finalizeRemoteDelete: async (eventId: string): Promise<void> => {
@@ -643,7 +688,9 @@ export function createCalendarMethods(
       requireApp("calendar", "calendar_applyPushResult")
       const { applyPushResult } = await import("~/apps/calendar/sync")
       const result = JSON.parse(resultJson)
-      return JSON.stringify(await applyPushResult(txDb, orgId, eventId, result))
+      const applied = await applyPushResult(txDb, orgId, eventId, result)
+      await announceEventsChanged({ eventId })
+      return JSON.stringify(applied)
     },
 
     calendar_handlePushConflict: async (eventId: string, inputJson: string): Promise<string> => {
@@ -674,6 +721,7 @@ export function createCalendarMethods(
       requireApp("calendar", "calendar_markPushRejected")
       const { markPushRejected } = await import("~/apps/calendar/sync")
       await markPushRejected(txDb, orgId, eventId, message, syncVersion)
+      await announceEventsChanged({ eventId })
     },
 
     calendar_notePushFailure: async (eventId: string, syncVersion: number): Promise<string> => {
@@ -691,6 +739,7 @@ export function createCalendarMethods(
       requireApp("calendar", "calendar_revertToRemote")
       const { revertEventToGoogle } = await import("~/apps/calendar/sync")
       await revertEventToGoogle(txDb, orgId, eventId, JSON.parse(remoteJson), detail, syncVersion)
+      await announceEventsChanged({ eventId })
     },
 
     calendar_recordPushFailure: async (

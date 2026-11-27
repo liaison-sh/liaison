@@ -22,15 +22,29 @@ class MainViewController: CAPBridgeViewController {
     // MARK: iPadOS windows
 
     /// Whatever shows around the page (a windowed iPad's top inset, a bounce)
-    /// is the system background, light or dark with the device, never the
-    /// default black: a resized iPad window drew a solid black band above the
-    /// app's light header.
-    private func paintBehindThePage() {
-        view.backgroundColor = .systemBackground
-        webView?.backgroundColor = .systemBackground
-        webView?.scrollView.backgroundColor = .systemBackground
-        webView?.underPageBackgroundColor = .systemBackground
+    /// is the app's own background, never the default black: a resized or
+    /// zoomed iPad window drew a solid black band above the app's light
+    /// header. Until the page has said which theme it resolved, that is the
+    /// system background; from then on it is the app's, light or dark as the
+    /// APP is, which is not always the device's appearance (a member who chose
+    /// the light theme on a dark iPad saw the dark system background there).
+    func paintBehindThePage(theme: String? = nil) {
+        let color: UIColor
+        switch theme {
+        case "light": color = MainViewController.lightBackdrop
+        case "dark": color = MainViewController.darkBackdrop
+        default: color = .systemBackground
+        }
+        view.window?.backgroundColor = color
+        view.backgroundColor = color
+        webView?.backgroundColor = color
+        webView?.scrollView.backgroundColor = color
+        webView?.underPageBackgroundColor = color
     }
+
+    /// The page's `--color-bg` in each theme (apps/web/src/styles/theme.css).
+    static let lightBackdrop = UIColor(red: 0xfa / 255.0, green: 0xfa / 255.0, blue: 0xfa / 255.0, alpha: 1)
+    static let darkBackdrop = UIColor(red: 0x11 / 255.0, green: 0x11 / 255.0, blue: 0x13 / 255.0, alpha: 1)
 
     /// The height the iPadOS window controls (close, minimise, resize) take
     /// below the top safe area, in points; 0 everywhere else.

@@ -8,7 +8,9 @@
 // tombstone is the email set to `deleted-user-<id>`, which erase-user already
 // reads as "already erased". Anything that republishes message TEXT outside
 // the database (the search index, its rebuild) must treat a message authored
-// by such a user as gone, or a rebuild re-indexes erased text.
+// by such a user as gone, or a rebuild re-indexes erased text. The row's name
+// is the neutral ERASED_USER_DISPLAY_NAME (`@liaison/shared`), never this
+// placeholder: it is what the person's retained messages are signed with.
 
 import { sql } from "drizzle-orm"
 import { schemaRef } from "~/db/schema-ref"

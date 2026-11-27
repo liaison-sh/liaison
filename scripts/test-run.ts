@@ -642,6 +642,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/invoicing-imported-original.test.ts",
             "src/tests/integration/shopify-invoicing-po-number-seam.test.ts",
             "src/tests/integration/shopify-invoicing-refund-seam.test.ts",
+            // An organization's own sales app reporting its sales through revenue-stream@1:
+            // invoice, refund credit note and lists on the real pipeline.
+            "src/tests/integration/revenue-stream-custom-app.integration.test.ts",
             "src/tests/integration/shopify-oauth-callback.test.ts",
             // An instance-provided Shopify app: OAuth and webhook HMAC with its client.
             "src/tests/integration/shopify-instance-client.test.ts",
@@ -1549,6 +1552,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // proof that the shop's sale maps to exactly the order payload it replaced.
             "src/sales/issue-sale.test.ts",
             "src/sales/shopify-sale.golden.test.ts",
+            "src/sales/catch-up.test.ts",
             // Quotes ARE Shopify draft orders: the four draft_order:* handlers, mock-driven
             // (createMockDb + stubbed executeTool). Pins the one-quote-per-draft-order
             // idempotency across BOTH event producers (the fat webhook payload and the thin
@@ -1979,6 +1983,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/connection.test.ts",
             "src/verify.test.ts",
             "src/dispatch.test.ts",
+            // One-off Checkout payments as revenue-stream@1 sales.
+            "src/sales.test.ts",
             "src/pan-scan.parity.test.ts",
             "src/sync.test.ts",
             "src/match.test.ts",

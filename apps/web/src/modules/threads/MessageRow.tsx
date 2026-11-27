@@ -207,7 +207,7 @@ function QuoteBlock(props: {
       onClick={() => props.onClick?.(props.quote)}
     >
       <span class="block text-[11.5px] font-medium text-text-secondary">
-        {props.quote.authorName}
+        {localizeAgentName(props.quote.authorName)}
         <Show when={sourceDeleted()}>
           <span class="ml-1 font-normal italic text-text-tertiary">
             {i18n.t("kernel.replyThreads.quoteSourceDeleted")}
@@ -919,8 +919,8 @@ const MessageRow: Component<MessageRowProps> = (props) => {
       >
         <span class="text-[11.5px] text-text-tertiary">
           {i18n.t("kernel.participantAdded", {
-            actor: meta()?.actorName ?? props.message.authorName ?? "",
-            participant: meta()?.participantName ?? "",
+            actor: localizeAgentName(meta()?.actorName ?? props.message.authorName ?? ""),
+            participant: localizeAgentName(meta()?.participantName ?? ""),
           })}
         </span>
       </div>
@@ -1245,6 +1245,8 @@ const MessageRow: Component<MessageRowProps> = (props) => {
     }
     return out
   }
+  // The author's name as the reader says it (an erased person's "Deleted user").
+  const authorLabel = () => localizeAgentName(props.message.authorName ?? "")
   const openSheet = () => {
     if (props.message.deletedAt || props.message.pending || editing()) return
     setSheetOpen(true)
@@ -1275,7 +1277,7 @@ const MessageRow: Component<MessageRowProps> = (props) => {
             color: avatarColors(props.message.authorId).text,
           }}
         >
-          {props.message.authorName?.charAt(0).toUpperCase() ?? "?"}
+          {authorLabel().charAt(0).toUpperCase() || "?"}
         </div>
       </Show>
 
@@ -1283,7 +1285,7 @@ const MessageRow: Component<MessageRowProps> = (props) => {
         {/* Author + time (only for first in group) */}
         <Show when={!props.grouped}>
           <div class="flex items-baseline gap-2">
-            <span class="text-[13px] font-semibold text-text">{props.message.authorName}</span>
+            <span class="text-[13px] font-semibold text-text">{authorLabel()}</span>
             <span class="text-[11px] text-text-tertiary">
               {formatTime(props.message.createdAt)}
             </span>

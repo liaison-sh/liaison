@@ -7,7 +7,6 @@
 // exactly the ones the request names. Nothing here answers differently for an
 // address that has access and one that has not.
 import { createHash, timingSafeEqual } from "node:crypto"
-import { toShippedLocale } from "@liaison/shared"
 import { and, eq, sql } from "drizzle-orm"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { companies, organizations, users } from "~/db/schema/kernel"
@@ -34,6 +33,7 @@ import {
   TOTP_PERIOD,
   verifyTotpCode,
 } from "~/modules/auth/totp"
+import { systemMailLocale } from "~/modules/i18n/recipient-locale"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { getOrgEmailConfig } from "~/modules/org/email-from"
 import { recordPortalAccess } from "~/modules/portal/access"
@@ -157,11 +157,13 @@ export async function requestPortalSignIn(orgSlug: string, email: string): Promi
   // or a referrer. The page posts it, on a click, to the verify route.
   // The org's slug (not a secret) in the query, so the page names the org.
   const link = `${base}/portal/sign-in?org=${encodeURIComponent(orgSlug)}#c=${encodeURIComponent(minted.challengeId)}&t=${encodeURIComponent(minted.linkToken)}`
-  const locale = toShippedLocale(person.locale) ?? "en"
+  // The person's language, else the org's (recipient-locale.ts).
+  const locale = await systemMailLocale(org.id, { userId: person.id })
   const t = (key: string) => serverT(locale, `portal-auth.mail.${key}`, { org: org.name })
   const subject = t("subject")
   const { html, text } = renderBrandedEmail({
     subject,
+    locale,
     eyebrow: t("eyebrow"),
     heading: t("heading"),
     paragraphs: [t("body"), t("ignore")],
@@ -205,12 +207,13 @@ export async function sendPortalReplyNotice(input: {
   )
   if (!org) return
   const base = await orgAppBaseUrl(input.orgId)
-  const locale = toShippedLocale(person.locale) ?? "en"
+  const locale = await systemMailLocale(input.orgId, { userId: person.id })
   const t = (key: string) =>
     serverT(locale, `portal-auth.reply.${key}`, { org: org.name, subject: input.subject })
   const subject = t("subject")
   const { html, text } = renderBrandedEmail({
     subject,
+    locale,
     eyebrow: t("eyebrow"),
     heading: t("heading"),
     paragraphs: [t("body")],

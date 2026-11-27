@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight } from "lucide-solid"
 import { type Component, createSignal, For, Show } from "solid-js"
 import { formatDateTime, relativeTime } from "~/lib/relative-time"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { localizeAgentName } from "~/modules/threads/agent-name"
 
 /** One status change, as GET task returns it (service/transitions.ts, TaskTransition). */
 export interface TaskTransition {
@@ -32,7 +33,7 @@ export const TaskStatusHistory: Component<{
     if (x.actorType === "agent") return x.actorName ?? i18n.t("projects.statusHistory.byAgent")
     if (x.actorType === "routine") return i18n.t("projects.statusHistory.byRoutine")
     if (x.actorType === "system") return i18n.t("projects.statusHistory.bySystem")
-    return x.actorName ?? ""
+    return localizeAgentName(x.actorName ?? "")
   }
   return (
     <section data-testid="task-status-history" class="flex flex-col gap-1">

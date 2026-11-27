@@ -7,9 +7,9 @@
  * yet, and the demo offer, the one place the offer appears. No modal, no banner, no alarm colour:
  * the agent carries the conversation from here.
  *
- * On Cloud (the managed edition) the card asks for one goal and leaves mail for
- * last. Without a goal from the signup, three plain buttons each post "I want
- * to start with ..." in this conversation: a message, never a dialog, and the
+ * On Cloud (the managed edition) the card starts with a company brief, then the
+ * team, then asks for one goal, and leaves mail for last. Without a goal from
+ * the signup, three plain buttons each post "My goal: ..." in this conversation: a message, never a dialog, and the
  * buttons go once the person has written here. A self-hosted card is unchanged.
  *
  * The checklist is live: the row's snapshot shows first, then the card reads
@@ -53,7 +53,7 @@ export interface SetupKickoffView {
   state: SetupStateView
   demoUrl: string | null
   secretRequestId: string | null
-  /** Cloud (the managed edition): goal first, mail last. */
+  /** Cloud (the managed edition): the company brief, the team, the goal, mail last. */
   managed: boolean
   /** Cloud: the goal chosen at signup, or null. */
   goal: KickoffGoal | null

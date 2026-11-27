@@ -21,7 +21,6 @@ export { Editor } from "./Editor"
 export { EditorSummary } from "./EditorSummary"
 export { EinvoicingRegistration } from "./einvoicing/EinvoicingRegistration"
 export { InvoicingIssuerStreams } from "./IssuerStreams"
-export { InvoicingWebsiteAccess } from "./WebsiteAccess"
 export { InvoicingAppIcon } from "./icon"
 export { InvoicingIdentity } from "./identity/IdentityEditor"
 export { MonthEndRunPanel } from "./MonthEndRunPanel"
@@ -36,6 +35,7 @@ export { InvoicingScheduleEditor } from "./ScheduleEditor"
 export { InvoicingIssuerProfiles } from "./settings"
 export { InvoicingSidebar } from "./sidebar"
 export { resolveDocumentTabLabel } from "./tab-labels"
+export { InvoicingWebsiteAccess } from "./WebsiteAccess"
 
 import {
   type DocumentLine as DetailDocumentLine,

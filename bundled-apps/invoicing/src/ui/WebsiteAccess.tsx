@@ -71,7 +71,10 @@ const IssuerKeys: Component<{ issuer: IssuerOption }> = (p) => {
     try {
       const r = await hostFetch<{ key: string }>(base, {
         method: "POST",
-        body: JSON.stringify({ issuerProfileId: p.issuer.id, label: label().trim() || tr("Website") }),
+        body: JSON.stringify({
+          issuerProfileId: p.issuer.id,
+          label: label().trim() || tr("Website"),
+        }),
       })
       setShown(r?.key ?? null)
       setLabel("")
@@ -119,7 +122,10 @@ const IssuerKeys: Component<{ issuer: IssuerOption }> = (p) => {
                 </Show>
               </span>
               <Show when={!row.revoked_at}>
-                <Button onClick={() => void revoke(row)} data-testid={`website-key-revoke-${row.id}`}>
+                <Button
+                  onClick={() => void revoke(row)}
+                  data-testid={`website-key-revoke-${row.id}`}
+                >
                   {tr("Revoke")}
                 </Button>
               </Show>
@@ -130,7 +136,9 @@ const IssuerKeys: Component<{ issuer: IssuerOption }> = (p) => {
           {(k) => (
             <div class="space-y-1" data-testid="website-key-shown">
               <p class="text-xs text-[var(--color-text-secondary)]">
-                {tr("Copy this key into your website's server settings now: it is shown only once.")}
+                {tr(
+                  "Copy this key into your website's server settings now: it is shown only once.",
+                )}
               </p>
               <code class="block break-all text-xs text-[var(--color-text)]">{k()}</code>
               <Button onClick={() => setShown(null)}>{tr("Done")}</Button>

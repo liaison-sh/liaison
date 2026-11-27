@@ -91,7 +91,7 @@ function limitsOn(): boolean {
   return !(env.NODE_ENV === "test" && !envFlag("RATE_LIMIT_FORCE_ENABLED"))
 }
 
-async function overBudget(c: Context<AppEnv>, identifier: string, limit: number) {
+async function overBudget(identifier: string, limit: number) {
   if (!limitsOn()) return null
   const result = await checkRateLimit(redis, [{ identifier, limit, windowSeconds: 60 }])
   return result.allowed ? null : result.failed.retryAfterSeconds
@@ -115,7 +115,7 @@ async function authenticate(
   c: Context<AppEnv>,
 ): Promise<{ key: BuyerKey } | { response: Response }> {
   try {
-    const retry = await overBudget(c, `buyer-invoices:ip:${getClientIp(c)}`, PER_ADDRESS_PER_MINUTE)
+    const retry = await overBudget(`buyer-invoices:ip:${getClientIp(c)}`, PER_ADDRESS_PER_MINUTE)
     if (retry !== null) {
       c.header("Retry-After", String(retry))
       return { response: fail(c, 429, "RATE_LIMITED", "Too many requests.") }
@@ -129,7 +129,7 @@ async function authenticate(
   const key = match ? await authenticateBuyerKey(match[1] as string) : null
   if (!key) return { response: fail(c, 401, "INVALID_KEY", "Missing, unknown or revoked key.") }
   try {
-    const retry = await overBudget(c, `buyer-invoices:key:${key.id}`, PER_KEY_PER_MINUTE)
+    const retry = await overBudget(`buyer-invoices:key:${key.id}`, PER_KEY_PER_MINUTE)
     if (retry !== null) {
       c.header("Retry-After", String(retry))
       return { response: fail(c, 429, "RATE_LIMITED", "Over 120 requests a minute for this key.") }

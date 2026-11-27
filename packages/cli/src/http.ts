@@ -34,7 +34,12 @@ export function normalizeHost(raw: string): string {
   let host = raw.trim()
   if (!/^https?:\/\//i.test(host)) host = `https://${host}`
   const url = new URL(host)
-  if (url.protocol === "http:" && !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) {
+  // Plain http only to this machine: loopback, and `*.localhost`, which always resolves to it
+  // (RFC 6761), as a server giving each organization its own address serves it locally.
+  const loopback =
+    ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) ||
+    url.hostname.endsWith(".localhost")
+  if (url.protocol === "http:" && !loopback) {
     throw new CliError(`Refusing plain http for ${url.hostname}: use https://`)
   }
   return `${url.protocol}//${url.host}`

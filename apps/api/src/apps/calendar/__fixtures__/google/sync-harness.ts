@@ -25,6 +25,14 @@ export interface HarnessJob {
   delay?: number
 }
 
+export interface HarnessApproval {
+  id: string
+  tool_name: string
+  summary: string
+  summary_detail?: { lines?: string[] }
+  current_payload: unknown
+}
+
 export interface HarnessLog {
   level: "info" | "warn" | "error"
   msg: string
@@ -75,6 +83,11 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
       ),
       drizzleSql.raw(", "),
     )
+  /** Approvals a handler asked for (`ctx.requestApproval`), in order. */
+  const approvals: HarnessApproval[] = []
+  /** "person": the caller holds the deciding scope, so a gate grants inline (the kernel's rule
+   * for a person's own call); "agent": the call parks for a human approval. */
+  let caller: "person" | "agent" = "person"
   /** Runs after each Google answer, inside the job that made the call (a concurrent change). */
   let afterFetch: ((url: string, method: string) => Promise<void>) | null = null
 
@@ -187,6 +200,13 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
         })
       },
       emit: async () => {},
+      requestApproval: async (inputJson: string): Promise<string> => {
+        const input = JSON.parse(inputJson) as Omit<HarnessApproval, "id">
+        if (caller === "person") return JSON.stringify({ approval_id: null, auto_approved: true })
+        const id = crypto.randomUUID()
+        approvals.push({ id, ...input })
+        return JSON.stringify({ approval_id: id })
+      },
       log_info: log("info"),
       log_warn: log("warn"),
       log_error: log("error"),
@@ -200,6 +220,7 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
     params: unknown,
     actor: { userId: string; scopes: string[] },
     extraArgs?: unknown[],
+    approval: unknown = null,
   ): Promise<unknown> {
     const invoke = async (txDb: Parameters<typeof bridgeFor>[0]) =>
       runCoreHandler({
@@ -208,6 +229,7 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
         exportName,
         params,
         extraArgs,
+        approval,
         bridge: await bridgeFor(txDb, actor),
         holdsTx: txDb !== null,
       })
@@ -313,6 +335,25 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
       const exportName = TOOL_HANDLERS[name]
       if (!exportName) throw new Error(`harness: no calendar tool ${name}`)
       return run(exportName, params, person)
+    },
+
+    /** Who calls the tools from now on: a person (gates grant inline) or an agent (they park). */
+    callAs(next: "person" | "agent"): void {
+      caller = next
+    },
+    approvals,
+
+    /** A human approves a parked call: the tool re-enters with its payload and `ctx.approval`. */
+    async approve(approvalId: string): Promise<unknown> {
+      const request = approvals.find((a) => a.id === approvalId)
+      if (!request) throw new Error(`harness: no approval ${approvalId}`)
+      const toolName = request.tool_name.replace(/^calendar:/, "")
+      const exportName = TOOL_HANDLERS[toolName]
+      if (!exportName) throw new Error(`harness: no calendar tool ${toolName}`)
+      return run(exportName, request.current_payload, person, undefined, {
+        id: approvalId,
+        status: "approved",
+      })
     },
 
     /** Delivers one push notification (headers as Google posts them) through verify + handler. */

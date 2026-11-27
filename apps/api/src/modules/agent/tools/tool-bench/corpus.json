@@ -4097,5 +4097,21 @@
     "say": "trouve un créneau de 30 min avec Amina et Lucas la semaine prochaine",
     "typed": ["trouver un créneau", "créneau libre"],
     "any": ["calendar__find_free_slots"]
+  },
+  {
+    "id": "C190",
+    "set": "seed",
+    "lang": "en",
+    "say": "decline the partner sync invite, I can't make it",
+    "typed": ["decline invitation", "rsvp no", "accept invite"],
+    "any": ["calendar__respond_to_invitation"]
+  },
+  {
+    "id": "C191",
+    "set": "seed",
+    "lang": "fr",
+    "say": "réponds peut-être à l'invitation de jeudi",
+    "typed": ["répondre à l'invitation", "accepter l'invitation", "refuser l'invitation"],
+    "any": ["calendar__respond_to_invitation"]
   }
 ]

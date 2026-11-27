@@ -1,7 +1,7 @@
 {
   "name": "calendar",
-  "agentInstructions": "Calendar is a bidirectional Google Calendar connector — events created/edited here sync to Google and vice versa. Reach for it to list a user's schedule, search events, or create/update/delete events (with sendUpdates disabled, so attendees are never emailed by these tools). Key handles: calendar id, event id. Personal connections are private to their owner; org connections are visible to all org members. Writes to org calendars are permission-gated by app role. Recurring events store the master row plus exception rows for edited/cancelled occurrences; editing recurrence is limited to none/daily/weekly/monthly — a complex inbound RRULE is preserved but not editable here. VIDEO MEETINGS: when the user asks for a Google Meet, a video call, a visio or an online meeting, call create_event with conference: \"google_meet\" — Google then creates a real Meet link. Never put a conferencing product name (\"Google Meet\", \"Meet\", \"Hangouts\") in location: location is for a physical place or a link the user gave you. After creating, give the user the meetLink from the result (if it is not there yet, say the link is being created and read it from list_events hangoutLink shortly after). Only Google accounts are connected, so the only video link these tools can create is Google Meet: for Microsoft Teams or Zoom, say plainly that Calendar cannot create that link and offer a Google Meet, or put a link the user provides in the description. EDITING MEETINGS: to change an existing meeting (time, title, description, location, guests, or adding/removing its Google Meet), find it with search_events or list_events, then call update_event with its eventId — conference: \"google_meet\" adds a Meet link, conference: \"none\" removes it. Never tell the user to do it themselves in Google Calendar when update_event can do it; if Google refuses a change (for example the user is not the organizer), say what was refused and why. RECURRING MEETINGS: list_events returns a recurring series once (its eventId, first start and repeat rule) plus any occurrence already edited (recurringEventId set). Before changing one, know whether the user means only this occurrence, this and the following ones, or the whole series; if the request does not say, ask. Then call update_event with scope: \"occurrence\" or \"following\" and occurrenceStart (the original start of that occurrence), or scope: \"series\". \"following\" splits the series like Google's \"this and following events\": the old series ends before that occurrence and a new series with the change starts there (the result's eventId is the new series). update_event refuses a recurring meeting without a scope. delete_event takes the same scope: \"occurrence\" (with occurrenceStart) cancels only that occurrence on Google, \"following\" ends the series before it, \"series\" deletes the whole series; ask the user which when it is not clear. FINDING A TIME: to schedule with people (\"find 30 min with A and B next week\"), resolve each person's email (users_search for teammates), call find_free_slots with durationMinutes, attendees and the window, offer the user two or three of the returned slots, and once they pick one call create_event with that start and end and the attendees. Busy/free: events marked free in Google, declined meetings and all-day events without a busy mark never block. If the result has consent.needed, say the slots only cover the user's own calendar and tell them to allow free/busy once from Calendar (new event, Find a time, Allow); an attendee with status unknown is outside what Google lets this account see: say so.",
-  "version": "1.7.0",
+  "agentInstructions": "Calendar is a bidirectional Google Calendar connector — events created/edited here sync to Google and vice versa. Reach for it to list a user's schedule, search events, or create/update/delete events. INVITATIONS: by default no email reaches the guests (sendUpdates omitted = \"none\"). When the user asks to invite, notify or tell the guests, pass sendUpdates: \"all\": that write, and every delete_event, waits for a human approval before anything happens, so report it as pending, never as done. To answer an invitation the user received (yes, no, maybe), call respond_to_invitation. Key handles: calendar id, event id. Personal connections are private to their owner; org connections are visible to all org members. Writes to org calendars are permission-gated by app role. Recurring events store the master row plus exception rows for edited/cancelled occurrences; editing recurrence is limited to none/daily/weekly/monthly — a complex inbound RRULE is preserved but not editable here. VIDEO MEETINGS: when the user asks for a Google Meet, a video call, a visio or an online meeting, call create_event with conference: \"google_meet\" — Google then creates a real Meet link. Never put a conferencing product name (\"Google Meet\", \"Meet\", \"Hangouts\") in location: location is for a physical place or a link the user gave you. After creating, give the user the meetLink from the result (if it is not there yet, say the link is being created and read it from list_events hangoutLink shortly after). Only Google accounts are connected, so the only video link these tools can create is Google Meet: for Microsoft Teams or Zoom, say plainly that Calendar cannot create that link and offer a Google Meet, or put a link the user provides in the description. EDITING MEETINGS: to change an existing meeting (time, title, description, location, guests, or adding/removing its Google Meet), find it with search_events or list_events, then call update_event with its eventId — conference: \"google_meet\" adds a Meet link, conference: \"none\" removes it. Never tell the user to do it themselves in Google Calendar when update_event can do it; if Google refuses a change (for example the user is not the organizer), say what was refused and why. RECURRING MEETINGS: list_events returns a recurring series once (its eventId, first start and repeat rule) plus any occurrence already edited (recurringEventId set). Before changing one, know whether the user means only this occurrence, this and the following ones, or the whole series; if the request does not say, ask. Then call update_event with scope: \"occurrence\" or \"following\" and occurrenceStart (the original start of that occurrence), or scope: \"series\". \"following\" splits the series like Google's \"this and following events\": the old series ends before that occurrence and a new series with the change starts there (the result's eventId is the new series). update_event refuses a recurring meeting without a scope. delete_event takes the same scope: \"occurrence\" (with occurrenceStart) cancels only that occurrence on Google, \"following\" ends the series before it, \"series\" deletes the whole series; ask the user which when it is not clear. FINDING A TIME: to schedule with people (\"find 30 min with A and B next week\"), resolve each person's email (users_search for teammates), call find_free_slots with durationMinutes, attendees and the window, offer the user two or three of the returned slots, and once they pick one call create_event with that start and end and the attendees. Busy/free: events marked free in Google, declined meetings and all-day events without a busy mark never block. If the result has consent.needed, say the slots only cover the user's own calendar and tell them to allow free/busy once from Calendar (new event, Find a time, Allow); an attendee with status unknown is outside what Google lets this account see: say so.",
+  "version": "1.8.0",
   "description": "Calendar app: month/week UI backed by a bidirectional Google Calendar connector for org-wide and personal calendars.",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -220,6 +220,8 @@
         "pendingBeforeDelete": "string?",
         "pushNotice": "string?",
         "conferenceRequest": "string?",
+        "sendUpdates": "string?",
+        "rsvpRequest": "string?",
         "calaccess": "string",
         "eventType": {
           "type": "string",
@@ -463,7 +465,7 @@
       }
     },
     "create_event": {
-      "description": "Create a new event or meeting on a writable calendar. Syncs to Google (sendUpdates disabled — attendees are not emailed by this tool). For a Google Meet / video call / online meeting, pass conference: \"google_meet\": Google creates a real Meet link and the result returns it as meetLink — give that link to the user. Never write \"Google Meet\" or another conferencing product name into location as a substitute (location is a place or a link the user gave). Only Google accounts are connected: Teams or Zoom links cannot be created here, say so. To change the event later (time, guests, adding or removing the Meet), use update_event.",
+      "description": "Create a new event or meeting on a writable calendar. Syncs to Google. Guests get no email unless sendUpdates: \"all\" (when the user asks to invite them); that waits for approval: report it as pending. For a Google Meet / video call / online meeting, pass conference: \"google_meet\": Google creates a real Meet link and the result returns it as meetLink — give that link to the user. Never write \"Google Meet\" or another conferencing product name into location as a substitute (location is a place or a link the user gave). Only Google accounts are connected: Teams or Zoom links cannot be created here, say so. To change the event later (time, guests, adding or removing the Meet), use update_event.",
       "searchKeywords": ["rdv", "rendez", "réunion", "meeting", "planifier", "schedule", "événement", "agenda", "nouvel", "créer"],
       "requiredScopes": ["calendar:events:write"],
       "trustBoundary": "user",
@@ -471,6 +473,11 @@
       "params": {
         "type": "object",
         "properties": {
+          "sendUpdates": {
+            "type": "string",
+            "enum": ["all", "none"],
+            "description": "\"all\" emails the guests (only when the user asks; an agent's call then waits for approval), \"none\" (default) nobody."
+          },
           "calendarId": {
             "type": "string"
           },
@@ -514,7 +521,7 @@
       }
     },
     "update_event": {
-      "description": "Update an existing event or meeting: time, title, description, location, guests, or its Google Meet link. Find the eventId with search_events or list_events. Syncs to Google. conference: \"google_meet\" adds a Meet link (returned as meetLink), conference: \"none\" removes it; omit to keep it. Never tell the user to make these changes in Google Calendar themselves. A recurring meeting needs scope: \"occurrence\" (one occurrence: pass occurrenceStart, its original start, or an edited occurrence's own eventId), \"following\" (that occurrence and every later one: the series is split there and the result's eventId is the new series) or \"series\" (every occurrence; start/end set the first one). When the user did not say which, ask the user. `attendees` is the COMPLETE guest list: omit it to keep the current guests; to add someone, pass everyone plus the new address; anyone left out is removed. No invitation or update email is sent (sendUpdates=none). Only the organizer (or anyone, when guests may modify the event) can change the guest list; otherwise Google keeps its own.",
+      "description": "Update an existing event or meeting: time, title, description, location, guests, or its Google Meet link. Find the eventId with search_events or list_events. Syncs to Google. conference: \"google_meet\" adds a Meet link (returned as meetLink), conference: \"none\" removes it; omit to keep it. Never tell the user to make these changes in Google Calendar themselves. A recurring meeting needs scope: \"occurrence\" (one occurrence: pass occurrenceStart, its original start, or an edited occurrence's own eventId), \"following\" (that occurrence and every later one: the series is split there and the result's eventId is the new series) or \"series\" (every occurrence; start/end set the first one). When the user did not say which, ask the user. `attendees` is the COMPLETE guest list: omit it to keep the current guests; to add someone, pass everyone plus the new address; anyone left out is removed. Guests get no email unless sendUpdates: \"all\" (waits for approval). Only the organizer (or anyone, when guests may modify the event) can change the guest list; otherwise Google keeps its own.",
       "searchKeywords": ["déplacer", "reporter", "modifier", "reschedule", "rdv", "réunion", "meeting", "événement"],
       "requiredScopes": ["calendar:events:write"],
       "trustBoundary": "user",
@@ -522,6 +529,11 @@
       "params": {
         "type": "object",
         "properties": {
+          "sendUpdates": {
+            "type": "string",
+            "enum": ["all", "none"],
+            "description": "\"all\" emails the guests (only when the user asks; an agent's call then waits for approval), \"none\" (default) nobody."
+          },
           "eventId": {
             "type": "string"
           },
@@ -572,14 +584,22 @@
       }
     },
     "delete_event": {
-      "description": "Delete an event or meeting; syncs to Google in the background. A recurring meeting needs scope: \"occurrence\" cancels one occurrence (pass occurrenceStart, its original start, or an edited occurrence's own eventId), \"following\" cancels it and every later one, \"series\" deletes them all. When the user did not say which, ask the user.",
+      "description": "Delete an event or meeting; syncs to Google in the background. A recurring meeting needs scope: \"occurrence\" cancels one occurrence (pass occurrenceStart, its original start, or an edited occurrence's own eventId), \"following\" cancels it and every later one, \"series\" deletes them all. When the user did not say which, ask the user. An agent's delete waits for approval: report it as pending.",
       "searchKeywords": ["annuler", "supprimer", "cancel", "rdv", "réunion", "meeting", "événement"],
       "requiredScopes": ["calendar:events:write"],
       "trustBoundary": "user",
+      "conditionalGate": true,
+      "approvalImpact": "external",
+      "approvalCard": { "summary": "Delete a calendar event" },
       "handler": "calendarDeleteEvent",
       "params": {
         "type": "object",
         "properties": {
+          "sendUpdates": {
+            "type": "string",
+            "enum": ["all", "none"],
+            "description": "\"all\" emails the guests that it is cancelled, \"none\" (default) nobody."
+          },
           "scope": {
             "type": "string",
             "enum": ["occurrence", "following", "series"],
@@ -598,6 +618,62 @@
           }
         },
         "required": ["eventId"]
+      }
+    },
+    "respond_to_invitation": {
+      "description": "Answer an invitation the user received: response \"accepted\" (yes), \"declined\" (no) or \"tentative\" (maybe). Google tells the organizer. For a recurring meeting pass scope \"occurrence\" (with occurrenceStart) or \"series\", as for update_event; ask the user which if unclear.",
+      "searchKeywords": [
+        "rsvp",
+        "accepter",
+        "refuser",
+        "decline",
+        "accept",
+        "maybe",
+        "peut-être",
+        "invitation",
+        "répondre"
+      ],
+      "requiredScopes": [
+        "calendar:events:write"
+      ],
+      "trustBoundary": "user",
+      "handler": "calendarRespondToEvent",
+      "params": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string"
+          },
+          "response": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "declined",
+              "tentative"
+            ],
+            "description": "accepted = yes, declined = no, tentative = maybe."
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "occurrence",
+              "series"
+            ],
+            "description": "Required for a recurring meeting: \"occurrence\" answers for one occurrence, \"series\" for every occurrence."
+          },
+          "occurrenceStart": {
+            "type": "string",
+            "description": "With scope \"occurrence\" on a series: the ORIGINAL start (ISO date-time, or date for an all-day series) of the occurrence."
+          },
+          "calendarId": {
+            "type": "string",
+            "description": "Only when the eventId is a Google event id present on more than one calendar."
+          }
+        },
+        "required": [
+          "eventId",
+          "response"
+        ]
       }
     },
     "set_selected": {

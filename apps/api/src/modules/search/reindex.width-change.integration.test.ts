@@ -34,6 +34,8 @@ import {
   processMessageIndexerJob,
 } from "~/modules/search/message-indexer"
 import { orgsAwaitingReembed, reembedRemaining } from "~/modules/search/reembed-queue"
+import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
+import { seedMessageRow, seedThreadRow } from "~/seed/factories/threads/rows"
 
 const ORG = crypto.randomUUID()
 const USER = crypto.randomUUID()
@@ -76,10 +78,15 @@ const spies: Array<{ mockRestore: () => void }> = []
 const enqueued: string[] = []
 
 async function insert(id: string, content: string, at: number): Promise<void> {
-  await sql`INSERT INTO kernel.messages
-      (id, thread_id, org_id, author_id, content, required_scopes, created_at)
-    VALUES (${id}, ${THREAD}, ${ORG}, ${USER}, ${content}, '{}'::text[],
-      ${new Date(Date.UTC(2026, 2, 10, 9, at)).toISOString()}::timestamptz)`
+  await seedMessageRow({
+    id,
+    threadId: THREAD,
+    orgId: ORG,
+    authorId: USER,
+    content,
+    requiredScopes: [],
+    createdAt: new Date(Date.UTC(2026, 2, 10, 9, at)),
+  })
 }
 
 async function vectorOf(id: string): Promise<number[] | null> {
@@ -112,12 +119,21 @@ beforeAll(async () => {
   IndexWriterTestAccess.resetRebuildCache()
   IndexWriterTestAccess.setRebuildStateCacheMs(100)
 
-  await sql`INSERT INTO kernel.organizations (id, name, slug)
-    VALUES (${ORG}, 'WidthOrg', ${`width-${tag}`})`
-  await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash)
-    VALUES (${USER}, ${ORG}, ${`width-${tag}@test.com`}, 'Widther', 'x')`
-  await sql`INSERT INTO kernel.threads (id, org_id, handle, title, created_by)
-    VALUES (${THREAD}, ${ORG}, ${`width-${tag}`}, 'The okapi channel', ${USER})`
+  await seedOrgRow({ id: ORG, name: "WidthOrg", slug: `width-${tag}` })
+  await seedUserRow({
+    id: USER,
+    orgId: ORG,
+    email: `width-${tag}@test.com`,
+    name: "Widther",
+    passwordHash: "x",
+  })
+  await seedThreadRow({
+    id: THREAD,
+    orgId: ORG,
+    handle: `width-${tag}`,
+    title: "The okapi channel",
+    createdBy: USER,
+  })
   await insert(String(VECTORED[0]), "okapi line zero", 0)
   await insert(String(VECTORED[1]), "okapi line one", 1)
   await insert(KEYWORD_ONLY, "okapi line keyword only", 2)

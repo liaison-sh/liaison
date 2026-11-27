@@ -177,10 +177,15 @@ describe("G12: RSVP", () => {
   })
 
   it("an event the account is not a guest of cannot be answered", async () => {
-    const { h } = await connected()
-    const timed = await h.event(OWNER, "timed0001")
+    const { h, teamId } = await connected()
+    const own = (await h.tool("create_event", {
+      calendarId: teamId,
+      title: "Focus time",
+      start: "2026-12-03T09:00:00.000Z",
+      end: "2026-12-03T10:00:00.000Z",
+    })) as { eventId: string }
     await expect(
-      h.tool("respond_to_event", { eventId: timed?.id, response: "accepted" }),
+      h.tool("respond_to_event", { eventId: own.eventId, response: "accepted" }),
     ).rejects.toThrow(/only a guest can reply/)
   })
 })

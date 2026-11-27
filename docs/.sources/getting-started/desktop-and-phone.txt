@@ -90,5 +90,7 @@ Create a workspace opens signup page -> apps/web/src/modules/desktop/DesktopClou
 Workspace not found copy -> packages/shared/src/i18n/locales/en/kernel.json:4481
 Cloud deep link confirm -> packages/shared/src/i18n/locales/en/kernel.json:4483
 Phone app Cloud screen, self-hosted link, forgot link -> apps/mobile/src/onboarding/server-address.ts:381
-iPhone app shows no Plan, Billing, credits, plan change, signup or site link -> apps/web/src/lib/native-bridge.ts:202 ; apps/web/src/framework/bootstrap.ts:767
+iPhone app shows no Plan, Billing, credits, plan change, signup or site link -> apps/web/src/lib/native-bridge.ts:202 ; apps/web/src/framework/bootstrap.ts:770
 iPhone app out-of-credits sentence -> packages/shared/src/i18n/locales/en/cloud-limits.json:89
+iPhone app has no App store page; installed apps and their settings pages stay -> apps/web/src/lib/native-bridge.ts:216 ; apps/web/src/framework/bootstrap.ts:866
+iPhone app text follows the system text size, up to the largest standard size -> apps/web/src/index.tsx:106 ; apps/web/src/lib/dynamic-type.ts:21

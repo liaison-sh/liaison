@@ -211,3 +211,4 @@ Losses past the named cap are counted -> apps/api/src/modules/imports/runner.ts:
 A private built-in import dedups per person, a shared one per organization -> apps/api/src/modules/imports/builtin/registry.ts:131
 Billing is not in the iPhone app -> apps/web/src/framework/bootstrap.ts:767
 iPhone app: payment notice without the Open Billing link -> apps/web/src/modules/threads/PaymentRequiredNotice.tsx:42
+iPhone app has no App store, View in store or Connectors Add -> apps/web/src/framework/bootstrap.ts:866 ; apps/web/src/modules/settings/connectors/ConnectorsPage.tsx:117 ; apps/web/src/modules/settings/app-management/AppManagementControls.tsx:200

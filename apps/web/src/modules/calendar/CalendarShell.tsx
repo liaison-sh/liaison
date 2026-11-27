@@ -16,6 +16,7 @@ import {
   Switch,
   untrack,
 } from "solid-js"
+import { onEntityChange } from "~/framework/entity-changes"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { shellTier } from "~/modules/shell/shell-tier"
@@ -38,6 +39,7 @@ import {
   loadEventsForWindow,
   loadPreferredView,
   persistPreferredView,
+  reloadCurrentWindow,
   setFocusedDate,
 } from "./calendar-store"
 import { startOfMonthGrid, startOfWeek, weekDays, weekStartsOn } from "./date-utils"
@@ -289,21 +291,34 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
   }
 
   function refresh(): void {
-    const { start, end } = range()
-    const pad = end.getTime() - start.getTime()
-    void loadEventsForWindow(
-      api,
-      new Date(start.getTime() - pad).toISOString(),
-      new Date(end.getTime() + pad).toISOString(),
-    )
+    void reloadCurrentWindow(api)
   }
+
+  // Live: a sync page, a push result, an agent's or a teammate's write announces
+  // `calendar/event:changed` (or another event entity change); the open window refetches once per
+  // burst. A reconnect's resync arrives here too, so whatever was missed while offline heals.
+  onEntityChange(
+    ["calendar:event", "calendar:calendar", "calendar:account"],
+    (events) => {
+      if (events.some((e) => e.resync || e.entity !== "event")) {
+        void loadCalendarsList(api)
+        void loadAccountsList(api)
+      }
+      refresh()
+    },
+    { debounceMs: 400, maxWaitMs: 2000 },
+  )
 
   // `calendars` lists unticked calendars too (for Settings); the views show the ticked ones.
   const selectedCalendars = createMemo(() => calendarStore.calendars.filter((c) => c.selected))
   const hasAnyCalendars = createMemo(() => selectedCalendars().length > 0)
 
   return (
-    <div class="flex h-full min-h-0 flex-col" data-testid={props.testId}>
+    <div
+      class="flex h-full min-h-0 flex-col"
+      data-testid={props.testId}
+      aria-busy={calendarStore.loading}
+    >
       {/* Header */}
       <div
         class={`flex items-center border-b border-border px-3 py-2 ${phone() ? "gap-2" : "gap-3"}`}
@@ -384,6 +399,41 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
           </Button>
         </Show>
       </div>
+
+      {/* Loading: a thin bar under the header, only while a window with nothing cached to show
+          is on its way (a cached window paints at once and refreshes silently). */}
+      <div class="relative h-0.5 shrink-0 overflow-hidden" aria-hidden="true">
+        <Show when={calendarStore.loading}>
+          <div
+            class="calendar-loading-bar absolute inset-y-0 w-1/3 bg-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]"
+            data-testid="calendar-loading"
+          />
+        </Show>
+      </div>
+      <Show when={calendarStore.error}>
+        {(message) => (
+          <div
+            class="flex items-center gap-3 border-b border-border-subtle bg-[color-mix(in_srgb,var(--color-border)_20%,transparent)] px-3 py-1.5 text-xs text-text-secondary"
+            role="status"
+            data-testid="calendar-events-error"
+          >
+            <span class="min-w-0 flex-1 truncate" title={message()}>
+              {i18n.t("calendar.eventsLoadFailed")}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="calendar-events-retry"
+              onClick={() => {
+                void loadCalendarsList(api)
+                refresh()
+              }}
+            >
+              {i18n.t("calendar.retry")}
+            </Button>
+          </div>
+        )}
+      </Show>
 
       <Show
         when={hasAnyCalendars()}

@@ -81,8 +81,14 @@ test.describe("Calendar — recurring events", () => {
     // Dragging an occurrence of a series asks which occurrences move; "All events" moves the
     // whole series by an hour.
     const block = events.filter({ hasText: newTitle })
-    await block.scrollIntoViewIfNeeded()
-    const box = (await block.boundingBox())!
+    // The week re-renders as the live refresh lands: settle on a box that stays.
+    let found: { x: number; y: number; width: number; height: number } | null = null
+    await expect(async () => {
+      await block.scrollIntoViewIfNeeded({ timeout: 2000 })
+      found = await block.boundingBox()
+      expect(found).not.toBeNull()
+    }).toPass({ timeout: 15000 })
+    const box = found!
     // An hour later, or earlier late in the day (48 px per hour).
     const shift = new Date().getHours() >= 12 ? -48 : 48
     await page.mouse.move(box.x + box.width / 2, box.y + 4)

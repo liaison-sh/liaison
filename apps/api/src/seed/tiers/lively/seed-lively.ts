@@ -25,6 +25,7 @@ import { routines } from "~/db/schema/kernel/routines"
 import { schemaRef } from "~/db/schema-ref"
 import { DEMO_COMPANY_NAME } from "~/modules/demo/demo-seeder"
 import { runAsSeed } from "~/modules/notifications/seeded"
+import { parseProfileSize, seedSearchProfile } from "~/seed/bulk/search-profile"
 import { HOUR_MS } from "~/seed/clock"
 import { type SeedContext, seedContext } from "~/seed/context"
 import { seedRoutineRuns } from "~/seed/factories/agent/routine-runs"
@@ -758,6 +759,20 @@ export async function runSeedLivelyCli(
     console.error(`[lively-seed] --passwords-env names ${envName}, which is not set`)
     return { exitCode: 2 }
   }
+  const profileFlag = flag(argv, "search-profile")
+  const profileFraction = profileFlag === undefined ? null : parseProfileSize(profileFlag)
+  if (profileFlag !== undefined && profileFraction === null) {
+    console.error(
+      `[lively-seed] --search-profile ${profileFlag}: heavy, typical or a fraction (0, 4]`,
+    )
+    return { exitCode: 2 }
+  }
+  const dimsFlag = flag(argv, "vector-dims")
+  const vectorDims = dimsFlag === undefined ? undefined : Number(dimsFlag)
+  if (vectorDims !== undefined && !(Number.isInteger(vectorDims) && vectorDims > 0)) {
+    console.error(`[lively-seed] --vector-dims ${dimsFlag}: a positive integer`)
+    return { exitCode: 2 }
+  }
   const started = performance.now()
   const result = await seedLivelyWorld({
     ...(slug ? { orgSlug: slug } : {}),
@@ -778,6 +793,29 @@ export async function runSeedLivelyCli(
     return { exitCode: 1, result }
   }
   const seeded = result.world.org.people
+  if (profileFraction !== null) {
+    const owner = result.world.org.adminUserId
+    try {
+      const profile = await runAsSeed(() =>
+        seedSearchProfile(
+          seedContext({
+            orgId: result.world.orgId,
+            now: new Date(Date.now()),
+            log: (msg) => console.log(`[lively-seed] ${msg}`),
+          }),
+          { ownerId: owner, fraction: profileFraction, vectorDims },
+        ),
+      )
+      console.log(
+        `[lively-seed] profile ${JSON.stringify({ fraction: profileFraction, index: profile.index, vectors: profile.vectors, vectorDims: profile.vectorDims, seconds: Number(profile.seconds.toFixed(1)) })}`,
+      )
+    } catch (err) {
+      console.error(
+        `[lively-seed] FAILED: search profile: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return { exitCode: 1, result }
+    }
+  }
   console.log(
     `[lively-seed] org ${result.world.orgSlug} (${result.world.orgId}) seeded in full in ${seconds}s; ` +
       `admin ${seeded.find((p) => p.role === "founder_admin")?.email ?? "none"}`,

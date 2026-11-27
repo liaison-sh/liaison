@@ -635,6 +635,9 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `recurring_schedule_update` | Change a recurring schedule, resume a paused one (status active), end it (status ended) or turn issue_mode auto on or off. | yes | `invoicing:documents:write` |
 | `retainer_draft_from_reconcile` | Make the invoice draft of one retainer month from its planned vs done card: the fee, any hours above the retainer, the activity report, and its issue approval. |  | `invoicing:documents:write` |
 | `retainer_terms_renew` | Renew a project's retainer from a signed agreement: its included hours, monthly fee and overage rate apply from the agreement's first month (at the earliest the next), the months before keep the old terms. |  | `invoicing:documents:write` |
+| `revenue_stream_bind` | Bind a sales app (one implementing revenue-stream@1) so each of its sales gets its invoice, under an issuer profile; or change a bound stream (streamId: mode auto/review/off, mail, label, issuer). | yes | `invoicing:settings:write` |
+| `revenue_stream_sale_issue` | Issue the invoice of one sale of a bound revenue stream (the sale is read again from its app). | yes | `invoicing:documents:write` |
+| `revenue_streams_list` | List the revenue streams: the sales apps whose sales this organization invoices automatically (provider app, issuer profile, mode auto/review/off, issue_from, mail), and the installed apps that could be bound. |  | `invoicing:settings:read` |
 | `settings_hs_code_list` | List the org's HS-code library entries. |  | `invoicing:settings:read` |
 | `settings_issuer_profile_create` | Create an issuer profile. | yes | `invoicing:settings:write` |
 | `settings_issuer_profile_delete` | Delete an issuer profile by id. | yes | `invoicing:settings:write` |
@@ -917,6 +920,8 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `returns_refund` | Issue a refund against a Shopify return: moves money on the order. | yes | `shopify:returns:write` |
 | `returns_request` | Open a Shopify RETURN REQUEST for one or more shipped line items — the platform record that QUEUES a unit as inbound so it is inspected and restocked ON RECEIPT (use this to 'queue a unit to be restocked when it comes back', NOT an immediate inventory bump). | yes | `shopify:returns:write` |
 | `returns_search` | Search Shopify returns |  | `shopify:returns:read` |
+| `rs_sale_get` | revenue-stream@1 sale_get: the sale of one order, as the order's webhook delivered it (contract op, not agent visible). |  | `shopify:internal` |
+| `rs_sales_list` | revenue-stream@1 sales_list: the sales of the orders received in [paid_from, paid_to) (contract op, not agent visible). |  | `shopify:internal` |
 | `settings_load` | Load the Shopify Settings panel bundle: connection snapshot, identity-mapping rows, sync diagnostics, inventory allowlist, and Plus-only seed suggestions. |  | `shopify:admin:identity-map` |
 | `staff_overrides_delete` | Remove a Shopify staff identity override | yes | `shopify:admin:identity-map` |
 | `staff_overrides_upsert` | Map a Liaison user to a Shopify staff identity (admin override) | yes | `shopify:admin:identity-map` |
@@ -990,6 +995,7 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | `subscription_cancel_effect` | What cancelling a subscription changes: MRR, invoices and the company's open deals, for its approval card. |  | `stripe:subscriptions:read` |
 | `subscriptions_search` | Stripe subscriptions from the mirror by id, plan name, status or customer, with plan, MRR, period end, trial end and masked card. |  | `stripe:subscriptions:read` |
 | `waiting_state` | Customers and invoices by id as the mirror holds them now, for the Stripe invoices invoicing keeps waiting. |  | `stripe:internal` |
+| `webhook_status` | Set up or check the Stripe webhook: the endpoint path (on this Liaison's address), the exact events to select in Stripe, whether its signing secret is saved (yes or no, never the secret), whether a replaced one still verifies, and the connection's state. |  | `stripe:admin:connection` |
 
 ## tickets
 

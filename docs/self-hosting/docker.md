@@ -42,7 +42,7 @@ To run Compose yourself, name the project and file: `docker compose -p liaison -
 | `app` | `ghcr.io/liaison-sh/liaison` (tag from `LIAISON_IMAGE`) | API, web app, MCP, background jobs | 3 GB |
 | `postgres` | `postgres:17-alpine` | Database | 2 GB |
 | `redis` | `redis:7-alpine` | Pub-sub, rate limits, job queues | 512 MB (Redis heap capped at 384 MB) |
-| `meilisearch` | `getmeili/meilisearch:v1.10` | Search | 1.5 GB |
+| `meilisearch` | `getmeili/meilisearch:v1.10` | Search | 1.5 GB (`MEILI_MEM_LIMIT`) |
 | `objectstore` | `chrislusf/seaweedfs:4.48` | S3-compatible file storage | 1 GB |
 | `objectstore-init` | SeaweedFS | Creates the bucket once, then exits | |
 | `data-init` | `busybox` | Prepares the app's data directory, then exits | |
@@ -56,6 +56,17 @@ To run Compose yourself, name the project and file: `docker compose -p liaison -
 To check that the running service is isolated, run `deploy/pdf-render-check.sh` with the options you give `docker compose` (for example `deploy/pdf-render-check.sh -p liaison --env-file /srv/liaison.env`). From inside `pdf-render` it tries to reach Postgres, Redis and the internet, to see or read another process, to write outside `/tmp`, and looks for a secret in its environment; from the app it sends an inflate bomb and a looped file. Every line says `PASS` or `FAIL`, and it ends with `pdf-render: isolated` only when all of them pass.
 
 Meilisearch runs with its usage analytics off (`MEILI_NO_ANALYTICS`), so the search service sends nothing to its vendor.
+
+### Size the search service
+
+One Meilisearch serves every organization on the server. Two settings in `.env` size it:
+
+| Variable | Default | What it sets |
+|---|---|---|
+| `MEILI_MEM_LIMIT` | `1500m` | The container's memory limit. |
+| `MEILI_MAX_INDEXING_MEMORY` | `512Mb` | The memory Meilisearch may use to index one batch. |
+
+Meilisearch keeps the index on disk and reads it through memory, so it needs about as much memory as the part of the index that searches touch. A busy team of four after five months has about 73,000 search documents, 13,000 of them with a vector, and its index needs most of the default limit on its own (`liaison seed --tier lively --search-profile heavy` writes that volume into a test org, to measure a server before you put more organizations on it). Give the container more when the index grows past the limit, and keep `MEILI_MAX_INDEXING_MEMORY` at a third of `MEILI_MEM_LIMIT` or less: Meilisearch sizes its indexing memory from the host, not from the container, so without it a large import outgrows the container and is stopped. Apply a change with `docker compose -p liaison -f deploy/docker-compose.yml up -d meilisearch`.
 
 All services share an internal network, and only the app publishes a port: `${APP_BIND}:${APP_PORT}`, which defaults to `127.0.0.1:3000`: it speaks plain HTTP and is meant to sit behind a TLS reverse proxy on the same host. Set `APP_BIND=0.0.0.0` only when the proxy runs on another host on a trusted network.
 

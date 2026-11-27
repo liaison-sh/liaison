@@ -56,6 +56,7 @@ import {
   type ProtectedScope,
   protectedScopesOf,
   recordedGrant,
+  withOptionalScopes,
 } from "~/modules/apps/connections/protected-scopes"
 import { buildConnectedAccountCreateEvent } from "~/modules/apps/connections/reconcile-event"
 import {
@@ -2160,6 +2161,12 @@ export async function startOAuthFlow(
      * (restricted-scopes.ts) and is sent to the provider as `login_hint`.
      */
     accountHint?: string
+    /**
+     * Optional scopes (the connection's `optionalScopes`) this flow asks for on top of the
+     * base grant: incremental consent, the first time a feature needs one. A scope the
+     * connection does not declare optional is ignored.
+     */
+    addScopes?: string[]
   },
 ): Promise<string> {
   // Same door as createCredentialConnection, the OAuth half: a demo org does
@@ -2330,6 +2337,7 @@ export async function startOAuthFlow(
       userId,
       clientSource: provider.source === "deployment" ? "instance" : "org",
       accountHint: normalizedAccountHint(opts?.accountHint),
+      addScopes: opts?.addScopes ?? [],
     },
   )
   const hint = normalizedAccountHint(opts?.accountHint)
@@ -2363,16 +2371,23 @@ async function scopesToRequest(
   connectionName: string,
   connConfig: {
     scopes?: string[]
+    optionalScopes?: string[]
     protectedScopes?: ProtectedScope[]
     restrictedScopes?: string[]
   },
   account: { identifier?: string; ownerType: "user" | "org"; ownerId: string | null },
-  flow: { userId: string; clientSource: "org" | "instance"; accountHint?: string },
+  flow: {
+    userId: string
+    clientSource: "org" | "instance"
+    accountHint?: string
+    addScopes?: string[]
+  },
 ): Promise<string[]> {
   const base = connConfig.scopes ?? []
   const declared = protectedScopesOf(connConfig)
   const restricted = restrictedScopesOf(connConfig)
-  if (declared.length === 0 && restricted.length === 0) return base
+  const optional = connConfig.optionalScopes ?? []
+  if (declared.length === 0 && restricted.length === 0 && optional.length === 0) return base
   const { optedIn, grant, email, sameAccountGrant } = await withPrivilegedDb(
     orgId,
     "oauth-protected-scopes",
@@ -2401,7 +2416,12 @@ async function scopesToRequest(
           : null,
     }),
   )
-  const scopes = authorizeScopes(base, declared, optedIn, grant)
+  const scopes = withOptionalScopes(
+    authorizeScopes(base, declared, optedIn, grant),
+    optional,
+    flow.addScopes ?? [],
+    grant,
+  )
   if (restricted.length === 0) return scopes
   const ctx = {
     clientSource: flow.clientSource,

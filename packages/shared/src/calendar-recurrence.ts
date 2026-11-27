@@ -172,6 +172,56 @@ function wallToInstant(w: Wall, timeZone: string | undefined): number {
   return before
 }
 
+/** A wall-clock time in a zone, as exported for callers outside this module. */
+export interface ZonedWallTime {
+  year: number
+  /** 1-based month. */
+  month: number
+  day: number
+  hour: number
+  minute: number
+}
+
+/** Whether Intl knows this IANA zone name. */
+export function isValidTimeZone(timeZone: unknown): timeZone is string {
+  return validTimeZone(timeZone) !== undefined
+}
+
+/** The wall-clock time an instant shows in a zone (UTC when the zone is unknown). */
+export function wallClockIn(at: Date, timeZone: string | null | undefined): ZonedWallTime {
+  const w = wallAt(at.getTime(), validTimeZone(timeZone))
+  return { year: w.y, month: w.mo + 1, day: w.d, hour: w.h, minute: w.mi }
+}
+
+/**
+ * The instant of a wall-clock time in a zone (UTC when the zone is unknown). A time skipped by a
+ * spring-forward gap reads with the offset before it, a repeated one as its first instance.
+ */
+export function instantOfWallClock(wall: ZonedWallTime, timeZone: string | null | undefined): Date {
+  const w: Wall = {
+    y: wall.year,
+    mo: wall.month - 1,
+    d: wall.day,
+    h: wall.hour,
+    mi: wall.minute,
+    s: 0,
+    ms: 0,
+  }
+  return new Date(wallToInstant(w, validTimeZone(timeZone)))
+}
+
+/** An instant as ISO 8601 with the zone's offset at that instant (`2026-12-01T10:00:00+01:00`). */
+export function isoInTimeZone(at: Date, timeZone: string | null | undefined): string {
+  const zone = validTimeZone(timeZone)
+  if (!zone) return at.toISOString().replace(/\.\d{3}Z$/, "Z")
+  const w = wallAt(at.getTime(), zone)
+  const offsetMin = Math.round(zoneOffsetMs(at.getTime(), zone) / 60_000)
+  const sign = offsetMin < 0 ? "-" : "+"
+  const abs = Math.abs(offsetMin)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${w.y}-${pad(w.mo + 1)}-${pad(w.d)}T${pad(w.h)}:${pad(w.mi)}:${pad(w.s)}${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
+}
+
 function daysInMonth(y: number, mo: number): number {
   return new Date(Date.UTC(y, mo + 1, 0)).getUTCDate()
 }

@@ -570,3 +570,80 @@ export function conferenceLinkOf(item: {
   }
   return null
 }
+
+/** What `find_free_slots` reads of the caller's own calendars. */
+export interface OwnBusyEvents {
+  /** The caller's synced events over the window that may block them (see below). */
+  events: CalendarEventDto[]
+  /** The caller's personal Google accounts (oldest first): the free/busy query runs as one. */
+  personalAccounts: { identifier: string; connectedAccountId: string }[]
+  /** The zone of the caller's primary calendar, when known. */
+  primaryTimeZone: string | null
+}
+
+/**
+ * ownBusyEventsForCaller — the events that may make the caller busy over a window: every event
+ * of a selected calendar of the caller's own (personal) accounts, and on any other calendar the
+ * caller sees (an org calendar), only the events they attend or organize (`selfEmails`). Busy or
+ * free per event (transparency, declined) is `free-slots.ts`'s rule. RLS scopes what is read.
+ */
+export async function ownBusyEventsForCaller(
+  db: RlsClient,
+  orgId: string,
+  window: { timeMin: string; timeMax: string },
+  selfEmails: ReadonlySet<string>,
+): Promise<OwnBusyEvents> {
+  const { sql } = await import("drizzle-orm")
+  const schema = CALENDAR_SCHEMA()
+  const rowsOf = <T>(result: unknown): T[] =>
+    Array.isArray(result) ? (result as T[]) : (((result as { rows?: T[] }).rows ?? []) as T[])
+  const calendars = rowsOf<{
+    id: string
+    owner_type: string
+    google_calendar_id: string
+    time_zone: string | null
+    email_address: string
+    connected_account_id: string
+    account_created: Date | string
+  }>(
+    await db.execute(sql`
+      SELECT c.id, a.owner_type, c.google_calendar_id, c.time_zone, a.email_address,
+             a.connected_account_id, a.created_at AS account_created
+      FROM ${sql.raw(schema)}.calendars c
+      JOIN ${sql.raw(schema)}.accounts a ON a.id = c.account_id
+      WHERE c.org_id = ${orgId}::uuid AND a.disconnected_at IS NULL
+    `),
+  )
+  const personalCalendars = new Set(
+    calendars.filter((c) => c.owner_type === "user").map((c) => c.id),
+  )
+  const personalAccounts: OwnBusyEvents["personalAccounts"] = []
+  const seen = new Set<string>()
+  for (const c of [...calendars]
+    .filter((c) => c.owner_type === "user")
+    .sort((a, b) => String(a.account_created).localeCompare(String(b.account_created)))) {
+    if (seen.has(c.email_address)) continue
+    seen.add(c.email_address)
+    personalAccounts.push({
+      identifier: c.email_address,
+      connectedAccountId: c.connected_account_id,
+    })
+  }
+  const primary =
+    calendars.find(
+      (c) => c.owner_type === "user" && c.google_calendar_id === c.email_address && c.time_zone,
+    ) ?? calendars.find((c) => c.owner_type === "user" && c.time_zone)
+  const all = await listEventsForCaller(db, orgId, window)
+  const mine = (e: CalendarEventDto) =>
+    personalCalendars.has(e.calendarId) ||
+    e.attendees.some((a) => a.self === true || selfEmails.has(a.email.trim().toLowerCase()))
+  // An exception row goes with its series: a cancelled occurrence carries no guest list, and
+  // dropping it would bring that occurrence back when the series expands.
+  const keptSeries = new Set(
+    all.filter((e) => !e.recurringEventId && mine(e)).map((e) => e.eventId),
+  )
+  const events = all.filter((e) =>
+    e.recurringEventId ? keptSeries.has(e.recurringEventId) || mine(e) : mine(e),
+  )
+  return { events, personalAccounts, primaryTimeZone: primary?.time_zone ?? null }
+}

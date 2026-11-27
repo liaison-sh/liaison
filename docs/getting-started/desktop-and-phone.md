@@ -58,7 +58,7 @@ See [Connect a computer](../computers/connect.md) and [Agent sessions](../comput
 
 The phone app is a shell around the same web app, for iPhone and Android.
 
-1. Open the app. At **Your workspace**, type your Liaison Cloud workspace name and tap **Continue**. On your own server, tap **Use a self-hosted server**, then at **Enter your Liaison org URL:** type your address and tap **Connect**. **Forgot it? Email me my workspaces** opens the Liaison Cloud sign-in page in your browser.
+1. Open the app. At **Your workspace**, type your Liaison Cloud workspace name and tap **Continue**. On your own server, tap **Use a self-hosted server**, then at **Enter your Liaison org URL:** type your address and tap **Connect**. **Forgot it? Email me my workspaces** opens a page in your browser where you enter your email; it sends you the list of your workspaces.
 2. Sign in with your email and the 6-digit code, a password, or a sign-in provider your organization set up.
 
 If your server cannot be reached when you open the app (no network, or the server is restarting), the app opens signed in and says it is offline, then reconnects on its own. It asks for the workspace again only when the server answers that nothing is at that address. The first screen follows the phone's dark mode, and scrolls when the keyboard covers its links.

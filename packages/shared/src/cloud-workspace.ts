@@ -105,8 +105,12 @@ export function workspaceSlugFromAddress(address: string, domain: string): strin
   return isValidWorkspaceSlug(slug) ? slug : null
 }
 
-/** The cloud's own pages the Cloud screen links to, in the system browser. */
-export type CloudPage = "login" | "signup"
+/**
+ * The cloud's own pages the Cloud screen links to, in the system browser. `find-workspace` is the
+ * workspace lookup alone, with no site navigation, signup or pricing: the one the phone apps open
+ * (App Store guideline 3.1.1); desktop may open `login`, which links to signup.
+ */
+export type CloudPage = "login" | "signup" | "find-workspace"
 
 /** `https://<domain>/<page>`, under `/fr` when the app is in French. */
 export function cloudPageUrl(domain: string, page: CloudPage, locale: string): string {

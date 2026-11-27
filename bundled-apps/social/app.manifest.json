@@ -659,7 +659,7 @@
       "params": { "type": "object", "properties": { "finding_id": { "type": "string" } }, "required": ["finding_id"] }
     },
     "dm_list": {
-      "description": "List direct-message conversations, most recently active first. A conversation's `status` is `open` while the other person spoke last (waiting on us) and `handled` once our side sent the latest message; their next message reopens it (an `archived` one too), so `status: open` lists the threads that need an answer. A conversation deleted from the inbox (dm_delete_conversation) has `status: deleted` and is left out unless that status is asked for. A message its sender unsent has no body and `metadata.unsent: true`: say it was unsent, never guess its text. Each conversation carries a `reply_window` { tag, canSend, daysSinceLastInbound, explanation } describing the current send-time messaging window (standard ≤24h · human-agent ≤7d · closed >7d) — read it to know whether and how a send_dm can be delivered.",
+      "description": "List direct-message conversations, most recently active first. A conversation's `status` is `open` while the other person spoke last (waiting on us) and `handled` once our side sent the latest message; their next message reopens it (an `archived` one too), so `status: open` lists the threads that need an answer. Each conversation carries a `reply_window` { tag, canSend, daysSinceLastInbound, explanation } describing the current send-time messaging window (standard ≤24h · human-agent ≤7d · closed >7d) — read it to know whether and how a send_dm can be delivered.",
       "searchKeywords": ["message", "messages", "privés", "instagram", "facebook"],
       "readOnly": true,
       "requiredScopes": ["social:dm:read"],

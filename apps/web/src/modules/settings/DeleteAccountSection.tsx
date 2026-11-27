@@ -165,6 +165,7 @@ const DeleteAccountSection: Component = () => {
                 value={code()}
                 onInput={(e) => setCode((e.currentTarget as HTMLInputElement).value)}
                 autocomplete="one-time-code"
+                inputmode="numeric"
               />
               <Show when={refusal()}>
                 {(key) => (

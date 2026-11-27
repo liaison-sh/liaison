@@ -10,6 +10,7 @@ import {
   CLOUD_INPUT_ID,
   createFirstLaunch,
   FIRST_LAUNCH_ID,
+  FIRST_LAUNCH_STYLE_ID,
   fetchRuntimeBranding,
   isValidServerAddress,
   normalizeServerAddress,
@@ -279,6 +280,117 @@ describe("first launch", () => {
     expect(await launch.start()).toBe("https://saved.example.com")
     expect(document.querySelector("input")).toBeNull()
     expect(fetcher.calls[0]).toBe(`https://saved.example.com${BRANDING_PATH}`)
+  })
+})
+
+describe("a signed-in phone whose server does not answer at launch", () => {
+  const clearOverlays = () => {
+    for (const overlay of document.querySelectorAll(`#${FIRST_LAUNCH_ID}`)) overlay.remove()
+  }
+  beforeEach(clearOverlays)
+  afterEach(clearOverlays)
+
+  it("opens on its stored server, offline, with no first launch screen", async () => {
+    // It used to show the Cloud screen saying the workspace was not found,
+    // which read as a sign-out, and the screen stayed once the server was back.
+    const storage = memoryStorage("https://acme.liaison.sh")
+    const offline = (async () => {
+      throw new TypeError("The Internet connection appears to be offline.")
+    }) as unknown as typeof fetch
+    const launch = createFirstLaunch({
+      storage,
+      document,
+      fetchImpl: offline,
+      cloudDomain: "liaison.sh",
+    })
+    expect(await launch.start()).toBe("https://acme.liaison.sh")
+    expect(document.getElementById(FIRST_LAUNCH_ID)).toBeNull()
+    expect(storage.writes).toBe(0)
+  })
+
+  it("does the same when a gateway answers for a server that is down (5xx)", async () => {
+    const storage = memoryStorage("https://saved.example.com")
+    const fetcher = fakeFetch(503, { error: "unavailable" })
+    const launch = createFirstLaunch({ storage, document, fetchImpl: fetcher.impl })
+    expect(await launch.start()).toBe("https://saved.example.com")
+    expect(document.getElementById(FIRST_LAUNCH_ID)).toBeNull()
+  })
+
+  it("still asks again when the stored address answers that nothing is there", async () => {
+    // A 404 is an answer about the address (a workspace deleted, a host that
+    // is not a Liaison): that one brings the prompt back.
+    const storage = memoryStorage("https://saved.example.com")
+    const fetcher = fakeFetch(404, { error: "not found" })
+    const launch = createFirstLaunch({ storage, document, fetchImpl: fetcher.impl })
+    void launch.start()
+    await tick()
+    await tick()
+    expect(document.getElementById(FIRST_LAUNCH_ID)).toBeTruthy()
+  })
+
+  it("a new address that does not answer is still refused, never stored", async () => {
+    const storage = memoryStorage(null)
+    const offline = (async () => {
+      throw new TypeError("offline")
+    }) as unknown as typeof fetch
+    const launch = createFirstLaunch({ storage, document, fetchImpl: offline })
+    void launch.start()
+    await tick()
+    const input = document.querySelector("input") as HTMLInputElement
+    input.value = "https://new.example.com"
+    ;(document.querySelector('[data-testid="first-launch-submit"]') as HTMLButtonElement).click()
+    await tick()
+    await tick()
+    expect(storage.read()).toBeNull()
+    expect(document.getElementById(FIRST_LAUNCH_ID)).toBeTruthy()
+  })
+})
+
+describe("the first launch screen follows dark mode and the keyboard", () => {
+  const clearOverlays = () => {
+    for (const overlay of document.querySelectorAll(`#${FIRST_LAUNCH_ID}`)) overlay.remove()
+  }
+  beforeEach(clearOverlays)
+  afterEach(clearOverlays)
+
+  async function shown(): Promise<HTMLElement> {
+    const launch = createFirstLaunch({
+      storage: memoryStorage(null),
+      document,
+      fetchImpl: fakeFetch(200, { data: BRANDING }).impl,
+      cloudDomain: "liaison.sh",
+    })
+    void launch.start()
+    await tick()
+    return document.getElementById(FIRST_LAUNCH_ID) as HTMLElement
+  }
+
+  it("has a dark palette, so a dark device's white status bar stays readable", async () => {
+    const section = await shown()
+    const palette = section.querySelector(`#${FIRST_LAUNCH_STYLE_ID}`)?.textContent ?? ""
+    expect(palette).toContain("@media (prefers-color-scheme: dark)")
+    expect(palette).toContain("--fl-bg:#111113")
+    // Every colour on the screen comes from the palette, none is fixed light.
+    expect(section.style.background).toBe("var(--fl-bg)")
+    for (const el of section.querySelectorAll<HTMLElement>("[style]")) {
+      expect([el.tagName, el.style.cssText]).not.toEqual([
+        el.tagName,
+        expect.stringMatching(/#[0-9a-f]{3,6}\b/i),
+      ])
+    }
+  })
+
+  it("scrolls, and keeps room under it for the keyboard", async () => {
+    const section = await shown()
+    expect(section.style.overflowY).toBe("auto")
+    expect(section.style.justifyContent).toBe("flex-start")
+    // The padding shorthand's bottom value: the keyboard's height, when it is up.
+    expect(section.getAttribute("style")).toContain(
+      "calc(24px + max(env(safe-area-inset-bottom), var(--keyboard-inset, 0px)))",
+    )
+    // The links under the field are inside the scrolling page.
+    expect(section.querySelector('[data-testid="first-launch-forgot"]')).toBeTruthy()
+    expect(section.querySelector('[data-testid="first-launch-self-hosted"]')).toBeTruthy()
   })
 })
 

@@ -620,6 +620,15 @@ export interface GoogleCalendarListEntry {
   backgroundColor?: string
   timeZone?: string
   accessRole?: string
+  primary?: boolean
+}
+
+/** Whether a newly listed calendar starts selected: the account's primary calendar and the
+ * calendars it can write to. Calendars it only reads (holidays, birthdays, a colleague's shared
+ * calendar) start unselected, so they are neither synced nor watched until someone picks them. */
+export function selectedByDefault(entry: GoogleCalendarListEntry, accountEmail: string): boolean {
+  if (entry.primary === true || entry.id === accountEmail) return true
+  return entry.accessRole === "owner" || entry.accessRole === "writer"
 }
 
 async function findCalendarsByAccountId(
@@ -645,7 +654,8 @@ async function upsertCalendar(
   accountId: string,
   calaccess: string,
   entry: GoogleCalendarListEntry,
-): Promise<{ id: string; created: boolean }> {
+  selected: boolean,
+): Promise<{ id: string; created: boolean; selected: boolean }> {
   const { sql } = await import("drizzle-orm")
   const schema = CALENDAR_SCHEMA()
   const rows = (await db.execute(sql`
@@ -653,18 +663,18 @@ async function upsertCalendar(
       (id, org_id, account_id, google_calendar_id, name, color, time_zone, access_role, selected, calaccess)
     VALUES
       (gen_random_uuid(), ${orgId}::uuid, ${accountId}::uuid, ${entry.id}, ${entry.summary ?? entry.id},
-       ${entry.backgroundColor ?? null}, ${entry.timeZone ?? null}, ${entry.accessRole ?? null}, true, ${calaccess})
+       ${entry.backgroundColor ?? null}, ${entry.timeZone ?? null}, ${entry.accessRole ?? null}, ${selected}, ${calaccess})
     ON CONFLICT (org_id, account_id, google_calendar_id) DO UPDATE SET
       name = EXCLUDED.name, color = EXCLUDED.color, time_zone = EXCLUDED.time_zone,
       access_role = EXCLUDED.access_role
-    RETURNING id, (xmax = 0) AS inserted
+    RETURNING id, (xmax = 0) AS inserted, selected
   `)) as unknown as
-    | { rows?: Array<{ id: string; inserted: boolean }> }
-    | Array<{ id: string; inserted: boolean }>
+    | { rows?: Array<{ id: string; inserted: boolean; selected: boolean }> }
+    | Array<{ id: string; inserted: boolean; selected: boolean }>
   const list = Array.isArray(rows) ? rows : (rows.rows ?? [])
   const row = list[0]
   if (!row) throw new Error("calendar calendars upsert returned no id")
-  return { id: row.id, created: row.inserted }
+  return { id: row.id, created: row.inserted, selected: row.selected }
 }
 
 /**
@@ -807,7 +817,7 @@ export async function runCalendarImport(
   accountId: string,
   listCalendars: () => Promise<GoogleCalendarListEntry[]>,
   enqueueJob: (jobName: string, payload: Record<string, unknown>) => Promise<void>,
-): Promise<{ calendarIds: string[] }> {
+): Promise<{ calendarIds: string[]; removed: StaleChannel[] }> {
   const account = await getAccountById(db, orgId, accountId)
   if (!account) throw new Error(`calendar account ${accountId} not found`)
 
@@ -815,22 +825,101 @@ export async function runCalendarImport(
 
   const entries = await listCalendars()
   const calendarIds: string[] = []
+  const toSync: string[] = []
   for (const entry of entries) {
-    const { id: calendarId } = await upsertCalendar(db, orgId, accountId, accountId, entry)
-    calendarIds.push(calendarId)
+    const upserted = await upsertCalendar(
+      db,
+      orgId,
+      accountId,
+      accountId,
+      entry,
+      selectedByDefault(entry, account.email_address),
+    )
+    calendarIds.push(upserted.id)
+    // A calendar nobody selected is not synced (a re-import used to fill deselected ones
+    // again); a selected one already synced keeps its token and is not listed again whole.
+    if (upserted.selected && (upserted.created || !(await hasSyncToken(db, orgId, upserted.id)))) {
+      toSync.push(upserted.id)
+    }
   }
 
-  for (const calendarId of calendarIds) {
+  // Calendars Google no longer lists for this account (unsubscribed, deleted, access removed):
+  // their rows and events go, and their watch channels are returned so the caller stops them on
+  // Google. Until now they stayed, each events.list answering 404 at every poll.
+  const removed = await removeUnlistedCalendars(
+    db,
+    orgId,
+    accountId,
+    entries.map((e) => e.id),
+  )
+
+  for (const calendarId of toSync) {
     await enqueueJob("calendar-initial-sync", { orgId, accountId, calendarId })
   }
 
   // A successful import clears any error a previous failed import left behind.
   await updateAccount(db, orgId, accountId, {
-    sync_status: entries.length > 0 ? "syncing" : "active",
+    sync_status: toSync.length > 0 ? "syncing" : "active",
     last_sync_error: null,
   })
 
-  return { calendarIds }
+  return { calendarIds, removed }
+}
+
+async function hasSyncToken(db: RlsClient, orgId: string, calendarId: string): Promise<boolean> {
+  const calendar = await getCalendarById(db, orgId, calendarId)
+  return Boolean(calendar?.sync_token)
+}
+
+/** A watch channel to stop on Google. */
+export interface StaleChannel {
+  channelId: string
+  resourceId: string
+}
+
+/** Deletes the account's calendars missing from Google's list (and their events: a pending
+ * local change has no calendar left to reach). Returns their live watch channels. */
+async function removeUnlistedCalendars(
+  db: RlsClient,
+  orgId: string,
+  accountId: string,
+  listedGoogleIds: string[],
+): Promise<StaleChannel[]> {
+  const { sql } = await import("drizzle-orm")
+  const schema = CALENDAR_SCHEMA()
+  const listed =
+    listedGoogleIds.length > 0
+      ? sql`AND google_calendar_id NOT IN (${sql.join(
+          listedGoogleIds.map((id) => sql`${id}`),
+          sql.raw(", "),
+        )})`
+      : sql``
+  const gone = (await db.execute(sql`
+    SELECT id, watch_channel_id, watch_resource_id FROM ${sql.raw(schema)}.calendars
+    WHERE org_id = ${orgId}::uuid AND account_id = ${accountId}::uuid ${listed}
+  `)) as unknown as
+    | { rows?: Array<{ id: string; watch_channel_id: string | null; watch_resource_id: string | null }> }
+    | Array<{ id: string; watch_channel_id: string | null; watch_resource_id: string | null }>
+  const rows = Array.isArray(gone) ? gone : (gone.rows ?? [])
+  if (rows.length === 0) return []
+  const ids = sql.join(
+    rows.map((r) => sql`${r.id}::uuid`),
+    sql.raw(", "),
+  )
+  await db.execute(sql`
+    DELETE FROM ${sql.raw(schema)}.events WHERE org_id = ${orgId}::uuid AND calendar_id IN (${ids})
+  `)
+  await db.execute(sql`
+    DELETE FROM ${sql.raw(schema)}.sync_log WHERE org_id = ${orgId}::uuid AND calendar_id IN (${ids})
+  `)
+  await db.execute(sql`
+    DELETE FROM ${sql.raw(schema)}.calendars WHERE org_id = ${orgId}::uuid AND id IN (${ids})
+  `)
+  return rows.flatMap((r) =>
+    r.watch_channel_id && r.watch_resource_id
+      ? [{ channelId: r.watch_channel_id, resourceId: r.watch_resource_id }]
+      : [],
+  )
 }
 
 const MAX_SYNC_ERROR_LENGTH = 1000

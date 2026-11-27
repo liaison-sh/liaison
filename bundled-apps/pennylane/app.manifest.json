@@ -17,7 +17,7 @@
       }
     ]
   },
-  "version": "0.1.56",
+  "version": "0.1.57",
   "iconName": "calculator",
   "kind": "connector",
   "description": "Pennylane accounting connector: supplier/customer invoices, trial balance, derived P&L, cash position, transactions, spend-by-category, runway",

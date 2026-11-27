@@ -11,8 +11,15 @@
 // at least the contract's params for that op. A caller declares
 // `contract_calls:[{contract:"<name>@<version>", bindingSetting:"<own table>.<column>"}]`, the
 // binding column living in its own schema (packaged apps have no org settings store).
+//
+// A contract with `events` makes its provider declare the required ones in `events.emits`. A
+// consumer subscribes to a contract event once for every provider of the org
+// (`events.subscribes["contract:<name>@<version>/<entity:action>"]`): the contract must be known,
+// the event one of its events, and the consumer must declare `contract_calls` for it (it reads the
+// source through the contract before acting). A `multiProvider` contract has no outbound op: the
+// caller names the provider per call, checked against a row of its own binding table.
 
-import { KNOWN_CONTRACTS } from "@liaison/app-sdk/contracts"
+import { KNOWN_CONTRACTS, parseContractSubscription } from "@liaison/app-sdk/contracts"
 
 export const BINDING_SETTING_RE = /^([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)$/
 
@@ -92,6 +99,17 @@ export function validateProviderContracts(
             }
           }
         }
+        if (spec.events) {
+          const emits = new Set(
+            (
+              (manifest.events as { emits?: unknown } | undefined)?.emits as unknown[] | undefined
+            )?.filter((e): e is string => typeof e === "string") ?? [],
+          )
+          for (const [ev, evSpec] of Object.entries(spec.events)) {
+            if (evSpec.required && !emits.has(ev))
+              errors.push(`implements[${i}]: "${key}" requires events.emits "${ev}"`)
+          }
+        }
       })
     }
   }
@@ -108,6 +126,35 @@ export function validateProviderContracts(
   }
 
   const calls = manifest.contract_calls
+  const declaredCalls = new Set(
+    Array.isArray(calls)
+      ? calls.map((c: Record<string, unknown>) => String(c?.contract ?? ""))
+      : [],
+  )
+  const subscribes = (manifest.events as { subscribes?: unknown } | undefined)?.subscribes
+  if (subscribes && typeof subscribes === "object") {
+    for (const key of Object.keys(subscribes as Record<string, unknown>)) {
+      if (!key.startsWith("contract:")) continue
+      const parsed = parseContractSubscription(key)
+      if (!parsed) {
+        errors.push(
+          `events.subscribes.${key}: a contract subscription reads "contract:<name>@<version>/<entity:action>"`,
+        )
+        continue
+      }
+      const spec = KNOWN_CONTRACTS[parsed.contract]
+      if (!spec) {
+        errors.push(`events.subscribes.${key}: unknown contract "${parsed.contract}"`)
+        continue
+      }
+      if (!spec.events?.[parsed.event])
+        errors.push(`events.subscribes.${key}: "${parsed.contract}" has no event "${parsed.event}"`)
+      if (!declaredCalls.has(parsed.contract))
+        errors.push(
+          `events.subscribes.${key}: subscribing to "${parsed.contract}" needs contract_calls for it`,
+        )
+    }
+  }
   if (calls !== undefined) {
     if (!Array.isArray(calls)) {
       errors.push("contract_calls: must be an array")

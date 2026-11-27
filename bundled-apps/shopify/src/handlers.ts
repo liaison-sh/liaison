@@ -154,6 +154,9 @@ export const companies_search = withShopifyConnectionEnvelope(readHandlers.compa
 export const companies_get = withShopifyConnectionEnvelope(readHandlers.companies_get)
 export const locations_list = withShopifyConnectionEnvelope(readHandlers.locations_list)
 
+// — revenue-stream@1 provider ops (contractOnly, reached only through the contract dispatch)
+export { rs_sale_get, rs_sales_list } from "./sales"
+
 // — webhook handlers + verifier (manifest.webhooks.<topic>.{handler,verify}) — Task B9
 export {
   appUninstalledHandler,

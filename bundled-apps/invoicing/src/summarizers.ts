@@ -1471,6 +1471,34 @@ export function summarizeIssuerStreamSet(
   })
 }
 
+export function summarizeRevenueStreamBind(
+  params: Record<string, unknown>,
+): Promise<ApprovalSummaryShape> {
+  const mode = String(params.mode ?? (params.streamId ? "" : "review"))
+  const app = params.providerApp ? String(params.providerApp) : null
+  return done({
+    kind: "revenue_stream_bind",
+    title: params.streamId
+      ? "Change how a sales app's sales are invoiced"
+      : `Invoice each sale of ${app ?? "a sales app"}`,
+    subtitle: params.streamId
+      ? "Applies to the next sale"
+      : "From now on; older sales only through the catch-up",
+    lines: [
+      ...(app ? [`Sales app: ${app}`] : []),
+      ...(mode === "auto"
+        ? ["Each sale is invoiced at once (the issuer's approval threshold still applies)."]
+        : mode === "review"
+          ? ["Each sale waits for a person's approval before its invoice is issued."]
+          : mode === "off"
+            ? ["No sale is invoiced."]
+            : []),
+      ...(params.mail ? [`Mail to the buyer: ${String(params.mail)}`] : []),
+      "Issued invoices are legal documents: they cannot be deleted, only credited.",
+    ],
+  })
+}
+
 export function summarizeIssuerEmailsConfirm(): Promise<ApprovalSummaryShape> {
   return done({
     kind: "issuer_emails_confirm",

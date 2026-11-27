@@ -18,7 +18,7 @@
       "x-shopify-api-version": "2026-04"
     }
   ],
-  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts; the kept sales read (none) added by hand",
   "calls": [
     {
       "method": "connections_getAccounts",
@@ -36,6 +36,11 @@
         "webhook_deliveries",
         "{\"where\":{\"webhookId\":\"contract-customers-delete-7\"},\"orderBy\":{\"receivedAt\":\"asc\"},\"limit\":1}"
       ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["sale_snapshots", "{\"where\":{\"customerId\":\"24929631043750\"},\"limit\":100}"],
       "reply": "[]"
     },
     {

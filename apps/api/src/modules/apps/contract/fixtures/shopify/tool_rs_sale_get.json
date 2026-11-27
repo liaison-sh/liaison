@@ -1,0 +1,12 @@
+{
+  "entry": "tool:rs_sale_get",
+  "params": { "external_id": "12992208404646" },
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["sale_snapshots", "{\"where\":{\"orderId\":\"12992208404646\"},\"limit\":1}"],
+      "reply": "[]"
+    }
+  ],
+  "recordedFrom": "an install with no order received yet (contract replay, no provider call)"
+}

@@ -99,8 +99,9 @@ push, the desktop emitter, the mail producer and `notify_user`. Its rules, in or
 - mute means mute: a muted conversation, or a kind set to **Off**, is silenced on the phone, the
   computer and email, the urgent email included, whatever its group: a direct conversation, an
   @mention and an approval too. The item still lands in the feed, unread but quiet, and does not count
-  toward the badge (`thread_muted`, `kind_muted`). An archived conversation quiets its channel posts
-  only: a direct message or an @mention there still interrupts;
+  toward the badge (`thread_muted`, `kind_muted`). An archived conversation comes back to your list
+  with its next message, from a person or an agent, and that message notifies as usual; a conversation
+  you archived and muted stays archived and quiet;
 - a grid cell switched off silences that channel; a channel you opted into every post uses the direct
   messages cells for phone and computer;
 - an incident reaches the phone and the computer only of the people on call; everyone else who can see
@@ -132,8 +133,9 @@ Either way the phone, the computer, the email digest and the urgent email stay s
 shows in the feed, unread, marked quiet (`metadata.quiet` on its `kernel.attention_events` row): the
 badge and the digest skip it. A reply in a muted conversation gets its quiet row too.
 
-Archiving a conversation is not muting it: its channel posts become quiet rows, but a direct message
-or an @mention in it still interrupts.
+Archiving a conversation is not muting it. Archiving takes it out of your list until something new
+happens: the next message in it, from a person or an agent, puts it back in your list on every device.
+To keep a conversation out of your list and quiet, mute it as well.
 
 ## Quiet hours
 

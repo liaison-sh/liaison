@@ -251,10 +251,9 @@ export async function processReembedStep(
   orgId: string,
   batchSize = REEMBED_BATCH,
 ): Promise<ReembedStepResult> {
-  const [queue, indexer] = await Promise.all([
-    import("~/modules/search/reembed-queue"),
-    import("~/modules/search/message-indexer"),
-  ])
+  const queue = await import("~/modules/search/reembed-queue")
+  const { resolveOrgEmbedder, memoryEmbedderDeclared, indexMessagesBulk, indexBriefRowsBulk } =
+    await import("~/modules/search/message-indexer")
   const lockKey = reembedLockKey(orgId)
   const token = crypto.randomUUID()
   if ((await redis.set(lockKey, token, "PX", REEMBED_LOCK_MS, "NX")) !== "OK") {
@@ -266,7 +265,7 @@ export async function processReembedStep(
       await queue.settleReembed(orgId, [])
       return { status: "done" }
     }
-    const embedder = await indexer.resolveOrgEmbedder(orgId)
+    const embedder = await resolveOrgEmbedder(orgId)
     if (!embedder) {
       // No key (or a model that cannot reach the width): nothing can embed
       // these, and they already answer keyword searches.
@@ -274,7 +273,7 @@ export async function processReembedStep(
       log.info({ orgId }, "embedding_reembed_dropped_no_embedder")
       return { status: "no_embedder" }
     }
-    if (!(await indexer.memoryEmbedderDeclared(embedder.dimensions))) {
+    if (!(await memoryEmbedderDeclared(embedder.dimensions))) {
       return { status: "waiting_for_index" }
     }
     const messageIds: string[] = []
@@ -286,7 +285,7 @@ export async function processReembedStep(
       else briefs.push({ kind: item.kind, id: item.id })
     }
     if (messageIds.length > 0) {
-      const { failures } = await indexer.indexMessagesBulk(orgId, messageIds, {
+      const { failures } = await indexMessagesBulk(orgId, messageIds, {
         batchSize: messageIds.length,
       })
       // A failed batch stays noted and is tried again by the next step.
@@ -294,7 +293,7 @@ export async function processReembedStep(
         throw new Error(`re-embed: ${failures.length} messages failed: ${failures[0]?.error}`)
       }
     }
-    await indexer.indexBriefRowsBulk(orgId, briefs)
+    await indexBriefRowsBulk(orgId, briefs)
     const left = await queue.settleReembed(orgId, members)
     log.info({ orgId, embedded: members.length, left }, "embedding_reembed_progress")
     return { status: "embedded", embedded: members.length, left }

@@ -16,6 +16,8 @@ const ENTRY_POINTS =
 
 /** Each reviewed file and what a demo visitor org gets there. */
 const REVIEWED: Record<string, string> = {
+  "infra/jobs/embedding-backfill.ts":
+    "re-embed after a width change: resolveOrgEmbedder, the message indexer's embedder (Google only, BYOK only for a visitor)",
   "infra/jobs/kernel-jobs.ts":
     "routine credit gate: reserve then finish at once (the run is a turn)",
   "modules/agent/context/checkpoint.ts": "reservation + settle (meterSideCall)",

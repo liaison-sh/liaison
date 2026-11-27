@@ -69,3 +69,7 @@ Read-only calendars refuse new events and edits -> apps/api/src/modules/apps/san
 Unticking hides the events but keeps them -> apps/api/src/apps/calendar/sync.ts:1086
 Kept 30 days -> apps/api/src/apps/calendar/sync.ts:1093
 Ticking again lists into the same rows -> apps/api/src/apps/calendar/sync.ts:1075
+update_event and delete_event take this and the following occurrences -> apps/api/src/apps/calendar/app.manifest.json:465
+Series split: old series ends before the occurrence, a new one starts there -> apps/api/src/apps/calendar/sync.ts:1874
+Split keeps cancellations, edited occurrences take the change -> apps/api/src/apps/calendar/sync.ts:1912
+Split rule arithmetic (UNTIL or shared COUNT) -> packages/shared/src/calendar-recurrence.ts:508

@@ -1310,16 +1310,6 @@ const SCOPE_READ_ALLOWLIST_LITERAL: ReadonlyArray<
   ],
   [
     "apps/api/src/apps/calendar/sync.ts",
-    'if (params.scope !== "occurrence" && params.scope !== "series") {',
-    REASONS.CAL,
-  ],
-  [
-    "apps/api/src/apps/calendar/sync.ts",
-    'if (params.scope !== "occurrence" && params.scope !== "series") {',
-    REASONS.CAL,
-  ],
-  [
-    "apps/api/src/apps/calendar/sync.ts",
     'if (params.scope === "occurrence" && params.changesRecurrence) {',
     REASONS.CAL,
   ],
@@ -1372,16 +1362,6 @@ const SCOPE_READ_ALLOWLIST_LITERAL: ReadonlyArray<
     "apps/api/src/modules/scope-requests/announce.ts",
     "const catalog = new Map(getScopeCatalog(orgId).map((e) => [e.scope, e.description]))",
     REASONS.CATALOG,
-  ],
-  [
-    "apps/api/src/modules/apps/sandbox/bridge/calendar.ts",
-    "...(target.scope ? { scope: target.scope } : {}),",
-    REASONS.CAL,
-  ],
-  [
-    "apps/api/src/modules/apps/sandbox/bridge/calendar.ts",
-    "...(target.scope ? { scope: target.scope } : {}),",
-    REASONS.CAL,
   ],
   [
     "apps/api/src/modules/apps/sandbox/bridge/calendar.ts",

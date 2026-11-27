@@ -1789,7 +1789,9 @@ export async function createLocalEvent(
 
 // --- Which row an update changes: recurring meetings (series vs one occurrence) ---
 
-export type UpdateScope = "occurrence" | "series"
+/** "following": this occurrence and every later one (the series is split there, like Google's
+ * "this and following events"). */
+export type UpdateScope = "occurrence" | "following" | "series"
 
 export interface UpdateTargetParams {
   /** A local event uuid, or a Google event id (list_events returns a recurring master by it). */
@@ -1797,7 +1799,8 @@ export interface UpdateTargetParams {
   /** Disambiguates a Google event id present on more than one calendar. */
   calendarId?: string
   scope?: UpdateScope
-  /** The ORIGINAL start (ISO) of the occurrence to change, for scope "occurrence" on a series. */
+  /** The ORIGINAL start (ISO) of the occurrence to change, for scope "occurrence" or
+   * "following" on a series. */
   occurrenceStart?: string
   /** The edit sets a recurrence rule (only a series has one). */
   changesRecurrence?: boolean
@@ -1827,6 +1830,38 @@ export function googleInstanceId(
   const day = iso.slice(0, 10).replace(/-/g, "")
   if (allDay) return `${masterGoogleId}_${day}`
   return `${masterGoogleId}_${day}T${iso.slice(11, 19).replace(/:/g, "")}Z`
+}
+
+/** A stored point as an instant (an all-day date at UTC midnight), or null. */
+function pointInstant(point: unknown): Date | null {
+  const p = (point ?? null) as { date?: string; dateTime?: string } | null
+  const at = p?.dateTime ? new Date(p.dateTime) : p?.date ? new Date(`${p.date}T00:00:00Z`) : null
+  return at && !Number.isNaN(at.getTime()) ? at : null
+}
+
+/** Whether a series has an occurrence starting at `occurrence` (refused when its simple rule has
+ * none there); `complex` when the rule cannot be expanded here. */
+async function probeOccurrence(
+  row: EventRow,
+  occurrence: Date,
+  title: string,
+  given: string,
+): Promise<{ complex: boolean }> {
+  const { expandRecurringEvent } = await import("~/apps/calendar/tools")
+  const probe = expandRecurringEvent(
+    row as unknown as Parameters<typeof expandRecurringEvent>[0],
+    [],
+    occurrence,
+    new Date(occurrence.getTime() + 1),
+  )
+  const complex = probe.some((o) => o.recurrenceComplex)
+  const matches = probe.some((o) => pointInstant(o.start)?.getTime() === occurrence.getTime())
+  if (!complex && !matches) {
+    throw invalidParams(
+      `${title} has no occurrence starting ${given}. Pass the original start of one of its occurrences (list_events shows the series' first start and its repeat rule).`,
+    )
+  }
+  return { complex }
 }
 
 async function findEventForUpdate(
@@ -1869,7 +1904,13 @@ export async function resolveUpdateTarget(
   db: RlsClient,
   orgId: string,
   params: UpdateTargetParams,
-): Promise<{ eventId: string; scope: UpdateScope | null }> {
+): Promise<{
+  eventId: string
+  scope: UpdateScope | null
+  splitAt?: Date
+  /** A delete of one occurrence of a series not on Google yet: that occurrence as an EXDATE. */
+  exdate?: Date
+}> {
   const row = await findEventForUpdate(db, orgId, params.eventId, params.calendarId)
   if (!row || row.deleted_at) {
     throw Object.assign(new Error(`calendar event ${params.eventId} not found`), {
@@ -1883,12 +1924,12 @@ export async function resolveUpdateTarget(
   const title = row.title ? `"${row.title}"` : "This event"
   const tool = params.tool ?? "update_event"
   const verb = tool === "delete_event" ? "delete" : "change"
-  if (params.scope !== "occurrence" && params.scope !== "series") {
+  if (params.scope !== "occurrence" && params.scope !== "following" && params.scope !== "series") {
     const which = isException
       ? `${title} is one occurrence of a recurring meeting.`
       : `${title} is a recurring meeting.`
     throw invalidParams(
-      `${which} Ask the user whether to ${verb} only this occurrence or the whole series, then call ${tool} again with scope: "occurrence" (plus occurrenceStart, the original start of that occurrence as listed) or scope: "series".`,
+      `${which} Ask the user whether to ${verb} only this occurrence, this and the following ones, or the whole series, then call ${tool} again with scope: "occurrence" or "following" (plus occurrenceStart, the original start of that occurrence as listed) or scope: "series".`,
     )
   }
   if (params.scope === "occurrence" && params.changesRecurrence) {
@@ -1905,21 +1946,40 @@ export async function resolveUpdateTarget(
         `The series of ${title} is not on this calendar here, so it cannot be changed as a whole; change this occurrence with scope: "occurrence".`,
       )
     }
-    return { eventId: master.id, scope: "series" }
+    if (params.scope === "series") return { eventId: master.id, scope: "series" }
+    const original = pointInstant(row.original_start_time)
+    if (!original) {
+      throw invalidParams(`${title} has no original start; change it with scope: "occurrence".`)
+    }
+    return { eventId: master.id, scope: "following", splitAt: original }
   }
 
   // A recurring master.
   if (params.scope === "series") return { eventId: row.id, scope: "series" }
   if (!params.occurrenceStart) {
     throw invalidParams(
-      `scope: "occurrence" on a recurring meeting needs occurrenceStart: the original start (ISO date-time, or date for an all-day series) of the occurrence to change.`,
+      `scope: "${params.scope}" on a recurring meeting needs occurrenceStart: the original start (ISO date-time, or date for an all-day series) of the occurrence to ${verb}.`,
     )
   }
   const occurrence = new Date(params.occurrenceStart)
   if (Number.isNaN(occurrence.getTime())) {
     throw invalidParams(`occurrenceStart "${params.occurrenceStart}" is not a date.`)
   }
+  if (params.scope === "following") {
+    const { complex } = await probeOccurrence(row, occurrence, title, params.occurrenceStart)
+    if (complex) {
+      throw invalidParams(
+        `${title} repeats by a rule Liaison cannot split; change one occurrence (scope: "occurrence") or the whole series (scope: "series").`,
+      )
+    }
+    return { eventId: row.id, scope: "following", splitAt: occurrence }
+  }
   if (!row.google_event_id) {
+    // A series not on Google yet has no instance to cancel: the occurrence leaves its rule.
+    if (tool === "delete_event") {
+      await probeOccurrence(row, occurrence, title, params.occurrenceStart)
+      return { eventId: row.id, scope: "occurrence", exdate: occurrence }
+    }
     throw invalidParams(
       `${title} has not reached Google yet; its occurrences can be changed once it has (try again in a minute).`,
     )
@@ -1947,24 +2007,7 @@ export async function resolveUpdateTarget(
 
   // Check the series really has an occurrence there (a simple rule can be expanded; a complex
   // one is left to Google, which refuses an instance that does not exist).
-  const { expandRecurringEvent } = await import("~/apps/calendar/tools")
-  const probe = expandRecurringEvent(
-    row as unknown as Parameters<typeof expandRecurringEvent>[0],
-    [],
-    occurrence,
-    new Date(occurrence.getTime() + 1),
-  )
-  const complex = probe.some((o) => o.recurrenceComplex)
-  const matches = probe.some((o) => {
-    const p = o.start as { date?: string; dateTime?: string } | null
-    const at = p?.dateTime ? new Date(p.dateTime) : p?.date ? new Date(`${p.date}T00:00:00Z`) : null
-    return at !== null && at.getTime() === occurrence.getTime()
-  })
-  if (!complex && !matches) {
-    throw invalidParams(
-      `${title} has no occurrence starting ${params.occurrenceStart}. Pass the original start of one of its occurrences (list_events shows the series' first start and its repeat rule).`,
-    )
-  }
+  await probeOccurrence(row, occurrence, title, params.occurrenceStart)
 
   const masterStart = row.start as { date?: string; dateTime?: string; timeZone?: string } | null
   const masterEnd = row.end as { date?: string; dateTime?: string; timeZone?: string } | null
@@ -2004,6 +2047,161 @@ export async function resolveUpdateTarget(
   const id = (Array.isArray(inserted) ? inserted : (inserted.rows ?? []))[0]?.id
   if (!id) throw new Error("calendar occurrence insert returned no id")
   return { eventId: id, scope: "occurrence" }
+}
+
+// --- "This and following": split a series in two ---
+
+export type SeriesSplitResult =
+  /** The split occurrence is the series' first: the edit or delete applies to the whole series. */
+  | { kind: "whole_series" }
+  | {
+      kind: "split"
+      /** The old series, now ending before the split (its push is queued by the caller). */
+      oldEventId: string
+      oldSyncVersion: number
+      /** The new series from the split on (an edit only; a delete creates none). */
+      newEventId: string | null
+      /** Exception rows of the old series from the split on, removed here. */
+      removedExceptionIds: string[]
+    }
+
+/**
+ * splitSeriesAt — "this and following" on a recurring series, like Google Calendar: the old
+ * series ends just before `at` (an UNTIL, or a smaller COUNT), and for an edit a new series
+ * starts at `at` with the old one's fields, the edit applied, and the cancelled occurrences
+ * from `at` on kept as EXDATEs. Edited occurrences from `at` on are dropped (the edit replaces
+ * them); Google drops their instances when the shortened rule reaches it. A delete (`edit`
+ * null) only shortens the series. Both rows are queued for push by the caller.
+ */
+export async function splitSeriesAt(
+  db: RlsClient,
+  orgId: string,
+  masterId: string,
+  at: Date,
+  edit: LocalEventInput | null,
+): Promise<SeriesSplitResult> {
+  const master = await getEventById(db, orgId, masterId)
+  if (!master || master.deleted_at || !isRecurringMaster(master)) {
+    throw Object.assign(new Error(`calendar series ${masterId} not found`), {
+      status: 404,
+      code: "not_found",
+    })
+  }
+  const { sql } = await import("drizzle-orm")
+  const schema = CALENDAR_SCHEMA()
+  const { splitRecurrence } = await import("@liaison/shared")
+
+  // The old series' exceptions from the split on.
+  const exceptionRows = master.google_event_id
+    ? ((await db.execute(sql`
+        SELECT id, status, deleted_at, original_start_time FROM ${sql.raw(schema)}.events
+        WHERE org_id = ${orgId}::uuid AND calendar_id = ${master.calendar_id}::uuid
+          AND recurring_event_id = ${master.google_event_id}
+      `)) as unknown as
+        | {
+            rows?: Array<{
+              id: string
+              status: string
+              deleted_at: unknown
+              original_start_time: unknown
+            }>
+          }
+        | Array<{ id: string; status: string; deleted_at: unknown; original_start_time: unknown }>)
+    : []
+  const exceptions = (Array.isArray(exceptionRows) ? exceptionRows : (exceptionRows.rows ?? []))
+    .map((r) => ({ ...r, original: pointInstant(r.original_start_time) }))
+    .filter((r) => r.original !== null && r.original.getTime() >= at.getTime())
+  const cancelled = exceptions
+    .filter((r) => r.status === "cancelled" || r.deleted_at)
+    .map((r) => r.original as Date)
+
+  // Where the new series starts: the split occurrence, or where the edit moves it.
+  const masterStart = master.start as { date?: string; dateTime?: string; timeZone?: string } | null
+  const masterEnd = master.end as { date?: string; dateTime?: string; timeZone?: string } | null
+  const startMs = pointInstant(masterStart)?.getTime() ?? at.getTime()
+  const endMs = pointInstant(masterEnd)?.getTime() ?? startMs
+  const durationMs = endMs - startMs
+  const allDay = edit?.allDay ?? master.all_day
+  const occurrencePoint = (instant: Date, template: typeof masterStart) =>
+    master.all_day
+      ? { date: instant.toISOString().slice(0, 10) }
+      : {
+          dateTime: instant.toISOString(),
+          ...(template?.timeZone ? { timeZone: template.timeZone } : {}),
+        }
+  let newStart: unknown = edit?.start ?? occurrencePoint(at, masterStart)
+  let newEnd: unknown =
+    edit?.end ??
+    (edit?.start
+      ? (() => {
+          const s = pointInstant(edit.start)
+          return s ? occurrencePoint(new Date(s.getTime() + durationMs), masterEnd) : null
+        })()
+      : occurrencePoint(new Date(at.getTime() + durationMs), masterEnd))
+  if (allDay !== master.all_day && !edit?.start) newStart = convertPointShape(newStart, allDay)
+  if (allDay !== master.all_day && !edit?.end) newEnd = convertPointShape(newEnd, allDay)
+  const shiftMs = (pointInstant(newStart)?.getTime() ?? at.getTime()) - at.getTime()
+
+  const split = splitRecurrence(
+    { start: master.start, end: master.end, recurrence: master.recurrence as string[] },
+    at,
+    { cancelled, shiftMs },
+  )
+  if (split.complex) {
+    throw invalidParams(
+      `This meeting repeats by a rule Liaison cannot split; change one occurrence (scope: "occurrence") or the whole series (scope: "series").`,
+    )
+  }
+  if (split.before === null) return { kind: "whole_series" }
+
+  const { syncVersion } = await updateLocalEvent(db, orgId, master.id, {
+    recurrence: split.before,
+    editorId: edit?.editorId,
+  })
+
+  const removedExceptionIds = exceptions.map((r) => r.id)
+  if (removedExceptionIds.length > 0) {
+    await db.execute(sql`
+      DELETE FROM ${sql.raw(schema)}.events
+      WHERE org_id = ${orgId}::uuid AND id IN (${sql.join(
+        removedExceptionIds.map((id) => sql`${id}::uuid`),
+        sql.raw(", "),
+      )})
+    `)
+  }
+
+  let newEventId: string | null = null
+  if (edit && split.after) {
+    const keptAttendees = Array.isArray(master.attendees)
+      ? (master.attendees as Array<Record<string, unknown>>)
+          .filter((a) => a && typeof a.email === "string")
+          .map((a) => ({
+            email: a.email as string,
+            ...(a.optional ? { optional: true } : {}),
+            ...(typeof a.displayName === "string" ? { displayName: a.displayName } : {}),
+          }))
+      : undefined
+    const conference = edit.conference ?? (master.hangout_link ? ("add" as const) : undefined)
+    const created = await createLocalEvent(db, orgId, master.calendar_id, master.calaccess, {
+      title: edit.title ?? master.title ?? undefined,
+      description: edit.description ?? master.description ?? undefined,
+      location: edit.location ?? master.location ?? undefined,
+      attendees: edit.attendees ?? keptAttendees,
+      recurrence: (edit.recurrence as string[] | undefined) ?? split.after,
+      allDay,
+      start: newStart,
+      end: newEnd,
+      conference: conference === "remove" ? undefined : conference,
+    })
+    newEventId = created.eventId
+  }
+  return {
+    kind: "split",
+    oldEventId: master.id,
+    oldSyncVersion: syncVersion,
+    newEventId,
+    removedExceptionIds,
+  }
 }
 
 /**

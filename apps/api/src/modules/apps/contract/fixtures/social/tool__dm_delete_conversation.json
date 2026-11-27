@@ -1,0 +1,37 @@
+{
+  "entry": "tool:dm_delete_conversation",
+  "params": {
+    "conversation_id": "30652bc7-648d-41f6-863b-b99d5a244325"
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findOne",
+      "args": ["dm_conversation", "30652bc7-648d-41f6-863b-b99d5a244325"],
+      "reply": "{\"id\":\"30652bc7-648d-41f6-863b-b99d5a244325\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-26 15:34:32.625149+00\",\"updated_at\":\"2026-11-26 15:34:32.716687+00\",\"platform\":\"facebook\",\"external_id\":\"t_10000000000000001\",\"contact_id\":null,\"participant_handle\":\"Camille Martin\",\"participant_external_id\":\"6000000000000001\",\"participant_display_name\":\"Camille Martin\",\"last_inbound_at\":\"2025-12-31 23:50:00+00\",\"last_message_at\":\"2025-12-31 23:50:00+00\",\"last_message_snippet\":\"Great, can you put one aside for me?\",\"unread_count\":0,\"status\":\"open\",\"suggested_reply\":null,\"approval_request_id\":null,\"metadata\":{\"pageId\":\"104857600000001\"}}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "dm_message",
+        "{\"where\":{\"conversation_id\":\"30652bc7-648d-41f6-863b-b99d5a244325\"},\"limit\":400}"
+      ],
+      "reply": "[{\"id\":\"cd663a98-a226-4579-83c8-628fd4b6112d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-26 15:34:32.656143+00\",\"updated_at\":\"2026-11-26 15:34:32.656143+00\",\"conversation_id\":\"30652bc7-648d-41f6-863b-b99d5a244325\",\"external_id\":\"m_AaBbCc0000000001\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Hi! Is the 120 cm panel back in stock soon?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:30:00+00\",\"metadata\":{}},{\"id\":\"bf8bfd5c-48d6-4dcc-8724-a2a51d62853a\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-26 15:34:32.648553+00\",\"updated_at\":\"2026-11-26 15:34:32.648553+00\",\"conversation_id\":\"30652bc7-648d-41f6-863b-b99d5a244325\",\"external_id\":\"m_AaBbCc0000000002\",\"direction\":\"outbound\",\"author_external_id\":null,\"body\":\"Hi Camille, it is back next week.\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"sent\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:40:00+00\",\"metadata\":{}},{\"id\":\"da0ce14f-9789-47db-aa8c-a38551985a6a\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-26 15:34:32.636109+00\",\"updated_at\":\"2026-11-26 15:34:32.636109+00\",\"conversation_id\":\"30652bc7-648d-41f6-863b-b99d5a244325\",\"external_id\":\"m_AaBbCc0000000003\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Great, can you put one aside for me?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:50:00+00\",\"metadata\":{}}]"
+    },
+    {
+      "method": "db_batch",
+      "args": [
+        "{\"ops\":[{\"delete\":\"dm_message\",\"id\":\"cd663a98-a226-4579-83c8-628fd4b6112d\"},{\"delete\":\"dm_message\",\"id\":\"bf8bfd5c-48d6-4dcc-8724-a2a51d62853a\"},{\"delete\":\"dm_message\",\"id\":\"da0ce14f-9789-47db-aa8c-a38551985a6a\"}]}"
+      ],
+      "reply": "{\"rows\":{}}"
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "dm_conversation",
+        "30652bc7-648d-41f6-863b-b99d5a244325",
+        "{\"status\":\"deleted\",\"last_message_snippet\":null,\"suggested_reply\":null,\"unread_count\":0,\"metadata\":{\"pageId\":\"104857600000001\",\"historyClearedAt\":\"2026-01-01T00:00:00.000Z\"}}"
+      ]
+    }
+  ]
+}

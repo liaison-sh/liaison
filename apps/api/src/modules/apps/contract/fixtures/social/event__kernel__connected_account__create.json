@@ -67,6 +67,10 @@
     {
       "method": "enqueueJob",
       "args": ["discovery-sync", "{}", "{\"delay\":5000,\"jobId\":\"discovery-sync-on-connect\"}"]
+    },
+    {
+      "method": "enqueueJob",
+      "args": ["dm-sync", "{}", "{\"delay\":5000,\"jobId\":\"dm-sync-on-connect\"}"]
     }
   ]
 }

@@ -1197,6 +1197,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/seed/tiers/lively/seed-lively.integration.test.ts",
             // ...and into an org someone else made, with the caller's people seated.
             "src/seed/tiers/lively/seed-lively-existing-org.integration.test.ts",
+            // The dashboards factory: a spec checked, then written once (the lively dashboard).
+            "src/seed/factories/dashboards/dashboards.integration.test.ts",
             // The load tier: synthetic orgs with their expiry, the bulk volume and
             // its invariant, and the demo reaper collecting them.
             "src/seed/tiers/load/seed-load.integration.test.ts",

@@ -52,8 +52,9 @@ export function burstSummaryNotificationRoute(
 ): string {
   const distinct = new Map<string, string | null>()
   for (const c of conversations) distinct.set(c.conversation, c.route ?? null)
-  if (distinct.size !== 1) return HOME_NOTIFICATION_ROUTE
-  const [[conversation, route]] = [...distinct]
+  const only = distinct.size === 1 ? [...distinct][0] : undefined
+  if (!only) return HOME_NOTIFICATION_ROUTE
+  const [conversation, route] = only
   if (route) return route
   if (conversation.startsWith("attention/") || conversation.startsWith("thread/")) {
     return conversation

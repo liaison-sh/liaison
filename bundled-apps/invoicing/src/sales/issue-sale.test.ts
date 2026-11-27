@@ -185,6 +185,17 @@ describe("onSaleEvent", () => {
       sold_at: "2026-11-20T10:00:00.000Z",
     })
     expect(refs.shopify_order_id).toBeUndefined()
+    // The sale is in the ledger with its buyer, and its invoice points at it.
+    const ledger = (await db.findMany("sales", { limit: 5 })) as Array<Record<string, unknown>>
+    expect(ledger).toHaveLength(1)
+    expect(ledger[0]).toMatchObject({
+      stream: "hubshop",
+      external_id: "pi_1",
+      buyer_email: "buyer@example.de",
+      sold_on: "2026-11-20",
+      state: "issued",
+    })
+    expect(doc?.sale_id).toBe(ledger[0]?.id)
     // Sold on 20 November, issued today: the sale date is on the invoice.
     expect(doc?.supply_date).toBe("2026-11-20")
     // A replayed event issues nothing more.

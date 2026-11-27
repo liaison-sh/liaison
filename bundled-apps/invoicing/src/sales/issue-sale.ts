@@ -29,6 +29,7 @@ import {
   type StreamSaleSource,
 } from "../handlers/shopify-order-paid"
 import { claimOps, saleDocument } from "../handlers/stripe-sale"
+import { attachDocumentsToSale, recordSale } from "../sales-ledger"
 import { orderPaidPayloadFromSale } from "./sale-payload"
 import {
   ensureShopifyStream,
@@ -238,6 +239,31 @@ export async function issueSale(
   await withContact(ctx, payload)
   if (stream.provider_app === SHOPIFY) return onShopifyOrderPaid(payload, ctx)
   const result = await issueOrderFlow(payload, ctx, streamSource(stream, sale))
+  // The sale and who bought it, for the buyer's own reads (sales-ledger.ts): its invoices point
+  // at it. The shop's sales are matched by the ledger's own fallback.
+  if (result.status === "ok" && stream.issuer_profile_id) {
+    const { sale_id } = await recordSale(ctx.db, {
+      issuer_profile_id: stream.issuer_profile_id,
+      stream: stream.provider_app,
+      external_id: sale.external_id,
+      source_ref: sale.refs?.checkout_session_id ?? sale.external_id,
+      source_name: sale.refs?.order_name ?? null,
+      sold_on: sale.sold_at.slice(0, 10),
+      buyer: {
+        email: sale.buyer.email,
+        shopify_customer_id: sale.buyer.ids?.shopify_customer_id ?? null,
+        hub_user_id: sale.buyer.ids?.hub_user_id ?? null,
+      },
+      total_minor: sale.totals.total_minor,
+      currency: sale.currency,
+      state: "issued",
+    })
+    await attachDocumentsToSale(
+      ctx.db,
+      sale_id,
+      result.documents.map((d) => d.document_id),
+    )
+  }
   // A Stripe payment the stream invoiced no longer waits as an unmatched payment for a person.
   if (stream.provider_app === "stripe" && result.status === "ok" && sale.refs?.charge_id) {
     await resolveOpenParks(

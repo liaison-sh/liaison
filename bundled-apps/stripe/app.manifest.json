@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.39",
+  "version": "0.1.40",
   "kind": "app",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -34,6 +34,7 @@
     "stripe:payments:read",
     "stripe:refunds:write",
     "stripe:admin:connection",
+    "stripe:approve",
     "stripe:internal"
   ],
   "roles": {
@@ -47,12 +48,13 @@
       ]
     },
     "billing": {
-      "description": "Stripe billing: link customers to companies and contacts, request refunds and cancellations through approvals",
+      "description": "Stripe billing: link customers to companies and contacts, request refunds and cancellations, and decide the ones agents request",
       "extends": "member",
       "scopes": [
         "stripe:customers:write",
         "stripe:refunds:write",
-        "stripe:subscriptions:write"
+        "stripe:subscriptions:write",
+        "stripe:approve"
       ]
     },
     "admin": {

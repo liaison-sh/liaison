@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.41.2",
+  "version": "0.42.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1308,6 +1308,14 @@
           "default": false
         },
         "sale_thanks_enabled": { "type": "boolean", "default": false },
+        "sale_thanks_sender": {
+          "type": "string",
+          "enum": ["mailbox", "notifications"],
+          "default": "mailbox"
+        },
+        "reply_to_email": "text?",
+        "vat_single_evidence": { "type": "boolean", "default": false },
+        "vat_eu_b2c_below_threshold": { "type": "boolean", "default": false },
         "prices_include_tax": {
           "type": "boolean",
           "default": false
@@ -6027,6 +6035,10 @@
           "require_two_eyes": { "type": "boolean" },
           "auto_email_enabled": { "type": "boolean" },
           "sale_thanks_enabled": { "type": "boolean" },
+          "sale_thanks_sender": { "type": "string", "enum": ["mailbox", "notifications"], "description": "Thank-you mail sender: the profile mailbox (default) or the org notifications sender." },
+          "reply_to_email": { "type": ["string", "null"] },
+          "vat_single_evidence": { "type": "boolean", "description": "Cross-border B2C digital services under EUR 100,000: one location proof suffices." },
+          "vat_eu_b2c_below_threshold": { "type": "boolean", "description": "Under EUR 10,000 EU-wide and not in the OSS: French VAT for EU consumers. Off when OSS-registered." },
           "mail_account_id": { "type": ["string", "null"], "description": "Mailbox invoices are sent from. Changing it needs invoicing:issuer:admin." },
           "timezone": { "type": "string", "description": "IANA time zone of this issuer's issue dates and number years, e.g. Europe/Paris. An unknown name is refused (issuer_timezone_invalid). UTC chosen on purpose is stored as Etc/UTC. Left unset, dates follow the organization's time zone, then UTC." },
           "email_templates": { "type": ["object", "null"], "additionalProperties": true },
@@ -6084,6 +6096,10 @@
           "require_two_eyes": { "type": "boolean" },
           "auto_email_enabled": { "type": "boolean" },
           "sale_thanks_enabled": { "type": "boolean" },
+          "sale_thanks_sender": { "type": "string", "enum": ["mailbox", "notifications"], "description": "Thank-you mail sender: the profile mailbox (default) or the org notifications sender." },
+          "reply_to_email": { "type": ["string", "null"] },
+          "vat_single_evidence": { "type": "boolean", "description": "Cross-border B2C digital services under EUR 100,000: one location proof suffices." },
+          "vat_eu_b2c_below_threshold": { "type": "boolean", "description": "Under EUR 10,000 EU-wide and not in the OSS: French VAT for EU consumers. Off when OSS-registered." },
           "mail_account_id": { "type": ["string", "null"], "description": "Mailbox invoices are sent from. Changing it needs invoicing:issuer:admin." },
           "timezone": { "type": "string", "description": "IANA time zone of this issuer's issue dates and number years, e.g. Europe/Paris. An unknown name is refused (issuer_timezone_invalid). UTC chosen on purpose is stored as Etc/UTC. Left unset, dates follow the organization's time zone, then UTC." },
           "email_templates": { "type": ["object", "null"], "additionalProperties": true },
@@ -7564,6 +7580,10 @@
     {
       "target": "mail:composeForApp",
       "reason": "auto-flow email of issued document PDFs to counterparties"
+    },
+    {
+      "target": "kernel:notifications_email_send",
+      "reason": "the thank-you mail of a sale, for an issuer profile that sends it through the organization's notifications sender instead of a mailbox"
     },
     {
       "target": "mail:compose",

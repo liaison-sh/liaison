@@ -319,6 +319,7 @@ import {
   RUN_ON_MY_COMPUTER_DESCRIPTION,
   summarizeRunOnMyComputer,
 } from "~/modules/nodes/run-on-my-computer"
+import { registerNotificationsEmailTool } from "~/modules/org/notifications-mail-tool"
 import { registerPortalTools } from "~/modules/portal/tools"
 import { agentCreateOpensNewConversation } from "~/modules/threads/thread"
 import { handleSetAwayTool, setAwayRefusal } from "~/modules/users/away"
@@ -3907,6 +3908,8 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
 
   // Liaison bug reports, the web form's twin for agents and MCP clients.
   registerReportBugTool(orgId)
+  // An app's customer mail through the org's transactional sender (internal, app callers only).
+  registerNotificationsEmailTool(orgId)
 
   // Secrets are asked for through a form card, never passed as parameters.
   registerSecretRequestTool(orgId)

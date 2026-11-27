@@ -40,6 +40,63 @@ describe("createApiClient", () => {
     }
   })
 
+  // N4: a walk through settings pages ran into the per-user request limit;
+  // identical reads in flight together now cost one request.
+  describe("identical reads in flight together", () => {
+    const ok = (data: unknown) =>
+      new Response(JSON.stringify({ data }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+
+    it("share one request, and each caller gets its own copy", async () => {
+      fetchMock.mockResolvedValueOnce(ok({ name: "Acme", tags: ["a"] }))
+      const [a, b, c] = await Promise.all([
+        client.get<{ name: string; tags: string[] }>("/org"),
+        client.get<{ name: string; tags: string[] }>("/org"),
+        client.get<{ name: string; tags: string[] }>("/org"),
+      ])
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(b).toEqual({ name: "Acme", tags: ["a"] })
+      b.tags.push("changed")
+      expect(a.tags).toEqual(["a"])
+      expect(c.tags).toEqual(["a"])
+    })
+
+    it("go out again once the first one answered", async () => {
+      fetchMock.mockResolvedValueOnce(ok(1)).mockResolvedValueOnce(ok(2))
+      expect(await client.get("/org")).toBe(1)
+      expect(await client.get("/org")).toBe(2)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    it("are not shared across paths, a caller's own signal, or a person's Try again", async () => {
+      fetchMock.mockImplementation(() => Promise.resolve(ok(null)))
+      await Promise.all([
+        client.get("/org"),
+        client.get("/admin/users"),
+        client.get("/org", { signal: new AbortController().signal }),
+        client.get("/org", { userInitiated: true }),
+        client.get("/org", { suppressGlobalError: true }),
+      ])
+      expect(fetchMock).toHaveBeenCalledTimes(5)
+    })
+
+    it("share a failure too, and the next read asks again", async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ error: { message: "boom" } }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          }),
+        )
+        .mockResolvedValueOnce(ok("fine"))
+      const results = await Promise.allSettled([client.get("/org"), client.get("/org")])
+      expect(results.map((r) => r.status)).toEqual(["rejected", "rejected"])
+      expect(await client.get("/org")).toBe("fine")
+    })
+  })
+
   it("unwraps success envelope", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ data: { id: "1", name: "Alex" } }), {

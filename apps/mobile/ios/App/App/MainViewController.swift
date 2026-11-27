@@ -10,6 +10,58 @@ class MainViewController: CAPBridgeViewController {
         super.capacitorDidLoad()
         bridge?.registerPluginInstance(LiaisonNativePlugin())
         answerTheMainFrameOnly()
+        paintBehindThePage()
+        watchPageLoads()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        publishWindowControlsInset()
+    }
+
+    // MARK: iPadOS windows
+
+    /// Whatever shows around the page (a windowed iPad's top inset, a bounce)
+    /// is the system background, light or dark with the device, never the
+    /// default black: a resized iPad window drew a solid black band above the
+    /// app's light header.
+    private func paintBehindThePage() {
+        view.backgroundColor = .systemBackground
+        webView?.backgroundColor = .systemBackground
+        webView?.scrollView.backgroundColor = .systemBackground
+        webView?.underPageBackgroundColor = .systemBackground
+    }
+
+    /// The height the iPadOS window controls (close, minimise, resize) take
+    /// below the top safe area, in points; 0 everywhere else.
+    private var publishedControlsTop: CGFloat = -1
+    private var loadingObservation: NSKeyValueObservation?
+
+    /// A windowed iPad app (iPadOS 26) has its window controls drawn over its
+    /// top leading corner, and the safe area does not include them: the back
+    /// control and the title sat under them. UIKit reports the room they need
+    /// as the safe area adapted to the corner; the difference with the plain
+    /// safe area goes to the page as `--window-controls-top`, which the shell
+    /// adds to its top inset (apps/web/src/modules/shell/Shell.tsx).
+    private func publishWindowControlsInset(force: Bool = false) {
+        var top: CGFloat = 0
+        if #available(iOS 26.0, *) {
+            let adapted = view.edgeInsets(for: .safeArea(cornerAdaptation: .vertical))
+            top = max(0, adapted.top - view.safeAreaInsets.top)
+        }
+        if !force && top == publishedControlsTop { return }
+        publishedControlsTop = top
+        let script = "document.documentElement.style.setProperty('--window-controls-top','\(Int(top.rounded()))px')"
+        webView?.evaluateJavaScript(script, completionHandler: nil)
+    }
+
+    /// A reload (a server switch restarts the page) starts from a fresh
+    /// document, so the inset is published again once each load finishes.
+    private func watchPageLoads() {
+        loadingObservation = webView?.observe(\.isLoading, options: [.new]) { [weak self] webView, _ in
+            guard !webView.isLoading else { return }
+            DispatchQueue.main.async { self?.publishWindowControlsInset(force: true) }
+        }
     }
 
     /// WKWebView offers a script message handler to every frame of the page,

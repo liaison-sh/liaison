@@ -62,6 +62,19 @@ export const Sidebar: Component<SidebarProps> = (props) => {
       return key
     }, null)
   }
+  // The tablet drawer closes on a navigation INSIDE the tab it shows (a
+  // settings section picked in it used to leave it open over the page). A
+  // change of tab is the rail swapping the drawer's content, and keeps it.
+  if (local.tier === "tablet") {
+    const location = useLocation()
+    createEffect<{ tab: string; path: string } | null>((previous) => {
+      const next = { tab: tabStore.activeTabId ?? "", path: location.pathname }
+      if (previous && previous.tab === next.tab && previous.path !== next.path) {
+        closeTabletSidebar()
+      }
+      return next
+    }, null)
+  }
 
   // Don't render the <aside> at all when the active tab declares no sidebar
   // — pairs with Shell's grid-template-columns 0px so the layout reclaims the

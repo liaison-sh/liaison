@@ -900,14 +900,14 @@ blockquote.md-callout[data-callout="caution"] {
  *
  * So the floor is the tier's, not each field's, exactly like the touch density
  * above: a field added anywhere inherits it, and nothing can reintroduce the
- * zoom by styling one control. 639px is the phone tier's own breakpoint
- * (modules/shell/Shell.tsx), so the desktop and tablet densities are
+ * zoom by styling one control. The query is the phone tier's own, a phone in
+ * landscape included (modules/shell/shell-tier.ts), so the desktop and tablet densities are
  * untouched. `:root` is only there to outrank a single utility class.
  *
  * The composer's placeholder is not a field and cannot be focused, but it must
  * read at the same size as the text it stands in for, so it opts in by name.
  */
-@media (max-width: 639px) {
+@media (max-width: 639px), (max-height: 499px) and (pointer: coarse) {
   :root
     :is(
       input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),

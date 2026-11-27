@@ -27,7 +27,14 @@ export const TABLET_DRAWER_WIDTH = "min(320px, 100%)"
 
 export const DESKTOP_QUERY = "(min-width: 1024px)"
 export const TABLET_QUERY = "(min-width: 640px) and (max-width: 1023px)"
-export const PHONE_QUERY = "(max-width: 639px)"
+// A PHONE IS A PHONE IN LANDSCAPE TOO. Turned on its side, a large phone is
+// 932-956 points wide, which the width alone read as a tablet or a desktop:
+// the side rail and a tab strip of every screen opened on the phone, over a
+// viewport 430 points tall. So a touch screen that short is the phone tier
+// whatever its width. The shortest tablet in landscape is well over 700
+// points tall, and a desktop window has a fine pointer.
+export const PHONE_LANDSCAPE_QUERY = "(max-height: 499px) and (pointer: coarse)"
+export const PHONE_QUERY = `(max-width: 639px), ${PHONE_LANDSCAPE_QUERY}`
 
 export const SHELL_TIER_QUERIES = [DESKTOP_QUERY, TABLET_QUERY, PHONE_QUERY]
 

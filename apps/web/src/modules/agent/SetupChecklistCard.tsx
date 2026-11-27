@@ -10,6 +10,11 @@
  * team") with a Start arrow when the conversation can take it, each done step
  * muted and struck through behind a tick. No empty box or circle anybody would
  * try to tick, and no alarm colour.
+ *
+ * The company brief comes before the team: while the brief is still open, the
+ * team step says why it waits (colleagues arrive in a workspace whose agent
+ * already knows the company) and its button reads "Invite now anyway", so
+ * inviting first is always one press away, never blocked.
  */
 import { ArrowRight, Check } from "lucide-solid"
 import { type Component, createMemo, For, Show } from "solid-js"
@@ -104,6 +109,9 @@ export const SetupChecklistCard: Component<{
     return numbers
   })
   const label = (key: string) => i18n.t(`first-run.checklist.action.${key}`)
+  // The team step while the company brief is still open: it says why it waits.
+  const teamBeforeBrief = (key: string) =>
+    key === "team" && props.state.items.some((i) => i.key === "knowledge" && !i.done)
   return (
     <div
       data-testid="setup-checklist"
@@ -162,17 +170,31 @@ export const SetupChecklistCard: Component<{
                     {i18n.t("first-run.checklist.optional")}
                   </span>
                 </Show>
+                <Show when={!item.done && teamBeforeBrief(item.key)}>
+                  <span
+                    data-testid="setup-item-team-after-brief"
+                    class="block text-[11.5px] text-text-tertiary"
+                  >
+                    {i18n.t("first-run.checklist.teamAfterBrief")}
+                  </span>
+                </Show>
               </span>
               <Show when={!item.done && props.onStart}>
                 <button
                   type="button"
                   data-testid={`setup-item-start-${item.key}`}
                   disabled={props.starting}
-                  aria-label={i18n.t("first-run.checklist.startLabel", { step: label(item.key) })}
+                  aria-label={
+                    teamBeforeBrief(item.key)
+                      ? i18n.t("first-run.checklist.inviteNowLabel")
+                      : i18n.t("first-run.checklist.startLabel", { step: label(item.key) })
+                  }
                   onClick={() => props.onStart?.(label(item.key))}
                   class="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] text-accent hover:bg-surface-hover disabled:opacity-50"
                 >
-                  {i18n.t("first-run.checklist.start")}
+                  {teamBeforeBrief(item.key)
+                    ? i18n.t("first-run.checklist.inviteNow")
+                    : i18n.t("first-run.checklist.start")}
                   <ArrowRight size={12} />
                 </button>
               </Show>

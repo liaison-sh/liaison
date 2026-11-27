@@ -50,6 +50,49 @@ describe("SetupChecklistCard", () => {
     expect(onStart).toHaveBeenCalledWith("Turn on the apps you need")
   })
 
+  it("the team step waits for the company brief and says why, with an invite-now-anyway path", () => {
+    const onStart = vi.fn()
+    const state: SetupStateView = {
+      items: [
+        { key: "knowledge", done: false, optional: false },
+        { key: "team", done: false, optional: false },
+        { key: "mail", done: false, optional: false },
+      ],
+      next: "knowledge",
+    }
+    render(() => <SetupChecklistCard state={state} onStart={onStart} />)
+    expect(screen.getByTestId("setup-item-number-knowledge").textContent).toBe("1.")
+    expect(screen.getByTestId("setup-item-number-team").textContent).toBe("2.")
+    expect(screen.getByTestId("setup-item-knowledge").textContent).toContain(
+      "Tell your agent about your company",
+    )
+    expect(screen.getByTestId("setup-item-team-after-brief").textContent).toContain(
+      "already knows the company",
+    )
+    const invite = screen.getByTestId("setup-item-start-team")
+    expect(invite.textContent).toContain("Invite now anyway")
+    expect(screen.getByTestId("setup-item-start-knowledge").textContent).toContain("Start")
+    // Never blocked: the press posts the invite step like any other.
+    fireEvent.click(invite)
+    expect(onStart).toHaveBeenCalledWith("Invite your team")
+  })
+
+  it("once the brief is done, the team step is a plain step again", () => {
+    render(() => (
+      <SetupChecklistCard
+        state={{
+          items: [
+            { key: "knowledge", done: true, optional: false },
+            { key: "team", done: false, optional: false },
+          ],
+        }}
+        onStart={vi.fn()}
+      />
+    ))
+    expect(screen.queryByTestId("setup-item-team-after-brief")).toBeNull()
+    expect(screen.getByTestId("setup-item-start-team").textContent).not.toContain("anyway")
+  })
+
   it("speaks French", () => {
     render(() => (
       <I18nProvider initialLocale="fr">
@@ -61,6 +104,31 @@ describe("SetupChecklistCard", () => {
     )
     expect(screen.getByTestId("setup-item-import").textContent).toContain("facultatif")
     expect(screen.getByTestId("setup-checklist-progress").textContent).toBe("1 sur 3 faites")
+  })
+
+  it("says why the team waits for the brief, in French too", () => {
+    render(() => (
+      <I18nProvider initialLocale="fr">
+        <SetupChecklistCard
+          state={{
+            items: [
+              { key: "knowledge", done: false, optional: false },
+              { key: "team", done: false, optional: false },
+            ],
+          }}
+          onStart={vi.fn()}
+        />
+      </I18nProvider>
+    ))
+    expect(screen.getByTestId("setup-item-knowledge").textContent).toContain(
+      "Présentez votre entreprise à votre agent",
+    )
+    expect(screen.getByTestId("setup-item-team-after-brief").textContent).toContain(
+      "connaît déjà l'entreprise",
+    )
+    expect(screen.getByTestId("setup-item-start-team").textContent).toContain(
+      "Inviter maintenant quand même",
+    )
   })
 })
 

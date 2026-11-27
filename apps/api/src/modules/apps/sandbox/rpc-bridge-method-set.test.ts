@@ -55,6 +55,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["calendar_getAccount", "async"],
   ["calendar_getCalendar", "async"],
   ["calendar_getEvent", "async"],
+  ["calendar_getEventForCaller", "async"],
   ["calendar_grantOrgAccess", "async"],
   ["calendar_handlePushConflict", "async"],
   ["calendar_handleWebhook", "async"],

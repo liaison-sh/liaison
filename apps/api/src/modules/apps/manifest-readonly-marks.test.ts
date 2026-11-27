@@ -116,6 +116,7 @@ const READ_ONLY: Record<string, string[]> = {
     "list_calendars",
     "list_events",
     "search_events",
+    "find_free_slots", // synced-event reads plus a Google freebusy.query, writes nothing
     "list_accounts",
     "activity_read", // a timeline read the kernel makes, in a read-only savepoint
   ],

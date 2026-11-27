@@ -160,6 +160,8 @@ function descriptor(name: string): Record<string, unknown> {
     roles: m.roles,
     schema: m.schema,
     events: m.events,
+    // A contract subscription needs the app's contract calls (provider-contracts/validate.ts).
+    contract_calls: m.contract_calls,
   }
 }
 

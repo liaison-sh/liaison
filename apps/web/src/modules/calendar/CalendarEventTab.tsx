@@ -294,8 +294,10 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
               />
               {i18n.t("calendar.allDay")}
             </label>
-            <div class="flex gap-2">
-              <label class="flex min-w-0 flex-1 flex-col gap-1">
+            {/* Side by side when there is room; stacked on a phone, where a date and a time
+                did not fit in half a 390 px row. */}
+            <div class="flex flex-wrap gap-2">
+              <label class="flex min-w-[12rem] flex-1 flex-col gap-1">
                 <span class="text-xs font-medium text-text-secondary">
                   {i18n.t("calendar.start")}
                 </span>
@@ -320,7 +322,7 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
                   />
                 </Show>
               </label>
-              <label class="flex min-w-0 flex-1 flex-col gap-1">
+              <label class="flex min-w-[12rem] flex-1 flex-col gap-1">
                 <span class="text-xs font-medium text-text-secondary">
                   {i18n.t("calendar.end")}
                 </span>

@@ -10,7 +10,7 @@
 // or stored twice and nothing is skipped. A second run racing this one loses the
 // swap and stops.
 //
-// QUIET. The import emits no typed event: invoices and charges already in Stripe
+// QUIET. The import emits no typed event (an open dispute is said, see disputes-due.ts): invoices and charges already in Stripe
 // are history, not news. An invoice finalized before the connection is kept with
 // `issuer = 'before_connection'`, so it never becomes a Liaison invoice.
 //
@@ -27,6 +27,7 @@
 // from importing to connected, and the deliveries whose events were held during
 // the import are played again through the same dispatch (states.ts).
 import { handleStripeEvent, type IngestCtx } from "../dispatch"
+import { emitDisputeResponseState } from "../disputes-due"
 import { StripeApiError, stripeFetch } from "../http"
 import { newTally, writeMirror } from "../mirror"
 import { blockedOverlay, HELD, type Install, moveState, readInstall } from "../states"
@@ -177,7 +178,10 @@ async function writePage(
         row.issuer = "before_connection"
       }
     }
-    await writeMirror(ctx.db, res.entity, row, started)
+    const written = await writeMirror(ctx.db, res.entity, row, started)
+    // An open chargeback is not history: the people who can answer it are told (disputes-due.ts).
+    if (res.entity === "stripe_disputes" && written !== "stale")
+      await emitDisputeResponseState(ctx, row, new Date(), { onlyOpen: true })
     n++
   }
   if (tally.cards > 0) {

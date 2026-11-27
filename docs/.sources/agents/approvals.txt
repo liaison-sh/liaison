@@ -252,3 +252,5 @@ Home row approve of a sequence carries each later step's fingerprint -> apps/api
 The row sends them with the approve -> apps/web/src/modules/shell/AttentionRow.tsx:543
 Actions that ask first for some requests (conditionalGate: credit note, quote, purchase order, org knowledge document) keep their own deciding scope after reading scoped data -> apps/api/src/modules/approvals/authority.ts:113 ; apps/api/src/modules/apps/execute-tool.ts:5739
 A custom app's write that stays in the app: card line only when an app scope holder lacks the taint -> apps/api/src/modules/apps/execute-tool.ts (taintCardAppReaders) ; apps/api/src/modules/apps/runtime.ts (customAppWritesStayInApp) ; apps/api/src/modules/approvals/edit.ts
+approvals_list names requests others decide that the reader could have made -> apps/api/src/modules/approvals/waiting-on-others.ts (listWaitingOnOthers, mayKnowOf) ; apps/api/src/modules/agent/tools/admin-tools.ts (handleApprovalsList)
+reference, title, age, deadline, deciders, never content; owner-routed stays private -> apps/api/src/modules/approvals/waiting-on-others.ts (WaitingOnOthers, isOwnerRouted)

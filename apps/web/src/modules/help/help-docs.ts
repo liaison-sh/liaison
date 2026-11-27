@@ -75,6 +75,20 @@ export function helpTargetOf(href: string): HelpTarget | null {
   return { url: path.slice(HELP_ROUTE.length).replace(/^\/+|\/+$/g, ""), hash }
 }
 
+/**
+ * Is this link on the product's own website (its docs, demo or signup pages)?
+ * The iOS app opens none of them: the site sells workspaces (guideline 3.1.1).
+ */
+export function isProductSiteUrl(href: string): boolean {
+  try {
+    const site = new URL(HELP_DOCS_SITE).hostname
+    const host = new URL(href).hostname
+    return host === site || host.endsWith(`.${site}`)
+  } catch {
+    return false
+  }
+}
+
 /** The same page on the published site, for "Open in browser". */
 export function helpSiteUrl(target: HelpTarget): string {
   return `${HELP_DOCS_SITE}${target.url ? `${target.url}/` : ""}${target.hash ? `#${target.hash}` : ""}`

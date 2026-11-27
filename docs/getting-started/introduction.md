@@ -47,7 +47,7 @@ Click **Help** (**?**) at the bottom of the left bar to open these docs in a tab
 
 - To find a page, type in **Search the docs**. Search looks at every page's title, headings and text, with or without accents, and lists the matching pages and headings.
 - A link to another page opens it in the same tab. A link to another site opens in your browser.
-- **Open in browser** opens the page you are reading on liaison.sh.
+- **Open in browser** opens the page you are reading on liaison.sh. The iPhone app has no **Open in browser**, and links to liaison.sh do not open there.
 
 On the demo, **Help** opens a menu: **Documentation** opens these docs, and the guided tours are under **Show me how** (see [Follow a guided tour](demo.md#follow-a-guided-tour)).
 

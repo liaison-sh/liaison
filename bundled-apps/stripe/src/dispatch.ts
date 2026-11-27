@@ -32,6 +32,7 @@
 // `failed` and answers 500, so the kernel retries and Stripe redelivers; both
 // converge on the same ledger row and the same mirror row.
 import { decodeState, encodeState, transition } from "./connection"
+import { emitDisputeResponseState } from "./disputes-due"
 import { StripeApiError, type StripeHttpCtx, stripeFetch } from "./http"
 import {
   at,
@@ -566,6 +567,8 @@ export async function handleStripeEvent(
       })
     }
     for (const e of money) await ctx.emit(e)
+    // Every dispute event says whether it still needs a response (disputes-due.ts).
+    if (route === DISPUTE && fresh) await emitDisputeResponseState(ctx, mirrorRow, now())
 
     // The connection: the first verified event moves it on and names the event.
     const nowIso = now().toISOString()

@@ -4,3 +4,8 @@ Disputes section on customer page -> bundled-apps/stripe/src/ui/CustomerDetail.t
 disputes_list read only, answer in Stripe -> bundled-apps/stripe/app.manifest.json (tools.disputes_list)
 charge_disputed refusal -> bundled-apps/stripe/src/tools/refunds.ts (refusalFor)
 disputes_list is a taint source -> bundled-apps/stripe/app.manifest.json (outsideTextFields)
+Home line for an open dispute, holders of stripe:refunds:write -> bundled-apps/stripe/app.manifest.json (attention.translations dispute:response_state)
+amount, customer, due date on the line -> bundled-apps/stripe/src/disputes-due.ts (disputeResponseState)
+comes back each morning while it waits -> bundled-apps/stripe/app.manifest.json (jobs.disputes-due) ; bundled-apps/stripe/src/disputes-due.ts (runDisputesDue)
+overdue moves up, never urgent -> bundled-apps/stripe/app.manifest.json (attention.translations urgency 80, isUrgent false)
+clears when answered, won, lost or closed -> bundled-apps/stripe/app.manifest.json (attention.translations resolveWhen needs_response false)

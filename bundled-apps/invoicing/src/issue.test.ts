@@ -236,6 +236,64 @@ describe("issueDocument (D7)", () => {
     expect(doc.grand_total_minor).toBe("12000")
   })
 
+  test("a sale date: stored and printed when it differs from the issue date, never otherwise", async () => {
+    const issueWith = async (type: "invoice" | "credit_note", supply_date: string) => {
+      const { ctx, db, state } = makeCtx()
+      await issueDocument(ctx, {
+        type,
+        operation_category: "goods",
+        issuer: { ...issuerFR, prefix_credit_note: "CN-" },
+        counterparty: counterpartyFR,
+        draft: { ...baseDraft(), source: { supply_date } },
+      })
+      const render = state.renderCalls[0] as { data?: { document?: Record<string, unknown> } }
+      return {
+        stored: db.__all("documents")[0]?.supply_date ?? null,
+        printed: render?.data?.document?.supply_date ?? null,
+      }
+    }
+    expect(await issueWith("invoice", "2026-05-02")).toEqual({
+      stored: "2026-05-02",
+      printed: "2026-05-02",
+    })
+    expect(await issueWith("invoice", "2026-05-15")).toEqual({ stored: null, printed: null })
+    expect((await issueWith("credit_note", "2026-05-02")).stored).toBeNull()
+  })
+
+  test("a malformed sale date refuses before any number is taken", async () => {
+    const { ctx, db } = makeCtx()
+    await expect(
+      issueDocument(ctx, {
+        type: "invoice",
+        operation_category: "goods",
+        issuer: issuerFR,
+        counterparty: counterpartyFR,
+        draft: { ...baseDraft(), source: { supply_date: "21/11/2026" } },
+      }),
+    ).rejects.toThrow(/supply_date/)
+    expect(db.__all("documents")).toHaveLength(0)
+  })
+
+  test("the place of supply and its evidence stay on the document", async () => {
+    const { ctx, db } = makeCtx()
+    const place = {
+      country: "FR",
+      rule: "seller_establishment" as const,
+      evidence: { billing_country: "FR", ip_country: "FR" },
+      agreeing: ["billing_country" as const, "ip_country" as const],
+    }
+    await issueDocument(ctx, {
+      type: "invoice",
+      operation_category: "services",
+      issuer: issuerFR,
+      counterparty: counterpartyFR,
+      draft: baseDraft(),
+      place_of_supply: place,
+    })
+    const refs = db.__all("documents")[0]?.external_refs as Record<string, unknown>
+    expect(refs.place_of_supply).toEqual(place)
+  })
+
   test("Shopify order number — mirrored onto the indexed column AND passed to the PDF template", async () => {
     // red: drop the shopify_order_number mirror in issueDocument -> the column stays
     // null, so documents_search can no longer match the order name and the PDF

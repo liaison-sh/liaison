@@ -69,6 +69,8 @@ With a work address, **We set it up for you** comes first; with a personal one (
 
 When the demo instance points to a hosted edition (its operator sets `LIAISON_DEMO_REGISTER_URL`), **Create your workspace** comes first for everyone, at both moments: **Create my workspace** opens that edition's signup page, and the three options above become text links under it. The banner also shows **Create your workspace** once you have finished a scenario. The link carries where you came from and the subject of your last scenario (knowledge, support or projects), never your email address. **Send me occasional news about Liaison** at the bottom is the same choice as the box on the form, if you did not tick it.
 
+In the iPhone app the window keeps only **Continue now with your key**: it shows no **Create your workspace**, **We set it up for you**, **Install it yourself** or news offer, and the banner shows neither **Want this for your company?** nor **Create your workspace**.
+
 When you finish your last scenario, the same window opens in place of the scenario's end card: **Keep exploring** shows what is left of your budget, with a request to try, above the same three options.
 
 To run on your own key instead, add it in the **Add your own model key** prompt: pick a **Provider** (Anthropic, OpenAI, Google, Mistral or OpenRouter), paste the **API key** and click **Save key**. The key is stored encrypted on the demo instance and used only for your workspace.

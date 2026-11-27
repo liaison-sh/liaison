@@ -209,3 +209,5 @@ A page file over 1 MB is skipped and named -> apps/api/src/modules/imports/trans
 The report names up to 20,000 items, then counts -> apps/api/src/modules/imports/transform-run.ts:205
 Losses past the named cap are counted -> apps/api/src/modules/imports/runner.ts:248
 A private built-in import dedups per person, a shared one per organization -> apps/api/src/modules/imports/builtin/registry.ts:131
+Billing is not in the iPhone app -> apps/web/src/framework/bootstrap.ts:767
+iPhone app: payment notice without the Open Billing link -> apps/web/src/modules/threads/PaymentRequiredNotice.tsx:42

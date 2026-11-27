@@ -235,8 +235,6 @@ describe("French legal mentions (dated table, accented)", () => {
     ["eu_reverse_charge", "mixed", `${GOODS}. ${SERVICES}`],
     ["eu_reverse_charge", null, SERVICES],
     ["eu_export_non_eu", "goods", EXPORT],
-    ["eu_export_non_eu", "services", EXPORT],
-    ["eu_export_non_eu", "mixed", EXPORT],
     ["eu_export_non_eu", null, EXPORT],
     [
       "eu_b2c_oss",
@@ -249,6 +247,27 @@ describe("French legal mentions (dated table, accented)", () => {
   ])("fr %s / %p -> %p, before and after the switch", (treatment, category, expected) => {
     for (const issueDate of dates) {
       expect(resolveLegalMention(treatment, "fr", { category, issueDate })).toBe(expected)
+    }
+  })
+
+  test("services outside the EU: the export wording before 2026-11-28, the place of supply after", () => {
+    const OUTSIDE =
+      "TVA non applicable : lieu de la prestation de services situé hors de France (articles 259-1° et 259 D du CGI)"
+    for (const issueDate of ["2026-10-14", "2026-11-27"]) {
+      expect(
+        resolveLegalMention("eu_export_non_eu", "fr", { category: "services", issueDate }),
+      ).toBe(EXPORT)
+      expect(resolveLegalMention("eu_export_non_eu", "fr", { category: "mixed", issueDate })).toBe(
+        EXPORT,
+      )
+    }
+    for (const issueDate of ["2026-11-28", "2027-01-01", "2028-03-01"]) {
+      expect(
+        resolveLegalMention("eu_export_non_eu", "fr", { category: "services", issueDate }),
+      ).toBe(OUTSIDE)
+      expect(resolveLegalMention("eu_export_non_eu", "fr", { category: "mixed", issueDate })).toBe(
+        `${EXPORT}. ${OUTSIDE}`,
+      )
     }
   })
 

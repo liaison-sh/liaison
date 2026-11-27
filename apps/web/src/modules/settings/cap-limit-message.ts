@@ -9,7 +9,10 @@
 // In the managed edition the refusal names the plan: its limit and what it is
 // meant for (one sentence per plan per cap), then what the next plan gives and
 // the way out. Every number comes from the last billing push (`planFacts`).
+// The iOS app names no plan to move to and no Billing page (guideline 3.1.1):
+// it says the limit is reached and the way out that costs nothing.
 
+import { purchaseSurfacesHidden } from "~/lib/native-bridge"
 import type { Translate } from "~/modules/i18n/i18n-context"
 import { billingMode, type PlanFacts, planFacts } from "./BillingState"
 
@@ -49,10 +52,22 @@ function planRefusal(t: Translate, code: string, facts: PlanFacts): string | nul
   }`
 }
 
+/** The iOS app's managed refusals: the fact and the free way out, no plan to buy. */
+const NATIVE_KEY_OF_CODE: Record<string, string> = {
+  SEAT_LIMIT_REACHED: "cloud-limits.native.seatLimitReached",
+  STORAGE_QUOTA_EXCEEDED: "cloud-limits.native.storageLimitReached",
+  CUSTOM_APP_LIMIT_REACHED: "cloud-limits.native.customAppLimitReached",
+  AUDIT_DAYS_LIMIT_REACHED: "cloud-limits.caps.auditDaysLimitReached",
+}
+
 /** The localized refusal for a cap code, or null for any other code. */
 export function capLimitMessage(t: Translate, code: unknown): string | null {
   if (typeof code !== "string") return null
   if (billingMode() === "managed") {
+    if (purchaseSurfacesHidden()) {
+      const key = NATIVE_KEY_OF_CODE[code] ?? KEY_OF_CODE[code]
+      return key ? t(key) : null
+    }
     const facts = planFacts()
     const told = facts ? planRefusal(t, code, facts) : null
     if (told) return told

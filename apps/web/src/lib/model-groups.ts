@@ -9,6 +9,7 @@
 
 import { getReasoningCapability, REASONING_LEVELS, type ReasoningLevel } from "@liaison/shared"
 import { createSignal } from "solid-js"
+import { purchaseSurfacesHidden } from "~/lib/native-bridge"
 
 /** One entry of `GET /credits/models` (S6). `modelId` is the legacy alias of
  *  `key`, served for one release. */
@@ -218,6 +219,14 @@ export function modelReasoning(modelId: string | null): {
     allowedLevels: cap.allowedLevels,
     defaultLevel: cap.defaultLevel,
   }
+}
+
+/**
+ * Why a locked model picker cannot be changed, as an i18n key. On the web it
+ * says to upgrade; the iOS app states the fact only (guideline 3.1.1).
+ */
+export function modelLockedReasonKey(): string {
+  return purchaseSurfacesHidden() ? "kernel.modelSetByPlan" : "kernel.upgradeToChangeModel"
 }
 
 /**

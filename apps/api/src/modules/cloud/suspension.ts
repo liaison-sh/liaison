@@ -85,7 +85,7 @@ export class PaymentRequiredError extends Error {
   readonly status = 402
   readonly code = PAYMENT_REQUIRED_CODE
   constructor() {
-    super("Usage is paused until the open invoice is paid. An admin can pay it in Billing.")
+    super("Usage is paused until the open invoice is paid.")
     this.name = "PaymentRequiredError"
   }
 }

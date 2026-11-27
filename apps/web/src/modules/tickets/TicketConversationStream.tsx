@@ -44,6 +44,7 @@ import { presentMessageKind } from "~/modules/shell/message-kind"
 import { quotedHistoryLabels } from "~/modules/shell/quoted-history-labels"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { addToast } from "~/modules/shell/toast-store"
+import { localizeAgentName } from "~/modules/threads/agent-name"
 import { localizeKnownTicketNotes } from "~/modules/tickets/known-notes"
 import { TicketHtmlBody } from "~/modules/tickets/TicketHtmlBody"
 import {
@@ -163,7 +164,7 @@ export const TicketConversationStream: Component<Props> = (props) => {
       : /* A routine executes as its OWNER, so authorName would name
            whoever created it rather than the actor. */
         m.authorLabel ||
-        m.authorName ||
+        (m.authorName && localizeAgentName(m.authorName)) ||
         m.fromName ||
         m.fromEmail ||
         (m.kind === "note" ? i18n.t("tickets.internalNote") : i18n.t("tickets.support"))
@@ -678,7 +679,7 @@ export const TicketConversationStream: Component<Props> = (props) => {
                 <Show when={m.approverName && m.approverName !== m.authorName}>
                   <span data-testid={`tickets-message-approver-${m.id}`}>
                     {" "}
-                    {i18n.t("tickets.approvedBy")} {m.approverName})
+                    {i18n.t("tickets.approvedBy")} {localizeAgentName(m.approverName ?? "")})
                   </span>
                 </Show>
                 {/* The separator is rendered WITH the timestamp, never on its

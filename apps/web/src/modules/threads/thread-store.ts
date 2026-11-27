@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { isChatListThreadType, isStatusLine } from "@liaison/shared"
+import { ERASED_USER_DISPLAY_NAME, isChatListThreadType, isStatusLine } from "@liaison/shared"
 import { createSignal } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { subscribeResync } from "~/framework/resync"
@@ -1054,7 +1054,14 @@ export function threadDisplayName(
   if (thread.title) return thread.title
   const others = thread.participants.filter((p) => p.id !== currentUserId)
   if (others.length === 0) return tNow("kernel.threadsUi.justYou")
-  return others.map((p) => localizeAgentName(p.name).split(" ")[0]).join(", ")
+  // An erased person is named whole ("Deleted user"): its first word names nobody.
+  return others
+    .map((p) =>
+      p.name === ERASED_USER_DISPLAY_NAME
+        ? localizeAgentName(p.name)
+        : localizeAgentName(p.name).split(" ")[0],
+    )
+    .join(", ")
 }
 
 /**

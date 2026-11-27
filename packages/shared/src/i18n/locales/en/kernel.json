@@ -928,6 +928,7 @@
     "done": "Export downloaded."
   },
   "deactivated": "Deactivated",
+  "deletedUser": "Deleted user",
   "dictationErrors": {
     "demoKeyRequired": "Dictation on this demo instance runs on your own OpenRouter or Google key. Add one in Settings, AI models.",
     "empty": "No speech was recognised in the recording.",

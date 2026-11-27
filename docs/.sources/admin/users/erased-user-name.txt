@@ -1,0 +1,1 @@
+an erased person's messages, notes and comments are signed Deleted user -> apps/api/src/modules/erasure/erase-user.ts (eraseUser, ensureSentinelUser) ; packages/shared/src/users/erased-user-name.ts (ERASED_USER_DISPLAY_NAME) ; apps/web/src/modules/threads/agent-name.ts (localizeAgentNameWith) ; packages/shared/src/i18n/locales/en/kernel.json (deletedUser)

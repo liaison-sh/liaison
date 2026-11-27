@@ -928,6 +928,7 @@
     "done": "Exportation téléchargée."
   },
   "deactivated": "Désactivé",
+  "deletedUser": "Utilisateur supprimé",
   "dictationErrors": {
     "demoKeyRequired": "Sur cette instance de démonstration, la dictée utilise votre propre clé OpenRouter ou Google. Ajoutez-en une dans Paramètres, Modèles d'IA.",
     "empty": "Aucune parole n'a été reconnue dans l'enregistrement.",

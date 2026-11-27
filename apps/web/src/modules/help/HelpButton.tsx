@@ -11,6 +11,7 @@ import { BookOpen, ChevronRight, CircleHelp } from "lucide-solid"
 import { type Component, createSignal, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { demoMode } from "~/modules/shell/branding-store"
+import { openFromWork } from "~/modules/shell/open-from-work"
 import { ToursList, ToursMenuGroup } from "~/modules/tours/ToursMenu"
 import { tourStore } from "~/modules/tours/tour-store"
 import { OverlaySheet } from "~/ui/OverlaySheet"
@@ -106,7 +107,7 @@ export const HelpWorkRow: Component = () => {
         data-testid="work-row-help"
         onClick={() => {
           if (!demoMode()) {
-            openHelp(undefined, label())
+            openFromWork(i18n.t, () => openHelp(undefined, label()))
             return
           }
           setOpen(true)
@@ -131,7 +132,7 @@ export const HelpWorkRow: Component = () => {
             data-testid="help-sheet-docs"
             onClick={() => {
               setOpen(false)
-              openHelp(undefined, label())
+              openFromWork(i18n.t, () => openHelp(undefined, label()))
             }}
             class={rowClass}
           >

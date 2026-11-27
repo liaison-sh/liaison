@@ -66,6 +66,17 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
   /** Every enqueue dropped by the job id rule. */
   const deduped: HarnessJob[] = []
   const logs: HarnessLog[] = []
+  const accountIds: string[] = []
+  /** The accounts this harness connected, as a SQL list (a never-matching id before connect). */
+  const ownAccounts = () =>
+    drizzleSql.join(
+      (accountIds.length > 0 ? accountIds : ["00000000-0000-0000-0000-000000000000"]).map(
+        (id) => drizzleSql`${id}::uuid`,
+      ),
+      drizzleSql.raw(", "),
+    )
+  /** Runs after each Google answer, inside the job that made the call (a concurrent change). */
+  let afterFetch: ((url: string, method: string) => Promise<void>) | null = null
 
   function enqueueLocal(job: HarnessJob): void {
     if (job.jobId && (active.has(job.jobId) || queue.some((q) => q.jobId === job.jobId))) {
@@ -119,7 +130,14 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
       ...methods,
       getOrgId: () => orgId,
       getUserId: () => actor.userId,
-      fetch: google.fetch,
+      fetch: async (url: string, optsJson: string) => {
+        const res = await google.fetch(url, optsJson)
+        if (afterFetch) {
+          const method = (JSON.parse(optsJson || "{}") as { method?: string }).method ?? "GET"
+          await afterFetch(url, method)
+        }
+        return res
+      },
       connections_getToken: async () => "fake-access-token",
       ...verifyMethods,
       enqueueJob: async (jobName: string, payloadJson: string, optsJson?: string) => {
@@ -172,6 +190,11 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
 
   const harness = {
     google,
+    accountIds,
+    /** Sets (or clears) the hook run after each Google answer, inside the calling job. */
+    afterFetch(hook: ((url: string, method: string) => Promise<void>) | null): void {
+      afterFetch = hook
+    },
     queue,
     ran,
     deduped,
@@ -202,6 +225,7 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
       )
       const accountId = rows[0]?.id
       if (!accountId) throw new Error(`harness: no account row for ${email} after connect`)
+      accountIds.push(accountId)
       return accountId
     },
 
@@ -294,21 +318,24 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
       )
     },
 
-    /** The local calendar row for a Google calendar id. */
+    /** The local calendar row for a Google calendar id, on the accounts this harness connected
+     * (several harnesses may share an org, each with its own account). */
     async calendar(googleCalendarId: string): Promise<Record<string, unknown> | null> {
       const rows = await harness.sql<Record<string, unknown>>(
         drizzleSql`SELECT * FROM app_calendar.calendars
-                   WHERE org_id = ${orgId}::uuid AND google_calendar_id = ${googleCalendarId}`,
+                   WHERE org_id = ${orgId}::uuid AND google_calendar_id = ${googleCalendarId}
+                     AND account_id IN (${ownAccounts()})`,
       )
       return rows[0] ?? null
     },
 
-    /** Local event rows of one Google calendar (tombstones included), oldest first. */
-    async events(googleCalendarId: string): Promise<Array<Record<string, unknown>>> {
-      return harness.sql<Record<string, unknown>>(
+    /** Local event rows of one Google calendar (tombstones included), by Google id. */
+    async events<T = Record<string, unknown>>(googleCalendarId: string): Promise<T[]> {
+      return harness.sql<T>(
         drizzleSql`SELECT e.* FROM app_calendar.events e
                    JOIN app_calendar.calendars c ON c.id = e.calendar_id
                    WHERE e.org_id = ${orgId}::uuid AND c.google_calendar_id = ${googleCalendarId}
+                     AND c.account_id IN (${ownAccounts()})
                    ORDER BY e.google_event_id NULLS LAST, e.id`,
       )
     },

@@ -181,7 +181,7 @@ async function ownerOfPrimary(
       WHERE c.org_id = ${orgId}::uuid AND c.id = ${calendarId}::uuid AND a.disconnected_at IS NULL`),
   )
   const row = rows[0]
-  if (!row || row.owner_type !== "user" || !row.owner_id) return null
+  if (row?.owner_type !== "user" || !row.owner_id) return null
   return row.gid.toLowerCase() === row.email.toLowerCase() ? row.owner_id : null
 }
 

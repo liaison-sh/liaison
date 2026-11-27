@@ -251,7 +251,7 @@ function matches(match: RequestMatcher, req: FakeRequest): boolean {
 export interface FakeGoogleCalendarOptions {
   /** The connected account's address (organizer and creator of events written through the API). */
   accountEmail?: string
-  /** Start of the fake clock (`updated`, `created`, channel expirations). */
+  /** Start of the fake clock (`updated`, `created`, channel expirations); default: now. */
   now?: string
 }
 
@@ -273,7 +273,8 @@ export class FakeGoogleCalendar {
 
   constructor(opts: FakeGoogleCalendarOptions = {}) {
     this.accountEmail = opts.accountEmail ?? "owner@example.test"
-    this.clock = Date.parse(opts.now ?? "2026-10-15T08:00:00.000Z")
+    // Real time by default: Liaison compares Google's `updated` with its own row times.
+    this.clock = opts.now ? Date.parse(opts.now) : Date.now()
   }
 
   /** A fake holding the recorded calendar list and events (calendar-list.json, events-initial.json). */

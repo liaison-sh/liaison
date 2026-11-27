@@ -122,7 +122,7 @@ export const FindATime: Component<{
                     <li>
                       <button
                         type="button"
-                        class="rounded-sm border border-border px-2 py-1 text-xs hover:bg-bg-hover"
+                        class="rounded-sm border border-border px-2 py-1 text-xs hover:bg-[color-mix(in_srgb,var(--color-border)_40%,transparent)]"
                         data-testid="event-find-time-slot"
                         onClick={() =>
                           props.onPick({

@@ -1820,6 +1820,10 @@
       "one": "card number hidden",
       "other": "card numbers hidden"
     },
+    "needs_response": {
+      "one": "chargeback to answer",
+      "other": "chargebacks to answer"
+    },
     "problem": {
       "one": "connection problem",
       "other": "connection problems"

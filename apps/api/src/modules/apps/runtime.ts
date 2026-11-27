@@ -876,6 +876,22 @@ function customAppHasNoOutsideHost(desc: AppDescriptor): boolean {
   )
 }
 
+/** Capabilities that write nowhere but the app's own data. */
+const IN_APP_CAPABILITIES: ReadonlySet<string> = new Set(["sequences.allocate"])
+
+/**
+ * A custom app whose code can write only into its own data: no outside host
+ * (`customAppHasNoOutsideHost`) and no capability that posts, runs an agent,
+ * publishes, fetches in bulk or adds contacts.
+ */
+function customAppWritesStayInApp(desc: AppDescriptor): boolean {
+  const caps = ((desc as { capabilities?: unknown }).capabilities ?? []) as unknown[]
+  return (
+    customAppHasNoOutsideHost(desc) &&
+    caps.every((c) => typeof c === "string" && IN_APP_CAPABILITIES.has(c))
+  )
+}
+
 /** How `registerApps` treats the org's persistent rows. */
 export interface RegisterAppsOptions {
   /**
@@ -3319,6 +3335,21 @@ async function registerSingleApp(
             ) {
               entry.readOnly = true
               entry.readOnlyEnforced = true
+            }
+            // A CUSTOM APP's write that can land only in the app's own data (rule 8e): its
+            // card's "approving shares it" line is judged against everyone who holds any of
+            // the app's scopes. The write itself parks as before.
+            if (
+              entry.readOnly !== true &&
+              entry.writesToTable === undefined &&
+              isCustomAppName(desc.name) &&
+              customAppWritesStayInApp(desc)
+            ) {
+              const own = ((desc as { scopes?: unknown }).scopes ?? []) as unknown[]
+              const scopes = own.filter(
+                (s): s is string => typeof s === "string" && s.startsWith(`${desc.name}:`),
+              )
+              if (scopes.length > 0) entry.taintCardAppReaders = scopes
             }
             // The sink's reader scope (scope-taint.ts, consequence 4). It turns a refusal into
             // an audience judgement, so it is a claim about who reads the table and is vouched

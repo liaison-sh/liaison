@@ -337,6 +337,58 @@ export async function readAppLogs(tx: RlsClient, input: ReadAppLogsInput): Promi
   return rows.map(toEntry)
 }
 
+export interface HiddenAppLogs {
+  /** Lines of the same query the reader's scopes do not show. */
+  lines: number
+  /** The scope tags of those lines the reader does not hold: holding them shows the lines. */
+  scopes: string[]
+}
+
+/**
+ * How many of an app's lines (`input` without its limit) the reader does not
+ * see because their run read something the reader's scopes do not cover, and
+ * which scopes would show them. Only counts and scope names come out, never a
+ * line. `tx` is the reader's RLS transaction (it decides which tags are held,
+ * by the same rule as the row policy); the count runs as the system, scoped to
+ * `orgId` and the app's lines (never a draft's).
+ */
+export async function hiddenAppLogs(
+  tx: RlsClient,
+  orgId: string,
+  input: Omit<ReadAppLogsInput, "draftId" | "limit"> & { app: string },
+): Promise<HiddenAppLogs> {
+  const where: SQL[] = [
+    eq(appLogs.orgId, orgId),
+    eq(appLogs.app, input.app),
+    sql`${appLogs.draftId} IS NULL`,
+    sql`cardinality(${appLogs.scopeTags}) > 0`,
+  ]
+  if (input.since) where.push(gte(appLogs.at, input.since))
+  if (input.runId) where.push(eq(appLogs.runId, input.runId))
+  if (input.level) where.push(inArray(appLogs.level, LEVELS.slice(LEVELS.indexOf(input.level))))
+  const groups = await withSystemDb("app-logs-hidden-count", (db) =>
+    db
+      .select({ tags: appLogs.scopeTags, n: sql<number>`count(*)::int` })
+      .from(appLogs)
+      .where(and(...where))
+      .groupBy(appLogs.scopeTags),
+  )
+  const tags = [...new Set(groups.flatMap((g) => g.tags))].sort()
+  if (tags.length === 0) return { lines: 0, scopes: [] }
+  const held = extractRows<{ tag: string; held: boolean }>(
+    await tx.execute(
+      sql`SELECT t.tag, kernel.stamp_scope_held(t.tag) AS held FROM unnest(ARRAY[${sql.join(
+        tags.map((t) => sql`${t}`),
+        sql`, `,
+      )}]::text[]) AS t(tag)`,
+    ),
+  )
+  const missing = new Set(held.filter((r) => !r.held).map((r) => r.tag))
+  let lines = 0
+  for (const g of groups) if (g.tags.some((t) => missing.has(t))) lines += g.n
+  return { lines, scopes: [...missing].sort() }
+}
+
 const PRUNE_BATCH = 5_000
 
 /**

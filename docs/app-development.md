@@ -903,7 +903,9 @@ before; its name cannot carry an organization key. The rules:
   at 4 KiB and its fields at 8 KiB. Lines are kept 7 days, and at most 10,000
   per app. A line is shown only to a reader whose permissions cover what its
   run had read, and the lines of an app builder preview only to the person who
-  ran it. The route still answers an admin while the app is off.
+  ran it. `meta.hidden` (`lines`, `scopes`) counts the lines of the same query
+  the reader does not see and names the scopes that would show them, never
+  their text. The route still answers an admin while the app is off.
 
 **Admin UI** (the primary path): Settings -> Apps -> "Install app...". Enter the
 URL, click Preflight, review the requested scopes (each is a checkbox you can

@@ -4829,7 +4829,16 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           // A shared resource's readers (rule 6j) hold everything but what some of them lack:
           // the approval demands, and its card names, only that.
           taintForcedApprovalScopes = resourceReadersMissing ?? [...new Set(knownTaint)].sort()
-          taintDisclosedToReaders = true
+          // A custom app's write that stays in the app (rule 8e): the card says approving
+          // shares the data only when some holder of the app's scopes lacks what the turn read.
+          // A write back into the data's own app, read by the same people, shares nothing.
+          taintDisclosedToReaders =
+            taintTool.taintCardAppReaders === undefined ||
+            (await readersTaintGap({
+              orgId: opts.orgId,
+              readerScopes: taintTool.taintCardAppReaders,
+              taintScopes: knownTaint,
+            })) !== null
         } else {
           audience = roomGap.audience
           gap = roomGap

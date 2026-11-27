@@ -27,6 +27,7 @@
 //      another server, or an unknown (legacy) source keeps the hold.
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
+import { createHash } from "node:crypto"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -611,6 +612,80 @@ describe("scope taint: one audience rule, judged by who can read what the write 
         expect(await seenBy(LACKER, LACKER_SCOPES, id)).toBe(1)
       } finally {
         await grant(REQUESTER, ["tickets:approve"])
+      }
+    })
+  })
+
+  describe("a custom app's write back into its own data (rule 8e)", () => {
+    const APP = `loans-o${createHash("sha256").update(ORG).digest("hex").slice(0, 8)}`
+    const READ = `${APP}:loans:read`
+    const WRITE = `${APP}:loans:write`
+    const appActor: UserContext = { ...actor, scopes: [...REQUESTER_EFFECTIVE_SCOPE, READ, WRITE] }
+    /** A scope the requester holds and the app's other reader does not. */
+    const OTHER = REQUESTER_TAINT_PROJECTION[0] ?? ""
+
+    beforeAll(async () => {
+      const bundlePath = join(bundleDir, "loans-bundle.js")
+      writeFileSync(bundlePath, `async function addLoan() { return { ${DRAFT_RAN}: true } }\n`)
+      await registerApps(
+        [
+          {
+            name: APP,
+            version: "0.1.0",
+            _format: "manifest",
+            _bundlePath: bundlePath,
+            trusted: false,
+            _installed: true,
+            scopes: [READ, WRITE],
+            store: { collections: { loans: { readScope: READ } } },
+            tools: {
+              loans_add: { description: "Add a loan", requiredScopes: [WRITE], handler: "addLoan" },
+            },
+          } as never,
+        ],
+        ORG,
+      )
+      await grant(REQUESTER, [READ, WRITE])
+    }, 120_000)
+
+    afterAll(async () => {
+      await sql`DELETE FROM kernel.user_scope_grants WHERE org_id = ${ORG} AND scope LIKE ${`${APP}:%`}`
+      await sql.unsafe(`DROP SCHEMA IF EXISTS "app_${APP.replace(/-/g, "_")}" CASCADE`)
+      await sql`DELETE FROM kernel.apps WHERE name = ${APP}`
+    })
+
+    async function parkedNote(taint: string[]): Promise<string> {
+      await sql`DELETE FROM kernel.approval_requests WHERE org_id = ${ORG}`
+      const r = await call(turnFrame(taint), `${APP}__loans_add`, {}, appActor)
+      expect({ refused: refused(r), r }).toEqual({ refused: false, r })
+      // Still parked: a custom app's write target has no derived readers.
+      expect(r.blocked).toBe(true)
+      expect(JSON.stringify(r)).not.toContain(DRAFT_RAN)
+      const [row] = (await sql`SELECT summary FROM kernel.approval_requests
+        WHERE id = ${r.approvalRequestId as string}`) as Array<{ summary: { lines: string[] } }>
+      return (row?.summary.lines ?? []).join("\n")
+    }
+
+    it("the turn read only the app's own data, and its readers hold it: the card does not say it shares anything", async () => {
+      // Another person reads the app's data and holds what the turn read.
+      await grant(LACKER, [READ])
+      try {
+        const note = await parkedNote([READ])
+        expect(note).not.toContain("approving shares it with them")
+        expect(note).not.toContain("Drafted after reading")
+      } finally {
+        await revokeAll(LACKER)
+      }
+    })
+
+    it("the turn also read another app's data a reader of this app lacks: the card still warns", async () => {
+      await grant(LACKER, [READ])
+      try {
+        const note = await parkedNote([READ, OTHER])
+        expect(note).toContain("Drafted after reading")
+        expect(note).toContain("approving shares it with them")
+      } finally {
+        await revokeAll(LACKER)
       }
     })
   })

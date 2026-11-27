@@ -37,7 +37,12 @@ import {
   type TxRunner,
   updateDraftFiles,
 } from "~/modules/app-builder/drafts"
-import { AppLogsQueryError, READ_APP_LOGS_MAX_LIMIT, readAppLogs } from "~/modules/app-builder/logs"
+import {
+  AppLogsQueryError,
+  hiddenAppLogs,
+  READ_APP_LOGS_MAX_LIMIT,
+  readAppLogs,
+} from "~/modules/app-builder/logs"
 import { previewDraft } from "~/modules/app-builder/preview"
 import { executePublish, preparePublish, summarizePin } from "~/modules/app-builder/publish"
 import { DRAFT_TEMPLATES, type DraftTemplate, templateFiles } from "~/modules/app-builder/templates"
@@ -470,7 +475,7 @@ export function defineAppBuilderTools(orgId: string): void {
     taintSource: true,
     deferLoading: true,
     description:
-      "Read log lines, newest first: an app's (give app; needs kernel:apps:logs) or a draft's preview runs (give draftId; only your own runs).",
+      "Read log lines, newest first: an app's (give app; needs kernel:apps:logs) or a draft's preview runs (give draftId; only your own runs). For an app, `hidden` counts the lines your scopes keep out (their run read data you cannot see) and names the scopes that would show them.",
     searchKeywords: [...KEYWORDS, "logs"],
     requiredScopes: [BUILD],
     params: z.object({
@@ -512,6 +517,18 @@ export function defineAppBuilderTools(orgId: string): void {
           ...(p.runId ? { runId: p.runId } : {}),
           ...(p.limit ? { limit: p.limit } : {}),
         }),
+        // An app's lines this reader's scopes keep out: their count and the scopes that show
+        // them, never their text (logs.ts, hiddenAppLogs).
+        ...(p.app !== undefined
+          ? {
+              hidden: await hiddenAppLogs(ctx.db, orgId, {
+                app: p.app,
+                ...(p.since ? { since: new Date(p.since) } : {}),
+                ...(p.level ? { level: p.level } : {}),
+                ...(p.runId ? { runId: p.runId } : {}),
+              }),
+            }
+          : {}),
       }))
     }) as (params: unknown, ctx: any) => Promise<unknown>,
   })

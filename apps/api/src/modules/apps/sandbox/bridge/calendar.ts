@@ -475,10 +475,11 @@ export function createCalendarMethods(
       const caller = personId(userId)
       const { withPrivilegedDb } = await import("~/db/privileged")
       const { sql } = await import("drizzle-orm")
+      const { schemaRef } = await import("~/db/schema-ref")
       const profile = caller
         ? await withPrivilegedDb(orgId, "calendar-free-busy-profile", async (tx) => {
             const result = (await tx.execute(
-              sql`SELECT email, timezone FROM kernel.users WHERE id = ${caller}::uuid`,
+              sql`SELECT email, timezone FROM ${sql.raw(schemaRef("kernel"))}.users WHERE id = ${caller}::uuid`,
             )) as unknown as { rows?: unknown[] } | unknown[]
             const rows = (Array.isArray(result) ? result : (result.rows ?? [])) as Array<{
               email: string | null
@@ -503,7 +504,7 @@ export function createCalendarMethods(
         const { recordedGrant } = await import("~/modules/apps/connections/protected-scopes")
         const grant = await withPrivilegedDb(orgId, "calendar-free-busy-grant", async (tx) => {
           const result = (await tx.execute(
-            sql`SELECT metadata FROM kernel.connected_accounts
+            sql`SELECT metadata FROM ${sql.raw(schemaRef("kernel"))}.connected_accounts
                 WHERE id = ${account.connectedAccountId}::uuid AND org_id = ${orgId}::uuid`,
           )) as unknown as { rows?: unknown[] } | unknown[]
           const rows = (Array.isArray(result) ? result : (result.rows ?? [])) as Array<{

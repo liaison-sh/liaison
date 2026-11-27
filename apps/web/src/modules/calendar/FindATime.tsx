@@ -12,6 +12,8 @@ import { type FreeSlotsResult, findFreeSlots } from "./calendar-api"
 
 const DAY_MS = 86_400_000
 const AUTHORIZE_PATH = "/connections/calendar/google-calendar/authorize"
+/** The one optional permission "Find a time" asks Google for (the calendar manifest's). */
+const FREE_BUSY = "https://www.googleapis.com/auth/calendar.freebusy"
 
 /** `YYYY-MM-DDTHH:MM` in the browser's zone, the shape the event form's time inputs hold. */
 export function toLocalInput(iso: string): string {
@@ -70,9 +72,9 @@ export const FindATime: Component<{
     }
   }
 
-  async function allow(scope: string): Promise<void> {
+  async function allow(): Promise<void> {
     try {
-      await connectWithOAuth(api, AUTHORIZE_PATH, { mode: "personal", scopes: [scope] })
+      await connectWithOAuth(api, AUTHORIZE_PATH, { mode: "personal", scopes: [FREE_BUSY] })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -136,23 +138,21 @@ export const FindATime: Component<{
                 </For>
               </ul>
             </Show>
-            <Show when={r().consent?.needed ? r().consent : null}>
-              {(consent) => (
-                <div
-                  class="flex flex-wrap items-center gap-2 text-xs text-text-secondary"
-                  data-testid="event-find-time-consent"
+            <Show when={r().consent?.needed}>
+              <div
+                class="flex flex-wrap items-center gap-2 text-xs text-text-secondary"
+                data-testid="event-find-time-consent"
+              >
+                <span>{i18n.t("calendar.findTimeConsent")}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void allow()}
+                  data-testid="event-find-time-allow"
                 >
-                  <span>{i18n.t("calendar.findTimeConsent")}</span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void allow(consent().scope)}
-                    data-testid="event-find-time-allow"
-                  >
-                    {i18n.t("calendar.findTimeAllow")}
-                  </Button>
-                </div>
-              )}
+                  {i18n.t("calendar.findTimeAllow")}
+                </Button>
+              </div>
             </Show>
             <Show when={unknown().length > 0}>
               <span class="text-xs text-text-secondary" data-testid="event-find-time-unknown">

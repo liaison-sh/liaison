@@ -35,6 +35,7 @@ export { InvoicingScheduleEditor } from "./ScheduleEditor"
 export { InvoicingIssuerProfiles } from "./settings"
 export { InvoicingSidebar } from "./sidebar"
 export { resolveDocumentTabLabel } from "./tab-labels"
+export { InvoicingWebsiteAccess } from "./WebsiteAccess"
 
 import {
   type DocumentLine as DetailDocumentLine,

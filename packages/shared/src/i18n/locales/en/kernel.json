@@ -2563,6 +2563,11 @@
   "workHoursStart": "Work hours start",
   "workModules": "Modules",
   "workTitle": "Work",
+  "workspaceUnreachable": {
+    "title": "Can't reach your workspace",
+    "body": "Liaison at {{host}} is not answering. You are still signed in: it opens as soon as the server answers.",
+    "bodyNoHost": "The server is not answering. You are still signed in: Liaison opens as soon as it answers."
+  },
   "writeAMessage": "Write a message",
   "writeAMessageHint": "Write a message... (@ people, # threads)",
   "youAdminBestOnLargerScreen": "Best on a larger screen",

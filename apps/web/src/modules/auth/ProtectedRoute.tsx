@@ -2,6 +2,7 @@
 
 import { useLocation, useNavigate } from "@solidjs/router"
 import { createEffect, lazy, type ParentComponent, Show } from "solid-js"
+import { isNativeShell } from "~/lib/native-bridge"
 import {
   hasSession,
   isAuthenticated,
@@ -10,6 +11,7 @@ import {
   secondFactorRequired,
   serverUnreachable,
 } from "~/modules/auth/auth-store"
+import { WorkspaceUnreachable, workspaceRetrying } from "~/modules/auth/WorkspaceUnreachable"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { ApiProvider } from "~/modules/shell/ApiContext"
 
@@ -20,7 +22,22 @@ export const ProtectedRoute: ParentComponent = (props) => {
   const location = useLocation()
   const navigate = useNavigate()
 
+  /**
+   * A SIGNED-IN PHONE WHOSE SERVER DOES NOT ANSWER STAYS SIGNED IN. The phone
+   * keeps its session through a cold launch with no network; the sign-in page
+   * FX11 sends a shell to (for the desktop's address field, which the phone
+   * does not have) read as signed out there. It waits on its own screen and
+   * opens as soon as the server answers. A phone with no session flag has
+   * nothing to wait for and still goes to /login.
+   */
+  const waitingForServer = () =>
+    !isAuthenticated() &&
+    isNativeShell() &&
+    hasSession() &&
+    (serverUnreachable() || workspaceRetrying())
+
   createEffect(() => {
+    if (waitingForServer()) return
     // A SHELL POINTED AT A SERVER THAT DOES NOT ANSWER GOES TO /login (FX11).
     // The retry loop keeps running behind it, but the only screen that can
     // change the address lives there, and this one has nothing to show but a
@@ -46,10 +63,15 @@ export const ProtectedRoute: ParentComponent = (props) => {
     <Show
       when={isAuthenticated()}
       fallback={
-        <Show when={!serverUnreachable() && (isRestoringSession() || hasSession())} fallback={null}>
-          <div class="flex min-h-screen items-center justify-center">
-            <p class="text-sm text-text-secondary">{i18n.t("kernel.restoringSession")}</p>
-          </div>
+        <Show when={!waitingForServer()} fallback={<WorkspaceUnreachable />}>
+          <Show
+            when={!serverUnreachable() && (isRestoringSession() || hasSession())}
+            fallback={null}
+          >
+            <div class="flex min-h-screen items-center justify-center">
+              <p class="text-sm text-text-secondary">{i18n.t("kernel.restoringSession")}</p>
+            </div>
+          </Show>
         </Show>
       }
     >

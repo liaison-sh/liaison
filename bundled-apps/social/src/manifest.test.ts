@@ -43,6 +43,7 @@ describe("social manifest (B1)", () => {
     // transaction held across the run.
     // 0.7.1: Instagram DMs switched off by the owner ("Allow access to messages") are an explicit
     // state (connections_status issues, dm_list notices, a Messages notice), not an empty sync.
+    // 0.7.2: the Messages compose box sends: "Approve & send" calls send_dm and re-reads the thread.
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/)
     expect(manifest.packageFormat).toBe(1)
   })

@@ -174,6 +174,8 @@ export async function ensureDocumentPdf(
     {
       category: (doc.operation_category as OperationCategory | null | undefined) ?? null,
       issueDate: dateOnly(doc.issued_at),
+      // The stored buyer kind, so a re-render prints the issue-time wording.
+      customerKind: (doc.customer_kind as string | null | undefined) ?? null,
     },
   )
   if (firstRender) {

@@ -11,7 +11,10 @@
 //  - Any other profile keeps today's plain `invoice_paid` mail, sent only when
 //    `auto_email_enabled` is on.
 // The mail goes from the issuer profile's own mailbox (`mail_account_id`); without one it does not
-// go, and the caller parks the sale `issuer_mail_account_missing` as before.
+// go, and the caller parks the sale `issuer_mail_account_missing` as before. A profile may send its
+// thanks through the organization's notifications sender instead (`sale_thanks_sender:
+// "notifications"`, the kernel's transactional path with the org's `email.from`): the same HTML
+// and inline logo, Reply-To the profile's `reply_to_email` when set, and no mailbox needed.
 import { formatMoneyMinor } from "./money"
 
 export type ThanksLanguage = "en" | "fr"
@@ -246,6 +249,7 @@ export type SaleMailPlan =
   | { kind: "no_mailbox" }
   | {
       kind: "thanks" | "invoice_paid"
+      tool: "mail:composeForApp"
       params: {
         accountId: string
         to: string[]
@@ -256,14 +260,34 @@ export type SaleMailPlan =
         inlineImages?: Array<{ fileId: string; contentId: string }>
       }
     }
+  | {
+      kind: "thanks_notifications"
+      tool: "kernel:notifications_email_send"
+      params: {
+        to: string
+        subject: string
+        textBody: string
+        htmlBody: string
+        replyTo?: string
+        attachments: string[]
+        inlineImages?: Array<{ fileId: string; contentId: string }>
+      }
+    }
+
+/** Where an issuer profile's thank-you mail goes out from. Anything but `notifications` is the
+ *  profile's mailbox, the default. */
+export type SaleThanksSender = "mailbox" | "notifications"
 
 /**
- * Which mail a sale gets, as the `mail:composeForApp` call to make: the branded thanks for an
- * issuer that opted in, today's plain invoice mail when auto-email is on, else none.
+ * Which mail a sale gets, as the tool call to make: the branded thanks for an issuer that opted
+ * in (through `mail:composeForApp` from its mailbox, or `kernel:notifications_email_send` through
+ * the org's notifications sender), today's plain invoice mail when auto-email is on, else none.
  */
 export function planSaleMail(params: {
   issuer: ThanksIssuer & {
     sale_thanks_enabled?: boolean | null
+    sale_thanks_sender?: string | null
+    reply_to_email?: string | null
     auto_email_enabled?: boolean | null
     mail_account_id?: string | null
   }
@@ -274,11 +298,33 @@ export function planSaleMail(params: {
   const { issuer } = params
   const thanks = issuer.sale_thanks_enabled === true
   if (!thanks && issuer.auto_email_enabled !== true) return { kind: "none" }
+  const inlineImages = (logoContentId: string | null) =>
+    logoContentId && issuer.logo_file_id
+      ? { inlineImages: [{ fileId: issuer.logo_file_id, contentId: logoContentId }] }
+      : {}
+  if (thanks && issuer.sale_thanks_sender === "notifications") {
+    const mail = renderSaleThanks({ ...params.thanks, issuer })
+    const replyTo = (issuer.reply_to_email ?? "").trim()
+    return {
+      kind: "thanks_notifications",
+      tool: "kernel:notifications_email_send",
+      params: {
+        to: params.to,
+        subject: mail.subject,
+        textBody: mail.text,
+        htmlBody: mail.html,
+        ...(replyTo ? { replyTo } : {}),
+        attachments: params.attachments,
+        ...inlineImages(mail.logoContentId),
+      },
+    }
+  }
   if (!issuer.mail_account_id) return { kind: "no_mailbox" }
   if (!thanks) {
     const plain = renderInvoicePaid(issuer, params.thanks.documents.map((d) => d.number).join(", "))
     return {
       kind: "invoice_paid",
+      tool: "mail:composeForApp",
       params: {
         accountId: issuer.mail_account_id,
         to: [params.to],
@@ -291,6 +337,7 @@ export function planSaleMail(params: {
   const mail = renderSaleThanks({ ...params.thanks, issuer })
   return {
     kind: "thanks",
+    tool: "mail:composeForApp",
     params: {
       accountId: issuer.mail_account_id,
       to: [params.to],
@@ -298,9 +345,7 @@ export function planSaleMail(params: {
       textBody: mail.text,
       htmlBody: mail.html,
       attachments: params.attachments,
-      ...(mail.logoContentId && issuer.logo_file_id
-        ? { inlineImages: [{ fileId: issuer.logo_file_id, contentId: mail.logoContentId }] }
-        : {}),
+      ...inlineImages(mail.logoContentId),
     },
   }
 }

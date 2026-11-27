@@ -50,6 +50,7 @@ export type EmailTemplateId =
   | "tickets.csat-survey"
   | "demo.verification-code"
   | "demo.owner-alert"
+  | "apps.notification"
 
 export interface EmailMessage {
   to: string
@@ -73,6 +74,8 @@ export interface EmailAttachment {
   filename: string
   contentType: string
   content: Uint8Array
+  /** Shown inline by the HTML body as `cid:<contentId>` (an issuer's logo), not as a file. */
+  contentId?: string
 }
 
 export class EmailRateLimitError extends Error {
@@ -353,6 +356,7 @@ export class SmtpEmailProvider implements EmailProvider {
               filename: a.filename,
               contentType: a.contentType,
               content: Buffer.from(a.content),
+              ...(a.contentId ? { cid: a.contentId, contentDisposition: "inline" as const } : {}),
             })),
           }
         : {}),
@@ -407,6 +411,7 @@ export class ResendEmailProvider implements EmailProvider {
               filename: a.filename,
               content: Buffer.from(a.content).toString("base64"),
               content_type: a.contentType,
+              ...(a.contentId ? { content_id: a.contentId } : {}),
             })),
           }
         : {}),

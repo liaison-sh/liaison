@@ -200,7 +200,8 @@ A direct message, a mention of you, or an approval waiting for your decision sti
 own and is not counted, unless it comes from the same person or agent as the burst (an agent that
 mentions you in every note is one burst). An approval always notifies on its own. Right after a
 summary, a single new message arrives as itself; a second one within the minute starts the next
-summary. A summary of several conversations opens the app; a summary of one conversation opens it.
+summary. Clicking a summary of several conversations opens Home, where they all are; a summary of
+one conversation opens it (a task's discussion opens the task).
 
 On the phone and the computer, notifications are also stacked by conversation (a task's discussion
 is its own conversation), and a newer notification of a conversation replaces the older one there,
@@ -212,7 +213,11 @@ Nothing is lost: the feed has every message.
 The server picks where a desktop notification shows: in every running desktop app of that person, or,
 with none running, in the one browser tab they used last; never on a phone (push covers it). It is sent
 once per item over the live connection and never replayed on reconnect. The desktop app raises native
-OS notifications; clicking one brings Liaison to the front. A new message in the conversation you
+OS notifications; clicking one brings Liaison to the front and opens what it is about: the
+conversation (with the reply thread open for a reply), the task or ticket with the comment in view, the
+computer session, or Home for an approval to decide. On Windows and Linux the system does not tell
+Liaison which notification was clicked, so the window comes forward with an **Open** button for the
+latest one. A new message in the conversation you
 are reading (open in the window that has the focus) does not notify; the same conversation left open
 in a window behind other apps does.
 
@@ -291,6 +296,9 @@ the Android app; neither exists yet.
 at all; only a message with no required scopes may carry a title and a short body. Every payload
 carries the thread id, the deep link, the badge count and the server origin, so a tap on a
 notification from another server than the one the app is set to is ignored. The origin is the server's `BASE_URL`: a phone set up with a different address for the same server (another hostname, an IP) opens the app on a tap but does not jump to the thread, so give people the `BASE_URL` address.
+
+A tap on a notification about an item the app cannot open (an app this device does not have) opens
+Home and says **This item can't be opened in this app.**
 
 ## A comment on a task
 

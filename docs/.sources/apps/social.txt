@@ -28,8 +28,8 @@ Like button, like_item -> bundled-apps/social/src/ui/Findings.tsx:371
 like only own Page / own IG media, not YouTube -> bundled-apps/social/README.md:20
 reply submitted for approval note -> bundled-apps/social/src/ui/Findings.tsx:259
 edited-after-draft warning -> bundled-apps/social/src/ui/Findings.tsx:344
-Messages view across Facebook and Instagram -> bundled-apps/social/src/ui/Messages.tsx:205
-Open in native app -> bundled-apps/social/src/ui/Messages.tsx:163
+Messages view across Facebook and Instagram -> bundled-apps/social/src/ui/Messages.tsx:325
+Open in native app -> bundled-apps/social/src/ui/Messages.tsx:240
 dm_window_closed after 7 days -> bundled-apps/social/README.md:94
 Watched view; active threads promoted automatically -> bundled-apps/social/src/ui/Watched.tsx:67
 Resume on decayed watch -> bundled-apps/social/src/ui/Watched.tsx:83
@@ -88,7 +88,15 @@ Unified login step: turn on Allow access to messages (Settings and activity > Me
 Instagram 403 code 200 "disabled access to Instagram Direct Messaging" is DM_ACCESS_DISABLED -> bundled-apps/social/src/adapters/instagram.ts:443
 DM sync stamps dmAccessDisabledSince on the account's sync_state row, clears it on the next sync that lands -> bundled-apps/social/src/handlers.ts:456
 DM sync clears the stamp once a sync lands -> bundled-apps/social/src/handlers.ts:481
-Messages shows the notice with the path to the setting -> bundled-apps/social/src/ui/Messages.tsx:287
+Messages shows the notice with the path to the setting -> bundled-apps/social/src/ui/Messages.tsx:332
 dm_list returns notices -> bundled-apps/social/src/reads.ts:212
 connections_status lists the dm_access_disabled issue on the connection -> bundled-apps/social/src/settings-status.ts:163
 notice text: messages arrive on the next sync -> bundled-apps/social/src/dm-access.ts:20
+Approve & send button in the Messages compose box -> bundled-apps/social/src/ui/Messages.tsx:275
+the button sends with send_dm -> bundled-apps/social/src/ui/Messages.tsx:161
+send_dm requires social:dm:write -> bundled-apps/social/app.manifest.json:609
+a send held by approval says Waiting for approval -> bundled-apps/social/src/ui/Messages.tsx:163
+the sent message appears in the conversation (thread re-read) -> bundled-apps/social/src/ui/Messages.tsx:164
+human agent label between 24 hours and 7 days -> bundled-apps/social/src/ui/Messages.tsx:275
+human agent window is 24 h to 7 d -> bundled-apps/social/src/ui/Messages.tsx:91
+compose box replaced by Open in after the window closes -> bundled-apps/social/src/ui/Messages.tsx:228

@@ -315,6 +315,9 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   // saves the fixture connection's adapter again (demo/api-connector/connection.ts).
   api_adapters: "clear",
   api_adapter_versions: "clear",
+  // A visitor's buyer API keys are credentials into the demo's invoices: they go, links with them.
+  buyer_invoice_keys: "clear",
+  buyer_invoice_links: "clear",
   // Zeroed explicitly by `resetDemoOrgContent`, not deleted: the balance row is
   // the org's, and a demo org's balance must be zero rather than absent.
   credit_balances: "restore",

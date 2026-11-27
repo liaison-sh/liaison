@@ -270,7 +270,9 @@ describe("ios privacy manifest", () => {
         "NSPrivacyCollectedDataTypeDeviceID",
         "NSPrivacyCollectedDataTypeEmailAddress",
         "NSPrivacyCollectedDataTypeName",
+        "NSPrivacyCollectedDataTypeOtherDiagnosticData",
         "NSPrivacyCollectedDataTypeOtherUserContent",
+        "NSPrivacyCollectedDataTypePhotosorVideos",
       ].sort(),
     )
     // Dictation audio is transcribed in memory and never stored, so it is

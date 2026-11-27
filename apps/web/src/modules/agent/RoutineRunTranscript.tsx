@@ -54,6 +54,7 @@ const RoutineRunTranscript: Component<Props> = (props) => {
         <button
           type="button"
           data-testid="routine-run-back"
+          data-phone-back
           onClick={() => props.onBack()}
           class="flex min-h-8 items-center gap-1 rounded-md px-1 text-[13px] text-text-secondary transition-colors hover:bg-surface-hover"
         >

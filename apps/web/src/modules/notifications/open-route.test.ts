@@ -259,6 +259,10 @@ describe("openNotificationRoute", () => {
     expect(openTabMock).toHaveBeenCalledWith(
       expect.objectContaining({ type: "kernel:home", entityId: "home" }),
     )
+    // ...and says why, so the tap does not read as a broken link.
+    expect(addToastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "This item can't be opened in this app." }),
+    )
   })
 
   it("an item whose opener fails lands on Home", async () => {

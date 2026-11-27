@@ -243,6 +243,10 @@ const NO_SESSION_ROUTES = new Set([
   "POST /api/public/client-actions/verify",
   "POST /api/public/client-actions/decide",
   "POST /api/public/client-actions/request",
+  // The buyer invoices API: a website's own linv_ key in Authorization, or a link's token in the URL.
+  "POST /api/buyer-invoices/list",
+  "POST /api/buyer-invoices/link",
+  "GET /api/buyer-invoices/pdf/:token",
   "POST /webhooks/:orgId/:appName/:endpointName",
   "GET /webhooks/:orgId/:appName/:endpointName",
   "POST /webhooks/:orgId/tickets/create",

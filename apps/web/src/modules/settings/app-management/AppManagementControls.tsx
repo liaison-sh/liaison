@@ -13,6 +13,7 @@ import { useNavigate } from "@solidjs/router"
 import { type Component, createMemo, createSignal, onMount, Show } from "solid-js"
 import { ApiError } from "~/lib/api-error"
 import { roleDisplayName } from "~/lib/app-label"
+import { appStoreHidden } from "~/lib/native-bridge"
 import { canAccessScope } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
@@ -196,12 +197,14 @@ export const AppManagementControls: Component<{
                     {i18n.t(`${M}.checkForUpdates`)}
                   </PopupMenu.Item>
                 </Show>
-                <PopupMenu.Item
-                  data-testid="app-management-store"
-                  onSelect={() => navigate(`/settings/store/${encodeURIComponent(props.appId)}`)}
-                >
-                  {i18n.t(`${M}.viewInStore`)}
-                </PopupMenu.Item>
+                <Show when={!appStoreHidden()}>
+                  <PopupMenu.Item
+                    data-testid="app-management-store"
+                    onSelect={() => navigate(`/settings/store/${encodeURIComponent(props.appId)}`)}
+                  >
+                    {i18n.t(`${M}.viewInStore`)}
+                  </PopupMenu.Item>
+                </Show>
                 <Show when={!required()}>
                   <PopupMenu.Separator />
                   <PopupMenu.Item

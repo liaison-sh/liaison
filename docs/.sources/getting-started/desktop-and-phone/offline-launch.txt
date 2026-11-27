@@ -1,0 +1,3 @@
+A stored server that does not answer at launch opens the app signed in: apps/mobile/src/onboarding/server-address.ts (BrandingUnreachableError, start)
+Only an answer that says the address is wrong asks again: apps/mobile/src/onboarding/server-address.ts (start)
+The first screen follows dark mode and scrolls above the keyboard: apps/mobile/src/onboarding/server-address.ts (FIRST_LAUNCH_PALETTE, renderPrompt)

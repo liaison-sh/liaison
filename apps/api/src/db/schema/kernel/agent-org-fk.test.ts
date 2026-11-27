@@ -468,6 +468,21 @@ describe("kernel agent foreign keys carry the row's own org", () => {
       expect(row?.agent_id).toBeNull()
     })
 
+    it("agent_runs: deleting the agent CLEARS the agent and keeps the run", async () => {
+      // SET NULL (agent_id), never a bare SET NULL: on a composite key that
+      // would null org_id too, which is NOT NULL, and every delete of an agent
+      // that ever ran (a personal agent's erasure) would fail.
+      const doomed = await doomedAgent("d-run")
+      await insertAgentRun(doomed, `doomed-run-${tag}`)
+      await sql`DELETE FROM kernel.agents WHERE id = ${doomed}`
+      const [row] = await sql<{ agent_id: string | null; org_id: string }[]>`
+        SELECT agent_id, org_id FROM kernel.agent_runs
+         WHERE org_id = ${ORG_A} AND prompt = ${`doomed-run-${tag}`}`
+      expect(row).toBeDefined()
+      expect(row?.agent_id).toBeNull()
+      expect(row?.org_id).toBe(ORG_A)
+    })
+
     it("agent_knowledge_pointers: deleting the agent CASCADE-deletes its pointers", async () => {
       const doomed = await doomedAgent("d-pointer")
       await insertPointer(doomed)
@@ -545,6 +560,23 @@ describe("kernel agent foreign keys carry the row's own org", () => {
       // And the class is not empty: if these tables ever lose their FK
       // altogether the test must not pass vacuously.
       expect(rows.length).toBeGreaterThanOrEqual(8)
+    })
+
+    it("no SET NULL or SET DEFAULT foreign key in the database would write a NOT NULL column", async () => {
+      // A bare ON DELETE SET NULL on a composite key nulls EVERY referencing
+      // column, the row's NOT NULL org_id included, so the parent's delete
+      // fails. 0074 shipped agent_runs that way and broke account deletion.
+      // The column list form, SET NULL (agent_id), nulls only the named ones.
+      const rows = await sql<{ table_name: string; conname: string; col: string }[]>`
+        SELECT con.conrelid::regclass::text AS table_name, con.conname, a.attname AS col
+          FROM pg_constraint con
+          CROSS JOIN LATERAL unnest(COALESCE(con.confdelsetcols, con.conkey)) AS x(attnum)
+          JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = x.attnum
+         WHERE con.contype = 'f'
+           AND con.confdeltype IN ('n', 'd')
+           AND a.attnotnull
+         ORDER BY 1, 2`
+      expect(rows.map((r) => `${r.table_name}.${r.conname} (${r.col})`)).toEqual([])
     })
 
     it("the composite keys all point at the shared agents_id_org_uk unique key", async () => {

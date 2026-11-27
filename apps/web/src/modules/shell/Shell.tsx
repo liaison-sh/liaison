@@ -33,7 +33,7 @@ import { installReconnectResync, installResumeResync, requestResync } from "~/fr
 import { isAppUnavailable } from "~/framework/unavailable-apps"
 import { createAppLock } from "~/lib/app-lock"
 import { apiUrl } from "~/lib/env"
-import { nativeBridge } from "~/lib/native-bridge"
+import { isNativeShell, nativeBridge } from "~/lib/native-bridge"
 import { noteSocketStatus } from "~/lib/socket-state"
 import { installReloadGuard } from "~/lib/unsaved-work"
 import { insideAppShell } from "~/lib/web-build"
@@ -149,6 +149,7 @@ import {
 } from "~/modules/threads/personal-dm-store"
 import { TourHost } from "~/modules/tours/TourHost"
 import { createWebSocket, notificationDeviceId } from "~/primitives/createWebSocket"
+import { installEdgeSwipeBack } from "~/primitives/edgeSwipeBack"
 import { keyboardOpen } from "~/primitives/keyboardInset"
 import { AgentGlyph } from "~/ui/AgentGlyph"
 import { AppLockOverlay } from "~/ui/AppLockOverlay"
@@ -482,6 +483,10 @@ export const Shell: Component = () => {
   // Resume path: a page back from hidden refetches too, since a socket that
   // slept through the gap may never report a reconnect (see installResumeResync).
   onCleanup(installResumeResync())
+  // The iOS back swipe presses the back control on screen, so it goes where
+  // a tap on Back goes (primitives/edgeSwipeBack.ts). Native app only: a
+  // mobile browser has its own.
+  if (isNativeShell() && typeof document !== "undefined") onCleanup(installEdgeSwipeBack(document))
 
   // URL -> Tab sync: when URL changes (back/forward, deep link), map to tab
   let lastSyncedPath = ""
@@ -535,7 +540,14 @@ export const Shell: Component = () => {
     const pathname = location.pathname
     const search = location.search
     const fullPath = `${pathname}${search}`
-    if (fullPath === lastSyncedPath) return
+    if (fullPath === lastSyncedPath) {
+      // A path already synced is a page that answers: a not-found notice left
+      // from an unmatched address is dropped. The tab bar and the tab -> URL
+      // sync below land on a synced path, so returning early used to keep
+      // "Nothing here" over Home and Chats until a full reload.
+      setUnmatchedRoute(null)
+      return
+    }
 
     // A retired route never opens a tab: rewrite the URL and let this same
     // effect re-run on the replacement path. A replacement that has to ask the

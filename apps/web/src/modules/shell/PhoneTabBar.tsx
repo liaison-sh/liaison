@@ -17,6 +17,7 @@ import { resolveRegisteredTabType } from "~/framework/app-registry"
 import { cn } from "~/lib/cn"
 import { nativeHaptic } from "~/lib/native-bridge"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { popSettingsSection } from "~/modules/settings/phone-settings-nav"
 import { chatsThreadId } from "~/modules/shell/chats-root-store"
 import { homeActionCount } from "~/modules/shell/home-action-count"
 import { openTab, tabStore } from "~/modules/shell/tab-store"
@@ -122,7 +123,12 @@ export const PhoneTabBar: Component<PhoneTabBarProps> = (props) => {
       label: i18n.t("kernel.phoneTabYou"),
       icon: User,
       tabType: "kernel:settings",
-      activate: () =>
+      // The You stack is popped to its root on every tap, as a tab bar does:
+      // re-tapping You on Profile used to stay on Profile. The route is reset
+      // to `/settings` below anyway, so a section left pushed would only show
+      // Profile under it, not the page it was left on.
+      activate: () => {
+        popSettingsSection()
         openTab({
           type: "kernel:settings",
           entityId: "settings",
@@ -131,7 +137,8 @@ export const PhoneTabBar: Component<PhoneTabBarProps> = (props) => {
           // was last left on.
           routePath: "/settings",
           preview: false,
-        }),
+        })
+      },
       badge: () => 0,
     },
   ]

@@ -79,6 +79,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/src/apps/projects/service/deals*", pages: ["sales/deals", "sales/quiet-deals", "sales/follow-ups", "sales/forecast"] },
   { glob: "apps/web/src/modules/contacts/Compan*", pages: ["sales/companies", "apps/contacts"] },
   { glob: "apps/web/src/modules/portal/**", pages: ["apps/contacts", "apps/client-portal"] },
+  { glob: "apps/api/src/modules/buyer-invoices/**", pages: ["apps/invoicing"] },
   { glob: "apps/web/src/modules/contacts/Activity*", pages: ["sales/companies", "apps/contacts"] },
   { glob: "apps/web/src/modules/projects/Deal*", pages: ["sales/deals", "apps/projects"] },
   { glob: "apps/web/src/modules/projects/CompanyWorkPanel*", pages: ["sales/companies", "apps/projects"] },

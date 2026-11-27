@@ -19,6 +19,10 @@ import {
   KERNEL_USER_COLUMN_DISPOSITION,
 } from "~/modules/erasure/erase-user"
 import { IndexWriterTestAccess } from "~/modules/search/index-writer"
+import { seedContext } from "~/seed/context"
+import { seedSubRuns } from "~/seed/factories/agent/sub-runs"
+import { actorFor } from "~/seed/factories/people/actors"
+import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -885,6 +889,58 @@ describe("erase-user cascade (G2–G6)", () => {
     expect(after.skill!.ownerAgentId).toBeNull()
     expect(after.skill!.authorUserId).toBeNull()
     expect(after.memoryCount).toBe(0) // the agent-owned memory row is GONE
+  })
+
+  test("erasing a user whose personal agent ran keeps the runs and only forgets which agent ran them", async () => {
+    // agent_runs.agent_id has a composite (agent_id, org_id) foreign key to
+    // kernel.agents. Deleting the personal agent must null agent_id alone: a
+    // SET NULL over both columns would null the NOT NULL org_id and fail the
+    // whole erasure.
+    const agentId = await withSystemDb("erase-runs-agent", async (tx) => {
+      const rows = extractRows<{ id: string }>(
+        await tx.execute(drizzleSql`
+          SELECT id FROM kernel.agents WHERE owner_user_id = ${userId} AND kind = 'personal'
+        `),
+      )
+      return rows[0].id
+    })
+    const ctx = seedContext({ orgId, now: new Date() })
+    const parentThreadId = await minimal.thread(orgId, userId)
+    const [runId] = await seedSubRuns(ctx, [
+      {
+        key: `erase-run-${crypto.randomUUID()}`,
+        parentThreadId,
+        agentId,
+        requester: await actorFor(ctx, userId),
+        subagentType: "research",
+        prompt: "look something up",
+        summary: "looked it up",
+        startedAt: new Date(),
+        durationMs: 1000,
+        promptTokens: 10,
+        completionTokens: 5,
+      },
+    ])
+
+    const res = await eraseUser(userId)
+    expect(res.exitCode).toBe(0)
+
+    const after = await withSystemDb("erase-runs-check", async (tx) => {
+      const agents = extractRows<{ n: number }>(
+        await tx.execute(
+          drizzleSql`SELECT count(*)::int AS n FROM kernel.agents WHERE id = ${agentId}`,
+        ),
+      )
+      const runs = extractRows<{ orgId: string; agentId: string | null }>(
+        await tx.execute(drizzleSql`
+          SELECT org_id::text AS "orgId", agent_id::text AS "agentId"
+          FROM kernel.agent_runs WHERE id = ${runId}
+        `),
+      )
+      return { agentCount: agents[0].n, runs }
+    })
+    expect(after.agentCount).toBe(0)
+    expect(after.runs).toEqual([{ orgId, agentId: null }])
   })
 
   test("completeness sweep THROWS (refuses to erase) for an unaccounted kernel user-column", async () => {

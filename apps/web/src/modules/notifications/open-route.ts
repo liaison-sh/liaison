@@ -6,14 +6,15 @@
 // phone push tap (the mobile shell turns `liaison://attention/...` into
 // `/?route=...`, apps/mobile/src/deep-link.ts).
 //
-// The route is what the server wrote (push/fanout-consumer.ts for messages,
-// notifications/dispatch.ts `attentionRoute` for attention rows), and ONLY
-// its two grammars are accepted:
+// The route is what the server wrote, built by the shared route functions
+// (@liaison/shared notifications/routes.ts: messages, attention rows, burst
+// summaries), and ONLY its three grammars are accepted:
 //
 //   thread/<id>[?replyRoot=<id>]           the conversation (+ reply panel)
 //   attention/<app>/<entityType>/<id>      the item; an approval opens Home
 //     [?thread=<id>&message=<id>]          + a message of the item's own thread
 //                                          (a task comment) brought into view
+//   home                                   Home (a summary of several items)
 //
 // A route can arrive from a URL anyone can link to (`/?route=...`), so it is
 // treated as hostile: an id is percent-decoded once and must then be an
@@ -22,6 +23,7 @@
 // whose `<app>/<entityType>` this client cannot open lands on Home. Nothing
 // here ever navigates to a raw path or URL.
 
+import { HOME_NOTIFICATION_ROUTE } from "@liaison/shared"
 import { createEffect, createRoot } from "solid-js"
 import {
   areManifestAppsSettled,
@@ -40,6 +42,7 @@ import { addToast } from "~/modules/shell/toast-store"
 import { openThreadWithReplyPanel, requestChannelJump } from "~/modules/threads/reply-panel-store"
 
 export type NotificationRoute =
+  | { kind: "home" }
   | { kind: "thread"; threadId: string; replyRootId: string | null }
   | {
       kind: "attention"
@@ -82,6 +85,7 @@ export function parseNotificationRoute(route: unknown): NotificationRoute | null
   if (typeof route !== "string" || route.length === 0 || route.length > MAX_ROUTE_LENGTH) {
     return null
   }
+  if (route === HOME_NOTIFICATION_ROUTE) return { kind: "home" }
   const thread = THREAD_ROUTE.exec(route)
   if (thread) {
     const threadId = decodeId(thread[1])
@@ -162,6 +166,8 @@ export async function openNotificationRoute(route: unknown, api?: ApiClient): Pr
     return false
   }
   try {
+    // A summary of several things: Home, where the attention list holds them.
+    if (parsed.kind === "home") return openHomeFallback()
     if (parsed.kind === "thread") {
       if (parsed.replyRootId) {
         openThreadWithReplyPanel(parsed.threadId, parsed.replyRootId)
@@ -190,7 +196,11 @@ export async function openNotificationRoute(route: unknown, api?: ApiClient): Pr
       await manifestAppsSettled()
       // Nothing here opens that kind of item (an app this client lacks): the
       // click still lands somewhere, on Home, where the attention list is.
-      if (!isOpenable(parsed.app, parsed.entityType)) return openHomeFallback()
+      if (!isOpenable(parsed.app, parsed.entityType)) {
+        // Said, briefly: a tap that silently shows Home reads as a broken link.
+        addToast({ message: tNow("kernel.shellUi.notificationItemUnavailable"), type: "info" })
+        return openHomeFallback()
+      }
     }
     // The entity's discussion brings the message into view once it has loaded
     // (threads/EntityDiscussion.tsx follows the same jump a quote asks for).

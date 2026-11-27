@@ -99,5 +99,14 @@
   "deleteConfirmTitle": "Supprimer cet événement ?",
   "deleteConfirmBody": "« {{title}} » sera retiré du calendrier et de Google.",
   "eventDeleted": "Événement supprimé",
-  "undo": "Annuler"
+  "undo": "Annuler",
+  "findTime": "Trouver un créneau",
+  "findTimeLoading": "Recherche de créneaux libres…",
+  "findTimeSlots": "Créneaux libres",
+  "findTimeNone": "Aucun créneau la semaine prochaine où tout le monde est libre pendant les heures de travail.",
+  "findTimeConsent": "Ces créneaux ne tiennent compte que de votre agenda. Pour inclure vos invités, autorisez Liaison à voir leurs disponibilités.",
+  "findTimeAllow": "Autoriser",
+  "findTimeUnknown": "Google n’indique pas quand {{emails}} est occupé.",
+  "findTimeNoAccount": "Connectez votre propre Google Agenda pour inclure les disponibilités de vos invités.",
+  "findTimeError": "Impossible de trouver des créneaux : {{message}}"
 }

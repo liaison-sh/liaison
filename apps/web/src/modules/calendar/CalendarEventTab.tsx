@@ -29,6 +29,7 @@ import {
   withAllDay,
 } from "./event-form"
 import { closeEventTab, openedEvent, takeDraft } from "./event-tabs"
+import { FindATime } from "./FindATime"
 
 const RECURRENCE_OPTIONS = ["none", "daily", "weekly", "monthly"] as const
 type RecurrenceChoice = (typeof RECURRENCE_OPTIONS)[number]
@@ -494,6 +495,14 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
             <span class="text-xs text-text-secondary" data-testid="event-attendees-no-invite">
               {i18n.t("calendar.attendeesNotNotified")}
             </span>
+            <Show when={attendees().length > 0 && !form().allDay && !readOnly()}>
+              <FindATime
+                attendees={attendees().map((a) => a.email)}
+                startLocal={form().startLocal}
+                endLocal={form().endLocal}
+                onPick={(slot) => update(slot)}
+              />
+            </Show>
           </div>
 
           <Show when={event()?.pushError ?? event()?.pushNotice}>

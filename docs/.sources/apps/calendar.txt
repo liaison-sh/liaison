@@ -65,3 +65,8 @@ Free events, declined meetings, unmarked all-day events never block -> apps/api/
 Guests' busy times from Google freebusy as the caller's account -> apps/api/src/apps/calendar/handlers.ts:1659
 Without the permission slots cover only your calendar -> apps/api/src/apps/calendar/handlers.ts:1720
 Guest Google cannot share reported unknown -> apps/api/src/apps/calendar/handlers.ts:1687
+Find a time button in the event tab once it has attendees -> apps/web/src/modules/calendar/CalendarEventTab.tsx:499
+Find a time label, Allow -> packages/shared/src/i18n/locales/en/calendar.json:103
+Next week, event length, working hours -> apps/web/src/modules/calendar/FindATime.tsx:24
+Allow reconnects with the free/busy scope only -> apps/web/src/modules/calendar/FindATime.tsx:75
+Picked slot sets Start and End -> apps/web/src/modules/calendar/FindATime.tsx:126

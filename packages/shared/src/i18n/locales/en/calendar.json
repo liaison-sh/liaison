@@ -99,5 +99,14 @@
   "deleteConfirmTitle": "Delete this event?",
   "deleteConfirmBody": "“{{title}}” will be removed from the calendar and from Google.",
   "eventDeleted": "Event deleted",
-  "undo": "Undo"
+  "undo": "Undo",
+  "findTime": "Find a time",
+  "findTimeLoading": "Looking for free times…",
+  "findTimeSlots": "Free times",
+  "findTimeNone": "No time in the next week when everyone is free during working hours.",
+  "findTimeConsent": "These times only count your own calendar. To include your guests, allow Liaison to see their free/busy.",
+  "findTimeAllow": "Allow",
+  "findTimeUnknown": "Google does not show when {{emails}} is busy.",
+  "findTimeNoAccount": "Connect your own Google Calendar to include your guests' availability.",
+  "findTimeError": "Could not find free times: {{message}}"
 }

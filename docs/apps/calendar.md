@@ -51,6 +51,12 @@ The view keeps itself up to date: an event that changes in Google, or that an ag
 
 Attendees are not emailed: changes in Liaison do not send Google invitations. Only the organizer can change an event's guest list. A recurring event cannot be edited here yet, because a change would affect the whole series; one occurrence that was already changed in Google can be. An event with a Meet link shows **Join with Google Meet**.
 
+### Find a time with your guests
+
+Once an event has attendees, click **Find a time** in its tab. Liaison lists free times of the event's length over the next week, inside working hours, when you and every guest are free. Click one to set the event's **Start** and **End**.
+
+The first time, the times only count your own calendar, and Liaison asks you to **Allow** it to see your guests' free/busy. Allow takes you to Google's consent screen once; after that your guests' busy times are included. A guest whose calendar Google does not show you is named under the times.
+
 ### When the event also changed in Google
 
 Liaison sends only what you changed. If someone edited the event in Google meanwhile (a new description while you moved the time here), both changes are kept. If the same field changed on both sides, the newer change wins: the event then shows a notice naming the field and the value that was replaced, and you get a quiet item on Home.

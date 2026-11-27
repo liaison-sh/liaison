@@ -209,6 +209,11 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     reason:
       "which document a card sale has, written with that document or its link; never imported",
   },
+  "app_invoicing.revenue_streams": {
+    exempt: "config",
+    reason:
+      "which sales app's sales are invoiced under which issuer, decided and approved by a person",
+  },
   "app_invoicing.stripe_streams": {
     exempt: "config",
     reason: "which issuer bills a connected payments stream, decided and approved in the UI",
@@ -331,6 +336,10 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   "app_shopify.install_metadata": { exempt: "sync", reason: "shop mirror and install state" },
   "app_shopify.staff_mirror": { exempt: "sync", reason: "shop mirror and install state" },
   "app_shopify.staff_overrides": { exempt: "sync", reason: "shop mirror and install state" },
+  "app_shopify.sale_snapshots": {
+    exempt: "sync",
+    reason: "each order as its webhook delivered it, read back as a sale by invoicing",
+  },
   "app_shopify.webhook_deliveries": { exempt: "sync", reason: "shop mirror and install state" },
   "app_social.dm_conversation": {
     exempt: "sync",

@@ -1,0 +1,19 @@
+{
+  "entry": "tool:revenue_stream_bind",
+  "params": {
+    "providerApp": "stripe",
+    "issuerProfileId": "00000000-0000-4000-8000-0000000000a1",
+    "mode": "review"
+  },
+  "recordedFrom": "an install with no rows yet and only the shop reporting its sales (contract replay, no provider call)",
+  "expectError": {
+    "reason": "recorded on a contract install where the named app does not report its sales, so the replay pins the provider_not_available refusal (nothing written)"
+  },
+  "calls": [
+    {
+      "method": "contracts_providers",
+      "args": ["revenue-stream@1"],
+      "reply": "[\"shopify\"]"
+    }
+  ]
+}

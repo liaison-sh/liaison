@@ -29,6 +29,7 @@ import { emitEvent } from "./lib/emit"
 import { connectedShopDomains, ensureInstallMetadata } from "./lib/get-client"
 import { shopifyWebhookVerifier } from "./lib/hmac"
 import { loadInstallMetadata } from "./lib/install-metadata"
+import { forgetSaleSnapshotsOf, recordSaleSnapshot } from "./sales"
 
 export { shopifyWebhookVerifier }
 
@@ -662,6 +663,17 @@ export async function ordersCreateHandler(
         externalId: String(p.customer.id),
       })
     }
+    // The order as a revenue-stream@1 sale: keep what the webhook delivered (the sale reads it
+    // back, `rs_sale_get`) and announce it. The consumer reads the sale before acting.
+    const receivedAt = await recordSaleSnapshot(ctx, norm)
+    await emit(
+      ctx,
+      "sale",
+      "paid",
+      norm.orderId,
+      { external_id: norm.orderId, occurred_at: receivedAt },
+      { shopify_webhook_id: header(headers, "x-shopify-webhook-id") },
+    )
     return {
       entity: "order",
       action: "created",
@@ -801,6 +813,8 @@ export async function customersDeleteHandler(
   return runTopic(ctx, "customers/delete", payload, headers, async () => {
     const p = payload as { id: number | string }
     const externalId = String(p.id)
+    // The deleted customer's orders kept as sales (buyer name, email, addresses) go too.
+    await forgetSaleSnapshotsOf(ctx, externalId)
     // I11 — clear this app's entry from kernel.contacts.external_ids for any
     // contact carrying the deleted Shopify customer id. The contact row is
     // preserved per spec §7 — only the Shopify linkage is dropped.

@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.41.2",
+  "version": "0.42.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -476,6 +476,31 @@
       }
   },
   "schema": {
+    "revenue_streams": {
+      "rlsScope": "settings",
+      "internalWriteScope": "invoicing:settings:write",
+      "fields": {
+        "provider_app": "string",
+        "source_ref": "string?",
+        "label": "text?",
+        "issuer_profile_id": {
+          "type": "uuid",
+          "required": false,
+          "references": { "table": "issuer_profiles", "column": "id", "onDelete": "cascade" }
+        },
+        "mode": { "type": "string", "enum": ["auto", "review", "off"], "default": "review" },
+        "issue_from": "date?",
+        "mail": {
+          "type": "string",
+          "enum": ["thanks", "invoice_only", "none"],
+          "default": "none"
+        },
+        "decided_by": { "type": "uuid", "userRef": true, "onErase": "anonymize", "required": false },
+        "decided_at": "date?"
+      },
+      "constraints": { "unique": [["provider_app", "source_ref"]] },
+      "indexes": [["provider_app"]]
+    },
     "received_einvoices": {
       "rlsScope": "received",
       "immutable": {
@@ -1994,6 +2019,67 @@
     }
   },
   "tools": {
+    "revenue_streams_list": {
+      "description": "List the revenue streams: the sales apps whose sales this organization invoices automatically (provider app, issuer profile, mode auto/review/off, issue_from, mail), and the installed apps that could be bound.",
+      "searchKeywords": ["ventes", "flux", "revenue", "stream", "sales", "checkout"],
+      "deferLoading": true,
+      "requiredScopes": ["invoicing:settings:read"],
+      "handler": "revenueStreamsListHandler",
+      "readOnly": true,
+      "params": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    "revenue_stream_sale_issue": {
+      "summarizer": "summarizeRevenueStreamSaleIssue",
+      "description": "Issue the invoice of one sale of a bound revenue stream (the sale is read again from its app). A stream in review mode asks a person for each sale with this card; a person decides it, never automatically.",
+      "searchKeywords": ["vente", "facture", "revenue", "stream", "sale"],
+      "deferLoading": true,
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "revenueStreamSaleIssueHandler",
+      "agentVisible": false,
+      "timeoutMs": 60000,
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "approvalDedupeKeyParam": "external_id",
+      "params": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string" },
+          "stream_id": { "type": "string" },
+          "external_id": { "type": "string" }
+        },
+        "required": ["stream_id", "external_id"],
+        "additionalProperties": false
+      },
+      "approvalCard": { "summary": "Issue the invoice of a sale" }
+    },
+    "revenue_stream_bind": {
+      "summarizer": "summarizeRevenueStreamBind",
+      "description": "Bind a sales app (one implementing revenue-stream@1) so each of its sales gets its invoice, under an issuer profile; or change a bound stream (streamId: mode auto/review/off, mail, label, issuer). A person decides. A new stream issues the sales paid from the moment it is bound; older sales go through revenue_stream_catch_up.",
+      "searchKeywords": ["ventes", "flux", "revenue", "stream", "bind", "checkout"],
+      "deferLoading": true,
+      "requiredScopes": ["invoicing:settings:write"],
+      "handler": "revenueStreamBindHandler",
+      "timeoutMs": 30000,
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_invoicing.revenue_streams",
+      "params": {
+        "type": "object",
+        "properties": {
+          "streamId": { "type": "string" },
+          "providerApp": { "type": "string" },
+          "issuerProfileId": { "type": "string" },
+          "sourceRef": { "type": ["string", "null"] },
+          "label": { "type": ["string", "null"] },
+          "mode": { "type": "string", "enum": ["auto", "review", "off"] },
+          "mail": { "type": "string", "enum": ["thanks", "invoice_only", "none"] }
+        },
+        "additionalProperties": false
+      },
+      "approvalCard": { "summary": "Invoice the sales of a sales app" }
+    },
     "recurring_run_get": {"feature": "recurring", "description": "Read a month-end run: its state, issue and last days, and each row with its draft_id, amounts, account manager, latest change and flags. Omit run_id for the latest run.", "searchKeywords": ["mensuel", "récurrent", "month-end", "lot", "batch"], "requiredScopes": ["invoicing:documents:read"], "handler": "recurringRunGetHandler", "readOnly": true, "taintSource": true, "params": {"type": "object", "properties": {"run_id": {"type": "string"}}}},
     "recurring_run_issue": {"feature": "recurring", "summarizer": "summarizeRecurringRunIssue", "description": "Stage a month-end run's card when it has none: approving records each row and takes no number; the invoices issue on the issue day from 08:00. A card already waiting is decided by a person on it.", "searchKeywords": ["mensuel", "approuver", "récurrent", "month-end"], "requiredScopes": ["invoicing:documents:write"], "handler": "recurringRunIssueHandler", "preflight": "recurringRunIssuePreflightHandler", "timeoutMs": 30000, "gated": true, "noAutoApprove": true, "approvalImpact": "external", "approvalDedupeKeyParam": "run_id", "editableFields": [], "editWith": ["drafts_update", "drafts_create", "drafts_discard"], "writesToTable": "app_invoicing.recurring_runs", "params": {"type": "object", "properties": {"run_id": {"type": "string"}, "items": {"type": "array", "items": {"type": "object", "properties": {"item_id": {"type": "string"}, "document_id": {"type": "string"}, "content_hash": {"type": "string"}, "total_minor": {"type": "string"}, "customer": {"type": "string"}, "currency": {"type": "string"}}, "required": ["item_id", "document_id", "content_hash", "total_minor"]}}, "period": {"type": "string"}, "late": {"type": "boolean"}, "last_day": {"type": "string"}}, "required": ["run_id"]}, "approvalCard": {"summary": "Issue the month-end run {{params.run_id}}"}},
     "recurring_run_unapprove": {"feature": "recurring", "summarizer": "summarizeRecurringRunUnapprove", "description": "Undo a month-end run's approval before its first number: the run returns to drafted, edits are kept, and a new card asks again.", "searchKeywords": ["annuler", "mensuel", "récurrent", "undo"], "requiredScopes": ["invoicing:documents:write"], "handler": "recurringRunUnapproveHandler", "preflight": "recurringRunUnapprovePreflightHandler", "timeoutMs": 30000, "conditionalGate": true, "externalEffect": true, "approvalImpact": "external", "writesToTable": "app_invoicing.recurring_runs", "params": {"type": "object", "properties": {"run_id": {"type": "string"}}, "required": ["run_id"]}, "approvalCard": {"summary": "Undo the approval of month-end run {{params.run_id}}"}},
@@ -6958,7 +7044,7 @@
   },
   "events": {
     "subscribes": {
-      "shopify/order:created": "onShopifyOrderCreated",
+      "contract:revenue-stream@1/sale:paid": "onSaleEvent",
       "shopify/order:updated": "onShopifyOrderUpdated",
       "shopify/order:cancelled": "onShopifyOrderCancelled",
       "shopify/refund:created": "onShopifyRefundCreated",
@@ -7538,6 +7624,11 @@
     }
   ],
   "contract_calls": [
+    {
+      "contract": "revenue-stream@1",
+      "bindingSetting": "revenue_streams.provider_app",
+      "reason": "read the sales of the sales apps a person bound as revenue streams, to issue one invoice per sale"
+    },
     {
       "contract": "einvoicing-pa@1",
       "bindingSetting": "einvoicing_settings.provider_app",

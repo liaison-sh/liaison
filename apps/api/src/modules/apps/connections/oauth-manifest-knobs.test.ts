@@ -44,6 +44,32 @@ describe("authorizeConfigParams", () => {
   it("is empty without a declaration", () => {
     expect(resolveAuthorizeConfigParams(undefined, {})).toEqual({ ok: true, params: {} })
   })
+
+  it("a fallback answers an empty setting; the stored value wins over it", () => {
+    const instance = (key: string) => (key === "loginConfigurationId" ? "2000000000000001" : null)
+    expect(resolveAuthorizeConfigParams(CONFIG_ID, {}, instance)).toEqual({
+      ok: true,
+      params: { config_id: "2000000000000001" },
+    })
+    expect(
+      resolveAuthorizeConfigParams(CONFIG_ID, { loginConfigurationId: " " }, instance),
+    ).toEqual({ ok: true, params: { config_id: "2000000000000001" } })
+    expect(
+      resolveAuthorizeConfigParams(CONFIG_ID, { loginConfigurationId: "1667793288" }, instance),
+    ).toEqual({ ok: true, params: { config_id: "1667793288" } })
+    expect(resolveAuthorizeConfigParams(CONFIG_ID, {}, () => null)).toMatchObject({
+      ok: false,
+      reason: "missing",
+    })
+  })
+
+  it("a fallback value is checked against the declared pattern too", () => {
+    expect(resolveAuthorizeConfigParams(CONFIG_ID, {}, () => "1&scope=everything")).toEqual({
+      ok: false,
+      configKey: "loginConfigurationId",
+      reason: "invalid",
+    })
+  })
 })
 
 describe("identifierFromUserinfoPath", () => {

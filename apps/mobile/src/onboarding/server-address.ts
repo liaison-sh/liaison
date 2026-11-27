@@ -424,7 +424,7 @@ export function createFirstLaunch(deps: FirstLaunchDependencies): FirstLaunch {
       links.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:0"
       links.append(
         linkButton(copy.cloudForgot, "first-launch-forgot", () =>
-          openUrl(cloudPageUrl(cloudDomain, "login", language)),
+          openUrl(cloudPageUrl(cloudDomain, "find-workspace", language)),
         ),
         linkButton(copy.cloudSelfHosted, "first-launch-self-hosted", () => switchTo("address")),
       )

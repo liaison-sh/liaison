@@ -76,15 +76,21 @@ export type AuthorizeConfigParamsResult =
  * The authorize parameters a connection's `authorizeConfigParams` yield from the
  * app's stored config, or the first one that is missing or does not match its
  * pattern (the start is then refused: nothing half-configured reaches the provider).
+ *
+ * `fallback` answers a config key the app's config leaves empty (the instance's
+ * value, when the connection uses the instance's OAuth client); the stored value
+ * always wins, and a fallback value is checked against the same pattern.
  */
 export function resolveAuthorizeConfigParams(
   decls: Record<string, AuthorizeConfigParamDecl> | undefined,
   config: Record<string, unknown>,
+  fallback: (configKey: string) => string | null = () => null,
 ): AuthorizeConfigParamsResult {
   const params: Record<string, string> = {}
   for (const [param, decl] of Object.entries(decls ?? {})) {
     const raw = config[decl.configKey]
-    const value = typeof raw === "string" ? raw.trim() : typeof raw === "number" ? String(raw) : ""
+    const stored = typeof raw === "string" ? raw.trim() : typeof raw === "number" ? String(raw) : ""
+    const value = stored || (fallback(decl.configKey) ?? "").trim()
     if (!value) return { ok: false, configKey: decl.configKey, reason: "missing" }
     let re: RegExp
     try {

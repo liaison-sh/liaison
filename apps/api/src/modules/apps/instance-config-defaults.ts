@@ -43,6 +43,27 @@ const DEFAULTS: Readonly<Record<string, Readonly<Record<string, () => string | u
   },
 }
 
+/**
+ * Config values that belong to the instance's OAuth client of a connection, so
+ * they apply only while the connection uses that client (never with a
+ * workspace's own client, whose provider-side settings are its own):
+ *
+ * - social `instagramLoginConfigurationId` (`META_INSTAGRAM_CONFIG_ID`): the
+ *   Facebook Login for Business configuration of the instance's Meta app, the
+ *   `config_id` of the Instagram (Unified login) authorize request.
+ */
+const INSTANCE_CLIENT_DEFAULTS: Readonly<
+  Record<string, Readonly<Record<string, () => string | undefined>>>
+> = {
+  social: { instagramLoginConfigurationId: () => env.META_INSTAGRAM_CONFIG_ID },
+}
+
+/** The instance client's value for an app's config key, or null when it provides none. */
+export function instanceClientConfigDefault(appName: string, key: string): string | null {
+  const value = INSTANCE_CLIENT_DEFAULTS[appName]?.[key]?.()
+  return value ? value : null
+}
+
 /** The instance's value for an app's config key, or null when it provides none. */
 export function instanceConfigDefault(appName: string, key: string): string | null {
   const value = DEFAULTS[appName]?.[key]?.()

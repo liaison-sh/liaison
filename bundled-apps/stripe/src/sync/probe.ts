@@ -16,13 +16,21 @@
 // `stalled` mark alone, so the state keeps saying the webhook is broken until a
 // real delivery arrives.
 //
-// The kernel reads the answer too (`webhookHealth`): the newest upstream
-// activity, or `probed: false` when Stripe could not be asked.
+// ONLY SUBSCRIBED TYPES. The account emits many event types the endpoint never
+// selects (payment_intent.*, balance.*, payouts, ...): Stripe would never send
+// those, so they are not missed. The probe asks only for `WEBHOOK_EVENTS`.
+//
+// The kernel reads the answer too (`webhookHealth`): the newest upstream event
+// we have not received, `null` when there is none (nothing to miss), or
+// `probed: false` when Stripe could not be asked. Never our own last-event time:
+// that is when WE recorded the delivery, a moment after the kernel heard it, so
+// every quiet half hour after a delivery would read as a missed delivery.
 import type { UpstreamProbeResult } from "@liaison/app-sdk"
 import { decodeState } from "../connection"
 import { handleStripeEvent, type IngestCtx } from "../dispatch"
 import { StripeApiError, stripeFetch } from "../http"
 import { blockedOverlay, type Install, importInProgress, moveState, readInstall } from "../states"
+import { WEBHOOK_EVENTS } from "../webhook-events"
 import { Budget, DEFAULT_BUDGET_MS, type SyncCtx, type SyncOptions } from "./common"
 
 type Obj = Record<string, unknown>
@@ -33,6 +41,16 @@ export const STALL_AFTER_MS = 2 * 60 * 60 * 1000
 export const IN_FLIGHT_MS = 5 * 60 * 1000
 /** Missed events replayed per probe. */
 const REPLAY_PER_RUN = 100
+/** Stripe's limit on `types[]` values in one Events API list call. */
+const TYPES_PER_CALL = 20
+
+/** The subscribed event types, split to fit Stripe's `types[]` limit. */
+export function eventTypeChunks(): string[][] {
+  const chunks: string[][] = []
+  for (let i = 0; i < WEBHOOK_EVENTS.length; i += TYPES_PER_CALL)
+    chunks.push(WEBHOOK_EVENTS.slice(i, i + TYPES_PER_CALL))
+  return chunks
+}
 
 function msOf(v: unknown): number {
   if (v instanceof Date) return v.getTime()
@@ -58,14 +76,18 @@ export async function runProbe(
 
   const lastMs = msOf(install.last_event_at)
   const sinceMs = Number.isFinite(lastMs) ? lastMs : msOf(install.connected_at)
-  let page: { data?: Obj[] }
+  const listed: Obj[] = []
   try {
-    page = await stripeFetch<{ data?: Obj[] }>(ctx, "/v1/events", {
-      params: {
-        limit: REPLAY_PER_RUN,
-        ...(Number.isFinite(sinceMs) ? { "created[gt]": Math.floor(sinceMs / 1000) } : {}),
-      },
-    })
+    for (const types of eventTypeChunks()) {
+      const page = await stripeFetch<{ data?: Obj[] }>(ctx, "/v1/events", {
+        params: {
+          limit: REPLAY_PER_RUN,
+          types,
+          ...(Number.isFinite(sinceMs) ? { "created[gt]": Math.floor(sinceMs / 1000) } : {}),
+        },
+      })
+      if (Array.isArray(page.data)) listed.push(...page.data)
+    }
   } catch (err) {
     if (err instanceof StripeApiError && err.code === "key_invalid") {
       await moveState(ctx, install, [{ kind: "key_refused" }])
@@ -75,13 +97,14 @@ export async function runProbe(
       reason: err instanceof Error ? err.message : "Stripe could not be asked",
     }
   }
-  // Newest first, as Stripe lists them.
-  const missed = (Array.isArray(page.data) ? page.data : []).filter(
-    (e) => typeof e.id === "string" && typeof e.created === "number",
-  )
-  const newestMs = missed.length > 0 ? (missed[0]?.created as number) * 1000 : lastMs
-  const upstreamActivityAt = Number.isFinite(newestMs) ? new Date(newestMs).toISOString() : null
-  if (missed.length === 0) return { upstreamActivityAt, stalled: false, missed: 0, replayed: 0 }
+  // Newest first, as Stripe lists them; merged across the type chunks.
+  const missed = listed
+    .filter((e) => typeof e.id === "string" && typeof e.created === "number")
+    .sort((a, b) => (b.created as number) - (a.created as number))
+    .slice(0, REPLAY_PER_RUN)
+  if (missed.length === 0)
+    return { upstreamActivityAt: null, stalled: false, missed: 0, replayed: 0 }
+  const upstreamActivityAt = new Date((missed[0]?.created as number) * 1000).toISOString()
 
   const oldestMissedMs = (missed[missed.length - 1]?.created as number) * 1000
   const t = now().getTime()

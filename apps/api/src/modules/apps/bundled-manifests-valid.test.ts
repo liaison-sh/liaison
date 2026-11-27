@@ -220,6 +220,9 @@ describe("bundled app manifests", () => {
       ])
       const subscribes = Object.keys(manifest.events?.subscribes ?? {})
       const skipped = subscribes.filter((event) => {
+        // A contract subscription (`contract:<name>@<version>/...`) is delivered from every
+        // provider of the org and needs no dependency (provider-contracts/validate.ts).
+        if (event.startsWith("contract:")) return false
         const source = event.includes("/") ? event.split("/")[0] : null
         return source !== null && source !== "kernel" && !deps.has(source)
       })

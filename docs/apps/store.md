@@ -120,6 +120,8 @@ An order is B2B when the order itself says so: it is placed for a Shopify B2B co
 
 With Invoicing installed and a shop mapped to an issuer profile, a Shopify draft order and an Invoicing quote are the same object, and a paid order issues its invoice automatically. A refund or cancellation in Shopify issues the matching credit note. See [Issue invoices and quotes](invoicing.md).
 
+The store reports each new order to Invoicing as a sale (`revenue-stream@1`): it keeps the order as the webhook delivered it and Invoicing reads it from there, so the invoice is made from exactly what the buyer paid. When a customer's data is deleted in Shopify, the orders kept for them are deleted too.
+
 `draft_orders_get` and `orders_get` return the B2B company behind a draft order or order (`purchasingCompany`: company name, location addresses, tax registration number, tax exemption, contact email), so its quote or invoice is addressed to the company. `orders_get` also returns the order's `taxesIncluded`.
 
 With Invoicing mapped to the shop, `draft_orders_create` and `draft_orders_complete` refuse an order Invoicing could not invoice, before any approval is filed. The error (`NOT_INVOICEABLE`) names each fix:

@@ -17,10 +17,10 @@ Views Day / Week / Month -> packages/shared/src/i18n/locales/en/calendar.json:68
 Today / Previous / Next -> apps/web/src/modules/calendar/CalendarShell.tsx:280
 My calendars -> packages/shared/src/i18n/locales/en/calendar.json:38
 New event -> apps/web/src/modules/calendar/CalendarShell.tsx:340
-Event fields Title, All day, Start, End, Description, Location, Calendar, Recurrence -> apps/web/src/modules/calendar/EventDialog.tsx:285
+Event fields Title, All day, Start, End, Description, Location, Calendar, Recurrence -> apps/web/src/modules/calendar/CalendarEventTab.tsx (CalendarEventTab)
 Recurrence options -> packages/shared/src/i18n/locales/en/calendar.json:53
 Attendees, comma-separated -> packages/shared/src/i18n/locales/en/calendar.json:15
-Save / Delete -> apps/web/src/modules/calendar/EventDialog.tsx:466
+Save / Delete -> apps/web/src/modules/calendar/CalendarEventTab.tsx (CalendarEventTab)
 Attendees not emailed -> packages/shared/src/i18n/locales/en/calendar.json:13
 Only organizer changes guest list -> packages/shared/src/i18n/locales/en/calendar.json:14
 Recurring event not editable -> packages/shared/src/i18n/locales/en/calendar.json:58

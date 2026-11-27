@@ -1004,4 +1004,17 @@ export const FR: Record<string, string> = {
   "Thank-you mail for each sale": "Mail de remerciement pour chaque vente",
   "One mail per sale with your logo, what was bought, the total and the invoice attached, sent from the mailbox above. Off: the plain invoice mail, when automatic emails are on.":
     "Un mail par vente avec votre logo, les articles achetés, le total et la facture jointe, envoyé depuis la boîte ci-dessus. Désactivé : le mail de facture simple, si les envois automatiques sont activés.",
+  "Send the thank-you from": "Envoyer le remerciement depuis",
+  "The mailbox above": "La boîte ci-dessus",
+  "The organization's notifications sender": "L'expéditeur des notifications de l'organisation",
+  "Reply-to address": "Adresse de réponse",
+  "Small seller (under EUR 100,000 cross-border digital B2C)":
+    "Petit vendeur (moins de 100 000 EUR de services numériques B2C transfrontaliers)",
+  "Your telecom, broadcasting and electronic services to consumers in other countries stayed under EUR 100,000 this calendar year and last: one piece of evidence of the buyer's country is enough (EU Reg. 282/2011 art. 24b). Off: two are needed. Check with your accountant.":
+    "Vos services de télécommunications, de radiodiffusion et électroniques aux particuliers d'autres pays sont restés sous 100 000 EUR cette année civile et la précédente : une seule preuve du pays de l'acheteur suffit (règlement UE 282/2011, art. 24 ter). Désactivé : deux sont nécessaires. Vérifiez avec votre comptable.",
+  "Under EUR 10,000 EU-wide, not registered for the OSS":
+    "Moins de 10 000 EUR dans l'UE, sans inscription au guichet unique (OSS)",
+  "Your sales of digital services and distance sales of goods to consumers in other EU countries stayed under EUR 10,000 this calendar year and last, and you have not opted for the OSS (One-Stop Shop): they are charged French VAT. Off (the default, and the right choice once you are registered for the OSS): the buyer's country rate. Check with your accountant.":
+    "Vos services numériques et ventes à distance de biens aux particuliers d'autres pays de l'UE sont restés sous 10 000 EUR cette année civile et la précédente, et vous n'avez pas opté pour le guichet unique (OSS) : la TVA française s'applique. Désactivé (par défaut, et le bon choix dès que vous êtes inscrit au guichet unique) : le taux du pays de l'acheteur. Vérifiez avec votre comptable.",
+  Optional: "Facultatif",
 }

@@ -33,6 +33,35 @@ describe("ResendEmailProvider", () => {
     expect(body.to).toBe("x@y.test")
   })
 
+  it("sends an inline image with its content_id, a plain attachment without", async () => {
+    const calls: { init: any }[] = []
+    const provider = new ResendEmailProvider({
+      apiKey: "re_x",
+      from: "a@b.test",
+      fetch: async (_url, init) => {
+        calls.push({ init })
+        return new Response(JSON.stringify({ id: "em_3" }), { status: 200 })
+      },
+    })
+    await provider.send({
+      to: "x@y.test",
+      subject: "s",
+      html: '<img src="cid:logo">',
+      attachments: [
+        { filename: "a.pdf", contentType: "application/pdf", content: new Uint8Array([1]) },
+        {
+          filename: "logo.png",
+          contentType: "image/png",
+          content: new Uint8Array([2]),
+          contentId: "logo",
+        },
+      ],
+    })
+    const body = JSON.parse(calls[0].init.body)
+    expect(body.attachments[0].content_id).toBeUndefined()
+    expect(body.attachments[1].content_id).toBe("logo")
+  })
+
   it("omits Idempotency-Key header when not provided", async () => {
     const calls: { init: any }[] = []
     const provider = new ResendEmailProvider({

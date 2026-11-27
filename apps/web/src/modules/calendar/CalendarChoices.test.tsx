@@ -46,7 +46,7 @@ vi.mock("~/modules/calendar/calendar-store", () => ({
   loadPreferredView: () => "month",
   persistPreferredView: vi.fn(),
 }))
-vi.mock("~/modules/calendar/EventDialog", () => ({ EventDialog: () => null }))
+vi.mock("~/modules/calendar/QuickCreate", () => ({ QuickCreate: () => null }))
 
 import { CalendarChoices } from "~/modules/calendar/CalendarChoices"
 

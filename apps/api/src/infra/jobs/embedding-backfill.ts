@@ -206,3 +206,218 @@ export async function enqueueEmbeddingBackfill(
 ): Promise<void> {
   await enqueueBackfillStep(orgId, await readBackfillCursor(orgId), batchSize, opts)
 }
+
+/* -------------------------------------------------------------------------- */
+/* The re-embed after a width change (EMBEDDING_DIMENSIONS)                    */
+/* -------------------------------------------------------------------------- */
+//
+// A rebuild at a new width notes the documents that had a vector
+// (modules/search/reembed-queue.ts). This chain gives them one again: a step
+// takes up to REEMBED_BATCH noted rows of one org, rebuilds their documents
+// from Postgres with a fresh vector in one embedding call and one Meili write,
+// and only then removes them from the set. A kill costs at most the batch in
+// flight, which the next step simply does again. Search works the whole time:
+// keyword legs are untouched, and the vector leg reaches more documents as
+// the chain advances.
+
+export const EMBEDDING_REEMBED_JOB = "search-embedding-reembed"
+/** Noted rows per step: one embedding call and one Meili task. */
+export const REEMBED_BATCH = 50
+/** Pause between two steps of one org, so the chain never crowds live indexing. */
+const REEMBED_STEP_DELAY_MS = 1_000
+/** While the index does not yet declare the new width (the rebuild is running). */
+const REEMBED_WAIT_FOR_INDEX_MS = 60_000
+/** One step per org at a time, across processes and duplicate chains. */
+const REEMBED_LOCK_MS = 5 * 60_000
+const reembedLockKey = (orgId: string) => `search:reembed:lock:${orgId}`
+
+export interface ReembedPayload {
+  orgId: string
+  /** The step's position in its chain, which keeps every step's job id distinct. */
+  step?: number
+}
+
+export type ReembedStepResult =
+  | { status: "embedded"; embedded: number; left: number }
+  | { status: "waiting_for_index" | "locked" | "no_embedder" | "done" }
+
+/**
+ * One step: up to `batchSize` noted rows of the org, re-indexed with a vector.
+ * Waits (embeds nothing, removes nothing) while the index does not declare the
+ * org's embedder at its width, i.e. before the rebuild at the new width has
+ * swapped in: writing then would drop the old index's vectors for nothing.
+ */
+export async function processReembedStep(
+  orgId: string,
+  batchSize = REEMBED_BATCH,
+): Promise<ReembedStepResult> {
+  const [queue, indexer] = await Promise.all([
+    import("~/modules/search/reembed-queue"),
+    import("~/modules/search/message-indexer"),
+  ])
+  const lockKey = reembedLockKey(orgId)
+  const token = crypto.randomUUID()
+  if ((await redis.set(lockKey, token, "PX", REEMBED_LOCK_MS, "NX")) !== "OK") {
+    return { status: "locked" }
+  }
+  try {
+    const members = await queue.peekReembed(orgId, batchSize)
+    if (members.length === 0) {
+      await queue.settleReembed(orgId, [])
+      return { status: "done" }
+    }
+    const embedder = await indexer.resolveOrgEmbedder(orgId)
+    if (!embedder) {
+      // No key (or a model that cannot reach the width): nothing can embed
+      // these, and they already answer keyword searches.
+      await queue.dropReembed(orgId)
+      log.info({ orgId }, "embedding_reembed_dropped_no_embedder")
+      return { status: "no_embedder" }
+    }
+    if (!(await indexer.memoryEmbedderDeclared(embedder.dimensions))) {
+      return { status: "waiting_for_index" }
+    }
+    const messageIds: string[] = []
+    const briefs: Array<{ kind: "brief_row" | "episode"; id: string }> = []
+    for (const m of members) {
+      const item = queue.parseReembedMember(m)
+      if (!item) continue
+      if (item.kind === "message") messageIds.push(item.id)
+      else briefs.push({ kind: item.kind, id: item.id })
+    }
+    if (messageIds.length > 0) {
+      const { failures } = await indexer.indexMessagesBulk(orgId, messageIds, {
+        batchSize: messageIds.length,
+      })
+      // A failed batch stays noted and is tried again by the next step.
+      if (failures.length > 0) {
+        throw new Error(`re-embed: ${failures.length} messages failed: ${failures[0]?.error}`)
+      }
+    }
+    await indexer.indexBriefRowsBulk(orgId, briefs)
+    const left = await queue.settleReembed(orgId, members)
+    log.info({ orgId, embedded: members.length, left }, "embedding_reembed_progress")
+    return { status: "embedded", embedded: members.length, left }
+  } finally {
+    // Released only when still ours: a step that outlived the lock must not
+    // free the one another step holds now.
+    const held = await redis.get(lockKey).catch(() => null)
+    if (held === token) await redis.del(lockKey).catch(() => undefined)
+  }
+}
+
+function reembedStepId(orgId: string, step: number): string {
+  return `${EMBEDDING_REEMBED_JOB}:${orgId}:${step}`
+}
+
+async function enqueueReembedStep(orgId: string, step: number, delay = 0): Promise<void> {
+  await enqueueAppJob(QUEUE_APP, EMBEDDING_REEMBED_JOB, { orgId, step } satisfies ReembedPayload, {
+    jobId: reembedStepId(orgId, step),
+    ...(delay > 0 ? { delay } : {}),
+  })
+}
+
+/**
+ * One chain step, then the next one unless the org is done. `processStep` is
+ * injectable for the test. A step that finds the org locked ends its chain:
+ * the holder's chain carries on.
+ */
+export async function runReembedStep(
+  payload: ReembedPayload,
+  processStep: (orgId: string) => Promise<ReembedStepResult> = processReembedStep,
+): Promise<ReembedStepResult> {
+  const result = await processStep(payload.orgId)
+  const next = (payload.step ?? 0) + 1
+  if (result.status === "embedded" && result.left > 0) {
+    await enqueueReembedStep(payload.orgId, next, REEMBED_STEP_DELAY_MS)
+  } else if (result.status === "waiting_for_index") {
+    await enqueueReembedStep(payload.orgId, next, REEMBED_WAIT_FOR_INDEX_MS)
+  }
+  return result
+}
+
+export function registerEmbeddingReembedWorker(): void {
+  registerJobWorker(QUEUE_APP, EMBEDDING_REEMBED_JOB, (payload: ReembedPayload) =>
+    runReembedStep(payload).then(() => undefined),
+  )
+}
+
+/**
+ * Make sure a chain will pick up rows noted for one org (a live write during
+ * the width change). One waiting kick per org: the queue deduplicates it on
+ * its id while it waits, so a burst of writes queues one job, not one each.
+ * Best effort; never throws.
+ */
+export async function kickReembed(orgId: string): Promise<void> {
+  try {
+    await enqueueAppJob(
+      QUEUE_APP,
+      EMBEDDING_REEMBED_JOB,
+      { orgId, step: 0 } satisfies ReembedPayload,
+      { jobId: `${EMBEDDING_REEMBED_JOB}:${orgId}:kick`, delay: REEMBED_WAIT_FOR_INDEX_MS },
+    )
+  } catch (err) {
+    log.warn({ err, orgId }, "Could not queue the re-embed; the next leader acquire resumes it")
+  }
+}
+
+/**
+ * Start (or rejoin) a chain for every org with noted rows. Called after the
+ * rebuild at a new width swaps in, and by the leader on every lease acquire
+ * (`checkMemoryEmbedderWidth`), so a chain lost to a restart picks up where
+ * the set says. Redis and the queue only: no database read.
+ */
+export async function resumeReembed(): Promise<number> {
+  const { orgsAwaitingReembed } = await import("~/modules/search/reembed-queue")
+  const orgs = await orgsAwaitingReembed()
+  // A fresh id per resume: an older chain still queued is not mistaken for
+  // this one, and two chains of one org are kept apart by the step lock.
+  const step = Date.now()
+  for (const orgId of orgs) await enqueueReembedStep(orgId, step)
+  if (orgs.length > 0) log.info({ orgs: orgs.length }, "embedding_reembed_resumed")
+  return orgs.length
+}
+
+/**
+ * The leader's check of the embedder width, once per lease acquire. When the
+ * index declares the memory embedder at a width other than
+ * EMBEDDING_DIMENSIONS, asks for the rebuild at the configured width (one job,
+ * deduplicated); then resumes any re-embed still waiting. One Meili settings
+ * read; never a scan, never a database read. A width no provider path
+ * produces (a test index) is left alone. Never throws.
+ */
+export async function checkMemoryEmbedderWidth(): Promise<void> {
+  try {
+    const [{ offlineSideCalls }, client, dims, { MEMORY_EMBEDDER_NAME }] = await Promise.all([
+      import("~/lib/env"),
+      import("~/infra/search/client"),
+      import("~/modules/search/embedding-dimensions"),
+      import("~/modules/search/vector-opt-out"),
+    ])
+    if (offlineSideCalls()) return
+    const configured = dims.configuredEmbeddingDimensions()
+    let declared: number | null = null
+    try {
+      const settings = (await client
+        .getMeili()
+        .index(client.effectiveIndexName())
+        .getSettings()) as { embedders?: Record<string, { dimensions?: number }> | null }
+      const width = settings.embedders?.[MEMORY_EMBEDDER_NAME]?.dimensions
+      declared = typeof width === "number" ? width : null
+    } catch {
+      // No index yet: the first build declares the configured width.
+    }
+    if (
+      declared !== null &&
+      declared !== configured &&
+      dims.isSupportedEmbeddingDimensions(declared)
+    ) {
+      const { requestIndexRebuild } = await import("~/modules/search/reindex")
+      log.info({ from: declared, to: configured }, "memory_embedder_width_changed")
+      await requestIndexRebuild("memory_embedder_width_changed", { embedderDimensions: configured })
+    }
+    await resumeReembed()
+  } catch (err) {
+    log.warn({ err }, "Checking the memory embedder width failed; the next leader acquire retries")
+  }
+}

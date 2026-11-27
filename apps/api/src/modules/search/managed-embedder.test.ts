@@ -87,10 +87,14 @@ describe("managed edition", () => {
   test("embeds on OpenRouter with the cell key and zdr, one usage row per batch", async () => {
     const embedder = await resolveOrgEmbedder(ORG)
     expect(embedder).not.toBeNull()
-    expect(embedder?.dimensions).toBe(3072)
+    // The instance's width (EMBEDDING_DIMENSIONS, 768 by default), asked of
+    // OpenRouter and enforced on what comes back: the stub answers 3072.
+    expect(embedder?.dimensions).toBe(768)
     const { vectors } = await (embedder as NonNullable<typeof embedder>).embed(TEXTS)
     expect(vectors).toHaveLength(10)
-    expect(vectors[0]).toHaveLength(3072)
+    expect(vectors[0]).toHaveLength(768)
+    const v0 = vectors[0] as number[]
+    expect(Math.sqrt(v0.reduce((a, x) => a + x * x, 0))).toBeCloseTo(1, 10)
 
     expect(stub.requests).toHaveLength(1)
     const [req] = stub.requests
@@ -98,6 +102,7 @@ describe("managed edition", () => {
     expect(req.authorization).toBe(`Bearer ${CELL_KEY}`)
     expect(req.body.model).toBe("google/gemini-embedding-001")
     expect(req.body.input).toEqual(TEXTS)
+    expect(req.body.dimensions).toBe(768)
     expect(req.body.provider).toMatchObject({ zdr: true, data_collection: "deny" })
 
     const rows = await sql<
@@ -153,6 +158,7 @@ describe("self-hosted (S19)", () => {
     process.env.GOOGLE_API_KEY = "google-test-placeholder"
     const realFetch = globalThis.fetch
     const googleUrls: string[] = []
+    const googleBodies: string[] = []
     const spy = spyOn(globalThis, "fetch").mockImplementation((async (
       input: string | URL | Request,
       init?: RequestInit,
@@ -160,18 +166,25 @@ describe("self-hosted (S19)", () => {
       const url = input instanceof Request ? input.url : String(input)
       if (url.includes("generativelanguage.googleapis.com")) {
         googleUrls.push(url)
-        return Response.json({ embeddings: TEXTS.map(() => ({ values: [0.1, 0.2] })) })
+        googleBodies.push(typeof init?.body === "string" ? init.body : "")
+        // A full width answer: the embedder cuts and normalises it.
+        return Response.json({
+          embeddings: TEXTS.map(() => ({ values: Array.from({ length: 3072 }, () => 0.5) })),
+        })
       }
       return realFetch(input, init)
     }) as typeof fetch)
     try {
       const embedder = await resolveOrgEmbedder(ORG)
       expect(embedder?.modelId).toBe("gemini-embedding-001")
-      await (embedder as NonNullable<typeof embedder>).embed(TEXTS)
+      const { vectors } = await (embedder as NonNullable<typeof embedder>).embed(TEXTS)
+      expect(vectors[0]).toHaveLength(768)
+      expect((vectors[0] as number[])[0]).toBeCloseTo(1 / Math.sqrt(768), 10)
     } finally {
       spy.mockRestore()
     }
     expect(googleUrls.length).toBeGreaterThan(0)
+    expect(googleBodies.join("")).toContain('"outputDimensionality":768')
     expect(stub.requests).toHaveLength(0)
     const [n] = await sql<{ n: number }[]>`
       SELECT count(*)::int AS n FROM kernel.credit_transactions WHERE org_id = ${ORG}`

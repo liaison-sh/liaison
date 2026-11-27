@@ -98,6 +98,7 @@ const EXTERNAL_WRITES = new Set([
   "knowledge:add_folder_source", // harvests a Drive folder / GitLab path it names
   "knowledge:source_link_create", // probes the remote document it names
   "mail:composeForApp", // sends mail
+  "kernel:notifications_email_send", // sends mail through the org's notifications sender
   "invoicing:quote_create_and_issue", // creates a Shopify draft order
   "social:monitor_terms_add", // the term is sent to the platforms by the discovery-sync job
   "social:watch_object", // the object is polled on the platform by the watch-poller job

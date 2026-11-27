@@ -215,7 +215,14 @@ describe("getEmailProvider / setEmailProvider", () => {
 describe("SmtpEmailProvider — real SMTP", () => {
   const TEST_SMTP_PORT = 2525
   let smtpServer: SMTPServer
-  let received: Array<{ from: string; to: string[]; subject: string; text: string; html: string }>
+  let received: Array<{
+    from: string
+    to: string[]
+    subject: string
+    text: string
+    html: string
+    attachments: Array<{ filename?: string; cid?: string; contentDisposition?: string }>
+  }>
 
   beforeAll(async () => {
     received = []
@@ -230,6 +237,11 @@ describe("SmtpEmailProvider — real SMTP", () => {
             subject: mail.subject ?? "",
             text: typeof mail.text === "string" ? mail.text : "",
             html: typeof mail.html === "string" ? mail.html : "",
+            attachments: mail.attachments.map((a) => ({
+              filename: a.filename,
+              cid: a.cid,
+              contentDisposition: a.contentDisposition,
+            })),
           })
           callback()
         })
@@ -268,6 +280,37 @@ describe("SmtpEmailProvider — real SMTP", () => {
     expect(received[0].subject).toBe("Password Reset")
     expect(received[0].text).toContain("reset?token=abc123")
     expect(received[0].html).toContain("reset?token=abc123")
+  })
+
+  it("sends an inline image with its Content-ID beside a plain attachment", async () => {
+    const provider = new SmtpEmailProvider({
+      host: "127.0.0.1",
+      port: TEST_SMTP_PORT,
+      user: "",
+      pass: "",
+      from: "noreply@liaison.test",
+    })
+    await provider.send({
+      to: "dana@example.com",
+      subject: "Thanks",
+      html: '<p><img src="cid:issuer-logo"></p>',
+      text: "Thanks",
+      attachments: [
+        { filename: "INV-1.pdf", contentType: "application/pdf", content: new Uint8Array([37]) },
+        {
+          filename: "logo.png",
+          contentType: "image/png",
+          content: new Uint8Array([137, 80, 78, 71]),
+          contentId: "issuer-logo",
+        },
+      ],
+    })
+    expect(received).toHaveLength(1)
+    const atts = received[0].attachments
+    const logo = atts.find((a) => a.filename === "logo.png")
+    expect(logo?.cid).toBe("issuer-logo")
+    expect(logo?.contentDisposition).toBe("inline")
+    expect(atts.find((a) => a.filename === "INV-1.pdf")?.contentDisposition).toBe("attachment")
   })
 
   it("sends multiple emails to different recipients", async () => {

@@ -992,13 +992,22 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "files_read",
     readOnly: true,
     description:
-      "Get a short lived signed download URL for one file id, plus that file's metadata, for any file type. It returns the URL, not the bytes: fetch the content out of band, which keeps large attachments out of the conversation.",
+      "Read one file by id. A text file (.md, .txt, .csv, .json, .yaml, .xml, .html, a log, code) returns its text, the first 100 KB. Any other file (image, PDF, archive) returns a short lived download URL plus its metadata.",
+    searchKeywords: ["lire", "fichier", "pièce jointe", "markdown", "texte"],
     requiredScopes: ["kernel:files:read"],
     params: z.object({
       fileId: z.string().min(1),
       expiresInSec: z.number().int().min(60).max(900).optional(),
+      download: z
+        .boolean()
+        .optional()
+        .describe("true: a download URL even for a text file, instead of its text."),
     }),
     handler: handleFilesRead as (params: unknown, ctx: any) => Promise<unknown>,
+    // A text file's content reaches the model. When the file came from outside the org (an
+    // inbound attachment, an import) the turn is tainted, as analyze_media does.
+    taintSource: true,
+    taintSourceWhen: analyzedFileIsExternal,
   })
 
   toolRegistry.set([orgId, "kernel", "files_upload_url"], {

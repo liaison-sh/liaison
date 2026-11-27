@@ -5,8 +5,12 @@
  * …). All such files are `kernel.files` rows, so one generic tool covers every
  * current and future app. Visibility is fully gated by RLS on `kernel.files`.
  */
-import type { PrivilegedDb, RlsClient } from "~/db"
+import { sql } from "drizzle-orm"
+import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
+import { schemaRef } from "~/db/schema-ref"
+import { getObjectRange } from "~/infra/storage/object-storage"
+import { wrapExternalContent } from "~/lib/external-content"
 import { isBlockedFileType } from "~/modules/files/attach"
 import {
   authorizeAgentUpload,
@@ -15,12 +19,17 @@ import {
   FileServiceError,
   type FileTokenPayload,
   getRelayDownloadUrl,
+  isRelayedFileServable,
   listFiles,
   storeRelayedUpload,
   UPLOAD_TOKEN_TTL_SECONDS,
   verifyFileToken,
 } from "~/modules/files/service"
+import { decodeTextBytes, isTextLikeFile, TEXT_READ_MAX_BYTES } from "~/modules/files/text-read"
+import { isMailFilePrivate } from "~/modules/mailbox-crypto/content-suppression"
 import { type MergePdfsResult, mergePdfs } from "~/modules/pdf/merge"
+
+const K = sql.raw(schemaRef("kernel"))
 
 interface FileToolContext {
   userId: string
@@ -84,20 +93,86 @@ export async function handleFilesList(
   }
 }
 
+/** A text file's content, read in the turn: no URL to fetch. */
+export interface AgentFileText {
+  fileId: string
+  filename: string
+  mimeType: string
+  sizeBytes: number
+  /** The file's text inside the untrusted-content fence: data, never instructions. */
+  text: string
+  truncated: boolean
+  /** Set when `truncated`: how much of the file the text holds. */
+  note?: string
+}
+
+export interface FileReadError {
+  error: { code: string; message: string }
+}
+
+export interface FilesReadDeps {
+  readRange: (storageKey: string, end: number) => Promise<Uint8Array>
+  isServable: typeof isRelayedFileServable
+  isPrivateMailFile: (orgId: string, fileId: string) => Promise<boolean>
+}
+
+const defaultFilesReadDeps: FilesReadDeps = {
+  readRange: async (storageKey, end) => (await getObjectRange(storageKey, { start: 0, end })).bytes,
+  isServable: isRelayedFileServable,
+  // Fails closed: a lookup error counts as a private mailbox file.
+  isPrivateMailFile: (orgId, fileId) =>
+    withPrivilegedDb(orgId, "files-read:private-mail", (tx) =>
+      isMailFilePrivate(tx, orgId, fileId),
+    ).catch(() => true),
+}
+
+interface VisibleFileRow {
+  id: string
+  app: string
+  filename: string
+  mimeType: string
+  sizeBytes: number | string
+  storageKey: string
+  encVersion: number | string | null
+}
+
 /**
- * Return a short-lived signed download URL for one file the agent can see,
- * for EVERY file type (a `.log`, a diagnostics `.json`, a `.espreset` blob, an
- * image). The URL is returned instead of the bytes on purpose: it keeps large
- * or noisy attachments (bug-report logs, presets) out of the agent's context —
- * the caller fetches the content out of band. Visibility is gated by RLS on
- * `kernel.files` (a file the caller cannot see raises PARENT_NOT_FOUND, the same
- * not-found-or-forbidden boundary `files_list` uses), and the tool itself is
- * gated on `kernel:files:read`.
+ * Read one file the agent can see. A text file (Markdown, plain text, CSV,
+ * JSON, YAML, XML, HTML, source code, a log) comes back as its text, at most
+ * `TEXT_READ_MAX_BYTES` of it with a note when cut, fenced as untrusted outside
+ * content: an attachment is data, never instructions. Any other file (an image,
+ * a PDF, a `.espreset` blob), or a text file asked for with `download: true`,
+ * comes back as a short-lived signed download URL, which keeps large binary
+ * attachments out of the agent's context.
+ *
+ * Access is the file's own: the row is read under the caller's RLS context (a
+ * file of another org, or of a thread or ticket the caller cannot see, raises
+ * PARENT_NOT_FOUND exactly like the URL path), the attachment of a deleted
+ * message is refused, and the bytes are read server side from the storage key
+ * of that row, never from a URL. A sealed file (end-to-end encrypted) and the
+ * attachment of a private mailbox are never decoded here: their plaintext must
+ * not land in a stored tool result, so they keep the URL path, unchanged.
+ * The tool is gated on `kernel:files:read`.
  */
 export async function handleFilesRead(
-  params: { fileId: string; expiresInSec?: number },
+  params: { fileId: string; expiresInSec?: number; download?: boolean },
   ctx: FileToolContext,
-): Promise<AgentFileDownload> {
+  deps: FilesReadDeps = defaultFilesReadDeps,
+): Promise<AgentFileDownload | AgentFileText | FileReadError> {
+  if (params.download !== true) {
+    const row = extractRows<VisibleFileRow>(
+      await ctx.db.execute(
+        sql`SELECT id, app, filename, mime_type AS "mimeType", size_bytes AS "sizeBytes",
+                   storage_key AS "storageKey", enc_version AS "encVersion"
+              FROM ${K}.files WHERE id = ${params.fileId} LIMIT 1`,
+      ),
+    )[0]
+    if (!row) throw new FileServiceError("PARENT_NOT_FOUND", "File not visible")
+    const text = isTextLikeFile(row.mimeType, row.filename)
+      ? await readTextFile(row, ctx, deps)
+      : null
+    if (text) return text
+  }
   const result = await getRelayDownloadUrl(params.fileId, {
     rlsTx: ctx.db,
     ttlSeconds: params.expiresInSec,
@@ -109,6 +184,48 @@ export async function handleFilesRead(
     sizeBytes: result.sizeBytes,
     downloadUrl: result.downloadUrl,
     expiresInSec: result.expiresInSec,
+  }
+}
+
+/** The text of a visible text file, a refusal, or null for the URL path. */
+async function readTextFile(
+  row: VisibleFileRow,
+  ctx: FileToolContext,
+  deps: FilesReadDeps,
+): Promise<AgentFileText | FileReadError | null> {
+  if (Number(row.encVersion ?? 0) > 0) return null
+  if (row.app === "mail" && (await deps.isPrivateMailFile(ctx.orgId, row.id))) return null
+  if (!(await deps.isServable({ orgId: ctx.orgId, fileId: row.id, storageKey: row.storageKey }))) {
+    throw new FileServiceError("PARENT_NOT_FOUND", "File not visible")
+  }
+  const sizeBytes = Number(row.sizeBytes)
+  const truncated = sizeBytes > TEXT_READ_MAX_BYTES
+  // An empty object has no byte range to ask for.
+  const bytes =
+    sizeBytes === 0
+      ? new Uint8Array()
+      : await deps.readRange(row.storageKey, Math.min(sizeBytes, TEXT_READ_MAX_BYTES) - 1)
+  const decoded = decodeTextBytes(bytes, truncated)
+  if (!decoded.ok) {
+    return {
+      error: {
+        code: "binary_file",
+        message: `${row.filename} is named or typed as text but its content is binary (not UTF-8 text), so it is not shown. Ask the person what the file is, or use kernel__analyze_media for an image, video or document.`,
+      },
+    }
+  }
+  return {
+    fileId: row.id,
+    filename: row.filename,
+    mimeType: row.mimeType,
+    sizeBytes,
+    text: wrapExternalContent(decoded.text),
+    truncated,
+    ...(truncated
+      ? {
+          note: `Only the first ${TEXT_READ_MAX_BYTES} bytes of ${sizeBytes} are shown; the rest of the file is cut. Say so when you answer from it.`,
+        }
+      : {}),
   }
 }
 

@@ -82,12 +82,14 @@ Scopes are shown in full. `kernel:agent:memory` is the gate for the memory and n
 | Tool | What it does | Scope | Approval |
 | --- | --- | --- | --- |
 | `files_list` | List the files attached to an entity. | `kernel:files:read` | No |
-| `files_read` | Get a short-lived download link and metadata for a file. | `kernel:files:read` | No |
+| `files_read` | Read a text file (Markdown, plain text, CSV, JSON, YAML, XML, HTML, a log, code), or get a short-lived download link and metadata for any other file. | `kernel:files:read` | No |
 | `files_upload_url` | Start uploading a local file so a send tool can attach it. | `kernel:files:read` | No |
 | `files_upload_confirm` | Finish an upload and get the file id. | `kernel:files:read` | No |
 | `files_merge_pdfs` | Merge stored PDFs into one new PDF. | `kernel:files:read` | No |
 | `analyze_media` | Analyze an image, video or PDF attachment. | `kernel:files:analyze` | No |
 | `mail_attachment_read` | Read one email attachment: a PDF, Word, Excel or PowerPoint file, an image or a video. | `mail:conversations:read`, `kernel:files:analyze` | No |
+
+`files_read` gives the agent the text of a text file directly, such as a `.md` attached in chat, even when the upload was stored as a generic binary type: the first 100 KB, with a note saying the rest was cut. The agent reads that text as outside content, never as instructions. A file whose content is not UTF-8 text (a binary renamed `.md`) is refused, and an end-to-end encrypted or private mailbox attachment still comes back as a download link only. The agent can read a file only when you can see the item it belongs to.
 
 `analyze_media` reads attachments of tickets, email and agent chats. Apps can read their own files the same way (a shipping label, for its tracking number) through the `files.analyzeDocument` capability; those reads use the same model and credits, and follow the workspace's `apps` media-analysis setting.
 

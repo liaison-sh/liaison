@@ -1,0 +1,20 @@
+{
+  "entry": "job:disputes-due",
+  "params": {},
+  "unrecorded": {
+    "reason": "hand-written, not recorded: the job reads only the app's own mirror, and the recording run holds no dispute. Awaiting a recording against a Stripe test account."
+  },
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["stripe_disputes", "{\"where\":{\"status\":\"needs_response\"},\"limit\":500}"],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["stripe_disputes", "{\"where\":{\"status\":\"warning_needs_response\"},\"limit\":500}"],
+      "reply": "[]"
+    }
+  ],
+  "recordedFrom": "an install with no rows yet: every read answers empty (contract replay, no provider call)"
+}

@@ -2007,6 +2007,7 @@ export function buildTemplateData(params: {
 }) {
   const { type, document, issuer, counterparty, lines, requires_hs_code, legal_mention } = params
   const stored = document as unknown as Record<string, unknown>
+  const saleDate = dayOf(stored.supply_date) ?? dayOf(document.source?.supply_date)
   const flat = (document.einvoice ?? stored) as Record<string, unknown>
   const snapshot = {
     operation_category:
@@ -2023,8 +2024,9 @@ export function buildTemplateData(params: {
       scope: document.scope ?? null,
       number: document.number ?? "",
       issued_at: document.issued_at ?? "",
-      // The sale date: the stored column on a re-render, the issue-time source at issue.
-      supply_date: dayOf(stored.supply_date) ?? dayOf(document.source?.supply_date),
+      // The sale date: the stored column on a re-render, the issue-time source at issue. Only
+      // set when there is one, so a document without a sale date renders as it always did.
+      ...(saleDate ? { supply_date: saleDate } : {}),
       due_at: document.due_at,
       currency: document.currency,
       subtotal_minor: document.subtotal_minor.toString(),

@@ -88,6 +88,7 @@ export {
 } from "./cloud-workspace"
 export * from "./connect-failures"
 export { csvCell } from "./csv"
+export * from "./date-cell"
 export * from "./demo/needs"
 export * from "./demo/worlds"
 export * from "./emoji-shortcodes"

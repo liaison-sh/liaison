@@ -311,3 +311,6 @@ Highlight (emphasis) draws values bold in the accent colour -> apps/web/src/modu
 A table source's lookup columns are read as the viewer and stay empty without the tool -> apps/api/src/modules/dashboards/execute.ts:294
 A table source computes its formula columns after the lookups -> apps/api/src/modules/dashboards/execute.ts:294
 A table source's rollups and row links read the other table as the viewer -> apps/api/src/modules/dashboards/execute.ts:266 ; apps/api/src/modules/dashboards/sources.ts:433
+A table block shows a date or a timestamp as the date alone (day, midnight, date format) or the date and the time in the org's zone -> packages/shared/src/date-cell.ts:89 ; apps/web/src/modules/dashboards/blocks/format.ts:107
+The rows behind a block read timestamps the same way -> apps/web/src/modules/dashboards/BlockDrillPanel.tsx:166
+The PDF export's table cells read dates the same way, in English -> apps/api/src/modules/dashboards/export.ts:617

@@ -124,6 +124,8 @@ A metric can also show a goal (its target) and its trend over the period as a sm
 
 Days, weeks, months, quarters (`2026-Q4`) and years are always counted in the organization's time zone: an order placed at 00:30 in Paris on 1 November counts on 1 November, in the figures, the trend and the charts alike. A date with no time of day is that calendar day, as written, wherever the organization is: a date column read from a database (sent as midnight UTC), or a date and time with no time zone (read as the organization's own clock). The periods in the bar at the top (this month, last quarter...) start from today in the organization's time zone too, wherever you are. A chart reads a month as "Nov 2026", a quarter as "Q4 2026" ("T4 2026" in French) and a year as "2026".
 
+A table block shows a date or a timestamp in your language, never as the source wrote it: a day, a midnight or a column set to the date format as the date alone ("Nov 24, 2026"), any other time as the date and the time in the organization's time zone ("Nov 24, 2026, 10:47 PM"; "24 nov. 2026, 22:47" in French). The rows behind a block and the PDF export read them the same way (the PDF in English).
+
 ## Choose the period
 
 When at least one block follows the time range, the bar at the top shows the period as days, with the period it is compared with: for example "1–11 Nov 2026 · vs 1–11 Nov 2025". Click it to change it:

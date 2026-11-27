@@ -267,6 +267,7 @@ export function createCalendarMethods(
         backgroundColor?: string
         timeZone?: string
         accessRole?: string
+        primary?: boolean
       }>
       const result = await runCalendarImport(
         txDb,
@@ -395,6 +396,12 @@ export function createCalendarMethods(
       requireApp("calendar", "calendar_claimSyncPending")
       const { claimCalendarSyncPending } = await import("~/apps/calendar/sync")
       return JSON.stringify(await claimCalendarSyncPending(txDb, orgId, calendarId))
+    },
+
+    calendar_findAccountsForListRefresh: async (): Promise<string> => {
+      requireApp("calendar", "calendar_findAccountsForListRefresh")
+      const { findAccountsForListRefresh } = await import("~/apps/calendar/sync")
+      return JSON.stringify(await findAccountsForListRefresh(txDb, orgId))
     },
 
     calendar_recordSyncFailure: async (

@@ -9,6 +9,7 @@ import { app } from "~/app"
 import { sql } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import type { ObjectStreamResult } from "~/infra/storage/object-storage"
+import { registerApps } from "~/modules/apps/runtime"
 import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -17,6 +18,7 @@ import {
   type DoorWorld,
   dropDoorWorld,
 } from "~/tests/security/portal-doors/fixture"
+import invoicingManifest from "../../../../../bundled-apps/invoicing/app.manifest.json"
 import { buyerFileStorage } from "./file"
 
 let w: DoorWorld
@@ -31,6 +33,23 @@ let otherKey = ""
 const ids: Record<string, string> = {}
 /** A real list and link response, for the website's contract replay (BUYER_INVOICES_SAMPLE_OUT). */
 const sample: { list?: unknown; link?: unknown } = {}
+
+const INVOICING = invoicingManifest as unknown as Record<string, unknown>
+
+/** The invoicing tables (schema only, no org rows), as an installed app has them. */
+async function registerInvoicingSchema(orgId: string): Promise<void> {
+  const desc = {
+    ...INVOICING,
+    _format: "manifest" as const,
+    _firstParty: true,
+    _bundlePath: new URL(
+      `../../../../../bundled-apps/.source/invoicing/${String(INVOICING.version)}/bundle.js`,
+      import.meta.url,
+    ).pathname,
+  } as unknown as Parameters<typeof registerApps>[0][number]
+  const { failedApps } = await registerApps([desc], orgId, { skipOrgRows: true })
+  if (failedApps.length > 0) throw new Error(`invoicing did not register: ${failedApps.join(", ")}`)
+}
 
 const K = (t: string) => `"${schemaRef("kernel")}".${t}`
 
@@ -124,11 +143,13 @@ async function listOf(buyer: Record<string, unknown>, bearer = key) {
   return json.documents
 }
 
-const numbers = (docs: Array<Record<string, unknown>>) => docs.map((d) => d.number).sort()
+const numbers = (docs: Array<Record<string, unknown>>) =>
+  docs.map((d) => (d.number as string | null) ?? "").sort()
 
 beforeAll(async () => {
   await acquireTestLock()
   w = await createDoorWorld()
+  await registerInvoicingSchema(w.orgId)
   adminBearer = await minimal.token(w.admin.userId)
   memberBearer = await minimal.token(w.member.userId)
   profileA = await issuer(w.orgId, "Atelier A")
@@ -176,6 +197,23 @@ beforeAll(async () => {
   await sql.unsafe(
     `UPDATE ${K("contacts")} SET external_ids = '{"shopify":"8123456789012"}'::jsonb WHERE id = '${w.clientA.contactId}'`,
   )
+  // An earlier Shopify order invoiced twice: one invoice to a contact with a customer id, a
+  // reissue (same email) to a contact without one. One identity covers both.
+  ids.splitA = await doc(w.orgId, profileA, {
+    number: "INV-2026-0090",
+    shopify_order_id: "13479198420000",
+    counterparty_email: "cy@example.com",
+    counterparty_contact_id: w.clientB.contactId,
+  })
+  ids.splitB = await doc(w.orgId, profileA, {
+    number: "INV-2026-0091",
+    shopify_order_id: "13479198420000",
+    counterparty_email: "cy@example.com",
+    counterparty_contact_id: w.clientC.contactId,
+  })
+  await sql.unsafe(
+    `UPDATE ${K("contacts")} SET external_ids = '{"shopify":"111"}'::jsonb WHERE id = '${w.clientB.contactId}'`,
+  )
   // Another buyer's invoice in the same profile, and the same email in profile B and another org.
   const bob = await sale(w.orgId, profileA, {
     external_id: "pi_bob",
@@ -218,8 +256,23 @@ afterAll(async () => {
       `${JSON.stringify(
         {
           note: "Recorded from the Liaison buyer invoices API integration test (fixture data). Request buyer: {email: <redacted>, shopifyCustomerId: null, hubUserId: '6f1c2a9e-0000-4000-8000-000000000001'}.",
-          list: { request: { buyer: { email: "REDACTED", shopifyCustomerId: null, hubUserId: "6f1c2a9e-0000-4000-8000-000000000001" } }, response: sample.list },
-          link: { request: { buyer: { email: "REDACTED", hubUserId: "6f1c2a9e-0000-4000-8000-000000000001" }, documentId: ids.hubInvoice }, response: sample.link },
+          list: {
+            request: {
+              buyer: {
+                email: "REDACTED",
+                shopifyCustomerId: null,
+                hubUserId: "6f1c2a9e-0000-4000-8000-000000000001",
+              },
+            },
+            response: sample.list,
+          },
+          link: {
+            request: {
+              buyer: { email: "REDACTED", hubUserId: "6f1c2a9e-0000-4000-8000-000000000001" },
+              documentId: ids.hubInvoice,
+            },
+            response: sample.link,
+          },
         },
         null,
         2,
@@ -309,7 +362,7 @@ describe("POST /api/buyer-invoices/list", () => {
       shopifyCustomerId: null,
       hubUserId: "6f1c2a9e-0000-4000-8000-000000000001",
     })
-    expect(numbers(docs)).toEqual([null, "CN-2026-0007", "INV-2026-0101", "INV-2026-0102"])
+    expect(numbers(docs)).toEqual(["", "CN-2026-0007", "INV-2026-0101", "INV-2026-0102"])
     sample.list = { documents: docs, nextCursor: null }
     const credit = docs.find((d) => d.number === "CN-2026-0007")
     expect(credit).toMatchObject({
@@ -354,6 +407,15 @@ describe("POST /api/buyer-invoices/list", () => {
       ref: "13479198425419",
       name: "#3655",
     })
+  })
+
+  it("an earlier order's invoices share one identity: a reissue without the id unlocks nothing", async () => {
+    expect(await listOf({ email: "cy@example.com" })).toEqual([])
+    expect(await listOf({ email: "cy@example.com", shopifyCustomerId: "999" })).toEqual([])
+    expect(numbers(await listOf({ email: "cy@example.com", shopifyCustomerId: "111" }))).toEqual([
+      "INV-2026-0090",
+      "INV-2026-0091",
+    ])
   })
 
   it("another issuer profile's documents and another org's are out of reach", async () => {

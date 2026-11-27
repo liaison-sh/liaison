@@ -97,6 +97,19 @@ async function overBudget(c: Context<AppEnv>, identifier: string, limit: number)
   return result.allowed ? null : result.failed.retryAfterSeconds
 }
 
+/** The org is served (not suspended or closed) and its invoicing app is on. */
+async function servesInvoicing(orgId: string): Promise<boolean> {
+  if ((await orgAccess(orgId)) !== "served") return false
+  const app = await getOrgAppState(orgId, "invoicing")
+  return !app || app.status === "active"
+}
+
+/** A failed query's error without its parameters (they hold the buyer's email). */
+function safeErr(err: unknown): { code?: unknown; message: string } {
+  const e = err as { code?: unknown; message?: unknown } | null
+  return { code: e?.code, message: typeof e?.message === "string" ? e.message : String(err) }
+}
+
 /** The key the request carries, or the error to answer with. */
 async function authenticate(
   c: Context<AppEnv>,
@@ -125,13 +138,7 @@ async function authenticate(
     log.error({ err, keyId: key.id }, "buyer invoices key limiter failed, refusing (fail closed)")
     return { response: fail(c, 503, "UNAVAILABLE", "Temporarily unavailable.") }
   }
-  if ((await orgAccess(key.orgId)) !== "served") {
-    return {
-      response: fail(c, 503, "UNAVAILABLE", "Invoicing is not available for this organization."),
-    }
-  }
-  const app = await getOrgAppState(key.orgId, "invoicing")
-  if (app && app.status !== "active") {
+  if (!(await servesInvoicing(key.orgId))) {
     return {
       response: fail(c, 503, "UNAVAILABLE", "Invoicing is not available for this organization."),
     }
@@ -178,7 +185,7 @@ async function audit(
       }),
     )
   } catch (err) {
-    log.error({ err, keyId: key.id, action }, "buyer invoices audit write failed")
+    log.error({ err: safeErr(err), keyId: key.id, action }, "buyer invoices audit write failed")
   }
 }
 
@@ -214,7 +221,7 @@ export const buyerInvoicesRoutes = new Hono<AppEnv>()
       c.header("Cache-Control", "no-store")
       return c.json({ documents: page, nextCursor: next }, 200)
     } catch (err) {
-      log.error({ err, keyId: auth.key.id }, "buyer invoices list failed")
+      log.error({ err: safeErr(err), keyId: auth.key.id }, "buyer invoices list failed")
       return fail(c, 503, "UNAVAILABLE", "Temporarily unavailable.")
     }
   })
@@ -248,7 +255,7 @@ export const buyerInvoicesRoutes = new Hono<AppEnv>()
         200,
       )
     } catch (err) {
-      log.error({ err, keyId: auth.key.id }, "buyer invoices link failed")
+      log.error({ err: safeErr(err), keyId: auth.key.id }, "buyer invoices link failed")
       return fail(c, 503, "UNAVAILABLE", "Temporarily unavailable.")
     }
   })
@@ -270,6 +277,9 @@ export const buyerInvoicesRoutes = new Hono<AppEnv>()
     const found = await lookupBuyerLink(c.req.param("token"))
     if (found.status === "expired") return fail(c, 410, "LINK_EXPIRED", "This link has expired.")
     if (found.status !== "ok") return fail(c, 404, "NOT_FOUND", "Unknown link.")
+    if (!(await servesInvoicing(found.orgId))) {
+      return fail(c, 503, "UNAVAILABLE", "Invoicing is not available for this organization.")
+    }
     const file = await buyerDocumentFile(found)
     if (!file) return fail(c, 404, "NOT_FOUND", "Unknown link.")
     const response = await readBuyerFile(found.orgId, file.fileId, `${file.number}.pdf`)

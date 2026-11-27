@@ -199,6 +199,11 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   "app_invoicing.received_einvoices": { exempt: "sync", reason: "e-invoicing and FX sync state" },
   "app_invoicing.received_retry": { exempt: "sync", reason: "e-invoicing and FX sync state" },
   "app_invoicing.received_sync_state": { exempt: "sync", reason: "e-invoicing and FX sync state" },
+  "app_invoicing.sales": {
+    exempt: "derived",
+    reason:
+      "the sales a buyer reads its documents by, with the buyer identity captured from the source when each was sold; written by the issuing path, never imported",
+  },
   "app_invoicing.stripe_sales": {
     exempt: "derived",
     reason:

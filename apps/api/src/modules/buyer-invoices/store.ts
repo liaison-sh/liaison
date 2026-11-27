@@ -238,26 +238,47 @@ async function matchingSales(key: BuyerKey, who: BuyerIdentity): Promise<Candida
              OR (${shopify} <> '' AND s.shopify_customer_id = ${shopify})
              OR (${hub} <> '' AND s.hub_user_id = ${hub}))
         UNION ALL
-        SELECT DISTINCT ON (d.shopify_order_id)
-               'shopify:' || d.shopify_order_id AS key, NULL::text, d.shopify_order_id,
-               'shopify', d.shopify_order_id, d.shopify_order_number, d.issued_at::text,
+        -- An earlier Shopify order: ONE identity over ALL its invoices, never only the ones that
+        -- matched the request (a reissue with no customer id must not unlock a sibling that has
+        -- one). Its emails and Shopify ids are aggregated; more than one of a kind is a conflict.
+        SELECT 'shopify:' || o.shopify_order_id, NULL::text, o.shopify_order_id,
+               'shopify', o.shopify_order_id, o.name, o.issued::text,
                NULL::text, NULL::text, 'issued',
-               lower(btrim(d.counterparty_email)),
-               NULLIF(regexp_replace(COALESCE(c.external_ids ->> 'shopify', ''),
-                                     '^gid://shopify/Customer/', ''), ''),
+               CASE WHEN cardinality(o.emails) = 1 THEN o.emails[1] END,
+               CASE WHEN cardinality(o.shopify_ids) = 1 THEN o.shopify_ids[1]
+                    WHEN cardinality(o.shopify_ids) > 1 THEN '<conflict>' END,
                NULL::text
-          FROM app_invoicing.documents d
-          LEFT JOIN ${K()}.contacts c
-            ON c.id = d.counterparty_contact_id AND c.org_id = d.org_id
-         WHERE d.org_id = ${key.orgId}::uuid
-           AND d.issuer_profile_id = ${key.issuerProfileId}::uuid
-           AND d.type = 'invoice'
-           AND d.sale_id IS NULL
-           AND d.shopify_order_id IS NOT NULL
-           AND d.number IS NOT NULL
-           AND ((${email} <> '' AND lower(btrim(d.counterparty_email)) = ${email})
-             OR (${shopify} <> '' AND regexp_replace(COALESCE(c.external_ids ->> 'shopify', ''),
-                                     '^gid://shopify/Customer/', '') = ${shopify}))
+          FROM (
+            SELECT d.shopify_order_id, min(d.shopify_order_number) AS name,
+                   min(d.issued_at) AS issued,
+                   COALESCE(array_agg(DISTINCT lower(btrim(d.counterparty_email)))
+                     FILTER (WHERE COALESCE(btrim(d.counterparty_email), '') <> ''), '{}') AS emails,
+                   COALESCE(array_agg(DISTINCT regexp_replace(c.external_ids ->> 'shopify',
+                                                              '^gid://shopify/Customer/', ''))
+                     FILTER (WHERE COALESCE(c.external_ids ->> 'shopify', '') <> ''), '{}')
+                     AS shopify_ids
+              FROM app_invoicing.documents d
+              LEFT JOIN ${K()}.contacts c
+                ON c.id = d.counterparty_contact_id AND c.org_id = d.org_id
+             WHERE d.org_id = ${key.orgId}::uuid
+               AND d.issuer_profile_id = ${key.issuerProfileId}::uuid
+               AND d.type = 'invoice'
+               AND d.sale_id IS NULL
+               AND d.shopify_order_id IS NOT NULL
+               AND d.number IS NOT NULL
+               AND d.shopify_order_id IN (
+                 SELECT m.shopify_order_id FROM app_invoicing.documents m
+                   LEFT JOIN ${K()}.contacts mc
+                     ON mc.id = m.counterparty_contact_id AND mc.org_id = m.org_id
+                  WHERE m.org_id = ${key.orgId}::uuid
+                    AND m.issuer_profile_id = ${key.issuerProfileId}::uuid
+                    AND m.type = 'invoice' AND m.sale_id IS NULL
+                    AND m.shopify_order_id IS NOT NULL
+                    AND ((${email} <> '' AND lower(btrim(m.counterparty_email)) = ${email})
+                      OR (${shopify} <> '' AND regexp_replace(COALESCE(mc.external_ids ->> 'shopify', ''),
+                                              '^gid://shopify/Customer/', '') = ${shopify})))
+             GROUP BY d.shopify_order_id
+          ) o
          ORDER BY 1`),
     ),
   )

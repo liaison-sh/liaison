@@ -343,6 +343,9 @@ interface PublishAnswer {
 }
 
 /** Follow an approval until it is decided (or `timeoutMs` passes). */
+/** Approval statuses that are not a decision yet. */
+const IN_FLIGHT = new Set(["pending", "approving"])
+
 async function waitForApproval(
   client: Client,
   approvalId: string,
@@ -356,7 +359,9 @@ async function waitForApproval(
       "GET",
       `/api/approvals/${approvalId}/result`,
     )
-    if (r.status !== "pending") return r
+    // "approving": a person approved and the install is running (the web app's undo window,
+    // then the install itself). Only a final status ends the wait.
+    if (!IN_FLIGHT.has(r.status)) return r
     if (!said) {
       io.out("Waiting for the approval (Ctrl-C stops waiting; the request stays open)...")
       said = true

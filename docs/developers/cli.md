@@ -66,7 +66,7 @@ liaison apps publish --wait
 | `liaison apps init <name>` | Starts a draft from a working template (`--template store-crud` or `read-only`) and writes its files to a new folder `<name>`. The app is named `<name>-o<your organization's key>`. |
 | `liaison apps push` | Saves the folder's files as the draft's next version, then builds and type-checks it. Errors are printed as `file:line: message`. |
 | `liaison apps test` | Runs each case in `tests/*.json` in the server's preview: as you, read-only, writes to a scratch space of the draft. Pushes first when the files changed. `--tool <name> --params '<json>'` runs one tool; `--fresh` empties the scratch space first; `--verbose` prints results and log lines. |
-| `liaison apps publish` | Asks to install the latest version: it creates an approval card in Liaison and installs nothing. `--wait` waits until a person decides it. |
+| `liaison apps publish` | Asks to install the latest version: it creates an approval card in Liaison and installs nothing. `--wait` waits until a person decides it and the install has run. |
 | `liaison apps status` | The draft, the version installed, the past publishes and any publish waiting for approval |
 | `liaison apps logs` | The installed app's log lines, newest last. `--follow` keeps reading; `--level warn` and `--since <time>` narrow them. A line shows only to a sign-in that holds what its run could read: the command names the app's read scopes yours lacks, to add with `liaison login --scope <app>:<resource>:read`. |
 | `liaison apps rollback` | Puts the previously published version's files back as the newest version and asks to publish it (a new approval). `--to <version>` picks the draft version. |

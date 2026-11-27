@@ -95,6 +95,7 @@ import { registerAdapterAuthoringTools } from "~/modules/apps/connections/api/au
 import { apiConnectionOf } from "~/modules/apps/connections/api/declarations"
 import {
   firstPartyOnlyToolKeyErrors,
+  manifestOwnScopes,
   ownsTransactionsHolds,
   validateAppDescriptor,
   validateAppManifest,
@@ -3345,10 +3346,11 @@ async function registerSingleApp(
               isCustomAppName(desc.name) &&
               customAppWritesStayInApp(desc)
             ) {
-              const own = ((desc as { scopes?: unknown }).scopes ?? []) as unknown[]
-              const scopes = own.filter(
-                (s): s is string => typeof s === "string" && s.startsWith(`${desc.name}:`),
-              )
+              // Every scope the app owns (declared, tool, role, entity, bulk, its deciding
+              // scope), so nobody who can read its data through any of them is left uncounted.
+              const scopes = [...manifestOwnScopes(desc as Record<string, unknown>)]
+                .filter((s) => s.startsWith(`${desc.name}:`))
+                .sort()
               if (scopes.length > 0) entry.taintCardAppReaders = scopes
             }
             // The sink's reader scope (scope-taint.ts, consequence 4). It turns a refusal into

@@ -360,6 +360,8 @@ describe("registerApps — manifest format", () => {
       trusted: false,
       _installed: true,
       scopes: [`${name}:items:read`, `${name}:items:write`],
+      // A scope only a role names still makes its holders readers of the app's data.
+      roles: { member: { description: "Notes", scopes: [`${name}:notes:read`] } },
       ...extra,
       tools: {
         listItems: {
@@ -390,7 +392,9 @@ describe("registerApps — manifest format", () => {
         const get = (tool: string) => toolRegistry.get([TEST_ORG, name, tool])
         expect({ extra, readers: get("addItem")?.taintCardAppReaders }).toEqual({
           extra,
-          readers: stays ? [`${name}:items:read`, `${name}:items:write`] : undefined,
+          readers: stays
+            ? [`${name}:approve`, `${name}:items:read`, `${name}:items:write`, `${name}:notes:read`]
+            : undefined,
         })
         expect(get("listItems")?.taintCardAppReaders).toBeUndefined()
       } finally {

@@ -87,7 +87,7 @@ export interface SaleBuyer {
   customer_id?: string | null
   billing?: SaleAddress | null
   delivery?: SaleAddress | null
-  /** Ids the buyer is known by elsewhere, for joins: `shopify_customer_id`, `hub_user_id`, `stripe_customer_id`, ... */
+  /** Ids the buyer is known by elsewhere, for joins: `<provider>_customer_id`, `hub_user_id`, ... */
   ids?: Record<string, string>
   /**
    * Location evidence (digital services to consumers need two pieces): `billing_country`,
@@ -150,13 +150,15 @@ export interface Sale {
   /** Unique within the provider (a shop's order id, a payment intent id). */
   external_id: string
   refs?: {
+    /** The payment provider's charge and checkout session, when the sale was paid through one. */
     charge_id?: string | null
     checkout_session_id?: string | null
-    stripe_invoice_id?: string | null
+    /** The provider's own invoice of the sale, when it made one. */
+    source_invoice_id?: string | null
     /** The human order reference the buyer quotes ("#1149"). */
     order_name?: string | null
     po_number?: string | null
-    /** The account of the provider the sale was made on (a shop domain, a Stripe account). */
+    /** The account of the provider the sale was made on (a shop domain, a payment account). */
     account?: string | null
     /** When the order was placed (ISO instant), when the source states it apart from `sold_at`. */
     placed_at?: string | null

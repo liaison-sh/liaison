@@ -93,6 +93,7 @@ const EXTERNAL_WRITES = new Set([
   "calendar:create_event", // queues calendar-push: the event goes to Google
   "calendar:update_event", // same
   "calendar:delete_event", // same
+  "calendar:respond_to_invitation", // same: the answer goes to Google, which tells the organizer
   "calendar:set_selected", // starts or stops the Google watch channel
   "calendar:retry_import", // queues calendar-import: lists the account's calendars at Google
   "knowledge:add_folder_source", // harvests a Drive folder / GitLab path it names

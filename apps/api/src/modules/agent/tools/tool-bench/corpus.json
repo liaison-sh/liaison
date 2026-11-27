@@ -4081,5 +4081,21 @@
     "say": "supprime cette conversation Instagram de la boîte",
     "typed": ["supprimer conversation", "supprimer la conversation instagram"],
     "any": ["social__dm_delete_conversation"]
+  },
+  {
+    "id": "C190",
+    "set": "seed",
+    "lang": "en",
+    "say": "decline the partner sync invite, I can't make it",
+    "typed": ["decline invitation", "rsvp no", "accept invite"],
+    "any": ["calendar__respond_to_invitation"]
+  },
+  {
+    "id": "C191",
+    "set": "seed",
+    "lang": "fr",
+    "say": "réponds peut-être à l'invitation de jeudi",
+    "typed": ["répondre à l'invitation", "accepter l'invitation", "refuser l'invitation"],
+    "any": ["calendar__respond_to_invitation"]
   }
 ]

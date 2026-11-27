@@ -418,7 +418,7 @@ describe("calendar agent tools", () => {
     const description = (calendarAppManifest as any).tools.update_event.description as string
     expect(description).toContain("COMPLETE guest list")
     expect(description).toContain("omit it to keep the current guests")
-    expect(description).toContain("No invitation or update email is sent")
+    expect(description).toContain('Guests get no email unless sendUpdates: "all"')
   })
 
   it("search respects the same RLS visibility boundary", async () => {

@@ -1119,48 +1119,9 @@
       "details": "Vos coordonnées"
     },
     "companyFacts": "Entreprise fictive · Paris · 7 personnes",
-    "companyAbout": "Resonant Audio Labs conçoit des enregistreurs de terrain portables pour le cinéma et la prise de son en extérieur : la gamme Kestrel, de 399 € à 1 349 €, ainsi que des étuis, des câbles et des bonnettes. Elle vend en direct sur sa boutique en ligne et par six revendeurs en Europe, en Amérique du Nord et au Japon.",
-    "companyHow": "Comment elle fonctionne avec Liaison",
-    "companyOps": {
-      "support": {
-        "title": "Support",
-        "body": "Les mails des clients arrivent dans Tickets. L'agent Support Desk rédige chaque réponse ; Amina ou Lucas l'approuve."
-      },
-      "orders": {
-        "title": "Commandes et expéditions",
-        "body": "Les commandes de la boutique en ligne arrivent de Shopify. L'agent Operations Desk prépare l'expédition avec le transporteur pour Margot."
-      },
-      "invoicing": {
-        "title": "Facturation",
-        "body": "Chaque commande reçoit sa facture. L'agent Finance Desk gère les remboursements et les comptes revendeurs avec Henrik."
-      },
-      "sales": {
-        "title": "Ventes",
-        "body": "Le pipeline revendeurs de Giulia se trouve dans le CRM. Une routine se renseigne sur chaque nouveau prospect et rédige la réponse."
-      },
-      "projects": {
-        "title": "Projets et messagerie",
-        "body": "L'équipe planifie le travail produit dans Projets et échange dans la messagerie, avec ses agents dans la discussion."
-      },
-      "knowledge": {
-        "title": "Connaissances de l'entreprise",
-        "body": "Les manuels depuis GitLab, les finances depuis Google Drive, les procédures écrites dans Liaison. Chaque agent ne lit que ce que la personne qu'il sert peut ouvrir."
-      }
-    },
-    "companyYou": "Vous la dirigez en tant que PDG, avec votre propre agent. Demandez-lui ce que vous demanderiez pour diriger l'entreprise, et regardez les équipes travailler.",
+    "companyAbout": "Resonant Audio Labs conçoit des enregistreurs de terrain portables pour le cinéma et la prise de son en extérieur, vendus sur sa boutique en ligne et par six revendeurs en Europe, en Amérique du Nord et au Japon.",
+    "companyYou": "Vous la dirigez en tant que PDG, avec votre propre agent.",
     "companySimulated": "Seul le monde extérieur est simulé : aucun mail ne part, et les comptes de la boutique et du transporteur sont fictifs.",
-    "teamTitle": "L'équipe",
-    "teamYou": "Vous",
-    "teamCeo": "PDG",
-    "teamRole": {
-      "tobias": "Responsable des opérations",
-      "amina": "Responsable du support",
-      "lucas": "Spécialiste du support",
-      "margot": "Logistique",
-      "henrik": "Finance",
-      "giulia": "Ventes et partenariats"
-    },
-    "youllSee": "Vous verrez",
     "detailsBack": "Retour",
     "next": {
       "eyebrowSpent": "Budget de la démo utilisé",
@@ -1219,98 +1180,47 @@
       "saas": {
         "companyFacts": "Entreprise fictive · Paris · 14 personnes",
         "companyExample": "Ceci est une entreprise d'exemple : Tideform, qui édite un logiciel de planning pour les groupes d'hôtellerie-restauration. Votre propre espace contiendrait vos données.",
-        "companyAbout": "Tideform édite un logiciel de planning et de gestion des équipes pour les hôtels, les restaurants et les cantines, vendu par abonnement de 149 € à 1 450 € par mois. 169 clients paient par carte via Stripe, et quelques grands groupes paient par virement.",
-        "companyOps": {
-          "payments": {
-            "title": "Abonnements et paiements",
-            "body": "169 clients paient par carte via Stripe. L'agent Finance Desk surveille les paiements échoués et rédige la note ; Sara l'approuve."
-          },
-          "invoicing": {
-            "title": "Facturation",
-            "body": "Liaison émet chaque facture, sans aucun trou, y compris pour les groupes qui paient par virement."
-          },
-          "support": {
-            "title": "Assistance",
-            "body": "Les mails des clients arrivent dans Tickets. L'agent Support Desk rédige chaque réponse."
-          },
-          "sales": {
-            "title": "Ventes",
-            "body": "Les affaires de Tom sont sur un tableau. Une routine rédige les relances."
-          },
-          "product": {
-            "title": "Produit et messagerie",
-            "body": "L'équipe planifie le travail produit dans Projets et échange dans la messagerie."
-          },
-          "knowledge": {
-            "title": "Connaissances de l'entreprise",
-            "body": "Chaque agent ne lit que ce que la personne qu'il sert peut ouvrir."
-          }
-        },
-        "companyYou": "Vous la dirigez en tant que PDG, avec votre propre agent. Demandez-lui ce que vous demanderiez pour diriger l'entreprise, et regardez les équipes travailler.",
+        "companyAbout": "Tideform vend un logiciel de planning et de gestion des équipes aux hôtels, restaurants et cantines, de 149 € à 1 450 € par mois : 169 clients paient par carte via Stripe.",
+        "companyYou": "Vous la dirigez en tant que PDG, avec votre propre agent.",
         "companySimulated": "Seul le monde extérieur est simulé : aucun mail ne part, et le compte Stripe et ses paiements sont fictifs.",
-        "teamRole": {
-          "tom": "Ventes",
-          "elodie": "Responsable de comptes",
-          "ines": "Responsable du support",
-          "yann": "Directeur technique",
-          "sara": "Finances",
-          "lucie": "Responsable produit",
-          "baptiste": "Développement",
-          "amel": "Développement",
-          "jonas": "Développement",
-          "clemence": "Assistance",
-          "nolan": "Assistance",
-          "maxime": "Ventes",
-          "rose": "Responsable du bureau"
-        },
-        "limitConnectors": "Le compte Stripe et ses paiements sont fictifs. Connecter un vrai compte est refusé. Les remboursements et les résiliations ne touchent que ce compte fictif."
+        "limitConnectors": "Le compte Stripe et ses paiements sont fictifs. Connecter un vrai compte est refusé. Les remboursements et les résiliations ne touchent que ce compte fictif.",
+        "pickMoment": {
+          "support": "Un client écrit : approuvez la réponse que la routine de support a rédigée.",
+          "projects": "Confiez la tâche de Baptiste à votre agent et regardez-le découper le travail.",
+          "chat": "Demandez à votre agent de chercher la réponse à la question de Lucie, avec la page qu'il cite.",
+          "sales": "Un groupe hôtelier écrit : approuvez l'entreprise, le contact, un devis et la réponse en une fois.",
+          "money": "Une carte est refusée : votre agent lit Stripe, les factures et les tickets, puis rédige le message que vous approuvez.",
+          "dev": "Transformez le bug d'un client en pull request, puis approuvez la réponse qui le prévient.",
+          "knowledge": "Interrogez la politique de remboursement, puis voyez Clémence n'obtenir que ce qu'elle peut ouvrir."
+        }
       },
       "studio": {
         "companyFacts": "Entreprise fictive · Lyon · 24 personnes",
         "companyExample": "Ceci est une entreprise d'exemple : Halden Studio, qui conçoit des logiciels et des systèmes de données pour ses clients. Votre propre espace contiendrait vos données.",
-        "companyAbout": "Halden Studio conçoit des logiciels et des systèmes de données pour des entreprises de taille moyenne. Il facture à l'heure ou à la journée, au forfait avec des jalons, ou par un abonnement mensuel. Les clients suivent leur projet sur un portail à eux.",
-        "companyOps": {
-          "agreements": {
-            "title": "Contrats",
-            "body": "Propositions et contrats, signés dans Liaison. Votre agent les vérifie quand un client demande plus."
-          },
-          "delivery": {
-            "title": "Production",
-            "body": "Chaque tâche a un temps prévu, et la personne qui l'a faite peut saisir le temps qu'elle a pris. Qui facture demande à un agent de comparer le prévu et le fait."
-          },
-          "billing": {
-            "title": "Facturation",
-            "body": "Des factures issues des jalons, des abonnements et du travail vérifié. Anaïs les émet."
-          },
-          "clients": {
-            "title": "Clients",
-            "body": "Chaque entreprise réunit ses personnes, ses affaires, son argent et son travail. Les rapports clients de Bastien sont rédigés le vendredi."
-          },
-          "portal": {
-            "title": "Portail client",
-            "body": "Les clients se connectent pour voir leur avancement, leurs rapports, leurs factures et leurs demandes. Seulement ce qui a été partagé, rien d'autre."
-          },
-          "knowledge": {
-            "title": "Connaissances du studio",
-            "body": "Un wiki des projets passés et des méthodes. Chaque agent ne lit que ce que sa personne peut ouvrir."
-          }
-        },
-        "companyYou": "Vous le dirigez en tant que cofondateur, avec votre propre agent. Demandez-lui ce que vous demanderiez pour diriger le studio, et regardez-le vérifier le contrat avant que quiconque réponde à un client.",
+        "companyAbout": "Halden Studio conçoit des logiciels et des systèmes de données pour des entreprises de taille moyenne, facturés à l'heure ou à la journée, au forfait avec des jalons, ou par un abonnement mensuel.",
+        "companyYou": "Vous le dirigez en tant que cofondateur, avec votre propre agent.",
         "companySimulated": "Seul le monde extérieur est simulé : aucun mail ne part, et les clients et leurs réponses sont fictifs.",
-        "teamYouRole": "Cofondateur",
-        "teamOthers": {
-          "name": "18 autres",
-          "role": "Production, ventes"
-        },
-        "teamRole": {
-          "bastien": "Chef de projet",
-          "nadia": "Développeuse principale",
-          "mathis": "Développeur",
-          "sofia": "Ingénieure data",
-          "anais": "Finances"
-        },
-        "limitConnectors": "Les dépôts et les clients sont fictifs. La connexion des clients et les liens de signature ne fonctionnent pas ici, car aucun e-mail ne part. Les contrats affichés comme signés n'ont pas vraiment été signés. Voyez ce que voit un client dans le Portail client d'une entreprise, sous Ce qu'ils voient."
+        "limitConnectors": "Les dépôts et les clients sont fictifs. La connexion des clients et les liens de signature ne fonctionnent pas ici, car aucun e-mail ne part. Les contrats affichés comme signés n'ont pas vraiment été signés. Voyez ce que voit un client dans le Portail client d'une entreprise, sous Ce qu'ils voient.",
+        "pickMoment": {
+          "support": "Un client écrit : lisez la note de la routine, puis approuvez la réponse qu'elle a rédigée.",
+          "projects": "Confiez la tâche de Bastien à votre agent, puis envoyez à un client son rapport de la semaine.",
+          "chat": "Demandez à votre agent de chercher la réponse à la question de Sofia, avec la page qu'il cite.",
+          "sales": "Un prospect envoie un brief : approuvez l'entreprise, l'affaire, un projet de proposition et la réponse. Le prix, c'est vous qui le fixez.",
+          "client": "Demandez à votre agent si ce qu'un client demande en plus figure dans l'accord, puis approuvez la demande de modification.",
+          "dev": "Transformez le bug d'un client en pull request dans son dépôt, puis approuvez la réponse qui le prévient.",
+          "knowledge": "Interrogez les coûts d'un projet passé, puis voyez Mathis n'obtenir que ce qu'il peut ouvrir."
+        }
       }
+    },
+    "tryTitle": "Ce que vous allez essayer",
+    "pickMoment": {
+      "support": "Un client écrit : approuvez la réponse que la routine de support a rédigée.",
+      "projects": "Confiez la tâche de lancement de Tobias à votre agent et regardez-le découper le travail.",
+      "chat": "Demandez à votre agent de chercher sur le web la réponse à la question de Tobias, avec ses sources.",
+      "sales": "Un prospect écrit : approuvez la fiche CRM, le devis et la réponse en une fois.",
+      "commerce": "Une commande arrive avec sa facture : approuvez l'expédition préparée par l'Operations Desk.",
+      "dev": "Envoyez un correctif à Claude Code sur un ordinateur et recevez une pull request.",
+      "knowledge": "Interrogez manuels et finances, puis voyez Lucas n'obtenir que ce qu'il peut ouvrir."
     }
   },
   "deny": "Refuser",

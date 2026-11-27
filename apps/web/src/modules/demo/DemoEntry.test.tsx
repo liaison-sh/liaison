@@ -16,6 +16,7 @@ import { needsAfterEntry } from "~/modules/demo/EntryQuestion"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
 import { _resetBranding, ensureBrandingLoaded } from "~/modules/shell/branding-store"
 import kernelEn from "../../../../../packages/shared/src/i18n/locales/en/kernel.json"
+import kernelFr from "../../../../../packages/shared/src/i18n/locales/fr/kernel.json"
 
 function jwt(): string {
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }))
@@ -225,11 +226,10 @@ describe("three pages: scenarios, the company, your details", () => {
     expect(screen.queryByTestId("demo-name")).toBeNull()
     expect(counter()).toEqual(["done", "current", "todo"])
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Resonant Audio Labs")
-    expect(screen.getByTestId("demo-company-ops").children).toHaveLength(6)
-    const team = screen.getByTestId("demo-team").textContent ?? ""
-    expect(team).toContain("CEO")
-    expect(team).toContain("Giulia Ferrari")
-    expect(team).not.toContain("Elodie")
+    expect(screen.getByTestId("demo-company-you").textContent).toBe(kernelEn.demo.companyYou)
+    expect(screen.getByTestId("demo-picked-moment-support").textContent).toBe(
+      kernelEn.demo.pickMoment.support,
+    )
 
     fireEvent.click(screen.getByTestId("demo-company-continue"))
     expect(screen.getByTestId("demo-signup-door")).toBeTruthy()
@@ -520,13 +520,51 @@ describe("the company question", () => {
     expect(document.querySelector("[data-testid='demo-entry'] img")).toBeNull()
   })
 
-  it("says Resonant is an example where the visitor meets it", () => {
+  it("says Resonant is fictional where the visitor meets it, in the facts line", () => {
     serve({})
     window.history.replaceState(null, "", "/demo?needs=support")
     renderEntry()
-    expect(screen.getByTestId("demo-example-line").textContent).toBe(
-      "This is an example company: Resonant Audio Labs, which makes field recorders. Your own workspace would hold your data.",
+    expect(screen.getByTestId("demo-company-facts").textContent).toBe(
+      "Fictional company · Paris · 7 people",
     )
+  })
+
+  it("shows three blocks: who they are, who you are, what you'll try, and no team or ops grid", () => {
+    serve({})
+    window.history.replaceState(null, "", "/demo?needs=sales,dev")
+    renderEntry()
+    expect(screen.getByTestId("demo-company-about").textContent).toBe(kernelEn.demo.companyAbout)
+    expect(screen.getByTestId("demo-company-you").textContent).toBe(kernelEn.demo.companyYou)
+    const items = screen.getByTestId("demo-picked").children
+    expect(items).toHaveLength(2)
+    expect(items[0]?.getAttribute("data-testid")).toBe("demo-picked-sales")
+    expect(items[0]?.textContent).toContain("1")
+    expect(screen.getByTestId("demo-picked-moment-sales").textContent).toBe(
+      kernelEn.demo.pickMoment.sales,
+    )
+    expect(screen.getByTestId("demo-picked-moment-dev").textContent).toBe(
+      kernelEn.demo.pickMoment.dev,
+    )
+    expect(screen.queryByTestId("demo-example-line")).toBeNull()
+    expect(screen.queryByTestId("demo-team")).toBeNull()
+    expect(screen.queryByTestId("demo-company-ops")).toBeNull()
+  })
+
+  it("names one moment for every pick of every world, in English and French", () => {
+    const copies = {
+      products: kernelEn.demo.pickMoment,
+      saas: kernelEn.demo.world.saas.pickMoment,
+      studio: kernelEn.demo.world.studio.pickMoment,
+    } as const
+    const fr = {
+      products: kernelFr.demo.pickMoment,
+      saas: kernelFr.demo.world.saas.pickMoment,
+      studio: kernelFr.demo.world.studio.pickMoment,
+    } as const
+    for (const world of ["products", "saas", "studio"] as const) {
+      expect(Object.keys(copies[world]).sort()).toEqual([...DEMO_WORLD_NEEDS[world]].sort())
+      expect(Object.keys(fr[world]).sort()).toEqual([...DEMO_WORLD_NEEDS[world]].sort())
+    }
   })
 })
 
@@ -654,19 +692,13 @@ describe("the door in a world", () => {
     const company = DEMO_DOOR.saas
     expect(screen.getByTestId("demo-company-step").textContent).toContain(company.name)
     expect(screen.getByText(copy.companyFacts)).toBeTruthy()
-    expect(screen.getByTestId("demo-example-line").textContent).toBe(copy.companyExample)
     expect(screen.getByText(copy.companyAbout)).toBeTruthy()
-    for (const op of company.opsList) {
-      const row = screen.getByTestId(`demo-company-op-${op.key}`).textContent ?? ""
-      const entry = copy.companyOps[op.key as keyof typeof copy.companyOps]
-      expect(row).toContain(entry.title)
-      expect(row).toContain(entry.body)
-    }
     expect(screen.getByText(copy.companyYou)).toBeTruthy()
-    const team = screen.getByTestId("demo-team").textContent ?? ""
-    for (const person of company.team) {
-      expect(team).toContain(person.name)
-      expect(team).toContain(copy.teamRole[person.key as keyof typeof copy.teamRole])
+    for (const item of Array.from(screen.getByTestId("demo-picked").children)) {
+      const need = (item.getAttribute("data-testid") ?? "").replace("demo-picked-", "")
+      expect(screen.getByTestId(`demo-picked-moment-${need}`).textContent).toBe(
+        copy.pickMoment[need as keyof typeof copy.pickMoment],
+      )
     }
     expect(screen.getByTestId("demo-company-simulated").textContent).toBe(copy.companySimulated)
     // Nothing of the products company is on this page.
@@ -685,24 +717,14 @@ describe("the door in a world", () => {
     const company = DEMO_DOOR.studio
     expect(screen.getByTestId("demo-company-step").textContent).toContain(company.name)
     expect(screen.getByText(copy.companyFacts)).toBeTruthy()
-    expect(screen.getByTestId("demo-example-line").textContent).toBe(copy.companyExample)
     expect(screen.getByText(copy.companyAbout)).toBeTruthy()
-    for (const op of company.opsList) {
-      const row = screen.getByTestId(`demo-company-op-${op.key}`).textContent ?? ""
-      const entry = copy.companyOps[op.key as keyof typeof copy.companyOps]
-      expect(row).toContain(entry.title)
-      expect(row).toContain(entry.body)
-    }
     expect(screen.getByText(copy.companyYou)).toBeTruthy()
-    const team = screen.getByTestId("demo-team").textContent ?? ""
-    for (const person of company.team) {
-      expect(team).toContain(person.name)
-      expect(team).toContain(copy.teamRole[person.key as keyof typeof copy.teamRole])
+    for (const item of Array.from(screen.getByTestId("demo-picked").children)) {
+      const need = (item.getAttribute("data-testid") ?? "").replace("demo-picked-", "")
+      expect(screen.getByTestId(`demo-picked-moment-${need}`).textContent).toBe(
+        copy.pickMoment[need as keyof typeof copy.pickMoment],
+      )
     }
-    expect(team).toContain(copy.teamYouRole)
-    expect(team).not.toContain(kernelEn.demo.teamCeo)
-    expect(team).toContain(copy.teamOthers.name)
-    expect(team).toContain(copy.teamOthers.role)
     expect(screen.getByTestId("demo-company-simulated").textContent).toBe(copy.companySimulated)
     const step = screen.getByTestId("demo-company-step").textContent ?? ""
     for (const other of [DEMO_DOOR.products.name, DEMO_DOOR.saas.name, "Shopify", "Stripe"]) {
@@ -725,7 +747,7 @@ describe("the door in a world", () => {
     expect(screen.getByTestId("demo-needs-commerce")).toBeTruthy()
     expect(screen.queryByTestId("demo-needs-client")).toBeNull()
     fireEvent.click(screen.getByTestId("demo-explore"))
-    expect(screen.getByTestId("demo-example-line").textContent).toContain("Resonant Audio Labs")
+    expect(screen.getByTestId("demo-company-step").textContent).toContain("Resonant Audio Labs")
     expect(screen.getByTestId("demo-company-step").textContent).not.toContain(DEMO_DOOR.studio.name)
     _setDoorWorlds(["products"])
   })
@@ -754,7 +776,7 @@ describe("the door in a world", () => {
     doorWorlds = ["products"]
     fireEvent.click(screen.getByTestId("demo-create"))
     await waitFor(() => expect(screen.getByTestId("demo-company-step")).toBeTruthy())
-    expect(screen.getByTestId("demo-example-line").textContent).toContain("Resonant Audio Labs")
+    expect(screen.getByTestId("demo-company-step").textContent).toContain("Resonant Audio Labs")
     expect(calls.some((url) => url.includes("/demo/orgs"))).toBe(false)
     _setDoorWorlds(["products"])
   })
@@ -772,7 +794,7 @@ describe("the door in a world", () => {
     expect(screen.getByTestId("demo-needs-commerce")).toBeTruthy()
     expect(screen.queryByTestId("demo-needs-money")).toBeNull()
     fireEvent.click(screen.getByTestId("demo-explore"))
-    expect(screen.getByTestId("demo-example-line").textContent).toContain("Resonant Audio Labs")
+    expect(screen.getByTestId("demo-company-step").textContent).toContain("Resonant Audio Labs")
     expect(document.body.textContent).not.toContain("ZZFREE")
   })
 })

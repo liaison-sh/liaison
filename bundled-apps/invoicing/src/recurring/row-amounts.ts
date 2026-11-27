@@ -61,6 +61,27 @@ export function plannedAmounts(
   return { net: plan.subtotal_minor, vat: plan.tax_minor, total: plan.total_minor }
 }
 
+function minorOf(v: unknown): bigint | null {
+  if (typeof v === "bigint") return v
+  if (typeof v === "number" && Number.isInteger(v)) return BigInt(v)
+  if (typeof v === "string" && /^-?\d+$/.test(v.trim())) return BigInt(v.trim())
+  return null
+}
+
+/**
+ * The draft's stored totals, when they price the same net as its lines: the draft tools write them
+ * with the issuer's tax plan on every change (mutations/db-helpers.ts, writeDraftTotals). Null when
+ * they are missing or stale.
+ */
+function storedAmounts(draft: Row, planned: RowAmounts): RowAmounts | null {
+  const net = minorOf(draft.subtotal_minor)
+  const vat = minorOf(draft.tax_total_minor)
+  const total = minorOf(draft.grand_total_minor)
+  if (net === null || vat === null || total === null) return null
+  if (net !== planned.net || net + vat !== total) return null
+  return { net, vat, total }
+}
+
 /** The amounts issuing the row would write, with the buyer's VAT number the issue would find. */
 export async function rowAmounts(
   ctx: Pick<MutationsCtx, "db">,
@@ -68,6 +89,14 @@ export async function rowAmounts(
   lines: Row[],
   issuer: Row | null | undefined,
 ): Promise<RowAmounts> {
+  // A reader whose role cannot read issuer profiles gets no issuer here. Pricing the lines without
+  // it would drop the VAT of every line that takes the issuer's rate, so one draft would show two
+  // totals (the card's and this reader's). The draft's stored totals were priced with the issuer:
+  // they are the answer whenever they cover the same lines.
+  if (!issuer) {
+    const planned = plannedAmounts(draft, lines, issuer)
+    return storedAmounts(draft, planned) ?? planned
+  }
   const country = String(issuer?.country ?? "")
   const destination = taxCountry(draft, country)
   if (text(draft.counterparty_vat_id) === null && country && destination !== country) {

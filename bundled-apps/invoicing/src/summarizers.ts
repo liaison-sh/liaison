@@ -49,6 +49,7 @@ import {
 import type { BuyerVatFacts } from "./buyer-vat"
 import { formatMoneyGrouped } from "./money"
 import type { AnnexListing } from "./mutations/send-annexes"
+import { AMOUNT_CHECK } from "./recurring/flags"
 import { planTax, type TaxPlanLine } from "./tax-plan"
 
 type ApprovalSummaryShape = ApprovalCard
@@ -1367,7 +1368,17 @@ export function runCardLines(rawItems: unknown): string[] {
     currency = currency === null || currency === cur ? cur : "mixed"
     if (typeof it.customer === "string" && it.customer) names.push(it.customer)
   }
-  const lines: string[] = []
+  // A row billing far from its last invoice asks for a look first, on the card itself: the
+  // approver must not need the run's page to see a slipped decimal before Approve.
+  const checks: string[] = []
+  for (const it of items) {
+    const flag = typeof it.amount_check === "string" ? it.amount_check : ""
+    if (!flag.startsWith(AMOUNT_CHECK)) continue
+    const who = typeof it.customer === "string" && it.customer ? `, ${it.customer}` : ""
+    checks.push(`Check the amount${who}: ${flag.slice(AMOUNT_CHECK.length)}`.slice(0, 200))
+  }
+  const lines: string[] = [...checks.slice(0, 3)]
+  if (checks.length > 3) lines.push(`${checks.length - 3} more rows ask to check their amount`)
   if (names.length > 0) {
     const shown = names.slice(0, 5).join(", ")
     const who = names.length > 5 ? `${shown} and ${names.length - 5} more` : shown

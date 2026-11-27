@@ -31,3 +31,5 @@ Ending a schedule leaves its open run rows out with the note Schedule ended, and
 An approved row of a paused or ended schedule is left out at issue and takes no number -> bundled-apps/invoicing/src/recurring/issue-job.ts (recurringItemIssue)
 A schedule's drafts carry its company -> bundled-apps/invoicing/src/recurring/draft-job.ts (company_id)
 The company page lists the schedules that bill it; a schedule opens its company -> bundled-apps/invoicing/src/ui/CompanyMoneyPanel.tsx (loadCompanySchedules) ; bundled-apps/invoicing/src/recurring/tools.ts (recurringList) ; bundled-apps/invoicing/src/ui/ScheduleEditor.tsx (schedule-company-link)
+Check the amount on the card itself, worked out again on an edit -> bundled-apps/invoicing/src/summarizers.ts (runCardLines) ; bundled-apps/invoicing/src/recurring/run-card.ts (amountCheckOf) ; bundled-apps/invoicing/src/recurring/restage.ts (afterRunWrite)
+same amounts on card and run page whatever the reader's settings access -> bundled-apps/invoicing/src/recurring/row-amounts.ts (rowAmounts, storedAmounts)

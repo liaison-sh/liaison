@@ -12,7 +12,7 @@ import type { EinvCtx } from "../einvoicing/transmit"
 import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
 import { dueOn, paymentTermsOf, scheduleTermsDays } from "../payment-terms"
 import { runCardLines } from "../summarizers"
-import { linesSignature, type PreviousInvoice } from "./flags"
+import { AMOUNT_CHECK, linesSignature, type PreviousInvoice } from "./flags"
 import { currentItemHash, itemContentHash } from "./item-hash"
 import {
   isRetainerSchedule,
@@ -59,6 +59,8 @@ export interface CardItem {
   /** For the card's lines only, so a rebuilt summary still names who is billed. */
   customer?: string
   currency?: string
+  /** The row's "Check the amount: ..." flag, so the card itself asks for a look before Approve. */
+  amount_check?: string
 }
 
 const fail = (code: string, message: string): ErrorEnvelope => ({
@@ -305,6 +307,7 @@ export async function cardItems(
       total_minor: t.total.toString(),
       customer: String(draft.counterparty_name ?? "Customer"),
       currency: String(draft.currency ?? "EUR"),
+      ...amountCheckOf(item.note),
     })
     const cur = String(draft.currency ?? "EUR")
     const note = item.note ? ` · ${String(item.note)}` : ""
@@ -316,6 +319,14 @@ export async function cardItems(
     )
   }
   return { items, lines, total, needsFix }
+}
+
+/** The row's amount check among its notes, worked out again on every edit (restage.ts). */
+function amountCheckOf(note: unknown): { amount_check?: string } {
+  const flag = (typeof note === "string" ? note.split(" · ") : []).find((n) =>
+    n.startsWith(AMOUNT_CHECK),
+  )
+  return flag ? { amount_check: flag } : {}
 }
 
 function minor(v: bigint, currency: string): string {

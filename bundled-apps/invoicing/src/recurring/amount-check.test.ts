@@ -5,6 +5,7 @@
 // with nothing to compare with is never flagged.
 import { describe, expect, test } from "bun:test"
 import { harness, previousDoc, schedule } from "../__fixtures__/recurring-draft"
+import { summarizeRecurringRunIssue } from "../summarizers"
 import { recurringDraftJob } from "./draft-job"
 import { amountFarFlag } from "./flags"
 import { afterRunWrite, type EditCtx } from "./restage"
@@ -126,6 +127,60 @@ describe("the month-end amount check", () => {
     await afterRunWrite(h.ctx as unknown as EditCtx, String(item?.id))
     const fixed = h.db.__all("recurring_run_items").find((i) => i.id === item?.id)
     expect(String(fixed?.note)).toBe("Same as October")
+  })
+
+  test("an edit that types the amount a hundred times too high puts the check on the card itself", async () => {
+    const { h, runId, item } = await drafted(14_900, "14900")
+    const line = h.db.__all("document_lines").find((l) => l.document_id === item?.document_id)
+    await h.db.update("document_lines", String(line?.id), {
+      unit_price_minor: "1490000",
+      subtotal_minor: "1490000",
+    })
+    await afterRunWrite(h.ctx as unknown as EditCtx, String(item?.id))
+    // What the approver reads on the card (and what the kernel rebuilds after a restage).
+    const { items } = await cardItems(h.ctx, runId)
+    expect(items[0]?.amount_check).toBe("Check the amount: October was 149.00 EUR excl.")
+    const card = await summarizeRecurringRunIssue({ items, period: "November 2026", late: true })
+    expect(card.lines[0]).toBe("Check the amount, Maison Sauvan: October was 149.00 EUR excl.")
+    // A normal amount puts no check on the card.
+    await h.db.update("document_lines", String(line?.id), {
+      unit_price_minor: "14900",
+      subtotal_minor: "14900",
+    })
+    await afterRunWrite(h.ctx as unknown as EditCtx, String(item?.id))
+    const again = await cardItems(h.ctx, runId)
+    expect(again.items[0]?.amount_check).toBeUndefined()
+    const calm = await summarizeRecurringRunIssue({ items: again.items, period: "November 2026" })
+    expect(calm.lines.join(" ")).not.toContain("Check the amount")
+  })
+
+  test("a reader who cannot read the issuer sees the total the card shows, not the lines without their VAT", async () => {
+    const { h, runId, item } = await drafted(14_900, "14900")
+    const line = h.db.__all("document_lines").find((l) => l.document_id === item?.document_id)
+    // An edited line carries no rate of its own: issuing prices it at the issuer's domestic rate,
+    // and the draft's stored totals say so.
+    await h.db.update("document_lines", String(line?.id), {
+      unit_price_minor: "1490000",
+      subtotal_minor: "1490000",
+      tax_rate_bp: null,
+    })
+    await h.db.update("documents", String(item?.document_id), {
+      subtotal_minor: "1490000",
+      tax_total_minor: "298000",
+      grand_total_minor: "1788000",
+    })
+    const card = await cardItems(h.ctx, runId)
+    expect(card.items[0]?.total_minor).toBe("1788000")
+    // A role without the settings scope reads no issuer profile.
+    for (const issuer of h.db.__all("issuer_profiles"))
+      await h.db.delete("issuer_profiles", String(issuer.id))
+    const got = await recurringRunGet(h.ctx, { run_id: runId })
+    if (got.status !== "completed") throw new Error("run not read")
+    expect(got.rows[0]).toMatchObject({
+      net_minor: "1490000",
+      vat_minor: "298000",
+      total_minor: "1788000",
+    })
   })
 
   test("the threshold is five times up or a fifth down, and zero amounts are never compared", () => {

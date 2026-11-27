@@ -29,7 +29,8 @@ refusals, rules) apply to both.
 2. **Sign in:** `liaison login --host https://<org address>`. It prints a link and a code: ask
    the person to open it, check the code and approve. Wait for "Signed in". Never approve it
    yourself. `liaison whoami` shows the scopes (by default `kernel:apps:build`,
-   `kernel:apps:logs`). Errors: "Unregistered device client" = the server has the device flow
+   `kernel:apps:logs`); `login` names any it did not get: without `kernel:apps:build` (admins
+   hold it) the person asks an admin. `--no-browser` when the browser is elsewhere. Errors: "Unregistered device client" = the server has the device flow
    off (its operator sets `DEVICE_FLOW_CLIENTS`); 404 on `apps` commands = custom apps off.
 3. **The loop** (in the app folder):
 
@@ -38,7 +39,7 @@ refusals, rules) apply to both.
    | Start | `liaison apps init <base_name> --title "<title>" [--template read-only]` | writes `<base_name>/` with the template files and `.liaison/app.json`; prints the `appName` |
    | Write | edit `app.manifest.json`, `handlers.ts`, `ui.tsx`, `README.md` | whole files, the rules of section 3 |
    | Check | `liaison apps push --message "<what changed>"` | exit 1 and `file:line: message` per error: fix and push again |
-   | Try | `liaison apps test` | runs `tests/*.json` cases (`{"tool": "...", "params": {...}, "expect": {...}}`) in the preview; `--tool <t> --params '<json>' --verbose` for one; `--fresh` empties the scratch store |
+   | Try | `liaison apps test` | runs `tests/*.json` cases (`{"tool": "...", "params": {...}, "expect": {...}}`, or `"expectError": "<code>"` for a refusal: name the code, or a case passes on the wrong refusal) in name order on one shared scratch store (`01-`, `02-`...); `--tool <t> --params '<json>' --verbose` for one; `--fresh` empties the scratch store |
    | Publish | `liaison apps publish --wait` | creates the approval card and waits. Tell the person a holder of `kernel:apps:admin` must approve it in Liaison; it is NOT installed until then. Exit 2 = still waiting (`liaison approvals wait <id>`), 1 = denied |
    | Look | `liaison apps status`, `liaison apps logs [--follow] [--level warn]` | a log line shows only to a sign-in holding what its run read: if `logs` names missing scopes, sign in again with `--scope <appName>:<resource>:read` |
    | Roll back | `liaison apps rollback --wait` | restores the previously published version and publishes it again (a new approval) |
@@ -107,7 +108,8 @@ when it refuses (section 6 says what to do about each code).
 5. **Publish.** Check first. Report the result as **waiting for approval**, with its
    `approvalHandle`, and who decides it (a person with `kernel:apps:admin`). Never say it is
    installed. `liaison_approval_status` tells you whether it was decided.
-6. **After approval**, the app is On and members get its member scopes. Its tools are named
+6. **After approval**, the app is On for the people its `roles` reach (section 3): without a
+   `roles.member`, only admins can use it. Its tools are named
    `<appName>__<tool>`: find them with `liaison_tool_search` (the app name) and run them with
    `liaison_call_tool` (your tool list was fixed when the session started). Its page is in
    the org's activity bar, if it has one.
@@ -139,6 +141,11 @@ The server writes `name` and `version` into the manifest: whatever you put there
   `requiredScopes` (a non-empty list taken from `scopes`), `params` (a JSON Schema object:
   `type: "object"`, `properties`, `required`, `additionalProperties: false`), `readOnly: true`
   for a tool that only reads.
+- `roles.member` (and other tiers): `{ description, scopes }`, the scopes each tier holds. Each
+  becomes the org role `<appName>.<role>`, and `member` also reaches everyone holding Full Member.
+  **Declare `roles.member` with the scopes people need to use the app**, or only admins get it. Tell
+  the person that colleagues with a custom role (support, sales...) need the app's role given to them
+  in Settings › Users.
 - `store.collections.<name>`: `{ readScope, agentReadable?, searchable?: { labelField, fields } }`.
   The name is lowercase letters, digits and `_`; `readScope` is one of the app's scopes;
   `agentReadable: true` lets the agent's data tools and dashboards read it.
@@ -188,6 +195,12 @@ everywhere with the `appName` your `create` returned.
   "description": "Log customer visits and see the latest ones.",
   "iconName": "clipboard-list",
   "scopes": ["visit-log-o1a2b3c4d:visits:read", "visit-log-o1a2b3c4d:visits:write"],
+  "roles": {
+    "member": {
+      "description": "Log visits and see them",
+      "scopes": ["visit-log-o1a2b3c4d:visits:read", "visit-log-o1a2b3c4d:visits:write"]
+    }
+  },
   "store": {
     "collections": {
       "visits": { "readScope": "visit-log-o1a2b3c4d:visits:read", "agentReadable": true }
@@ -324,8 +337,10 @@ A preview runs one tool, job or webhook handler of a draft version as the person
   builds one per org at a time and 30 an hour (`build_busy`: wait `retryAfterSeconds`).
 - **The page:** you cannot render `ui.tsx` over MCP; `check` builds and type-checks it.
   Ask the person to open **Settings › App store › Apps in the making** and the draft: the page
-  shows in a sealed frame, and its tool calls run as previews. After publishing, open it from
-  the activity bar.
+  shows in a sealed frame, and its tool calls run as previews. After publishing the page shows to
+  no one until an admin approves its interface (`liaison apps ui-consent`, or Settings › App store),
+  for each version; then it is in the activity bar. A server without an address per organization
+  (`LIAISON_ORG_HOST_TEMPLATE`) shows no page for an organization's app, only its tools.
 - **After publishing:** call the app's tools through `liaison_call_tool`, and read
   `kernel__apps_build_logs({ app: "<appName>" })` (needs `kernel:apps:logs`) for what they logged.
 

@@ -61,7 +61,7 @@ The assistant cannot show you the app's page. Open **Settings › App store**, t
 
 ## Approve and publish
 
-The publish waits for a person holding `kernel:apps:admin`. The approval card shows the app's name, version and package fingerprint, its type check result, the websites it may reach and what access changes. Nothing is approved automatically. Once approved the app is On, members get its scopes, and its page, when it declares one in the activity bar, is there. The assistant finds the app's tools with `liaison_tool_search` and calls them with `liaison_call_tool`.
+The publish waits for a person holding `kernel:apps:admin`. The approval card shows the app's name, version and package fingerprint, its type check result, the websites it may reach and what access changes. Nothing is approved automatically. Once approved the app is On. Who gets it: the roles the manifest declares (`roles.member` and others) become roles of the organization (`<app>.member`), and the member tier also reaches everyone holding **Full Member**. An app that declares no role reaches admins only, and a person with a custom role (support, sales...) gets it once an admin gives them the app's role in **Settings › Users**. An installed app's page shows to no one until an admin approves its interface, in **Settings › App store** (the app's page) or with `liaison apps ui-consent`; each new version needs it again. On a server without an address per organization (`LIAISON_ORG_HOST_TEMPLATE`), an organization's own app has no page at all, only its tools. The assistant finds the app's tools with `liaison_tool_search` and calls them with `liaison_call_tool`.
 
 ## Change it, roll it back, read its logs
 

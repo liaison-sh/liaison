@@ -29,7 +29,7 @@ The tarball holds one file, `dist/liaison.js`, with no other dependency: copy it
 liaison login --host https://acme.liaison.example
 ```
 
-The command prints a link and a code and opens your browser. Check that the page shows the same code, read what it asks for, and press **Approve**. You must be signed in to that organization in the browser.
+The command prints a link and a code and opens your browser (`--no-browser` only prints them). Check that the page shows the same code, read what it asks for, and press **Approve**. You must be signed in to that organization in the browser.
 
 What the sign-in may do is decided by the server, not by the command line:
 
@@ -38,7 +38,7 @@ What the sign-in may do is decided by the server, not by the command line:
 - `--config` adds what `config apply` needs: `kernel:roles:admin`, `kernel:agents:admin`, `kernel:apps:admin`, and reading and writing skills and routines.
 - `--scope <scope>` adds a read scope (one ending in `:read`). Anything else is refused.
 
-The approval page lists every scope it asks for. The sign-in is kept in your system's keychain (the macOS Keychain, or the Secret Service on Linux), or else in `~/.config/liaison/credentials.json`, readable by you only. Set `LIAISON_CREDENTIAL_STORE=file` to always use the file, and `LIAISON_CONFIG_DIR` to keep everything in another folder. The token lasts 15 minutes and renews itself for 30 days.
+The approval page lists every scope it asks for. The sign-in never carries more than you hold: `liaison login` names any scope it asked for and did not get (building an app needs `kernel:apps:build`, which admins hold; anyone else asks an admin for it). The sign-in is kept in your system's keychain (the macOS Keychain, or the Secret Service on Linux), or else in `~/.config/liaison/credentials.json`, readable by you only. Set `LIAISON_CREDENTIAL_STORE=file` to always use the file, and `LIAISON_CONFIG_DIR` to keep everything in another folder. The token lasts 15 minutes and renews itself for 30 days.
 
 | Command | What it does |
 |---|---|
@@ -80,9 +80,13 @@ A test case is a JSON file in `tests/`, one case or a list of them:
 { "tool": "add_visit", "params": { "customer": "Ada", "note": "Demo" }, "expect": { "ok": true } }
 ```
 
-`expect` passes when every key it names has that value in the result. `"expectError": true` expects a refusal. A case may name a `job` or a `webhook` instead of a `tool`.
+`expect` passes when every key it names has that value in the result, nested objects and lists included. `"expectError": true` expects any refusal; `"expectError": "<code>"` expects that refusal only (`--verbose` prints each one's code), so a case cannot pass on the wrong refusal. A case may name a `job` or a `webhook` instead of a `tool`.
+
+The files run in name order (`01-`, `02-`... keeps `10-` after `09-`), one after the other, on the same scratch space: a case sees what the ones before it stored. `--fresh` empties it before the first.
 
 The folder holds at most the four files the builder keeps (`app.manifest.json`, `handlers.ts`, `ui.tsx`, `README.md`, 512 KiB together); `.liaison/app.json` says which draft and address the folder belongs to. The rules an organization's app follows are in [Build an app for your organization](org-app-with-an-assistant.md#what-an-organizations-app-may-not-do).
+
+Who can use the app once it is published is set by the roles its manifest declares: see [who gets it](org-app-with-an-assistant.md#approve-and-publish).
 
 ## Publishing always waits for a person
 
@@ -90,14 +94,14 @@ A sign-in from the command line never installs code by itself, even with `kernel
 
 ## Let the app's page run with your session
 
-Until you approve it, an app's page (`ui.tsx`) runs in a sealed frame, with no access to anyone's session. To let it run inside Liaison's own page, with the session of the person using it:
+An installed app's page (`ui.tsx`) shows to no one until an admin approves it: then it runs with the session of the person using it. Approve it from the terminal:
 
 ```
 liaison login --host https://acme.liaison.example --admin
 liaison apps ui-consent
 ```
 
-The command says what the page will be able to do (read what that person reads, call their tools, act as them) and asks you to type the app's name. Anything else cancels. Without a terminal it refuses, unless you pass `--yes` yourself after reading the text. The approval holds for the installed version only. `liaison apps ui-consent --withdraw` takes it back.
+The command says what the page will be able to do (read what that person reads, call their tools, act as them) and asks you to type the app's name. Anything else cancels. Without a terminal it refuses, unless you pass `--yes` yourself after reading the text. The approval holds for the installed version only. `liaison apps ui-consent --withdraw` takes it back. On a server without an address per organization (`LIAISON_ORG_HOST_TEMPLATE`), an organization's own app has no page at all, only its tools.
 
 ## Apply roles, agents, skills and routines from a file
 
@@ -109,6 +113,14 @@ liaison config apply team.yaml
 The file uses the format of the server's `liaison config apply` ([reference](../reference/config.md)). From the command line it may hold only:
 
 - `roles`, `agents` and `apps` (each app's config and settings): each section becomes an approval card in Liaison that shows what will change;
-- `skills` and `routines`: each entry is created, or updated when one of that name exists, and each one is an approval card too.
+- `skills` and `routines`: each entry is created, or updated when one of that name exists, and each one is an approval card too. A skill takes `name`, `description` and `body` (the guidance the agent follows), and optionally `visibility` (`org` by default from a file) and `requiredScopes`:
+
+  ```yaml
+  skills:
+    - name: equipment-loans
+      description: How we lend test devices and chase late returns.
+      body: |
+        Use the Equipment loans app. Lend for at most 3 weeks. On a return, ask the condition.
+  ```
 
 Mail, the email sender, people and seats, invoicing, ticket inboxes, knowledge documents, API connections, model keys and every secret stay on the server: a file with any of them is refused whole, with where to set each one instead, and nothing is sent. `--dry-run` lists what would be sent.

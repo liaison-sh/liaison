@@ -20,3 +20,7 @@ Install by URL refused to device sign-ins -> apps/api/src/modules/apps/install-r
 UI consent: typed app name, --yes, --withdraw, version only -> packages/cli/src/apps.ts (uiConsent) ; packages/cli/src/prompt.ts ; apps/api/src/modules/apps/install-routes.ts (ui-approval confirm)
 Config apply subset, gated config tools, refusals -> packages/cli/src/config-apply.ts ; apps/api/src/modules/agent/tools/config-tools.ts
 Log lines show only to readers holding what the run could read; CLI names missing read scopes -> apps/api/src/modules/app-builder/logs.ts (readAppLogs) ; packages/cli/src/apps.ts (logs, appReadScopes)
+Page shows only after interface approval, and only on the org's own host -> apps/api/src/modules/apps/routes.ts (GET /manifests uiBundleUrl), apps/api/src/modules/apps/ui-bundle-routes.ts (orgPrivateBundleRefused)
+expectError true or an error code; cases run in file-name order on one scratch store -> packages/cli/src/apps.ts (readFixtures, test)
+login names asked scopes the token lacks; --no-browser -> packages/cli/src/auth.ts (login)
+skills entries go to kernel:create_skill / update_skill (name, description, body, visibility, requiredScopes) -> packages/cli/src/config-apply.ts (byName), apps/api/src/modules/agent/tools/skills-routines-tools.ts (create_skill)

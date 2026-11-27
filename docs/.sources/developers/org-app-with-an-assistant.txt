@@ -19,3 +19,5 @@ Forbidden declarations and limits (5 s, 60 s, 1 MB) -> apps/api/src/modules/apps
 Custom app count and daily run caps -> apps/api/src/modules/org/caps.ts (assertCustomAppRoom, APP_DAY_CAP_KINDS)
 Skill worked example verified by the build -> apps/api/src/modules/app-builder/org-app-skill-example.test.ts
 Claude Code personal skills dir ~/.claude/skills -> Claude Code documentation (skills)
+Who gets an app: manifest roles become <app>.<role>, member tier extends Full Member; no roles = admins only -> apps/api/src/modules/apps/runtime.ts (seedManifestRoles, extendFullMemberRole)
+Page shows only after interface approval, and only on the org's own host -> apps/api/src/modules/apps/routes.ts (GET /manifests uiBundleUrl), apps/api/src/modules/apps/ui-bundle-routes.ts (orgPrivateBundleRefused)

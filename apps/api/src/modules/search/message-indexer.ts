@@ -94,6 +94,7 @@ import { isRetrievalTool } from "~/modules/agent/context/cold-resume"
 import { authorErasedSql } from "~/modules/erasure/erased-user"
 import { buildSearchDocument } from "~/modules/search/doc-builder"
 import { documentId } from "~/modules/search/document-id"
+import { embeddingDimensionsFor, fitEmbeddings } from "~/modules/search/embedding-dimensions"
 import { type IndexSourceSink, registerIndexSource } from "~/modules/search/index-sources"
 import { sendIndexWrite, writeIndexAndWait } from "~/modules/search/index-writer"
 import {
@@ -906,6 +907,34 @@ export async function processBriefIndexerJob(payload: BriefIndexerJobPayload): P
   await writeIndexAndWait({ docs: [plan.doc] }, { replay: [briefLiveIndexItem(payload)] })
 }
 
+/**
+ * Re-index a set of brief rows and episodes in one write, with one embedding
+ * call for the batch (the re-embed after a width change). A row gone since is
+ * deleted from the index, as a live upsert would.
+ */
+export async function indexBriefRowsBulk(
+  orgId: string,
+  items: ReadonlyArray<{ kind: "brief_row" | "episode"; id: string }>,
+): Promise<void> {
+  if (items.length === 0) return
+  const docs: Doc[] = []
+  const deleteIds: string[] = []
+  for (const item of items) {
+    const plan = await planBriefDocument({ action: "upsert", orgId, kind: item.kind, id: item.id })
+    if ("deleteId" in plan) deleteIds.push(plan.deleteId)
+    else docs.push(plan.doc)
+  }
+  await attachVectors(orgId, docs)
+  await writeIndexAndWait(
+    { docs, deleteIds },
+    {
+      replay: items.map((item) =>
+        briefLiveIndexItem({ action: "upsert", orgId, kind: item.kind, id: item.id }),
+      ),
+    },
+  )
+}
+
 /** The coalescing-queue request for one message change. */
 export function messageLiveIndexItem(payload: MessageIndexerJobPayload): LiveIndexItem {
   return {
@@ -1012,19 +1041,12 @@ export { MEMORY_EMBEDDER_NAME } from "~/modules/search/vector-opt-out"
 import { MEMORY_EMBEDDER_NAME } from "~/modules/search/vector-opt-out"
 
 /**
- * Output dimensionality per model. Meili's `userProvided` embedder declares a
+ * The vector width per model on this instance: EMBEDDING_DIMENSIONS, or null
+ * when the model cannot produce it. Meili's `userProvided` embedder declares a
  * FIXED width and rejects a document whose vector is a different length, so
- * this table and the model id are one decision, never two.
+ * one width serves the whole shared index (embedding-dimensions.ts).
  */
-const EMBEDDING_DIMENSIONS_BY_MODEL: Record<string, number> = {
-  "gemini-embedding-001": 3072,
-  "text-embedding-004": 768,
-}
-const FALLBACK_EMBEDDING_DIMENSIONS = 3072
-
-export function embeddingDimensionsFor(modelId: string): number {
-  return EMBEDDING_DIMENSIONS_BY_MODEL[modelId] ?? FALLBACK_EMBEDDING_DIMENSIONS
-}
+export { embeddingDimensionsFor } from "~/modules/search/embedding-dimensions"
 
 export interface Embedder {
   modelId: string
@@ -1084,11 +1106,11 @@ function noteManagedEmbeddingRefused(orgId: string, reason: string, code?: strin
  * documents stay keyword only. Each batch is ONE usage row, billed to
  * a real org user (`systemWorkUserId`).
  */
-function managedOrgEmbedder(orgId: string, modelId: string): Embedder {
+function managedOrgEmbedder(orgId: string, modelId: string, dimensions: number): Embedder {
   const upstreamId = `google/${modelId}`
   return {
     modelId,
-    dimensions: embeddingDimensionsFor(modelId),
+    dimensions,
     async embed(texts: string[]) {
       const [{ managedSideCallGate, systemWorkUserId }, { openRouterEmbed }, { finalizeUsage }] =
         await Promise.all([
@@ -1101,7 +1123,13 @@ function managedOrgEmbedder(orgId: string, modelId: string): Embedder {
         noteManagedEmbeddingRefused(orgId, gate.reason, gate.billingCode)
         return { vectors: [], tokens: 0 }
       }
-      const result = await openRouterEmbed({ apiKey: gate.key, upstreamId, texts, orgId })
+      const result = await openRouterEmbed({
+        apiKey: gate.key,
+        upstreamId,
+        texts,
+        orgId,
+        dimensions,
+      })
       recordEmbeddingTokens(orgId, result.tokens)
       await finalizeUsage(orgId, {
         model: gate.model,
@@ -1116,7 +1144,7 @@ function managedOrgEmbedder(orgId: string, modelId: string): Embedder {
         description: "Search embeddings",
         metadata: { feature: "embedding", texts: texts.length },
       }).catch((err) => log.error({ err, orgId }, "Could not meter an embedding batch"))
-      return { vectors: result.vectors, tokens: result.tokens }
+      return { vectors: fitEmbeddings(result.vectors, dimensions), tokens: result.tokens }
     },
   }
 }
@@ -1161,10 +1189,18 @@ export async function resolveOrgEmbedder(orgId: string): Promise<Embedder | null
   const modelId =
     (settings.ai as { embeddingModelId?: string | null } | undefined)?.embeddingModelId ||
     DEFAULT_EMBEDDING_MODEL_ID
+  // The instance's one vector width. A model that cannot produce it (an org
+  // that picked text-embedding-004 on a 1536 or 3072 instance) searches
+  // keyword only rather than writing vectors of another width.
+  const dimensions = embeddingDimensionsFor(modelId)
+  if (dimensions === null) {
+    embedderCache.set(orgId, null)
+    return noteEmbeddingLegOff(orgId, "model_width_unsupported")
+  }
   // A managed cell embeds on OpenRouter (S31); whether a batch may spend is
   // decided per batch, so the embedder itself is always there.
   if (isManagedEdition()) {
-    const embedder = managedOrgEmbedder(orgId, modelId)
+    const embedder = managedOrgEmbedder(orgId, modelId, dimensions)
     embedderCache.set(orgId, embedder)
     return embedder
   }
@@ -1202,17 +1238,20 @@ export async function resolveOrgEmbedder(orgId: string): Promise<Embedder | null
   const model = createGoogle({ apiKey }).textEmbeddingModel(modelId)
   const embedder: Embedder = {
     modelId,
-    dimensions: embeddingDimensionsFor(modelId),
+    dimensions,
     async embed(texts: string[]) {
       const { embeddings, usage } = await embedMany({
         model,
         // The provider rejects an oversized value outright; a message longer
         // than this is embedded on its opening, which is where a fact is said.
         values: texts.map((t) => t.slice(0, 8000)),
+        // Asked of the provider; the cut and normalisation below make the
+        // width hold even where it is not honoured.
+        providerOptions: { google: { outputDimensionality: dimensions } },
       })
       const tokens = (usage as { tokens?: number } | undefined)?.tokens ?? 0
       recordEmbeddingTokens(orgId, tokens)
-      return { vectors: embeddings as number[][], tokens }
+      return { vectors: fitEmbeddings(embeddings, dimensions), tokens }
     },
   }
   embedderCache.set(orgId, embedder)
@@ -1260,6 +1299,21 @@ export class MemoryEmbedderUndeclaredError extends Error {
     this.name = "MemoryEmbedderUndeclaredError"
   }
 }
+
+/**
+ * The index declares the embedder at ANOTHER width (EMBEDDING_DIMENSIONS
+ * changed): a rebuild at the new width is on its way, and the documents that
+ * would have carried a vector are noted for the re-embed after it.
+ */
+export class MemoryEmbedderWidthPendingError extends MemoryEmbedderUndeclaredError {
+  constructor(message: string) {
+    super(message)
+    this.name = "MemoryEmbedderWidthPendingError"
+  }
+}
+
+/** Keys whose last declaration found the embedder at another width. */
+const embedderWidthPending = new Set<string>()
 
 type EmbedderSettings = {
   embedders?: Record<string, { source?: string; dimensions?: number }> | null
@@ -1312,10 +1366,16 @@ async function declareMemoryEmbedder(dimensions: number): Promise<void> {
   const cacheKey = `${indexName}:${dimensions}`
   if (embedderSettingsApplied.has(cacheKey)) return
   const failedAt = embedderDeclareFailedAt.get(cacheKey)
-  if (failedAt !== undefined && Date.now() - failedAt < EMBEDDER_DECLARE_RETRY_MS) {
-    throw new MemoryEmbedderUndeclaredError(
-      `The ${MEMORY_EMBEDDER_NAME} embedder is not declared on ${indexName}; retrying later`,
-    )
+  // A width change is re-read sooner than a failed declaration: it ends as
+  // soon as the rebuild at the new width swaps in, in whichever process.
+  const retryMs = embedderWidthPending.has(cacheKey)
+    ? EMBEDDER_ABSENT_RECHECK_MS
+    : EMBEDDER_DECLARE_RETRY_MS
+  if (failedAt !== undefined && Date.now() - failedAt < retryMs) {
+    const message = `The ${MEMORY_EMBEDDER_NAME} embedder is not declared on ${indexName}; retrying later`
+    throw embedderWidthPending.has(cacheKey)
+      ? new MemoryEmbedderWidthPendingError(message)
+      : new MemoryEmbedderUndeclaredError(message)
   }
 
   const meili = getMeili()
@@ -1332,7 +1392,24 @@ async function declareMemoryEmbedder(dimensions: number): Promise<void> {
   const settings = (await index.getSettings()) as EmbedderSettings
   if (embedderMatches(settings, dimensions)) {
     embedderSettingsApplied.add(cacheKey)
+    embedderWidthPending.delete(cacheKey)
     return
+  }
+  // Declared at another width: never changed in place. Meili would have to
+  // drop every vector of the live index first, and its own handling of a
+  // `userProvided` width change keeps vectors of the old length around. The
+  // rebuild builds a fresh index with the embedder at the new width and swaps
+  // it in, so search keeps answering from the old index meanwhile (reindex.ts).
+  const declaredWidth = settings.embedders?.[MEMORY_EMBEDDER_NAME]?.dimensions
+  if (typeof declaredWidth === "number" && declaredWidth !== dimensions) {
+    embedderDeclareFailedAt.set(cacheKey, Date.now())
+    embedderWidthPending.add(cacheKey)
+    const { requestIndexRebuild } = await import("~/modules/search/reindex")
+    await requestIndexRebuild("memory_embedder_width_changed", { embedderDimensions: dimensions })
+    log.info({ indexName, from: declaredWidth, to: dimensions }, "memory_embedder_width_changed")
+    throw new MemoryEmbedderWidthPendingError(
+      `The ${MEMORY_EMBEDDER_NAME} embedder is declared at ${declaredWidth} dimensions; a rebuild at ${dimensions} is requested`,
+    )
   }
   const task = await index.updateEmbedders({
     ...(settings.embedders ?? {}),
@@ -1372,6 +1449,7 @@ async function declareMemoryEmbedder(dimensions: number): Promise<void> {
   }
   embedderDeclareFailedAt.delete(cacheKey)
   embedderAbsentCheckedAt.delete(cacheKey)
+  embedderWidthPending.delete(cacheKey)
   embedderSettingsApplied.add(cacheKey)
 }
 
@@ -1444,6 +1522,16 @@ async function attachVectorsOrLeave(
       }
     })
   } catch (err) {
+    // Written keyword only until the rebuild at the new width has swapped in;
+    // noted, so the re-embed after it gives them their vector.
+    if (err instanceof MemoryEmbedderWidthPendingError) {
+      const { noteForReembed } = await import("~/modules/search/reembed-queue")
+      if ((await noteForReembed(orgId, docs)) > 0) {
+        const { kickReembed } = await import("~/infra/jobs/embedding-backfill")
+        await kickReembed(orgId)
+      }
+      return
+    }
     // An undeclared embedder already said so once, as memory_embedder_declare_failed.
     if (err instanceof MemoryEmbedderUndeclaredError) return
     log.warn({ err, orgId }, "Could not embed documents; indexing them keyword only")
@@ -1551,7 +1639,10 @@ export function registerMessageIndexerJobWorkers(): void {
   // documents their vectors, and the clusterer that collapses near duplicates.
   // Imported dynamically because both of them index through this module, and a
   // static import either way would be a cycle.
-  void import("~/infra/jobs/embedding-backfill").then((m) => m.registerEmbeddingBackfillWorker())
+  void import("~/infra/jobs/embedding-backfill").then((m) => {
+    m.registerEmbeddingBackfillWorker()
+    m.registerEmbeddingReembedWorker()
+  })
   void import("~/infra/jobs/near-duplicate-clusters").then((m) => m.registerNearDuplicateWorker())
 }
 
@@ -1577,6 +1668,7 @@ export const MessageIndexerTestAccess = {
   setEmbedderFactory(factory: EmbedderFactory | null): void {
     embedderFactoryOverride = factory
     embedderCache.clear()
+    embedderWidthPending.clear()
     loggedEmbeddingLegOff.clear()
     embedderSettingsApplied.clear()
     embedderDeclareFailedAt.clear()
@@ -1585,6 +1677,7 @@ export const MessageIndexerTestAccess = {
   /** Test-only: drop the memoised embedders (a settings change invalidates them). */
   resetEmbedderCache(): void {
     embedderCache.clear()
+    embedderWidthPending.clear()
     managedRefusalLoggedAt.clear()
     loggedEmbeddingLegOff.clear()
     embedderSettingsApplied.clear()

@@ -227,6 +227,7 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `MEILISEARCH_HOST` | `string` | `"http://localhost:7700"` | no | Phase 10: MeiliSearch |
 | `MEILISEARCH_API_KEY` | `string` | `""` | no |  |
 | `MEILI_INDEX_PREFIX` | `string` | `""` | no |  |
+| `EMBEDDING_DIMENSIONS` | `number` | `768` | no | Width of the memory search vectors (document and query embeddings, and the search index's embedder): 768, 1536 or 3072. 768 needs a quarter of 3072's memory and disk for nearly the same recall. Changing it on a running instance rebuilds the search index once (search keeps working, keyword only for meaning matches) and then re-embeds the documents that had vectors, in the background (modules/search/embedding-dimensions.ts). |
 | `OBJECT_STORAGE_ENDPOINT` | `string` | `"http://localhost:9000"` | no | Phase 10: Object storage (S3-compatible) |
 | `OBJECT_STORAGE_REGION` | `string` | `"us-east-1"` | no |  |
 | `OBJECT_STORAGE_BUCKET` | `string` | `"liaison-dev"` | no |  |
@@ -318,7 +319,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/modules/apps/connections/sql/credentials.ts:145`, `apps/api/src/modules/apps/connections/sql/credentials.ts:165` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/modules/apps/connections/sql/credentials.ts:154` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:157` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1903` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1917` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:522`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |

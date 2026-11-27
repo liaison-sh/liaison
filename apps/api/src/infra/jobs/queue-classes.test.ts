@@ -49,7 +49,7 @@ describe("kernel queue classes: the table", () => {
     // Call sites that name the job through a constant.
     const { AGENT_SUBRUN_JOB_NAME } = await import("~/modules/agent/subruns/spawn-agent")
     const { CONSOLIDATION_JOB } = await import("~/modules/agent/memory/consolidation")
-    const { EMBEDDING_BACKFILL_JOB } = await import("./embedding-backfill")
+    const { EMBEDDING_BACKFILL_JOB, EMBEDDING_REEMBED_JOB } = await import("./embedding-backfill")
     const { NEAR_DUPLICATE_JOB } = await import("./near-duplicate-clusters")
     const { STATE_MATERIALIZER_JOB } = await import("~/modules/attention/state-materializer")
     const digest = await import("~/modules/attention/digest-jobs")
@@ -59,6 +59,7 @@ describe("kernel queue classes: the table", () => {
       AGENT_SUBRUN_JOB_NAME,
       CONSOLIDATION_JOB,
       EMBEDDING_BACKFILL_JOB,
+      EMBEDDING_REEMBED_JOB,
       NEAR_DUPLICATE_JOB,
       STATE_MATERIALIZER_JOB,
       digest.URGENT_JOB,

@@ -312,6 +312,9 @@ export function registerSearchDriftCheck(): void {
     name: "search-drift-check",
     onAcquired: () => {
       void checkCatalogSearchDrift()
+      // EMBEDDING_DIMENSIONS changed since the index was built: rebuild at the
+      // new width, and resume any re-embed a restart interrupted.
+      void import("~/infra/jobs/embedding-backfill").then((m) => m.checkMemoryEmbedderWidth())
     },
     onLost: () => {},
   })

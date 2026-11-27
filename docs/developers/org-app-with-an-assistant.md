@@ -51,7 +51,7 @@ Tell the assistant what the app should do, for example "build a visit log for ou
 4. tries each tool with `kernel__apps_build_preview`, as you, without installing anything;
 5. asks to publish with `kernel__apps_build_publish`.
 
-A draft holds four files at most (`app.manifest.json`, `handlers.ts`, `ui.tsx`, `README.md`), 512 KiB together. The last 20 versions are kept.
+A draft holds four files at most (`app.manifest.json`, `handlers.ts`, `ui.tsx`, `README.md`), 512 KiB together. The last 20 versions are kept. The page (`ui.tsx`) is built from the components of `@liaison/app-ui/kit` (page header, card, button, labelled field, badge, empty state), so it looks like the rest of Liaison; the skill lists them.
 
 ## Try it before it is published
 
@@ -66,7 +66,7 @@ The publish waits for a person holding `kernel:apps:admin`. The approval card sh
 ## Change it, roll it back, read its logs
 
 - **Change:** ask the assistant. It updates, checks, tries and publishes again; each publish is the next patch version and needs a new approval.
-- **Roll back:** the assistant restores the earlier version with `kernel__apps_build_restore` and publishes it as the next version. Tables the old version no longer declares are kept with their data.
+- **Roll back:** the assistant restores the earlier version with `kernel__apps_build_restore` and publishes it as the next version. Tables the old version no longer declares are kept with their data. A rollback brings back code, not data: what the newer version stored stays, and records in a shape the older code does not know (a new status, a new field) can be missing from its lists until a version that knows them is published. Keep changes additive, and fix forward once data in a new shape exists (see [A rollback brings back code, not data](cli.md#a-rollback-brings-back-code-not-data)).
 - **Logs:** `kernel__apps_build_logs` reads the app's log lines (kept 7 days) for a holder of `kernel:apps:logs`, or your own tries' lines.
 
 ## What an organization's app may not do

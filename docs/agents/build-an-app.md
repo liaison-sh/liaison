@@ -47,7 +47,7 @@ An admin can also publish from the app builder directly, without an approval.
 
 The first publish is version 0.1.0 and counts against the organisation's custom apps limit, when one is set. Each later publish is the next patch version (0.1.1, 0.1.2) of the same app. An app installed another way, or published by another draft, cannot be overwritten.
 
-An installed app's page shows to no one until an admin approves its interface, in **Settings › App store** (the app's page) or with `liaison apps ui-consent`; each new version needs it again. On a server without an address per organization (`LIAISON_ORG_HOST_TEMPLATE`), an organization's own app has no page at all, only its tools.
+An installed app's page shows to no one until an admin approves its interface, in **Settings › App store** (the app's page) or with `liaison apps ui-consent`; each new version needs it again. On a server without an address per organization (`LIAISON_ORG_HOST_TEMPLATE`), an organization's own app has no page at all, only its tools: the activity bar does not list it, and approving its interface is refused with that reason.
 
 ## Open a draft in the app builder
 

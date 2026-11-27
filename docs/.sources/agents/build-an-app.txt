@@ -24,3 +24,4 @@ The card says what data the agent had read while writing the draft (carried forw
 A try runs on the loader or the sandbox service with the draft build's worker.js, else the local sandbox -> apps/api/src/modules/app-builder/preview.ts runPreview workerModule ; apps/api/src/modules/apps/workers/adhoc-module.ts ensureBuiltModule
 Who gets an app: manifest roles become <app>.<role>, member tier extends Full Member; no roles = admins only -> apps/api/src/modules/apps/runtime.ts (seedManifestRoles, extendFullMemberRole)
 Page shows only after interface approval, and only on the org's own host -> apps/api/src/modules/apps/routes.ts (GET /manifests uiBundleUrl), apps/api/src/modules/apps/ui-bundle-routes.ts (orgPrivateBundleRefused)
+Without org hosts an org app is not listed in the activity bar; interface approval refused -> apps/api/src/modules/apps/routes.ts (GET /manifests, pageUnavailable) ; apps/api/src/modules/apps/install-routes.ts (POST /:name/ui-approval)

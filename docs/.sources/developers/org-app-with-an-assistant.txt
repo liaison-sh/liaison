@@ -21,3 +21,5 @@ Skill worked example verified by the build -> apps/api/src/modules/app-builder/o
 Claude Code personal skills dir ~/.claude/skills -> Claude Code documentation (skills)
 Who gets an app: manifest roles become <app>.<role>, member tier extends Full Member; no roles = admins only -> apps/api/src/modules/apps/runtime.ts (seedManifestRoles, extendFullMemberRole)
 Page shows only after interface approval, and only on the org's own host -> apps/api/src/modules/apps/routes.ts (GET /manifests uiBundleUrl), apps/api/src/modules/apps/ui-bundle-routes.ts (orgPrivateBundleRefused)
+Page built from @liaison/app-ui/kit, the frame takes the page's stylesheet -> apps/web/src/framework/isolated-app.tsx (pageCss) ; apps/api/src/modules/app-builder/build/sandbox-resolve.ts (allowedSpecifiers: app-ui) ; packages/app-ui/src/kit.tsx
+Rollback restores code, stored data kept -> apps/api/src/modules/app-builder/drafts.ts (restoreDraftVersion)

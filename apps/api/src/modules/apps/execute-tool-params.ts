@@ -341,12 +341,13 @@ function assertKnownParams(toolName: string, params: unknown, declared: string[]
     (k) => !declared.includes(k),
   )
   if (unknown.length === 0) return
-  throw new HTTPException(400, {
-    message: renderParamError(
-      toolName,
-      unknown.map((k) => `- "${k}" is not a recognised parameter${suggestParam(k, declared)}.`),
-    ),
-  })
+  const lines = unknown.map(
+    (k) => `- "${k}" is not a recognised parameter${suggestParam(k, declared)}.`,
+  )
+  // A guessed key with no close match (`content` for `body`) leaves the caller
+  // nothing to try next: name what the tool does take.
+  lines.push(`Accepted parameters: ${declared.join(", ")}.`)
+  throw new HTTPException(400, { message: renderParamError(toolName, lines) })
 }
 
 /** The sub-schema an ajv `schemaPath` (`#/properties/override/additionalProperties`) points into. */

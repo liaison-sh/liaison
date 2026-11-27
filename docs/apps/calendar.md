@@ -100,11 +100,13 @@ Ask "Open the quarter review" and the agent opens the calendar on that event's d
 | `list_events` | List events in a time window, with recurring events expanded | `calendar:events:read` |
 | `search_events` | Search events by title, description and location | `calendar:events:read` |
 | `create_event` | Create an event, optionally with a Google Meet link | `calendar:events:write` |
-| `update_event` | Change time, title, description, location, guests or the Meet link, for one occurrence or the series | `calendar:events:write` |
-| `delete_event` | Delete an event, one occurrence or the series. Waits for your approval | `calendar:events:write` |
+| `update_event` | Change time, title, description, location, guests or the Meet link, for one occurrence, this and the following occurrences, or the series | `calendar:events:write` |
+| `delete_event` | Delete an event, one occurrence, this and the following occurrences, or the series. Waits for your approval | `calendar:events:write` |
 | `respond_to_invitation` | Answer an invitation you received: yes, no or maybe | `calendar:events:write` |
 | `set_selected` | Turn sync on or off for a calendar | `calendar:events:write` |
 | `retry_import` | Re-run a failed account import | `calendar:events:write` |
+
+For this and the following occurrences, the series is split as in Google Calendar: the old series ends before that occurrence, and a new series with the change starts there. Cancelled occurrences after it stay cancelled; edited ones take the change.
 
 ### Invitations and deletes from agents
 

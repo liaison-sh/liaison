@@ -31,7 +31,13 @@
 		write, and the push token that identifies this device. All of it is
 		linked to the account, none of it is used for tracking. Dictation
 		audio is sent to be transcribed and is never stored, so it is
-		declared not linked.
+		declared not linked. Photos and videos: a profile picture and the
+		images or recordings a person attaches (from the library or the
+		camera) are uploaded to the server and kept with their account.
+		Diagnostics: "Report a bug" sends the app's recent log lines, the
+		page address and the browser description with the person's report,
+		filed under their account; there is no automatic crash reporting and
+		no analytics, so no crash or usage data is declared.
 	-->
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array>
@@ -88,6 +94,30 @@
 			<string>NSPrivacyCollectedDataTypeAudioData</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePhotosorVideos</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeOtherDiagnosticData</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>
 			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>

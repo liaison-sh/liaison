@@ -26,6 +26,7 @@ import { reloadWhenOnline } from "~/lib/stale-chunk"
 import "~/index.css"
 import type { EnsureFreshTokenOptions } from "~/lib/auth-refresh"
 import { startClientPolicy } from "~/lib/client-version"
+import { startDynamicType } from "~/lib/dynamic-type"
 import { accessToken, clearAuth } from "~/modules/auth/auth-store"
 import { authManager, installResumeRefresh } from "~/modules/auth/createAuthManager"
 import { startExternalLinkRouting } from "~/modules/desktop/external-links"
@@ -100,6 +101,9 @@ installResumeRefresh()
 // about the keyboard itself, so this is what lifts the page above it, the
 // sign-in screen included (primitives/keyboardInset.ts). No-op in a browser.
 startKeyboardInset()
+// iOS Dynamic Type: the system text size scales the page's text inside the
+// iPhone and iPad app (lib/dynamic-type.ts). No-op anywhere else.
+startDynamicType()
 // External links open in the system browser inside the desktop shell, where
 // `target=_blank` opens nothing (modules/desktop/external-links.ts). Inert in
 // a browser.

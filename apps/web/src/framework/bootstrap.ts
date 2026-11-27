@@ -42,7 +42,7 @@ import { isAppUnavailable, onAppsChanged, setUnavailableApps } from "~/framework
 import { onApiReady } from "~/lib/api-ready"
 import { registerAppDisplayName } from "~/lib/capability-copy"
 import { apiUrl, serverAddressOverride } from "~/lib/env"
-import { purchaseSurfacesHidden } from "~/lib/native-bridge"
+import { appStoreHidden, purchaseSurfacesHidden } from "~/lib/native-bridge"
 import { onSessionStart, onSessionTeardown } from "~/lib/session-lifecycle"
 import { scopeRequestsStore } from "~/modules/admin-scope-requests/scope-requests-store"
 import { registerAgentApp } from "~/modules/agent/agent-app"
@@ -861,20 +861,27 @@ export function bootstrapKernelApps(): void {
           return null
         },
       },
-      {
-        // Workspace > App store (S21): the list, and one app's listing at
-        // `/settings/store/<app>`.
-        id: "store",
-        label: "App store",
-        labelKey: "kernel.nav.section.appStore",
-        href: "/settings/store",
-        component: AppStorePage,
-        group: "admin",
-        adminScope: "kernel:apps:admin",
-        order: 30.5,
-        preserveActiveOnSubpaths: true,
-        resolveRoute: (pathname) => (STORE_DETAIL_PATH.test(pathname) ? AppStoreDetail : null),
-      },
+      // No App store in the iOS app (App Store guidelines 2.5.2, 3.2.2, 4.7):
+      // not registered at all, so a deep link lands on the fallback page.
+      ...(appStoreHidden()
+        ? []
+        : [
+            {
+              // Workspace > App store (S21): the list, and one app's listing at
+              // `/settings/store/<app>`.
+              id: "store",
+              label: "App store",
+              labelKey: "kernel.nav.section.appStore",
+              href: "/settings/store",
+              component: AppStorePage,
+              group: "admin" as const,
+              adminScope: "kernel:apps:admin",
+              order: 30.5,
+              preserveActiveOnSubpaths: true,
+              resolveRoute: (pathname: string) =>
+                STORE_DETAIL_PATH.test(pathname) ? AppStoreDetail : null,
+            },
+          ]),
       {
         id: "system",
         label: "System",

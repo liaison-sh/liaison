@@ -79,8 +79,8 @@ async function run(event: AppEvent) {
   const scopes: string[] = []
   await mod.processTranslationEvent(event, {
     loadPreferences: async () => prefs(),
-    insertAttentionRow: async (row) => {
-      inserted.push(row as unknown as Record<string, unknown>)
+    insertAttentionRow: async (row: unknown) => {
+      inserted.push(row as Record<string, unknown>)
     },
     recipientContext: {
       loadScopeHolders: async (_orgId: string, scope: string) => {

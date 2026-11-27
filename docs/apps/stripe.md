@@ -114,6 +114,7 @@ The secret is never shown again: the page says only **Set** or **Not set yet**. 
 - **When the key stops working**, an event is acknowledged and kept for the catch-up, and the connection reads `key_invalid` (or `partial` for one missing permission).
 - **When Stripe says an object does not exist** and Liaison cannot confirm it is still the same account, nothing is changed and the connection reads `different_account`.
 - **Card numbers.** A card number written in a customer's description or name, an invoice memo or line, a payment failure message or a dispute reason is hidden before anything is stored, and the connection's admins get one item on Home saying so.
+- **Disputes.** A dispute that needs a response puts one line on the Home of the holders of `stripe:refunds:write` (billing and admin), with its amount, customer and evidence due date, from the webhook event, the first import and the nightly reconcile alike. A job says it again every morning at 06:00 UTC while the dispute waits, and an overdue one moves up the list. When Stripe says it was answered or closed, the line clears ([Handle a dispute](../money/disputes-in-stripe.md)).
 - **Live and test.** An event of the other mode (a live event on a test connection) is acknowledged and changes nothing.
 
 ## What reaches Invoicing

@@ -14,10 +14,10 @@ import { redis } from "~/lib/redis"
 import { issueToken as issueRedisToken } from "~/lib/token-store"
 import { AuthServiceError, createSession } from "~/modules/auth/auth"
 import { demoMagicLinkAllowed } from "~/modules/demo/demo-login"
+import { recipientLocale } from "~/modules/i18n/recipient-locale"
+import { serverT } from "~/modules/i18n/server-i18n"
 import { getOrgEmailConfig } from "~/modules/org/email-from"
 import { emitSecurityEvent } from "~/modules/security/security-events"
-import { serverT } from "~/modules/i18n/server-i18n"
-import { recipientLocale } from "~/modules/i18n/recipient-locale"
 
 /**
  * The instance-wide refusal of an emailed sign-in code, on an instance that

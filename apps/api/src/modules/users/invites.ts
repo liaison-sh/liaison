@@ -7,6 +7,8 @@ import { renderBrandedEmail } from "~/infra/email-layout"
 import { generateToken, hashToken } from "~/lib/crypto"
 import { authLogger as log } from "~/lib/logger"
 import { orgPublicBaseUrl } from "~/lib/org-public-url"
+import { recipientLocale } from "~/modules/i18n/recipient-locale"
+import { serverT } from "~/modules/i18n/server-i18n"
 import { assertSeatRoomSoft } from "~/modules/org/caps"
 import {
   getOrgDisplayName,
@@ -15,8 +17,6 @@ import {
 } from "~/modules/org/email-from"
 import { hasScope } from "~/modules/permissions/permissions"
 import { actorCoversRoleDimensions } from "~/modules/permissions/roles"
-import { serverT } from "~/modules/i18n/server-i18n"
-import { recipientLocale } from "~/modules/i18n/recipient-locale"
 
 interface CreateInvitationParams {
   orgId: string

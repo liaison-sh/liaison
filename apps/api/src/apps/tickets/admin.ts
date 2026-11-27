@@ -20,8 +20,8 @@ import {
   saveSegmentConfig,
   type TicketIdSegment,
 } from "~/apps/tickets/display-handle"
-import { requireUuid, resolveTicketRef } from "~/apps/tickets/resolve-ticket-ref"
 import { ticketEmailLocale } from "~/apps/tickets/render"
+import { requireUuid, resolveTicketRef } from "~/apps/tickets/resolve-ticket-ref"
 import { kernelRel, ticketsRel } from "~/apps/tickets/schema-refs"
 import { extractRows, type PrivilegedDb, type RlsClient, type RlsTx } from "~/db"
 import { withPrivilegedDb, withPrivilegedReusing } from "~/db/privileged"
@@ -33,8 +33,8 @@ import { base32Token } from "~/lib/random-token"
 import { pgErrorFacts } from "~/lib/transient-db-error"
 import { UUID_RE } from "~/lib/uuid"
 import { FileServiceError, moveFilesToParent } from "~/modules/files/service"
-import { getOrgSenderTransport } from "~/modules/org/email-from"
 import { serverT } from "~/modules/i18n/server-i18n"
+import { getOrgSenderTransport } from "~/modules/org/email-from"
 import { hasScope } from "~/modules/permissions/permissions"
 
 const csatLog = rootLogger.child({ module: "tickets-csat" })

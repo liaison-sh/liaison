@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "modules/i18n/recipient-locale.ts": "The language of a system email: the recipient's (and an inviter's) language columns and the org's default locale, read by id, pinned to that org; kernel.organizations is deny-all under RLS."
+  }
+}

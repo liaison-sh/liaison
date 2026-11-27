@@ -168,6 +168,48 @@ describe("invites service", () => {
     expect(sent[0]?.text).toContain("join InviteOrgA on Liaison")
   })
 
+  it("writes the invitation in the org's language, else the inviter's, for an invitee with no account", async () => {
+    const sent: Array<{ subject: string; html: string; text?: string }> = []
+    const spy = spyOn(emailInfra, "getSystemEmailProvider").mockReturnValue({
+      name: "capture",
+      send: async (m: { subject: string; html: string; text?: string }) => {
+        sent.push(m)
+        return { id: "m1" }
+      },
+    } as never)
+    try {
+      await sql`UPDATE kernel.organizations SET default_locale = 'fr-FR' WHERE id = ${ORG_A}`
+      await createInvitation(rlsDb, {
+        orgId: ORG_A,
+        email: "fr-invitee@example.com",
+        roleId: roleAId,
+        invitedBy: INVITER,
+        actorScopes: ["*"],
+      } as never)
+      expect(sent[0]?.subject).toBe("Vous êtes invité à rejoindre InviteOrgA")
+      expect(sent[0]?.text).toContain("Accepter l'invitation")
+      expect(sent[0]?.html).toContain('<html lang="fr">')
+
+      // An org language that does not ship: the inviter's own choice decides.
+      await sql`UPDATE kernel.organizations SET default_locale = 'xx' WHERE id = ${ORG_A}`
+      await sql`INSERT INTO kernel.user_preferences (user_id, language)
+                VALUES (${INVITER}, 'fr')
+                ON CONFLICT (user_id) DO UPDATE SET language = 'fr'`
+      await createInvitation(rlsDb, {
+        orgId: ORG_A,
+        email: "fr-invitee-2@example.com",
+        roleId: roleAId,
+        invitedBy: INVITER,
+        actorScopes: ["*"],
+      } as never)
+      expect(sent[1]?.subject).toBe("Vous êtes invité à rejoindre InviteOrgA")
+    } finally {
+      spy.mockRestore()
+      await sql`DELETE FROM kernel.user_preferences WHERE user_id = ${INVITER}`
+      await sql`UPDATE kernel.organizations SET default_locale = 'en-US' WHERE id = ${ORG_A}`
+    }
+  })
+
   it("returns USER_EXISTS error when inviting an already-registered email", async () => {
     const result = await createInvitation(rlsDb, {
       orgId: ORG_A,

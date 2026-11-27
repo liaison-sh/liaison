@@ -35,10 +35,10 @@ import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import { connectionAdminScope } from "~/modules/apps/connections/admin-scope"
 import { getFrontendRedirectUrl } from "~/modules/apps/connections/service"
 import { writeAuditLog } from "~/modules/audit/service"
-import { getOrgEmailConfig, getOrgSenderTransport } from "~/modules/org/email-from"
-import { hasScope } from "~/modules/permissions/permissions"
 import { recipientLocale } from "~/modules/i18n/recipient-locale"
 import { serverT } from "~/modules/i18n/server-i18n"
+import { getOrgEmailConfig, getOrgSenderTransport } from "~/modules/org/email-from"
+import { hasScope } from "~/modules/permissions/permissions"
 
 const log = appsLogger.child({ module: "connect-links" })
 

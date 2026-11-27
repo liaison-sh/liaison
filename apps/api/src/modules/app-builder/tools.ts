@@ -475,7 +475,7 @@ export function defineAppBuilderTools(orgId: string): void {
     taintSource: true,
     deferLoading: true,
     description:
-      "Read log lines, newest first: an app's (give app; needs kernel:apps:logs) or a draft's preview runs (give draftId; only your own runs). For an app, `hidden` counts the lines your scopes keep out (their run read data you cannot see) and names the scopes that would show them.",
+      "Read log lines, newest first: an app's (give app; needs kernel:apps:logs) or a draft's preview runs (give draftId; only your own runs).",
     searchKeywords: [...KEYWORDS, "logs"],
     requiredScopes: [BUILD],
     params: z.object({

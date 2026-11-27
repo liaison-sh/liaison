@@ -130,6 +130,26 @@
   }
 }
 
+/* The calendar's loading bar (CalendarShell.tsx): a slow sweep, shown only while a window with
+   nothing cached is on its way. */
+@keyframes calendar-loading-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+.calendar-loading-bar {
+  animation: calendar-loading-sweep 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .calendar-loading-bar {
+    animation: none;
+    width: 100%;
+  }
+}
+
 /* The shell's pause notice comes in quietly (ServerPauseNotice.tsx). */
 @keyframes fade-in {
   from {

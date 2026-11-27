@@ -99,7 +99,7 @@ const EXCLUDED: ReadonlyArray<{ tool: string; reason: Reason; why: string }> = [
     reason: "contract-only op" as const,
     why: "an e-invoicing provider op the invoicing app calls through its contract; marked contractOnly and internal",
   })),
-  ...["shopify"].flatMap((app) =>
+  ...["shopify", "stripe"].flatMap((app) =>
     ["rs_sale_get", "rs_sales_list"].map((op) => ({
       tool: `${app}:${op}`,
       reason: "contract-only op" as const,

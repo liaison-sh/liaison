@@ -141,6 +141,12 @@ import {
   recurringScheduleUpdate,
   retainerTermsRenew,
 } from "./recurring/tools"
+import {
+  type CatchUpCtx,
+  type CatchUpInput,
+  revenueStreamCatchUp,
+  revenueStreamCatchUpPreview,
+} from "./sales/catch-up"
 import { onSaleApproved } from "./sales/issue-sale"
 import {
   type BindInput,
@@ -181,6 +187,11 @@ export const revenueStreamSaleIssueHandler = (
   params: Parameters<typeof onSaleApproved>[0],
   ctx: Parameters<typeof onSaleApproved>[1],
 ) => onSaleApproved(params ?? {}, ctx)
+export { onSaleRefunded } from "./sales/refunds"
+export const revenueStreamCatchUpPreviewHandler = (params: CatchUpInput, ctx: CatchUpCtx) =>
+  revenueStreamCatchUpPreview(ctx, params ?? {})
+export const revenueStreamCatchUpHandler = (params: CatchUpInput, ctx: CatchUpCtx) =>
+  revenueStreamCatchUp(ctx, params ?? {})
 export const revenueStreamsListHandler = (_params: unknown, ctx: StreamToolsCtx) =>
   revenueStreamsList(ctx)
 export const revenueStreamBindHandler = (params: BindInput, ctx: StreamToolsCtx) =>

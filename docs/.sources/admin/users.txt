@@ -91,3 +91,9 @@ Admin routes require kernel:users:admin -> apps/api/src/modules/users/routes.ts:
 Admin route answers 404 outside the org -> apps/api/src/modules/users/routes.ts:355
 Their open apps follow the change -> apps/api/src/modules/users/routes.ts:357
 sidebar_apps_get / sidebar_apps_set for another member need kernel:users:admin -> apps/api/src/modules/users/sidebar-agent-tools.ts:102
+System emails follow the recipient's language, then account locale, org default, inviter, English -> apps/api/src/modules/i18n/recipient-locale.ts:32 ; apps/api/src/modules/i18n/recipient-locale.ts:63
+Sign-in code, password reset and security code mails use it -> apps/api/src/modules/auth/magic-link.ts:276 ; apps/api/src/modules/auth/routes.ts:1227 ; apps/api/src/modules/auth/routes.ts:714
+An invitation follows the org's language, then the inviter's -> apps/api/src/modules/users/invites.ts:159
+Connect links and client portal mails use it -> apps/api/src/modules/apps/connections/connect-links.ts:435 ; apps/api/src/modules/portal/auth-service.ts:161
+Shipped languages are English and French -> packages/shared/src/i18n/locales/_generated.ts:1
+A hosted workspace starts with its creation language as default and owner's -> apps/api/src/modules/cloud/create-org.ts:138 ; apps/api/src/modules/cloud/create-org.ts:150

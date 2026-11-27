@@ -30,3 +30,7 @@ New agent needs kernel:agents:admin -> apps/web/src/modules/agent/AgentSidebar.t
 Messages in activity bar -> apps/web/src/framework/bootstrap.ts:1115
 Handle is how people mention the agent -> packages/shared/src/i18n/locales/en/kernel.json:250
 Approvals open from Home -> apps/web/src/framework/bootstrap.ts:463
+Set up your space conversation, pinned for the first admin -> apps/api/src/modules/provisioning/setup-kickoff.ts:208
+Company brief step label -> packages/shared/src/i18n/locales/en/first-run.json:44
+Brief before the team, inviting first stays possible -> apps/api/src/modules/agent/prompts/kernel/setup-guide.md:17
+Invite now anyway -> packages/shared/src/i18n/locales/en/first-run.json:37

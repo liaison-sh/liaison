@@ -1,0 +1,100 @@
+{
+  "layout": {
+    "codeIntro": "Votre code de vérification est"
+  },
+  "signIn": {
+    "subject": "{{code}} est votre code de connexion Liaison",
+    "eyebrow": "Connexion",
+    "heading": "Votre code de connexion",
+    "body": "Saisissez-le pour vous connecter. Le code expire dans 10 minutes et ne sert qu'une fois. Sur cet appareil, vous pouvez aussi simplement appuyer sur le bouton ci-dessous.",
+    "ignore": "Si vous n'avez pas demandé à vous connecter, ignorez cet e-mail : personne ne peut accéder à votre compte sans ce code ou ce lien.",
+    "cta": "Se connecter à Liaison",
+    "footer": "Vous recevez cet e-mail parce qu'une connexion a été demandée pour cette adresse."
+  },
+  "invite": {
+    "subject": "Vous êtes invité à rejoindre {{org}}",
+    "eyebrow": "Invitation",
+    "heading": "Rejoindre {{org}}",
+    "body": "Vous êtes invité à rejoindre {{org}} sur Liaison, l'espace de travail de votre équipe pour le support et la communication.",
+    "expiry": "Cliquez sur le bouton ci-dessous pour accepter l'invitation et créer votre compte. Cette invitation expire dans 7 jours.",
+    "cta": "Accepter l'invitation",
+    "footer": "Si vous n'attendiez pas cette invitation, ignorez cet e-mail."
+  },
+  "passwordReset": {
+    "subject": "Réinitialisez votre mot de passe",
+    "eyebrow": "Sécurité",
+    "heading": "Réinitialisez votre mot de passe",
+    "body": "Nous avons reçu une demande de réinitialisation du mot de passe de votre compte. Cliquez sur le bouton ci-dessous pour en choisir un nouveau.",
+    "expiry": "Ce lien expire dans 1 heure et ne sert qu'une fois. Si vous n'avez rien demandé, ignorez cet e-mail : votre mot de passe ne change pas.",
+    "cta": "Réinitialiser le mot de passe",
+    "footer": "Vous recevez cet e-mail parce qu'une réinitialisation du mot de passe a été demandée pour cette adresse."
+  },
+  "stepUp": {
+    "eyebrow": "Sécurité",
+    "default": {
+      "subject": "{{code}} est votre code de vérification Liaison",
+      "heading": "Confirmez que c'est bien vous",
+      "p1": "Utilisez le code ci-dessus pour continuer.",
+      "p2": "Il expire dans 10 minutes. Si vous n'avez rien demandé, ignorez cet e-mail.",
+      "footer": "Vous recevez cet e-mail parce qu'une modification de la double authentification a été demandée sur votre compte."
+    },
+    "accountDelete": {
+      "subject": "{{code}} est votre code pour supprimer votre compte Liaison",
+      "heading": "Confirmez la suppression de votre compte",
+      "p1": "Utilisez le code ci-dessus pour supprimer votre compte Liaison.",
+      "p2": "La suppression efface votre profil, vos données privées et vos appareils connectés dans cette organisation, et vous déconnecte partout. Ce que vous avez partagé avec votre équipe reste, sans votre nom. Vos comptes dans d'autres organisations ne sont pas touchés. C'est irréversible.",
+      "p3": "Le code expire dans 10 minutes. Si vous n'avez rien demandé, ne l'utilisez pas et changez votre mot de passe Liaison.",
+      "footer": "Vous recevez cet e-mail parce que la suppression de votre compte a été demandée."
+    },
+    "mailboxRotate": {
+      "subject": "{{code}} est votre code pour changer la clé de votre boîte mail Liaison",
+      "heading": "Confirmez le changement de clé de la boîte mail",
+      "p1": "Utilisez le code ci-dessus pour changer la clé de chiffrement de votre boîte mail.",
+      "p2": "Ensuite, le nouveau courrier est scellé avec la nouvelle clé. Si vous n'avez rien demandé, n'utilisez pas le code et changez votre mot de passe Liaison.",
+      "p3": "Le code expire dans 10 minutes.",
+      "footer": "Vous recevez cet e-mail parce qu'un changement de clé de boîte mail a été demandé sur votre compte."
+    },
+    "mailboxTransparent": {
+      "subject": "{{code}} est votre code pour rendre votre boîte mail Liaison transparente",
+      "heading": "Confirmez le passage de votre boîte mail en mode transparent",
+      "p1": "Utilisez le code ci-dessus pour rendre votre boîte mail privée transparente.",
+      "p2": "Une boîte mail transparente est chiffrée avec une clé que détient le serveur : vous et votre agent la lisez sans le mot de passe de la boîte. Si vous n'avez rien demandé, n'utilisez pas le code et changez votre mot de passe Liaison.",
+      "p3": "Le code expire dans 10 minutes.",
+      "footer": "Vous recevez cet e-mail parce que le passage d'une boîte mail privée en mode transparent a été demandé sur votre compte."
+    },
+    "mcpConnect": {
+      "subject": "{{code}} est votre code pour connecter un outil d'IA à Liaison",
+      "heading": "Confirmez la connexion d'un outil d'IA",
+      "p1": "Utilisez le code ci-dessus pour connecter un outil d'IA à votre compte Liaison avec un accès complet.",
+      "p2": "L'outil pourra agir en votre nom, avec tout ce à quoi vous avez accès, jusqu'à ce que vous le déconnectiez dans les Réglages. Si vous n'avez rien demandé, n'utilisez pas le code et changez votre mot de passe Liaison.",
+      "p3": "Le code expire dans 10 minutes.",
+      "footer": "Vous recevez cet e-mail parce que la connexion d'un outil d'IA a été demandée sur votre compte."
+    },
+    "mailboxReset": {
+      "subject": "{{code}} est votre code pour réinitialiser votre boîte mail Liaison",
+      "heading": "Confirmez la réinitialisation de la boîte mail",
+      "p1": "Utilisez le code ci-dessus pour réinitialiser votre boîte mail chiffrée.",
+      "p2": "La réinitialisation supprime la copie chiffrée de votre courrier dans Liaison ; il est de nouveau téléchargé depuis Gmail. Les brouillons écrits dans Liaison et les e-mails en attente de votre approbation sont supprimés définitivement, et vous choisirez un nouveau mot de passe de boîte mail.",
+      "p3": "Le code expire dans 10 minutes. Si vous n'avez rien demandé, ne l'utilisez pas et changez votre mot de passe Liaison.",
+      "footer": "Vous recevez cet e-mail parce que la réinitialisation d'une boîte mail a été demandée sur votre compte."
+    }
+  },
+  "connectLink": {
+    "subject": "Connectez votre compte à Liaison ({{what}})",
+    "eyebrow": "Connexion",
+    "heading": "Connectez votre propre compte",
+    "senderFallback": "Votre administrateur Liaison",
+    "body": "{{sender}} vous demande de connecter votre propre compte pour {{what}}. Il reste le vôtre : une connexion personnelle que seuls vous et votre agent utilisez.",
+    "signIn": "Ouvrez le lien et connectez-vous à Liaison en tant que {{email}}. Il ne fonctionne que pour vous, une seule fois, pendant les {{minutes}} prochaines minutes.",
+    "cta": "Connecter mon compte",
+    "footer": "Si vous n'attendiez pas ce message, ignorez-le : rien ne se passe tant que vous ne vous êtes pas connecté et n'avez pas donné votre accord."
+  },
+  "csat": {
+    "subject": "Votre avis compte : {{subject}}",
+    "eyebrow": "Votre avis",
+    "heading": "Comment nous sommes-nous débrouillés ?",
+    "body": "Merci d'avoir contacté le support au sujet de « {{subject}} » ({{handle}}).",
+    "ask": "Votre avis nous aide : il suffit d'un instant pour noter votre expérience de 1 à 5.",
+    "cta": "Noter votre expérience"
+  }
+}

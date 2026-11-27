@@ -164,6 +164,10 @@ const LISTED = new Map<string, string>([
   ],
   ["invoicing:settings_tax_regime_list", `org settings: ${NONE}`],
   [
+    "invoicing:sales_catch_up_preview",
+    `sales the org's own sales apps took, each one's buyer and lines as the app holds them: ${NONE}`,
+  ],
+  [
     "invoicing:revenue_streams_list",
     `which sales apps are bound and how, set by the org's people, and the installed apps' names: ${NONE}`,
   ],

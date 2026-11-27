@@ -173,7 +173,7 @@ Tools marked "Yes" create an approval instead of acting.
 | `teams.list`, `teams.rename` | List teams, rename a team on every ticket | No |
 | `categories.list`, `categories.create`, `categories.update`, `categories.archive` | Manage categories | No |
 | `templates.list`, `templates.create`, `templates.update`, `templates.delete` | Manage saved replies | No |
-| `csat.request`, `csat.summary`, `csat.list` | Send satisfaction surveys on closed tickets and read the results | No |
+| `csat.request`, `csat.summary`, `csat.list` | Send satisfaction surveys on closed tickets (in the ticket's language, else the organization's) and read the results | No |
 | `inboxes.list`, `inboxes.disconnect` | List or disconnect inboxes | No |
 | `inboxes.create`, `inboxes.update` | Create or change an inbox | Yes |
 | `idSegment.get`, `approveFromHome.get`, `apiKeys.list`, `apiKeys.revoke` | Read settings, revoke an API key | No |

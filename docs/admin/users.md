@@ -16,6 +16,11 @@ Liaison emails the person an **Accept invitation** link. The invitation expires 
 
 On a local trial with no SMTP server, the email is written to the app log instead of being sent (see [Install Liaison](../getting-started/install.md#sign-in-the-first-time)). To invite many people from a file, list them under `users` in a config file and run `liaison config apply`: its report gives each invite link as `users[].inviteUrl`. See [Provision from a config file](../provisioning-cli.md).
 
+
+## Which language Liaison's emails use
+
+Sign-in codes, invitations, password resets, security codes, connect links and the client portal's emails are written in the recipient's language: the language they picked themselves (**Language**, under **You**), else their account's language, else the organization's default language. An invitation goes to someone who has no account yet, so it follows the organization's language, then the language of the person who invited them. English is used only when none of these is a language Liaison ships (English and French today). A hosted workspace starts with the language it was created in, as its default and its owner's.
+
 ## Change what a user can do
 
 1. In the users list, click the person.

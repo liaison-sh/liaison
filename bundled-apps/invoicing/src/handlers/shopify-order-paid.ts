@@ -218,6 +218,10 @@ export interface IssuerProfileRow {
   auto_email_enabled?: boolean
   /** Opted in to the branded thank-you mail of each sale (`sale_thanks`, src/sale-thanks.ts). */
   sale_thanks_enabled?: boolean
+  /** Where the thanks goes out from: the mailbox (default) or the org's notifications sender. */
+  sale_thanks_sender?: "mailbox" | "notifications"
+  /** Reply-To of a thanks sent through the notifications sender. */
+  reply_to_email?: string | null
   /** Typed unit prices are GROSS (tax included) under this profile, mirroring the Shopify
    *  shop's "include tax in prices" setting. See `netLinesForIssuer` in mutations.ts. */
   prices_include_tax?: boolean
@@ -431,6 +435,8 @@ function toIssuerProfileRow(row: unknown): IssuerProfileRow {
       (r.invoice_approval_threshold_minor as bigint | number | string | null | undefined) ?? null,
     auto_email_enabled: !!r.auto_email_enabled,
     sale_thanks_enabled: r.sale_thanks_enabled === true,
+    sale_thanks_sender: r.sale_thanks_sender === "notifications" ? "notifications" : "mailbox",
+    reply_to_email: (r.reply_to_email as string | null | undefined) ?? null,
     prices_include_tax: !!r.prices_include_tax,
     mail_account_id: (r.mail_account_id as string | null | undefined) ?? null,
     timezone: (r.timezone as string | null | undefined) ?? null,
@@ -1406,10 +1412,17 @@ export async function issueOrderFlow(
         },
       })
     } else {
-      const composeResult = await ctx.executeTool("mail:composeForApp", {
-        ...mailPlan.params,
-        originating_approval_id: ctx.approval?.approvalRequestId ?? null,
-      })
+      const composeResult =
+        mailPlan.tool === "mail:composeForApp"
+          ? await ctx.executeTool("mail:composeForApp", {
+              ...mailPlan.params,
+              originating_approval_id: ctx.approval?.approvalRequestId ?? null,
+            })
+          : // The org's notifications sender: one mail per order, keyed so a re-run sends it once.
+            await ctx.executeTool(mailPlan.tool, {
+              ...mailPlan.params,
+              idempotencyKey: `invoicing:sale-thanks:${payload.id}`,
+            })
       if (composeResult.status === "error") {
         // Defensive: the cross-app envelope CONTRACT carries `error.code` on an
         // error status, but a malformed/empty error envelope (e.g. mail uninstalled

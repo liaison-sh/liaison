@@ -84,6 +84,8 @@ function issuerProfileToRow(
         : null,
     auto_email_enabled: profile.auto_email_enabled ?? false,
     sale_thanks_enabled: profile.sale_thanks_enabled ?? false,
+    sale_thanks_sender: profile.sale_thanks_sender ?? "mailbox",
+    reply_to_email: profile.reply_to_email ?? null,
     logo_file_id: profile.logo_file_id ?? null,
     mail_account_id: profile.mail_account_id ?? null,
     timezone: profile.timezone ?? null,
@@ -863,6 +865,38 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     expect(String(args.textBody)).toContain("INV-")
     expect(args.inlineImages).toEqual([{ fileId: "logo-file-1", contentId: "issuer-logo" }])
     expect(args.attachments).toHaveLength(1)
+  })
+
+  test("step 13: the notifications sender sends the thanks through the org's sender, no mailbox needed", async () => {
+    const viaNotifications: IssuerProfileRow = {
+      ...issuerFR,
+      auto_email_enabled: false,
+      sale_thanks_enabled: true,
+      sale_thanks_sender: "notifications",
+      reply_to_email: "hello@issuer.example",
+      mail_account_id: null,
+      logo_file_id: "logo-file-1",
+    }
+    const { ctx, extras, db } = makeCtx({
+      issuerProfiles: [{ profile: viaNotifications, shopify_shop_id: "shop-1" }],
+    })
+    const result = await onShopifyOrderPaid(basePayload(), ctx)
+    expect(result.status).toBe("ok")
+    expect(extras.executeToolCalls.filter((c) => c.name.startsWith("mail:"))).toHaveLength(0)
+    const calls = extras.executeToolCalls.filter(
+      (c) => c.name === "kernel:notifications_email_send",
+    )
+    expect(calls).toHaveLength(1)
+    const args = calls[0]!.args as Record<string, unknown>
+    expect(args.to).toBe("buyer@example.com")
+    expect(args.replyTo).toBe("hello@issuer.example")
+    expect(String(args.htmlBody)).toContain('src="cid:issuer-logo"')
+    expect(args.inlineImages).toEqual([{ fileId: "logo-file-1", contentId: "issuer-logo" }])
+    expect(args.attachments).toHaveLength(1)
+    expect(String(args.idempotencyKey)).toMatch(/^invoicing:sale-thanks:/)
+    // No mailbox is fine on this path: nothing parks for it.
+    const parked = db.__all("deferred_events") as Array<Record<string, unknown>>
+    expect(parked.filter((p) => p.reason === "issuer_mail_account_missing")).toHaveLength(0)
   })
 
   test("step 13: auto_email_enabled=false → no mail tool call", async () => {

@@ -353,6 +353,18 @@ liaison erase-user <userId>
   password and roles, and is given the seat's role as well. `--no-commerce`
   leaves out the shop, invoices, carrier and books, for an org without the
   commerce apps installed.
+- **`seed --tier lively ... --search-profile heavy|typical|<fraction>`**: adds
+  the data of a busy team to the seeded org, to measure a server at the size
+  real workspaces reach. `heavy` is a team of four after about five months:
+  31,025 messages, 12,588 contacts, 6,151 tickets, 4,956 mail conversations,
+  3,494 approvals, 3,269 social findings, 1,508 knowledge pages, 1,127
+  threads, 649 brief rows, 420 episodes and 336 tasks, about 73,000 search
+  documents with the message windows. `typical` is a quarter of it, and a
+  number from 0 to 4 scales every count. A third of the messages and windows
+  and every brief row get a vector: a made-up one, so no embedding provider is
+  called, at the width the search index declares (else the instance's
+  configured embedding width; `--vector-dims` sets it). The seed checks that every row was
+  written and that the search index holds them, and a second run adds nothing.
 - **`seed --tier load --orgs <n>`**: busy workspaces for a load run, named
   `<prefix><i>` (`--prefix`, default `load-`), each holding the demo company.
   Each is a demo workspace marked synthetic that expires after `--ttl-hours`

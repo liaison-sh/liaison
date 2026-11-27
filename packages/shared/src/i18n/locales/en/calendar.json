@@ -99,5 +99,7 @@
   "deleteConfirmTitle": "Delete this event?",
   "deleteConfirmBody": "“{{title}}” will be removed from the calendar and from Google.",
   "eventDeleted": "Event deleted",
-  "undo": "Undo"
+  "undo": "Undo",
+  "eventMoved": "Event moved",
+  "moveFailed": "The event could not be moved: {{message}}"
 }

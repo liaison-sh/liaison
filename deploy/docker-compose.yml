@@ -187,7 +187,8 @@ services:
       # Meili sizes its indexing memory from the HOST's RAM (two thirds of it),
       # not from mem_limit below: a large batch (a bulk import, a reindex) then
       # outgrows the container, gets OOM-killed, and crash-loops re-running the
-      # same batch at boot. Keep it well under mem_limit.
+      # same batch at boot. Keep it well under mem_limit (at most about a third
+      # of MEILI_MEM_LIMIT: indexing memory comes on top of the index's pages).
       MEILI_MAX_INDEXING_MEMORY: ${MEILI_MAX_INDEXING_MEMORY:-512Mb}
       # A database from 1.12 or later is upgraded in place on the first start of
       # a newer image (an `upgradeDatabase` task; take a backup first, see
@@ -201,7 +202,9 @@ services:
     # Hardening: the search binary needs no Linux capabilities.
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
-    mem_limit: 1500m
+    # One search service holds every org's index: size it to the data, not to
+    # one org (docs/self-hosting/docker.md, "Size the search service").
+    mem_limit: ${MEILI_MEM_LIMIT:-1500m}
     mem_reservation: 256m
     cpus: 1.0
     pids_limit: 256

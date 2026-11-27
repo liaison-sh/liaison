@@ -129,4 +129,46 @@ describe("planSaleMail", () => {
   test("no mailbox, no mail", () => {
     expect(plan({ sale_thanks_enabled: true, mail_account_id: null }).kind).toBe("no_mailbox")
   })
+
+  test("the mailbox sender is the default: it goes through mail:composeForApp", () => {
+    const p = plan({ sale_thanks_enabled: true })
+    expect(p.kind === "thanks" && p.tool).toBe("mail:composeForApp")
+  })
+
+  test("the notifications sender: the same HTML mail and inline logo, no mailbox needed, reply-to the profile's address", () => {
+    const p = plan({
+      sale_thanks_enabled: true,
+      sale_thanks_sender: "notifications",
+      mail_account_id: null,
+      reply_to_email: "hello@issuer.example",
+    })
+    expect(p.kind).toBe("thanks_notifications")
+    if (p.kind !== "thanks_notifications") return
+    expect(p.tool).toBe("kernel:notifications_email_send")
+    expect(p.params).toMatchObject({
+      to: "ana@example.com",
+      replyTo: "hello@issuer.example",
+      attachments: ["pdf-1", "pdf-2"],
+      inlineImages: [{ fileId: issuer.logo_file_id, contentId: "issuer-logo" }],
+    })
+    expect(p.params.htmlBody).toContain('src="cid:issuer-logo"')
+    expect(p.params.textBody).toContain("INV-2026-0101")
+    expect("accountId" in p.params).toBe(false)
+  })
+
+  test("the notifications sender without a reply-to address sets none", () => {
+    const p = plan({ sale_thanks_enabled: true, sale_thanks_sender: "notifications" })
+    expect(p.kind).toBe("thanks_notifications")
+    if (p.kind !== "thanks_notifications") return
+    expect(p.params.replyTo).toBeUndefined()
+  })
+
+  test("the plain invoice mail keeps the mailbox whatever the thanks sender says", () => {
+    const p = plan({
+      sale_thanks_enabled: false,
+      auto_email_enabled: true,
+      sale_thanks_sender: "notifications",
+    })
+    expect(p.kind).toBe("invoice_paid")
+  })
 })

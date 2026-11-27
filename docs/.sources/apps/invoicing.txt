@@ -254,6 +254,17 @@ reverse charge needs a VIES-valid VAT number -> bundled-apps/invoicing/src/sale-
 two pieces of location evidence for a consumer's electronic services -> bundled-apps/invoicing/src/sale-tax.ts:269
 source tax checked against the rate, a difference parks -> bundled-apps/invoicing/src/sale-tax.ts:128
 place of supply and evidence kept on the document -> bundled-apps/invoicing/src/issue.ts:1423
+Send the thank-you from: mailbox or the organization's notifications sender -> bundled-apps/invoicing/src/ui/settings.tsx:690
+notifications sender path needs no mailbox, Reply-To the profile's address -> bundled-apps/invoicing/src/sale-thanks.ts:305
+notifications sender uses the org's email.from, else its reply-to -> apps/api/src/modules/org/notifications-mail-tool.ts:121
+plain invoice mail keeps the mailbox -> bundled-apps/invoicing/src/sale-thanks.ts:322
+art. 259 B mention for a consumer's services outside the EU from 2026-11-28 -> bundled-apps/invoicing/src/tax.ts:595
+business outside the EU keeps the place of supply mention -> bundled-apps/invoicing/src/tax.ts:706
+no tax collected abroad: issued with no VAT; tax collected: waits -> bundled-apps/invoicing/src/sale-tax.ts:328
+Small seller setting: one piece of evidence -> bundled-apps/invoicing/src/sale-tax.ts:293
+Small seller toggle -> bundled-apps/invoicing/src/ui/settings.tsx:734
+Under EUR 10,000 not in the OSS: French VAT for EU consumers -> bundled-apps/invoicing/src/sale-tax.ts:307
+Under EUR 10,000 toggle -> bundled-apps/invoicing/src/ui/settings.tsx:755
 Any app implementing revenue-stream@1 can have each sale invoiced through the same flow -> bundled-apps/invoicing/src/sales/issue-sale.ts:1-15 ; bundled-apps/invoicing/src/handlers/shopify-order-paid.ts (issueOrderFlow)
 revenue_stream_bind is gated and never auto-approved; revenue_streams_list lists streams and available apps -> bundled-apps/invoicing/app.manifest.json (revenue_stream_bind, revenue_streams_list) ; bundled-apps/invoicing/src/sales/stream-tools.ts
 Modes auto, review, off; issue_from is the moment of binding -> bundled-apps/invoicing/src/sales/streams.ts:1-17 ; bundled-apps/invoicing/src/sales/stream-tools.ts (issue_from)

@@ -212,3 +212,4 @@ A private built-in import dedups per person, a shared one per organization -> ap
 Billing is not in the iPhone app -> apps/web/src/framework/bootstrap.ts:767
 iPhone app: payment notice without the Open Billing link -> apps/web/src/modules/threads/PaymentRequiredNotice.tsx:42
 iPhone app has no App store, View in store or Connectors Add -> apps/web/src/framework/bootstrap.ts:866 ; apps/web/src/modules/settings/connectors/ConnectorsPage.tsx:117 ; apps/web/src/modules/settings/app-management/AppManagementControls.tsx:200
+notifications sender: org sender, else email.from; Reply-To the app's, else email.replyTo -> apps/api/src/modules/org/notifications-mail-tool.ts:121

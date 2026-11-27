@@ -167,7 +167,12 @@
 //         deciding scope and the remedy (an admin adjusts scopes), never who.
 //      e. The card says why, in one plain line, when readers of the target lack the taint:
 //         "Drafted after reading <apps> data that some people who can read <surface> cannot see:
-//         approving shares it with them" (taintDisclosureLine).
+//         approving shares it with them" (taintDisclosureLine). A custom app's write that can
+//         land only in the app's own data (no outside host, connection, cross-app call or
+//         capability writing elsewhere: `taintCardAppReaders`, runtime.ts) still parks, but its
+//         card carries the line only when someone holding one of the app's scopes lacks what the
+//         turn read: a write back into the data's own app, read by the same people, shares
+//         nothing (2026-11-27).
 //      f. Kept as they were: the requester and the conversation's members are still judged (rule
 //         6c: the card shows the payload to them before anyone decides), a sequenced @ref step
 //         parks only within its bundle head's audience: every head it cites is the same

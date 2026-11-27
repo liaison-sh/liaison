@@ -171,7 +171,7 @@ export class Client {
     path: string,
     body?: unknown,
     opts: RequestOptions = {},
-  ): Promise<{ status: number; data: T }> {
+  ): Promise<{ status: number; data: T; meta?: Record<string, unknown> }> {
     const url = new URL(`${this.host}${path}`)
     for (const [k, v] of Object.entries(opts.query ?? {}))
       if (v !== undefined) url.searchParams.set(k, String(v))
@@ -191,8 +191,11 @@ export class Client {
       res = await send()
     }
     if (!res.ok) throw await readError(res)
-    const json = (await res.json().catch(() => ({}))) as { data?: T }
-    return { status: res.status, data: json.data as T }
+    const json = (await res.json().catch(() => ({}))) as {
+      data?: T
+      meta?: Record<string, unknown>
+    }
+    return { status: res.status, data: json.data as T, ...(json.meta ? { meta: json.meta } : {}) }
   }
 
   /** A tool run through `POST /api/apps/tools/<app>:<tool>` (a gated tool parks a card). */

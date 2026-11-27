@@ -968,7 +968,7 @@ const KERNEL_SCOPE_SET = new Set(KERNEL_SCOPES.map((e) => e.scope))
  * entities' read scopes, its bulk actions, its declared `scopes`, and the app's
  * default approver scope.
  */
-function manifestOwnScopes(manifest: Record<string, any>): Set<string> {
+export function manifestOwnScopes(manifest: Record<string, any>): Set<string> {
   const out = new Set<string>()
   const add = (s: unknown) => {
     if (typeof s === "string" && s.length > 0) out.add(s)

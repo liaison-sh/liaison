@@ -64,3 +64,7 @@ An occurrence opens at that occurrence -> apps/web/src/modules/calendar/event-ta
 This event / This and following / All events; a rule change not for one occurrence -> apps/web/src/modules/calendar/CalendarEventTab.tsx:353
 All events moves the series by what the occurrence moved -> apps/web/src/modules/calendar/series-edit.ts:87
 Repeat editor: every, weekdays, ends; unknown rules kept -> apps/web/src/modules/calendar/recurrence-rule.ts:31
+update_event and delete_event take this and the following occurrences -> apps/api/src/apps/calendar/app.manifest.json:465
+Series split: old series ends before the occurrence, a new one starts there -> apps/api/src/apps/calendar/sync.ts:1874
+Split keeps cancellations, edited occurrences take the change -> apps/api/src/apps/calendar/sync.ts:1912
+Split rule arithmetic (UNTIL or shared COUNT) -> packages/shared/src/calendar-recurrence.ts:508

@@ -30,6 +30,7 @@ import {
 import { type OrgConfigToolCtx, resolveActor } from "~/modules/agent/tools/org-config-tools"
 import { splitToolName } from "~/modules/approvals/event-data"
 import { listApprovals } from "~/modules/approvals/list"
+import { listWaitingOnOthers, type WaitingOnOthers } from "~/modules/approvals/waiting-on-others"
 import { queryAuditLogPage } from "~/modules/audit/service"
 import { emailHeldByPortalUser } from "~/modules/auth/auth"
 import { getDimensionCatalog } from "~/modules/permissions/dimension-catalog"
@@ -328,20 +329,34 @@ export async function handleApprovalsList(
     /** The call's failure, when it was approved and failed. */
     lastFailure?: ApprovalLastFailure
   }>
+  /** Requests waiting on OTHER people that this user could have made themselves (they hold the
+   *  tool's scopes and the read scopes its turn had), with who decides them: an answer to "is
+   *  something waiting?" that names a request decided by someone else. Never its payload, never
+   *  counted in `total`, and the user cannot decide them (modules/approvals/waiting-on-others.ts). */
+  waitingOnOthers: WaitingOnOthers[]
 }> {
   const actor = await resolveActor(ctx)
   // `listApprovals` returns the caller's decidable pending queue (notify-set
   // membership + `<app>:approve` scope), RLS-scoped to the org; the
   // recently-decided read applies the same visibility rule.
-  const [rows, decidedRows] = await withRlsContext(actor, async (tx) => [
-    await listApprovals(tx, { orgId: ctx.orgId, userId: ctx.userId, scopes: actor.scopes }),
-    await listApprovals(tx, {
-      orgId: ctx.orgId,
-      userId: ctx.userId,
-      scopes: actor.scopes,
-      recentlyDecided: true,
-    }),
-  ])
+  const [rows, decidedRows] = await withRlsContext(
+    actor,
+    async (tx) =>
+      [
+        await listApprovals(tx, { orgId: ctx.orgId, userId: ctx.userId, scopes: actor.scopes }),
+        await listApprovals(tx, {
+          orgId: ctx.orgId,
+          userId: ctx.userId,
+          scopes: actor.scopes,
+          recentlyDecided: true,
+        }),
+      ] as const,
+  )
+  const waitingOnOthers = await listWaitingOnOthers({
+    orgId: ctx.orgId,
+    userId: ctx.userId,
+    scopes: actor.scopes,
+  })
   const now = Date.now()
   const projected = rows.map((r) => ({
     id: r.id,
@@ -372,7 +387,7 @@ export async function handleApprovalsList(
     reason: r.reason ?? null,
     ...(r.lastFailure ? { lastFailure: r.lastFailure } : {}),
   }))
-  return { total: projected.length, approvals: projected, recentlyDecided }
+  return { total: projected.length, approvals: projected, recentlyDecided, waitingOnOthers }
 }
 
 // --- Gated writes ----------------------------------------------------------

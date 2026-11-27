@@ -1332,6 +1332,17 @@
       "handler": "mrrRebuildJob",
       "onDemand": true,
       "timeoutMs": 90000
+    },
+    "disputes-due": {
+      "handler": "disputesDueJob",
+      "schedule": "0 6 * * *",
+      "timeoutMs": 90000,
+      "runsFor": {
+        "rows": {
+          "entity": "stripe_disputes",
+          "where": { "status": { "in": ["needs_response", "warning_needs_response"] } }
+        }
+      }
     }
   },
   "events": {
@@ -1351,6 +1362,7 @@
       "refund:failed",
       "dispute:opened",
       "dispute:closed",
+      "dispute:response_state",
       "payment:unmatched",
       "connection:state_changed",
       "card_number:masked"
@@ -1381,6 +1393,45 @@
           "kind": "scope_holders",
           "scope": "stripe:admin:connection"
         }
+      },
+      {
+        "event": "dispute:response_state",
+        "kind": "stripe:dispute.needs_response",
+        "urgency": 60,
+        "isUrgent": false,
+        "summary": "Chargeback of {{data.amount}} from {{data.customer}} needs a response in Stripe by {{data.due}} (reason: {{data.reason}}). Without evidence by then, the money is lost.",
+        "when": {
+          "op": "and",
+          "clauses": [
+            { "op": "eq", "path": "data.needs_response", "value": true },
+            { "op": "eq", "path": "data.overdue", "value": false }
+          ]
+        },
+        "recipients": { "kind": "scope_holders", "scope": "stripe:refunds:write" }
+      },
+      {
+        "event": "dispute:response_state",
+        "kind": "stripe:dispute.needs_response",
+        "urgency": 80,
+        "isUrgent": false,
+        "summary": "Chargeback of {{data.amount}} from {{data.customer}}: the evidence was due {{data.due}} and nobody has answered it in Stripe (reason: {{data.reason}}).",
+        "when": {
+          "op": "and",
+          "clauses": [
+            { "op": "eq", "path": "data.needs_response", "value": true },
+            { "op": "eq", "path": "data.overdue", "value": true }
+          ]
+        },
+        "recipients": { "kind": "scope_holders", "scope": "stripe:refunds:write" }
+      },
+      {
+        "event": "dispute:response_state",
+        "kind": "stripe:dispute.needs_response",
+        "urgency": 0,
+        "summary": "Dispute {{data.stripe_id}} answered or closed",
+        "when": { "op": "eq", "path": "data.needs_response", "value": false },
+        "resolveWhen": { "field": "needs_response", "equals": false },
+        "recipients": { "kind": "scope_holders", "scope": "stripe:refunds:write" }
       }
     ]
   },

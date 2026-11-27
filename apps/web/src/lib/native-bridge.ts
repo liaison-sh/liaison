@@ -177,6 +177,32 @@ export function isNativeShell(): boolean {
   return nativeBridge() !== null
 }
 
+/**
+ * Which phone app wraps the page, or null in a browser or the desktop app.
+ * The shell publishes the bridge before the web app's module entry runs, so
+ * this answers correctly from the first render. Anything that is not Android
+ * is the iOS app (an iPad web view may describe itself as a Mac).
+ */
+export function nativeShellPlatform(): "ios" | "android" | null {
+  if (!isNativeShell()) return null
+  const ua = typeof navigator === "undefined" ? "" : navigator.userAgent
+  return /android/i.test(ua) ? "android" : "ios"
+}
+
+/**
+ * THE ONE CHECK FOR PURCHASE SURFACES (App Store guideline 3.1.1).
+ *
+ * Inside the iOS app nothing may offer to buy, upgrade, change plan, add
+ * credits or sign up for a paid workspace, nor link to a page that ends in a
+ * payment. Every such control asks this and is absent when it answers true;
+ * where a state still needs saying (credits ran out, storage is full), the
+ * surface shows a plain sentence with no link or button. A browser, the
+ * desktop app and the Android app are unchanged.
+ */
+export function purchaseSurfacesHidden(): boolean {
+  return nativeShellPlatform() === "ios"
+}
+
 /** Tells the shell the app has painted. Safe to call more than once. */
 export function signalNativeReady(): void {
   try {

@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "modules/approvals/waiting-on-others.ts": "Pending requests of the org that the reader neither decides nor asked for, read across the approvals RLS (which hides them) and projected to handle, title, age, deadline and deciders' names only, for a reader who holds every scope the tool requires and every read scope its turn had; owner-routed rows are dropped."
+  }
+}

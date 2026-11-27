@@ -1559,7 +1559,7 @@ export async function spendGate(
         allowed: false,
         status: 400,
         persistSystemMessage: false,
-        reason: `This model requires ${accessInfo.tierMinimum} tier or higher. Upgrade your plan or add purchased usage.`,
+        reason: `This model requires the ${accessInfo.tierMinimum} tier or higher.`,
       }
     }
   }

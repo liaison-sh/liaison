@@ -62,6 +62,7 @@ import { hasLegalOriginal, recordLegalOriginal } from "./legal-originals/record"
 import { documentRollup, lineAmounts } from "./money"
 import { numberingSequence } from "./numbering"
 import { dueOn, paymentTermsOf } from "./payment-terms"
+import type { PlaceOfSupply } from "./sale-tax"
 import { classify, operationLabel } from "./tax"
 
 export type DocumentType = "invoice" | "quote" | "proforma" | "purchase_order" | "credit_note"
@@ -310,6 +311,10 @@ export interface SourceColumns {
   approved_by?: string | null
   approved_at?: string | null
   latest_issue_on?: string | null
+  /** The date of the sale or supply (YYYY-MM-DD, the issuer's civil date of the payment for a
+   *  sale). Invoices only, kept only when it differs from the issue date: French invoices must
+   *  state it then (CGI ann. II art. 242 nonies A, I; Directive 2006/112/EC art. 226 point 7). */
+  supply_date?: string | null
 }
 
 export interface Draft {
@@ -420,6 +425,11 @@ export interface IssueInput {
    *  of one Shopify or Stripe refund, or a month-end run's period key (the draft hands its own
    *  over, after clearing it on the draft, so the period stays billed once). */
   external_ref?: string | null
+  /** Where a sale was taxed and the evidence for it (`classifySaleTax`): kept on the document's
+   *  external_refs, so the location evidence of an electronic service sold to a consumer stays with
+   *  the invoice for the records period (Implementing Regulation 282/2011 art. 24b, 24f;
+   *  Directive 2006/112/EC art. 369k: ten years). */
+  place_of_supply?: PlaceOfSupply | null
 }
 
 export interface IssueResult {
@@ -848,6 +858,32 @@ function serialiseDocumentInsert(row: DocumentInsert): Record<string, unknown> {
     ...setSourceColumns(row.source),
     lifecycle_log: row.lifecycle_log,
   }
+}
+
+/**
+ * The source columns as the issued document stores them. The sale date is an invoice mention
+ * that matters only when it differs from the issue date (CGI ann. II art. 242 nonies A, I: "la
+ * date ... de la livraison ... ou de la prestation, si elle est différente de la date de
+ * délivrance de la facture"), so the same day, or any other document type, stores none.
+ */
+export function sourceAtIssue(
+  type: DocumentType,
+  source: SourceColumns,
+  issuedAt: string,
+): SourceColumns {
+  const { supply_date, ...rest } = source
+  if (supply_date == null || supply_date === "") return rest
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(supply_date) || Number.isNaN(Date.parse(supply_date))) {
+    throw new Error(`supply_date "${supply_date}" is not a YYYY-MM-DD date`)
+  }
+  if (type !== "invoice" || supply_date === issuedAt.slice(0, 10)) return rest
+  return { ...rest, supply_date }
+}
+
+/** A stored civil date (a `day` column read back as text or a Date) as YYYY-MM-DD, else null. */
+function dayOf(v: unknown): string | null {
+  const text = v instanceof Date ? v.toISOString() : typeof v === "string" ? v : ""
+  return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : null
 }
 
 /** The source columns that hold a value: an unset one keeps the column's default. */
@@ -1381,10 +1417,11 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     counterparty_country: taxCountry,
     has_vat_id: !!counterparty.vat_id,
   })
-  const externalRefs: Record<string, unknown> =
-    taxCountry && taxCountry !== counterparty.country
-      ? { ...draft.external_refs, tax_country: taxCountry }
-      : draft.external_refs
+  const externalRefs: Record<string, unknown> = {
+    ...draft.external_refs,
+    ...(taxCountry && taxCountry !== counterparty.country ? { tax_country: taxCountry } : {}),
+    ...(input.place_of_supply ? { place_of_supply: input.place_of_supply } : {}),
+  }
   const docDefaultRateBp = classification.default_rate_bp
 
   // 2) Build snapshot lines from draft + overlay lookup.
@@ -1566,7 +1603,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
         }
       : creditNoteOriginalColumns(type, issuer, input.original ?? null)),
     ...(input.external_ref ? { external_ref: input.external_ref } : {}),
-    ...(draft.source ? { source: draft.source } : {}),
+    ...(draft.source ? { source: sourceAtIssue(type, draft.source, draft.issued_at) } : {}),
     lifecycle_log: [
       ...(input.lifecycle_carry ?? []),
       { event: "issued", actor: userId, ts: nowIso },
@@ -1970,6 +2007,7 @@ export function buildTemplateData(params: {
 }) {
   const { type, document, issuer, counterparty, lines, requires_hs_code, legal_mention } = params
   const stored = document as unknown as Record<string, unknown>
+  const saleDate = dayOf(stored.supply_date) ?? dayOf(document.source?.supply_date)
   const flat = (document.einvoice ?? stored) as Record<string, unknown>
   const snapshot = {
     operation_category:
@@ -1986,6 +2024,9 @@ export function buildTemplateData(params: {
       scope: document.scope ?? null,
       number: document.number ?? "",
       issued_at: document.issued_at ?? "",
+      // The sale date: the stored column on a re-render, the issue-time source at issue. Only
+      // set when there is one, so a document without a sale date renders as it always did.
+      ...(saleDate ? { supply_date: saleDate } : {}),
       due_at: document.due_at,
       currency: document.currency,
       subtotal_minor: document.subtotal_minor.toString(),

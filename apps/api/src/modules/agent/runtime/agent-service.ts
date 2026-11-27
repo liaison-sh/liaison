@@ -6148,7 +6148,7 @@ function userFacingIncompleteTurn(
     return [
       "⚠️ Credits ran out before I could finish this response.",
       work,
-      "Add credits and ask me to continue.",
+      "Ask me to continue once more credits are added.",
     ]
       .filter(Boolean)
       .join(" ")

@@ -2,10 +2,13 @@
 //
 // A turn refused because the org's renewal is unpaid (managed edition):
 // the server answers 402 `payment_required`. Said in the reader's language with
-// a link to Billing, where an admin pays the open invoice.
+// a link to Billing, where an admin pays the open invoice. The iOS app has no
+// Billing page and no link to payment (guideline 3.1.1): the sentence alone, in
+// its own wording.
 import { OUT_OF_CREDITS_CODE, PAYMENT_REQUIRED_CODE } from "@liaison/shared"
-import type { Component } from "solid-js"
+import { type Component, Show } from "solid-js"
 import { spaNavigate } from "~/framework/spa-navigate"
+import { purchaseSurfacesHidden } from "~/lib/native-bridge"
 import { useI18n } from "~/modules/i18n/i18n-context"
 
 /** The Billing page (framework/bootstrap.ts, settings section `billing`). */
@@ -24,22 +27,32 @@ export function billingRefusalOf(metadata: { billingRefusal?: unknown } | null |
 
 export const PaymentRequiredNotice: Component<{ outOfCredits?: boolean }> = (props) => {
   const { t } = useI18n()
+  const hidden = purchaseSurfacesHidden()
+  const sentence = () =>
+    hidden
+      ? props.outOfCredits
+        ? t("cloud-limits.native.outOfCredits")
+        : t("cloud-limits.native.paymentRequired")
+      : props.outOfCredits
+        ? t("cloud-limits.billing.outOfCredits")
+        : t("cloud-limits.billing.paymentRequired")
   return (
     <span data-testid="payment-required-notice">
-      {props.outOfCredits
-        ? t("cloud-limits.billing.outOfCredits")
-        : t("cloud-limits.billing.paymentRequired")}{" "}
-      <a
-        href={BILLING_PATH}
-        data-testid="payment-required-billing-link"
-        class="underline"
-        onClick={(e) => {
-          e.preventDefault()
-          spaNavigate(BILLING_PATH)
-        }}
-      >
-        {t("cloud-limits.billing.openBilling")}
-      </a>
+      {sentence()}
+      <Show when={!hidden}>
+        {" "}
+        <a
+          href={BILLING_PATH}
+          data-testid="payment-required-billing-link"
+          class="underline"
+          onClick={(e) => {
+            e.preventDefault()
+            spaNavigate(BILLING_PATH)
+          }}
+        >
+          {t("cloud-limits.billing.openBilling")}
+        </a>
+      </Show>
     </span>
   )
 }

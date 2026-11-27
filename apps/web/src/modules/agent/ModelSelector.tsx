@@ -19,6 +19,7 @@ import {
   getModelLabel,
   modelAllowedByKey,
   modelGroups,
+  modelLockedReasonKey,
   modelNameWithoutProvider,
   servedModels,
 } from "~/lib/model-groups"
@@ -377,7 +378,7 @@ export default function ModelSelector(props: ModelSelectorProps) {
             // The reason rides the pill itself: a span carrying an aria-label
             // without a role announces nothing, and the model's name is already
             // the pill's text.
-            title={i18n.t("kernel.upgradeToChangeModel")}
+            title={i18n.t(modelLockedReasonKey())}
             class={cn(
               "cursor-default rounded-full px-2 py-0.5 text-[11px] font-medium text-text-tertiary",
               // Locked stays locked-looking inside a host's pill: no hover.

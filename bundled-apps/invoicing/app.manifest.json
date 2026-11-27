@@ -1097,6 +1097,7 @@
           "service_period_start": "day?",
           "service_period_end": "day?",
           "latest_issue_on": "day?",
+          "supply_date": "day?",
           "sale_id": "uuid?"
       },
       "constraints": {

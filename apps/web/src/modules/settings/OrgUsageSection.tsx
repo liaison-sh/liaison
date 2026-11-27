@@ -10,6 +10,7 @@
 // and a "Limit reached" note), nothing red or orange.
 import type { OrgUsage, OrgUsageEntry } from "@liaison/shared"
 import { type Component, createResource, For, Show } from "solid-js"
+import { purchaseSurfacesHidden } from "~/lib/native-bridge"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { billingMode } from "./BillingState"
@@ -115,7 +116,11 @@ const OrgUsageSection: Component = () => {
     <div data-testid="org-usage" class="flex flex-col gap-3">
       <p data-testid="org-usage-help" class="text-sm text-text-secondary">
         {i18n.t(
-          billingMode() === "managed" ? "kernel.orgUsage.helpManaged" : "kernel.orgUsage.help",
+          billingMode() !== "managed"
+            ? "kernel.orgUsage.help"
+            : purchaseSurfacesHidden()
+              ? "kernel.orgUsage.helpManagedNative"
+              : "kernel.orgUsage.helpManaged",
         )}
       </p>
       <Show when={usage.error}>

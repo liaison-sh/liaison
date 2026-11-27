@@ -7,6 +7,7 @@ Liaison shows disputes. It does not answer them.
 
 ## See a dispute
 
+- **On your Home.** A dispute that needs a response is one line on the Home of everyone who can request refunds in Stripe (the billing and admin roles): the amount, the customer and the date the evidence is due. It stays until the dispute is answered, won, lost or closed: a line you read comes back the next morning while the dispute still waits. Once the due date has passed, the line moves up the list. It is never marked urgent.
 - **Stripe Home** lists disputes whose evidence is due, soonest first.
 - A customer's page has a **Disputes** section: a read-only line per dispute.
 - Ask the agent (`disputes_list`) for disputes by customer or status. It gives the reason and the date the evidence is due.

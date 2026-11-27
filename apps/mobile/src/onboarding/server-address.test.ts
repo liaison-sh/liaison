@@ -596,7 +596,7 @@ describe("the Cloud screen, the first screen when the build names a cloud", () =
     void en.launch.start()
     await tick()
     byTestId("first-launch-forgot").click()
-    expect(en.opened).toEqual(["https://liaison.sh/login"])
+    expect(en.opened).toEqual(["https://liaison.sh/find-workspace"])
     document.documentElement.querySelector(`#${FIRST_LAUNCH_ID}`)?.remove()
 
     const fr = cloudLaunch({ language: "fr-FR" })
@@ -605,7 +605,7 @@ describe("the Cloud screen, the first screen when the build names a cloud", () =
     expect(byTestId("first-launch-forgot").textContent).toBe(FR.cloudForgot)
     expect(byTestId("first-launch-submit").textContent).toBe(FR.cloudAction)
     byTestId("first-launch-forgot").click()
-    expect(fr.opened).toEqual(["https://liaison.sh/fr/login"])
+    expect(fr.opened).toEqual(["https://liaison.sh/fr/find-workspace"])
     document.documentElement.querySelector(`#${FIRST_LAUNCH_ID}`)?.remove()
   })
 

@@ -18,6 +18,7 @@ import { type DeferredRow, EMAIL_OUTCOME_UNKNOWN } from "../deferred"
 import { isParkedCreditNote, retryParkedCreditNote } from "../einvoicing/parked-credit-note"
 import { deliveryFileId } from "../legal-originals/delivery"
 import { documentsRetryPdf, type MutationsCtx } from "../mutations"
+import { isStreamSalePark, rerunStreamSale } from "../sales/issue-sale"
 import {
   type DeferredDispatch,
   type DeferredRetryResult,
@@ -192,6 +193,23 @@ export async function deferredRetryJobHandler(
     // that credit note alone, never the refund or cancellation handler (see parked-credit-note.ts).
     if (isParkedCreditNote(row.event_payload_json)) {
       return retryParkedCreditNote(ctx, row)
+    }
+
+    // A revenue stream's sale (not the shop's): read the sale again from its source and run it
+    // through the issuing flow. A mail park retries the mail only (the invoice exists).
+    if (isStreamSalePark(row)) {
+      if (kind === "pdf_render") {
+        const documentId = blockedField(row, "document_id")
+        const r = await documentsRetryPdf(ctx, { id: documentId })
+        return r.status === "completed"
+          ? { status: "ok" }
+          : { status: "still_blocked", reason: r.status === "error" ? r.error.code : r.status }
+      }
+      if (kind === "email_send" || kind === "issuer_mail_account")
+        return { status: "still_blocked", reason: "send_with_documents_send_to_customer" }
+      const r = await rerunStreamSale(row.event_payload_json as Record<string, unknown>, ctx)
+      if (r.status === "ok" || r.status === "skipped") return { status: "ok" }
+      return { status: "still_blocked", reason: "reason" in r ? String(r.reason) : r.status }
     }
 
     // Card payments on Stripe: a parked credit note re-runs the refund path by its refund id; a

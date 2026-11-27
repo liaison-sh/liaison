@@ -265,3 +265,8 @@ Small seller setting: one piece of evidence -> bundled-apps/invoicing/src/sale-t
 Small seller toggle -> bundled-apps/invoicing/src/ui/settings.tsx:734
 Under EUR 10,000 not in the OSS: French VAT for EU consumers -> bundled-apps/invoicing/src/sale-tax.ts:307
 Under EUR 10,000 toggle -> bundled-apps/invoicing/src/ui/settings.tsx:755
+Any app implementing revenue-stream@1 can have each sale invoiced through the same flow -> bundled-apps/invoicing/src/sales/issue-sale.ts:1-15 ; bundled-apps/invoicing/src/handlers/shopify-order-paid.ts (issueOrderFlow)
+revenue_stream_bind is gated and never auto-approved; revenue_streams_list lists streams and available apps -> bundled-apps/invoicing/app.manifest.json (revenue_stream_bind, revenue_streams_list) ; bundled-apps/invoicing/src/sales/stream-tools.ts
+Modes auto, review, off; issue_from is the moment of binding -> bundled-apps/invoicing/src/sales/streams.ts:1-17 ; bundled-apps/invoicing/src/sales/stream-tools.ts (issue_from)
+The sale is read from its app before invoicing; invalid or mismatched sales park -> bundled-apps/invoicing/src/sales/issue-sale.ts (readSale, totalsMismatch, sale_invalid)
+The shop's orders go through the stream; issuer from the shop mapping -> bundled-apps/invoicing/src/sales/streams.ts (ensureShopifyStream) ; bundled-apps/shopify/src/sales.ts:1-12

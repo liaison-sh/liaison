@@ -112,3 +112,4 @@ an invoice Liaison issued shows Liaison's number and opens the Liaison invoice -
 reminders drafted from a mailbox the owner may use -> bundled-apps/stripe/app.manifest.json (routines failed-payments scopes) ; apps/api/src/apps/mail/handlers.ts (agentMailComposePreflight)
 dispute line from webhook, first import and reconcile -> bundled-apps/stripe/src/dispatch.ts (handleStripeEvent) ; bundled-apps/stripe/src/sync/backfill.ts (writePage) ; bundled-apps/stripe/src/sync/reconcile.ts (reconcileList)
 said again every morning at 06:00 UTC -> bundled-apps/stripe/app.manifest.json (jobs.disputes-due)
+only the selected event types count as newer events -> bundled-apps/stripe/src/sync/probe.ts (eventTypeChunks) ; bundled-apps/stripe/src/webhook-events.ts (WEBHOOK_EVENTS)

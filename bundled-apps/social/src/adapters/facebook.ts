@@ -927,13 +927,19 @@ export const facebookAdapter: PlatformAdapter = {
       for (const m of entry.messaging ?? []) {
         const sender = (m.sender as { id?: string } | undefined)?.id
         const recipient = (m.recipient as { id?: string } | undefined)?.id
-        const msg = m.message as { mid?: string; text?: string; is_echo?: boolean } | undefined
+        const msg = m.message as
+          | { mid?: string; text?: string; is_echo?: boolean; is_deleted?: boolean }
+          | undefined
         if (!sender || !msg) continue
         // An echo (a message the Page itself sent, e.g. from the native inbox) has
         // the Page as sender: the other party is then the recipient.
         const outbound = msg.is_echo === true || (ownId !== null && sender === ownId)
         const participant = outbound ? recipient : sender
         if (!participant) continue
+        // The sender unsent the message (Instagram: `message.is_deleted: true`
+        // on the `messages` field). Messenger documents no unsend event; the
+        // same flag is read there too should a delivery carry it.
+        const unsent = msg.is_deleted === true
         messages.push({
           // No thread id in a delivery: keyed by the participant, which is how the
           // conversation is matched to the polled thread (ingest.ts).
@@ -942,8 +948,10 @@ export const facebookAdapter: PlatformAdapter = {
           ownerExternalId: ownId,
           externalId: msg.mid ?? null,
           direction: outbound ? "outbound" : "inbound",
-          body: msg.text ?? null,
+          // An unsent message carries no text worth keeping: never its original body.
+          body: unsent ? null : (msg.text ?? null),
           occurredAt: metaTimeToIso(m.timestamp) ?? metaTimeToIso(entry.time),
+          ...(unsent ? { unsent: true } : {}),
         })
       }
     }

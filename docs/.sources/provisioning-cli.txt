@@ -121,3 +121,4 @@ A replaced signing secret keeps verifying for a while (the previous key) -> apps
 The agent's config tool path refuses appSecrets -> apps/api/src/cli/provisioners/apps.ts:217 ; apps/api/src/cli/provisioners/apps.ts:307-334
 config pull reports appSecrets set / not set on the server, never writes one -> apps/api/src/cli/config/pull.ts:186-201
 config verify: one line per settable secret set / not set (warning, not FAIL), previous-until, webhook addresses -> apps/api/src/cli/config/verify.ts:352-388 ; apps/api/src/modules/apps/connections/app-secrets.ts:131-200
+seed lively: a Sales and support dashboard shared with the org, only with the commerce layer -> apps/api/src/seed/tiers/lively/seed-lively.ts:660 ; apps/api/src/seed/tiers/lively/dashboard-specs.ts ; apps/api/src/seed/factories/dashboards/dashboards.ts

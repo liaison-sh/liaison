@@ -1532,6 +1532,33 @@ describe("manifest app reconciliation (live per-user scope change)", () => {
       flags("t-archived", { isArchived: true })
       expect(getThread("t-archived")).toBeUndefined()
     })
+
+    it("reloads the list when a thread this device does not hold comes back from the archive", () => {
+      // A new message in an archived thread un-archives it on the server; the
+      // member's devices hear that as a thread_state frame for a thread their
+      // list does not hold, and the list is where it comes back from.
+      resetRegistry()
+      resetBootstrap()
+      resetThreadStore()
+      bootstrapKernelApps()
+      const reloadSpy = vi.spyOn(threadStoreModule, "requestThreadReload")
+      dispatchWsEntityEvent(
+        "kernel:read_state",
+        "update",
+        {
+          forUserId: "me",
+          kind: "thread_state",
+          threadId: "t-back",
+          isArchived: false,
+          isMuted: false,
+          isPinned: false,
+          notifyAllPosts: false,
+        },
+        ctx,
+      )
+      expect(reloadSpy).toHaveBeenCalledTimes(1)
+      reloadSpy.mockRestore()
+    })
   })
 
   // --- Task 3 self-heal + Task 5 invalidation on the "message" WS handler chain ---

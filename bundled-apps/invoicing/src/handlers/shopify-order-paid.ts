@@ -38,6 +38,7 @@ import { issuerParkBlockedOn, raiseIssuerAttention } from "../einvoicing/seller"
 import {
   CustomsFetchError,
   counterpartyCompletenessError,
+  type IssueBatchOp,
   type IssueCtx,
   type IssueInput,
   issueDocument,
@@ -48,6 +49,7 @@ import { deliveryFileId } from "../legal-originals/delivery"
 import { formatMoneyMinor, lineSubtotal, lineTax, majorDecimalToMinor, netOfTax } from "../money"
 import { isFullyCredited } from "../mutations"
 import { isUniqueViolation } from "../mutations/quote-proforma-po"
+import { supplyDateOf } from "../sale-tax"
 import { planSaleMail } from "../sale-thanks"
 import { classify, EXEMPT_TREATMENTS, isUntaxedIntraEuSaleWithoutVat } from "../tax"
 
@@ -461,6 +463,38 @@ function toIssuerProfileRow(row: unknown): IssuerProfileRow {
   }
 }
 
+export async function findIssuerById(
+  db: IssueCtx["db"],
+  id: string,
+): Promise<IssuerProfileRow | null> {
+  const rows = await db.findMany("issuer_profiles", { where: { id }, limit: 1 })
+  return rows[0] ? toIssuerProfileRow(rows[0]) : null
+}
+
+/** A sale of a bound revenue stream other than the shop (built by sales/issue-sale.ts). */
+export interface StreamSaleSource {
+  stream: {
+    id: string
+    provider_app: string
+    issuer_profile_id: string
+    mode: "auto" | "review" | "off"
+    mail: "thanks" | "invoice_only" | "none"
+    label: string | null
+  }
+  /** `deferred_events.event_id` of the sale's parks. */
+  parkEventId: string
+  /** What a park or an approval of the sale carries: the source is read again from it. */
+  parkPayload: { kind: "revenue_stream_sale"; stream_id: string; external_id: string }
+  /** The sale's documents already issued (credit notes included), under any of its names. */
+  existingDocuments(ctx: OrderPaidCtx): Promise<Array<Record<string, unknown>>>
+  /** The unique key of the sale's invoice of one scope (`documents.external_ref`). */
+  invoiceRef(scope: "goods" | "software"): string
+  /** The sale's references stored on each document (`external_refs`). */
+  documentRefs: Record<string, unknown>
+  /** Writes claiming the sale's other names, committed with its first document. */
+  claimOps?: () => IssueBatchOp[]
+}
+
 export async function findIssuerByShopId(
   db: IssueCtx["db"],
   shopId: string,
@@ -570,6 +604,7 @@ async function parkForTaxReview(
   ctx: OrderPaidCtx,
   parkPayload: OrderPaidPayload,
   orderNumber: string | null,
+  src: StreamSaleSource | null,
   park_: {
     status: DeferredEventInsert["status"]
     reason: string
@@ -578,7 +613,11 @@ async function parkForTaxReview(
 ): Promise<OrderPaidResult> {
   const def = await park(
     { db: ctx.db },
-    { event_id: parkPayload.id, event_payload_json: parkPayload, ...park_ },
+    {
+      event_id: src ? src.parkEventId : parkPayload.id,
+      event_payload_json: src ? src.parkPayload : parkPayload,
+      ...park_,
+    },
   )
   if (def.created && ctx.emit) {
     await ctx.emit({
@@ -624,18 +663,40 @@ export async function onShopifyOrderPaid(
   incoming: OrderPaidPayload,
   ctx: OrderPaidCtx,
 ): Promise<OrderPaidResult> {
+  return issueOrderFlow(incoming, ctx, null)
+}
+
+/**
+ * The issuing flow of one sale (steps above). `src` null: a Shopify order (issuer by shop id, the
+ * order's documents by `shopify_order_id`, the live order read for its cancellation and buyer).
+ * `src` set: a sale of a bound revenue stream other than the shop (sales/issue-sale.ts): the issuer
+ * is the stream's, the documents are found by the sale's own keys, and a park or an approval
+ * carries `{ stream_id, external_id }` so its retry reads the sale again from its source.
+ */
+export async function issueOrderFlow(
+  incoming: OrderPaidPayload,
+  ctx: OrderPaidCtx,
+  src: StreamSaleSource | null,
+): Promise<OrderPaidResult> {
   const payload: OrderPaidPayload = incoming.tax_override
     ? { ...incoming, line_items: applyTaxOverride(incoming.line_items, incoming.tax_override.mode) }
     : incoming
-  // Step 3 — issuer mapping (by shop id)
-  const issuer = await findIssuerByShopId(ctx.db, payload.shop_id)
+  // What a park of a stream sale is keyed by and carries (the source is read again on retry).
+  const parkId = src ? src.parkEventId : payload.id
+  const parkBodyOf = (p: OrderPaidPayload): unknown => (src ? src.parkPayload : p)
+  // Step 3 — the issuer: the stream's, or the shop's mapping
+  const issuer = src
+    ? await findIssuerById(ctx.db, src.stream.issuer_profile_id)
+    : await findIssuerByShopId(ctx.db, payload.shop_id)
   if (!issuer) {
     const def = await insertDeferred(ctx.db, {
-      event_id: payload.id,
-      event_payload_json: payload,
+      event_id: parkId,
+      event_payload_json: parkBodyOf(payload),
       status: "awaiting_config",
-      reason: "issuer_mapping_missing",
-      blocked_on: { kind: "issuer_mapping", shop_id: payload.shop_id },
+      reason: src ? "stream_issuer_missing" : "issuer_mapping_missing",
+      blocked_on: src
+        ? { kind: "issuer_mapping", stream_id: src.stream.id }
+        : { kind: "issuer_mapping", shop_id: payload.shop_id },
     })
     return { status: "deferred", deferred_id: def.id, reason: "awaiting_config" }
   }
@@ -655,7 +716,9 @@ export async function onShopifyOrderPaid(
   // After a partial issuance (e.g. the goods invoice deferred on a customs
   // throttle while the software invoice went through), the retry issues ONLY
   // the missing scope.
-  const allOrderDocs = await fetchOrderDocuments(ctx.db, payload.id)
+  const allOrderDocs = src
+    ? await src.existingDocuments(ctx)
+    : await fetchOrderDocuments(ctx.db, payload.id)
   const existingDocs = billingDocumentsOf(allOrderDocs)
   const liveScopeNullDocs: Array<{ id: string; scope: string | null }> = []
   for (const d of existingDocs) {
@@ -688,7 +751,7 @@ export async function onShopifyOrderPaid(
   const existingScopes = new Set(existingDocs.map((d) => d.scope))
 
   // Step 5 — fetch full order details from Shopify to enrich the payload.
-  const enrichedOrder = await tryFetchShopifyOrder(ctx, payload.id)
+  const enrichedOrder = src ? null : await tryFetchShopifyOrder(ctx, payload.id)
   const customer = mergeCustomer(payload.customer, enrichedOrder)
   // The human order reference to stamp on the invoice. The webhook carries it
   // (`name`), but a payload adapted by an OLDER shopify-app build -- or replayed
@@ -705,15 +768,15 @@ export async function onShopifyOrderPaid(
   // A cancelled (or voided) order has nothing to invoice: never park it, and close any park it
   // already has (a webhook replay or the deferred-retry re-drive lands here).
   if (isCancelledOrder(enrichedOrder)) {
-    await resolveOpenParks({ db: ctx.db, emit: ctx.emit }, payload.id, "order_cancelled", {
-      event_payload_json: parkPayload,
+    await resolveOpenParks({ db: ctx.db, emit: ctx.emit }, parkId, "order_cancelled", {
+      event_payload_json: parkBodyOf(parkPayload),
     })
     return { status: "skipped", reason: "order_cancelled" }
   }
   if (!customer || !customer.email) {
     const def = await insertDeferred(ctx.db, {
-      event_id: payload.id,
-      event_payload_json: parkPayload,
+      event_id: parkId,
+      event_payload_json: parkBodyOf(parkPayload),
       status: "awaiting_data",
       reason: "customer_email_missing",
       blocked_on: {
@@ -725,8 +788,8 @@ export async function onShopifyOrderPaid(
   }
   if (!customer.contact_id) {
     const def = await insertDeferred(ctx.db, {
-      event_id: payload.id,
-      event_payload_json: parkPayload,
+      event_id: parkId,
+      event_payload_json: parkBodyOf(parkPayload),
       status: "awaiting_data",
       reason: "contact_missing",
       blocked_on: { kind: "contact", customer_id: customer.id },
@@ -752,8 +815,8 @@ export async function onShopifyOrderPaid(
   })
   if (classification.treatment === "unconfigured") {
     const def = await insertDeferred(ctx.db, {
-      event_id: payload.id,
-      event_payload_json: parkPayload,
+      event_id: parkId,
+      event_payload_json: parkBodyOf(parkPayload),
       status: "awaiting_config",
       reason: "tax_regime_unconfigured",
       blocked_on: {
@@ -773,7 +836,7 @@ export async function onShopifyOrderPaid(
   // (1) Our computed tax must reproduce what Shopify reported, line by line.
   const taxMismatches = payload.tax_override ? [] : shopifyTaxMismatches(payload.line_items)
   if (taxMismatches.length > 0) {
-    return parkForTaxReview(ctx, parkPayload, orderNumber, {
+    return parkForTaxReview(ctx, parkPayload, orderNumber, src, {
       status: "awaiting_data",
       reason: "shopify_tax_mismatch",
       blocked_on: { kind: "tax_check", lines: taxMismatches },
@@ -786,7 +849,7 @@ export async function onShopifyOrderPaid(
     ? []
     : payload.line_items.filter((li) => typeof li.tax_rate_bp === "number" && li.tax_rate_bp > 0)
   if (EXEMPT_TREATMENTS.has(classification.treatment) && taxedOnExempt.length > 0) {
-    return parkForTaxReview(ctx, parkPayload, orderNumber, {
+    return parkForTaxReview(ctx, parkPayload, orderNumber, src, {
       status: "awaiting_data",
       reason: "tax_on_exempt_treatment",
       blocked_on: {
@@ -808,7 +871,7 @@ export async function onShopifyOrderPaid(
       ? payload.line_items.filter((li) => typeof li.tax_rate_bp !== "number")
       : []
   if (placeholderLines.length > 0) {
-    return parkForTaxReview(ctx, parkPayload, orderNumber, {
+    return parkForTaxReview(ctx, parkPayload, orderNumber, src, {
       status: "awaiting_config",
       reason: "tax_rate_placeholder",
       blocked_on: {
@@ -829,7 +892,7 @@ export async function onShopifyOrderPaid(
     !payload.tax_override &&
     isUntaxedIntraEuSaleWithoutVat(classification.treatment, chargesNoTax)
   ) {
-    return parkForTaxReview(ctx, parkPayload, orderNumber, {
+    return parkForTaxReview(ctx, parkPayload, orderNumber, src, {
       status: "awaiting_data",
       reason: "buyer_vat_missing",
       blocked_on: {
@@ -920,8 +983,8 @@ export async function onShopifyOrderPaid(
   const counterpartyIncomplete = counterpartyCompletenessError(counterpartyInput)
   if (counterpartyIncomplete) {
     const def = await insertDeferred(ctx.db, {
-      event_id: payload.id,
-      event_payload_json: parkPayload,
+      event_id: parkId,
+      event_payload_json: parkBodyOf(parkPayload),
       status: "awaiting_data",
       reason: "counterparty_incomplete",
       blocked_on: {
@@ -945,8 +1008,20 @@ export async function onShopifyOrderPaid(
   // writes shopify_order_id back onto that quote once its draft order completes) and borrow
   // its PO number. No fallback lookup on shopify_draft_order_id: neither OrderPaidPayload nor
   // the shopify-app order:created event carries a draft order id to key one on.
-  const inheritedPo = payload.po_number ? null : await findOriginatingQuotePo(ctx.db, payload.id)
+  const inheritedPo =
+    payload.po_number || src ? null : await findOriginatingQuotePo(ctx.db, payload.id)
   const effectivePoNumber = payload.po_number ?? inheritedPo?.po_number ?? null
+  // The sale's other names are claimed once, by its first document (the first split of a sale
+  // that has none yet), in that document's commit.
+  const claimOpsOf = allOrderDocs.length === 0 ? src?.claimOps : undefined
+  const claimWith = claimOpsOf
+    ? (scope: "goods" | "software") => (scope === splits[0]?.scope ? claimOpsOf() : [])
+    : null
+  // The sale date of a stream sale, the issuer's civil date of its payment; the shop's documents
+  // keep what they always had.
+  const soldAt = src ? src.documentRefs.sold_at : null
+  const supplyDate =
+    typeof soldAt === "string" && soldAt !== "" ? await supplyDateOf(ctx, issuer, soldAt) : null
   const buildIssueInput = (
     scope: "goods" | "software",
     items: OrderPaidPayload["line_items"],
@@ -955,17 +1030,19 @@ export async function onShopifyOrderPaid(
   ): IssueInput => ({
     type: "invoice",
     scope,
-    external_ref: orderInvoiceRef(payload.id, scope),
+    external_ref: src ? src.invoiceRef(scope) : orderInvoiceRef(payload.id, scope),
     issuer: issuerInput,
     counterparty: counterpartyInput,
-    settlement: settled ? { paid_at: paidAt, source: "shopify_order_paid" } : null,
+    settlement: settled
+      ? { paid_at: paidAt, source: src ? "revenue_stream" : "shopify_order_paid" }
+      : null,
     // The PO number (when present) came straight off the Shopify webhook payload, no
     // human step in between -- the po_number_changed audit entry issueDocument appends
     // should say so plainly rather than default to "person". (The inherited case gets its
     // OWN dedicated lifecycle_log entry below, naming the source quote.)
-    po_number_source: "shopify_sync",
+    po_number_source: src ? "source_sync" : "shopify_sync",
     // E-invoicing: a checkout buyer, line kinds set by the store (authoritative), paid or due.
-    origin: "shopify",
+    origin: src ? "checkout" : "shopify",
     operation_source: "lines_authoritative",
     payment_state: settled ? "paid" : "due",
     draft: {
@@ -974,22 +1051,33 @@ export async function onShopifyOrderPaid(
       year_of_issue: when.year_of_issue,
       issued_at: when.issued_at,
       due_at: null,
+      // A stream sale states its sale date (kept only when it is not the issue date).
+      ...(supplyDate ? { source: { supply_date: supplyDate } } : {}),
       // `shopify_shop_domain` (the store's myshopify domain, carried as
       // `payload.shop_id`) is persisted alongside the order id so the invoice
       // detail view can build a deep link back to the Shopify admin order page
       // WITHOUT a cross-app round-trip to resolve the connected store's domain.
-      external_refs: {
-        shopify_order_id: payload.id,
-        // The human order reference ("#1149") -- mirrored to the top-level
-        // shopify_order_number column at issue and printed in the PDF header.
-        ...(orderNumber ? { shopify_order_number: orderNumber } : {}),
-        ...(effectivePoNumber ? { po_number: effectivePoNumber } : {}),
-        scope,
-        shopify_shop_domain: payload.shop_id,
-        // Tax a marketplace collected and remits itself on this document's lines: never invoiced
-        // by us (it is not on any line), recorded here so accounting can reconcile the payout.
-        ...marketplaceTaxRef(items),
-      },
+      external_refs: src
+        ? {
+            ...src.documentRefs,
+            ...(orderNumber ? { order_name: orderNumber } : {}),
+            ...(effectivePoNumber ? { po_number: effectivePoNumber } : {}),
+            scope,
+            ...marketplaceTaxRef(items),
+          }
+        : {
+            shopify_order_id: payload.id,
+            // The human order reference ("#1149") -- mirrored to the top-level
+            // shopify_order_number column at issue and printed in the PDF header.
+            ...(orderNumber ? { shopify_order_number: orderNumber } : {}),
+            ...(effectivePoNumber ? { po_number: effectivePoNumber } : {}),
+            scope,
+            shopify_shop_domain: payload.shop_id,
+            // Tax a marketplace collected and remits itself on this document's lines: never
+            // invoiced by us (it is not on any line), recorded here so accounting can reconcile
+            // the payout.
+            ...marketplaceTaxRef(items),
+          },
       lines: items.map((li, idx) => ({
         position: idx + 1,
         description: li.description,
@@ -1000,10 +1088,13 @@ export async function onShopifyOrderPaid(
         ...(typeof li.tax_rate_bp === "number" ? { tax_rate_bp_override: li.tax_rate_bp } : {}),
         // Shipping lines carry no product reference — never a shippable product
         // for boxtal, never a customs overlay key.
-        product_source: li.line_kind === "shipping" ? null : "shopify",
-        external_id: li.line_kind === "shipping" ? null : li.id,
+        product_source: src || li.line_kind === "shipping" ? null : "shopify",
+        external_id: li.line_kind === "shipping" ? null : src ? li.id || null : li.id,
       })),
     },
+    // A stream's sale claims its other names (a payment's charge, its checkout) with its first
+    // document, in the same commit (sales/issue-sale.ts).
+    ...(src && claimWith ? { commit_with: claimWith(scope) } : {}),
   })
 
   // Goods first: it is the only split that can bail on a retryable customs
@@ -1026,8 +1117,8 @@ export async function onShopifyOrderPaid(
   const when = await issueDateParts(ctx, issuer)
   if (!when.ok) {
     const def = await insertDeferred(ctx.db, {
-      event_id: payload.id,
-      event_payload_json: parkPayload,
+      event_id: parkId,
+      event_payload_json: parkBodyOf(parkPayload),
       status: "awaiting_config",
       reason: when.error.error.code,
       blocked_on: { kind: "issuer_timezone", issuer_profile_id: issuer.id },
@@ -1053,7 +1144,7 @@ export async function onShopifyOrderPaid(
       lines: input.draft.lines,
       operation_source: input.operation_source ?? null,
       payment_state: input.payment_state ?? null,
-      origin: "shopify",
+      origin: src ? "checkout" : "shopify",
       company: customer.billing?.company ?? null,
     })
     const derivedKind = check.ok ? check.prepared.derivedKind : check.derivedKind
@@ -1074,8 +1165,8 @@ export async function onShopifyOrderPaid(
       const def = await park(
         { db: ctx.db },
         {
-          event_id: payload.id,
-          event_payload_json: parkPayload,
+          event_id: parkId,
+          event_payload_json: parkBodyOf(parkPayload),
           status: "awaiting_dependency",
           reason: "issuer_incomplete",
           blocked_on: issuerParkBlockedOn(gap),
@@ -1084,7 +1175,9 @@ export async function onShopifyOrderPaid(
       await raiseIssuerAttention(ctx, {
         park: def,
         gap,
-        waiting: `Shopify order ${orderNumber ? `${String(orderNumber).startsWith("#") ? "" : "#"}${orderNumber}` : payload.id}`,
+        waiting: src
+          ? `Sale ${orderNumber ?? payload.id} (${src.stream.label ?? src.stream.provider_app})`
+          : `Shopify order ${orderNumber ? `${String(orderNumber).startsWith("#") ? "" : "#"}${orderNumber}` : payload.id}`,
       })
       return { status: "deferred", deferred_id: def.id, reason: "awaiting_dependency" }
     }
@@ -1093,8 +1186,8 @@ export async function onShopifyOrderPaid(
       const def = await park(
         { db: ctx.db },
         {
-          event_id: payload.id,
-          event_payload_json: parkPayload,
+          event_id: parkId,
+          event_payload_json: parkBodyOf(parkPayload),
           status: "awaiting_data",
           reason: code,
           blocked_on: { kind: EINVOICE_IDENTITY_PARK_KIND, contact_id: customer.contact_id, code },
@@ -1124,14 +1217,18 @@ export async function onShopifyOrderPaid(
     issuer.invoice_approval_threshold_minor != null
       ? toBigIntMinor(issuer.invoice_approval_threshold_minor)
       : null
-  if (!ctx.approval && threshold != null && invoiceTotal > threshold) {
+  // A stream in review mode asks a person for every sale, whatever its amount.
+  const reviewEach = src?.stream.mode === "review"
+  if (!ctx.approval && (reviewEach || (threshold != null && invoiceTotal > threshold))) {
     const approval = await ctx.requestApproval({
-      tool_name: "invoicing:onShopifyOrderPaid",
+      tool_name: src ? "invoicing:revenue_stream_sale_issue" : "invoicing:onShopifyOrderPaid",
       summary: `Issue invoice for ${customer.legal_name ?? customer.email}, ${formatMoneyMinor(invoiceTotal, payload.currency)}${orderNumber ? `, order ${String(orderNumber).startsWith("#") ? "" : "#"}${orderNumber}` : ""}`,
       summary_detail: {
         subtitle: `Issue and send to ${customer.legal_name ?? customer.email}`,
         lines: [
-          `Document: new invoice from Shopify order ${orderNumber ? `${String(orderNumber).startsWith("#") ? "" : "#"}${orderNumber}` : "(no order number)"}`,
+          src
+            ? `Document: new invoice for the sale ${orderNumber ?? payload.id} (${src.stream.label ?? src.stream.provider_app})`
+            : `Document: new invoice from Shopify order ${orderNumber ? `${String(orderNumber).startsWith("#") ? "" : "#"}${orderNumber}` : "(no order number)"}`,
           `Customer: ${customer.legal_name ?? customer.email}`,
           ...(dateOnly(payload.createdAt) ? [`Order placed: ${dateOnly(payload.createdAt)}`] : []),
           ...payload.line_items
@@ -1146,7 +1243,7 @@ export async function onShopifyOrderPaid(
           `Total: ${formatMoneyMinor(invoiceTotal, payload.currency)}`,
         ],
       },
-      current_payload: payload,
+      current_payload: src ? src.parkPayload : payload,
       editable_fields: [],
     })
     // Granted inline (a person's own call holding the deciding scope): issue now.
@@ -1170,8 +1267,8 @@ export async function onShopifyOrderPaid(
       // which warms the rate again. Nothing of this split was persisted.
       if (err instanceof FxRateUnavailableError) {
         const def = await insertDeferred(ctx.db, {
-          event_id: payload.id,
-          event_payload_json: parkPayload,
+          event_id: parkId,
+          event_payload_json: parkBodyOf(parkPayload),
           status: "awaiting_dependency",
           reason: "awaiting_fx_rate",
           blocked_on: { kind: "fx_rate", code: err.code },
@@ -1186,8 +1283,8 @@ export async function onShopifyOrderPaid(
       // so nothing is lost: the retry re-enters with no scopes issued yet.
       if (err instanceof CustomsFetchError) {
         const def = await insertDeferred(ctx.db, {
-          event_id: payload.id,
-          event_payload_json: parkPayload,
+          event_id: parkId,
+          event_payload_json: parkBodyOf(parkPayload),
           status: "awaiting_dependency",
           reason: "awaiting_customs_dependency",
           blocked_on: { kind: "customs", code: err.code },
@@ -1253,8 +1350,8 @@ export async function onShopifyOrderPaid(
   for (const doc of issued) {
     if (!doc.pdf_file_id) {
       await insertDeferred(ctx.db, {
-        event_id: payload.id,
-        event_payload_json: parkPayload,
+        event_id: parkId,
+        event_payload_json: parkBodyOf(parkPayload),
         status: "render_failed",
         reason: "pdf_render_failed",
         blocked_on: { kind: "pdf_render", document_id: doc.document_id },
@@ -1278,9 +1375,10 @@ export async function onShopifyOrderPaid(
 
   // Step 13 — the sale's mail via mail:composeForApp (no Mail-side approval): one mail for the
   // order, every rendered invoice attached. An issuer that opted in sends the branded thank-you
-  // (`sale_thanks`); any other keeps the plain invoice mail, only with auto-email on.
+  // (`sale_thanks`); any other keeps the plain invoice mail, only with auto-email on. A stream
+  // whose mail setting is `none` sends nothing (its source sends its own).
   const mailPlan =
-    pdfFileIds.length === issued.length
+    pdfFileIds.length === issued.length && src?.stream.mail !== "none"
       ? planSaleMail({
           issuer,
           to: customer.email,
@@ -1293,17 +1391,19 @@ export async function onShopifyOrderPaid(
               ? await issuedTotals(ctx, issued)
               : issued.map((d) => ({ number: d.number, grand_total_minor: "0", currency: "EUR" })),
             lines: issuer.sale_thanks_enabled ? await issuedLines(ctx, issued) : [],
-            sold_on: /^\d{4}-\d{2}-\d{2}/.test(payload.createdAt ?? "")
-              ? String(payload.createdAt).slice(0, 10)
-              : new Date().toISOString().slice(0, 10),
+            sold_on: supplyDate
+              ? supplyDate
+              : /^\d{4}-\d{2}-\d{2}/.test(payload.createdAt ?? "")
+                ? String(payload.createdAt).slice(0, 10)
+                : new Date().toISOString().slice(0, 10),
           },
         })
       : ({ kind: "none" } as const)
   if (mailPlan.kind !== "none") {
     if (mailPlan.kind === "no_mailbox") {
       await insertDeferred(ctx.db, {
-        event_id: payload.id,
-        event_payload_json: parkPayload,
+        event_id: parkId,
+        event_payload_json: parkBodyOf(parkPayload),
         status: "awaiting_config",
         reason: "issuer_mail_account_missing",
         blocked_on: {
@@ -1335,8 +1435,8 @@ export async function onShopifyOrderPaid(
         const code = composeResult.error?.code
         const isDependency = code === "target_app_unavailable"
         await insertDeferred(ctx.db, {
-          event_id: payload.id,
-          event_payload_json: parkPayload,
+          event_id: parkId,
+          event_payload_json: parkBodyOf(parkPayload),
           status: isDependency ? "awaiting_dependency" : "email_failed",
           reason: isDependency ? "awaiting_email_dependency" : "email_failed",
           blocked_on: { kind: "email_send", document_id: primary.document_id },

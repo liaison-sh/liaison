@@ -99,7 +99,7 @@ From a conversation's header menu you can:
 | **Add participant** | Add someone. If the room has earlier messages, Liaison warns that the new person will not see them. |
 | **Pin** / **Pin for all** | Keep the conversation at the top of your list, or of everyone's |
 | **Mute** | Stop notifications for it |
-| **Archive thread** / **Unarchive thread** | Move it to **Archived threads** and back |
+| **Archive thread** / **Unarchive thread** | Move it to **Archived threads** and back. The next message in it, from a person or an agent, brings it back to your list, unless you also muted it |
 | **Set topic**, **Edit description** | Describe a channel |
 | **Discoverable** | Let members of the workspace find and join the channel |
 | **Leave thread** | Leave the conversation |

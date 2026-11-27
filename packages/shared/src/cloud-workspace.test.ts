@@ -85,5 +85,7 @@ describe("the cloud's own pages", () => {
     expect(cloudPageUrl(D, "login", "en")).toBe("https://liaison.sh/login")
     expect(cloudPageUrl(D, "signup", "fr")).toBe("https://liaison.sh/fr/signup")
     expect(cloudPageUrl(D, "login", "fr-FR")).toBe("https://liaison.sh/fr/login")
+    expect(cloudPageUrl(D, "find-workspace", "en")).toBe("https://liaison.sh/find-workspace")
+    expect(cloudPageUrl(D, "find-workspace", "fr")).toBe("https://liaison.sh/fr/find-workspace")
   })
 })

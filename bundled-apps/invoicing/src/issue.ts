@@ -382,8 +382,9 @@ export interface IssueInput {
   operation_source?: OperationSource | null
   /** E-invoicing payment state at issue (due, paid, final after deposit). */
   payment_state?: PaymentState | null
-  /** A checkout buyer (Shopify) without company or VAT id is a consumer; manual is the default. */
-  origin?: "manual" | "shopify"
+  /** A checkout buyer (Shopify, or another revenue stream: `checkout`) without company or VAT id
+   *  is a consumer; manual is the default. */
+  origin?: "manual" | "shopify" | "checkout"
   /** Issue the document ALREADY SETTLED. The Shopify order-paid flow invoices a checkout that is
    *  already paid, so the document is born with payment_status="paid" + paid_at and its PDF renders
    *  "Amount paid" (no banking box) from the first render — no stale "Total due" PDF, no second
@@ -403,7 +404,7 @@ export interface IssueInput {
    *  invoice's PO number) — a human decision put it there, even if indirectly. "shopify_sync"
    *  is reserved for a value read straight off a Shopify webhook payload with no human step in
    *  between (the order-paid auto-flow). */
-  po_number_source?: "shopify_sync" | "person"
+  po_number_source?: "shopify_sync" | "source_sync" | "person"
   /** What it bills was paid on the document it replaces: without a due date of its own it has none. */
   already_paid?: boolean
   /** What a person approved this document to total, in minor units: it issues at that amount or

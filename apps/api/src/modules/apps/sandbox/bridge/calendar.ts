@@ -36,9 +36,25 @@ function isoStringToCalendarPoint(
  * immediate push did not land. */
 const CONFERENCE_PUSH_BACKUP_DELAY_MS = 60_000
 
+/** What the calendar surface reads from the run's bridge context. */
+export type CalendarBridgeContext = Pick<
+  BridgeContext,
+  "appName" | "callerScopes" | "orgId" | "requireApp" | "txDb" | "userId"
+>
+
+/** How the calendar surface queues its jobs: the job queue in production; a test harness
+ * passes its own queue to run the jobs in process (`apps/calendar/__fixtures__/google`). */
+export interface CalendarBridgeDeps {
+  enqueue?: typeof enqueueAppJob
+}
+
 /** The calendar app surface. */
-export function createCalendarMethods(ctx: BridgeContext): Record<string, any> {
+export function createCalendarMethods(
+  ctx: CalendarBridgeContext,
+  deps: CalendarBridgeDeps = {},
+): Record<string, any> {
   const { callerScopes, orgId, requireApp, txDb, userId } = ctx
+  const enqueue = deps.enqueue ?? enqueueAppJob
   return {
     /** Rows for a company's or a contact's timeline, read under the caller's row security. */
     calendar_activityRead: async (paramsJson: string): Promise<string> => {
@@ -67,7 +83,7 @@ export function createCalendarMethods(ctx: BridgeContext): Record<string, any> {
       const { onAccountConnected } = await import("~/apps/calendar/sync")
       const event = JSON.parse(eventJson)
       await onAccountConnected(txDb, orgId, event, async (jobName, payload) => {
-        await enqueueAppJob("calendar", jobName, payload)
+        await enqueue("calendar", jobName, payload)
       })
     },
 
@@ -125,7 +141,7 @@ export function createCalendarMethods(ctx: BridgeContext): Record<string, any> {
       requireApp("calendar", "calendar_recoverFromSyncTokenGone")
       const { recoverFromSyncTokenGone } = await import("~/apps/calendar/sync")
       await recoverFromSyncTokenGone(txDb, orgId, calendarId, async (jobName, payload) => {
-        await enqueueAppJob("calendar", jobName, payload)
+        await enqueue("calendar", jobName, payload)
       })
     },
 
@@ -152,7 +168,7 @@ export function createCalendarMethods(ctx: BridgeContext): Record<string, any> {
         accountId,
         async () => entries,
         async (jobName, payload) => {
-          await enqueueAppJob("calendar", jobName, payload)
+          await enqueue("calendar", jobName, payload)
         },
       )
       return JSON.stringify(result)
@@ -178,7 +194,7 @@ export function createCalendarMethods(ctx: BridgeContext): Record<string, any> {
         orgId,
         params.accountId,
         async (jobName, payload) => {
-          await enqueueAppJob("calendar", jobName, payload)
+          await enqueue("calendar", jobName, payload)
         },
         {
           isAdmin: isCalendarAdmin(callerScopes),
@@ -197,7 +213,7 @@ export function createCalendarMethods(ctx: BridgeContext): Record<string, any> {
         params.calendarId,
         params.selected,
         async (jobName, payload) => {
-          await enqueueAppJob("calendar", jobName, payload)
+          await enqueue("calendar", jobName, payload)
         },
         {
           isAdmin: isCalendarAdmin(callerScopes),
@@ -219,7 +235,7 @@ export function createCalendarMethods(ctx: BridgeContext): Record<string, any> {
         channelId,
         resourceId,
         async (jobName, payload, opts) => {
-          await enqueueAppJob(
+          await enqueue(
             "calendar",
             jobName,
             payload,
@@ -300,7 +316,7 @@ export function createCalendarMethods(ctx: BridgeContext): Record<string, any> {
           const { jobs } = await withPrivilegedDb(orgId, "calendar-ensure-accounts", (tx) =>
             ensureCallerCalendarAccounts(tx, orgId, userId),
           )
-          for (const payload of jobs) await enqueueAppJob("calendar", "calendar-import", payload)
+          for (const payload of jobs) await enqueue("calendar", "calendar-import", payload)
         }
       }
       // A disconnect reaches the app through an asynchronous event: catch it up, so the list
@@ -379,7 +395,7 @@ export function createCalendarMethods(ctx: BridgeContext): Record<string, any> {
       // One job per row version: a duplicate request does not push twice. A conference change
       // is pushed by the tool handler right away (to return the Meet link); the job then only
       // backs it up.
-      await enqueueAppJob(
+      await enqueue(
         "calendar",
         "calendar-push",
         { orgId, eventId },
@@ -437,7 +453,7 @@ export function createCalendarMethods(ctx: BridgeContext): Record<string, any> {
         end: isoStringToCalendarPoint(params.end, params.allDay),
         conference,
       })
-      await enqueueAppJob(
+      await enqueue(
         "calendar",
         "calendar-push",
         { orgId, eventId },
@@ -479,7 +495,7 @@ export function createCalendarMethods(ctx: BridgeContext): Record<string, any> {
       // deletes on Google, retrying like any push; the import cannot resurrect it meanwhile.
       const { needsGooglePush, syncVersion } = await deleteLocalEvent(txDb, orgId, eventId)
       if (needsGooglePush && syncVersion !== null) {
-        await enqueueAppJob(
+        await enqueue(
           "calendar",
           "calendar-push",
           { orgId, eventId },

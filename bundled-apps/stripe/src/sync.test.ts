@@ -15,6 +15,7 @@ import { homeLoad } from "./sync/home"
 import { onDisconnect, runCatchup } from "./sync/maintenance"
 import { runProbe } from "./sync/probe"
 import { runReconcile } from "./sync/reconcile"
+import { WEBHOOK_EVENTS } from "./webhook-events"
 
 type Row = Record<string, unknown> & { id: string }
 
@@ -114,6 +115,7 @@ class StripeApi {
   lists = new Map<string, Obj[]>()
   objects = new Map<string, Obj>()
   events: Obj[] = []
+  eventListCalls = 0
   forced = new Map<string, number>()
   calls: string[] = []
   /** A loop under test that asks for more pages than this is a loop that does not end: fail instead of hanging. */
@@ -142,8 +144,15 @@ class StripeApi {
     const ok = (b: unknown) => ({ status: 200, headers: {}, body: JSON.stringify(b) })
     if (path === "/v1/events") {
       const gt = Number(u.searchParams.get("created[gt]") ?? 0)
+      // Stripe's `types[]` filter (formEncode sends `types[0]=…`); at most 20 per call.
+      const types = [...u.searchParams.entries()]
+        .filter(([k]) => /^types\[\d+\]$/.test(k))
+        .map(([, v]) => v)
+      if (types.length > 20) return { status: 400, headers: {}, body: "{}" }
+      this.eventListCalls++
       const data = this.events
         .filter((e) => (e.created as number) > gt)
+        .filter((e) => types.length === 0 || types.includes(String(e.type)))
         .sort((a, b) => (b.created as number) - (a.created as number))
       return ok({ data, has_more: false })
     }
@@ -689,6 +698,54 @@ describe("the upstream probe", () => {
     expect(await runProbe(ctx(), { now })).toMatchObject({ stalled: false, missed: 1 })
     clock = Date.parse("2026-11-10T12:01:00.000Z")
     expect(await runProbe(ctx(), { now })).toMatchObject({ stalled: true })
+  })
+
+  it("nothing newer upstream reports no activity, never our own last-event time", async () => {
+    // The kernel hears a delivery a moment before the handler records last_event_at:
+    // reporting that time as upstream activity paged every quiet half hour as missed.
+    install("connected", { last_event_at: "2026-11-10T09:00:00.123Z" })
+    api.events = [evt("evt_OLD", "2026-11-10T08:59:59.000Z")]
+    expect(await runProbe(ctx(), { now })).toEqual({
+      upstreamActivityAt: null,
+      stalled: false,
+      missed: 0,
+      replayed: 0,
+    })
+  })
+
+  it("event types the endpoint does not subscribe to are never missed", async () => {
+    install("connected", { last_event_at: "2026-11-10T08:00:00.000Z" })
+    api.events = [
+      { ...evt("evt_PI", "2026-11-10T09:30:00.000Z"), type: "payment_intent.created" },
+      { ...evt("evt_BAL", "2026-11-10T09:31:00.000Z"), type: "balance.available" },
+    ]
+    expect(await runProbe(ctx(), { now })).toMatchObject({
+      upstreamActivityAt: null,
+      stalled: false,
+      missed: 0,
+    })
+    expect(String(db.one("install_metadata", {})?.state)).toBe("connected")
+    // Every subscribed type is asked for, within Stripe's 20 types per call.
+    expect(api.eventListCalls).toBe(Math.ceil(WEBHOOK_EVENTS.length / 20))
+    const asked = api.calls
+      .filter((c) => c.startsWith("/v1/events?"))
+      .flatMap((c) => [...new URLSearchParams(c.split("?")[1]).entries()])
+      .filter(([k]) => k.startsWith("types["))
+      .map(([, v]) => v)
+    expect([...asked].sort()).toEqual([...WEBHOOK_EVENTS].sort())
+  })
+
+  it("a subscribed event in the second type chunk is found and is the reported activity", async () => {
+    install("connected", { last_event_at: "2026-11-10T08:00:00.000Z" })
+    const late = WEBHOOK_EVENTS[WEBHOOK_EVENTS.length - 1] as string
+    api.events = [
+      { ...evt("evt_A", "2026-11-10T09:30:00.000Z"), type: "payment_intent.created" },
+      { ...evt("evt_B", "2026-11-10T09:20:00.000Z"), type: late },
+    ]
+    expect(await runProbe(ctx(), { now })).toMatchObject({
+      missed: 1,
+      upstreamActivityAt: "2026-11-10T09:20:00.000Z",
+    })
   })
 })
 

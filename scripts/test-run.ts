@@ -1197,6 +1197,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/seed/tiers/lively/seed-lively.integration.test.ts",
             // ...and into an org someone else made, with the caller's people seated.
             "src/seed/tiers/lively/seed-lively-existing-org.integration.test.ts",
+            // The dashboards factory: a spec checked, then written once (the lively dashboard).
+            "src/seed/factories/dashboards/dashboards.integration.test.ts",
             // The load tier: synthetic orgs with their expiry, the bulk volume and
             // its invariant, and the demo reaper collecting them.
             "src/seed/tiers/load/seed-load.integration.test.ts",
@@ -1543,6 +1545,10 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // survives the same round trip, and a genuinely changed rate takes hold.
             "src/editor-round-trip.test.ts",
             "src/handlers/shopify-order-paid.test.ts",
+            // Revenue streams: every provider's sale through one issuing flow, and the golden
+            // proof that the shop's sale maps to exactly the order payload it replaced.
+            "src/sales/issue-sale.test.ts",
+            "src/sales/shopify-sale.golden.test.ts",
             // Quotes ARE Shopify draft orders: the four draft_order:* handlers, mock-driven
             // (createMockDb + stubbed executeTool). Pins the one-quote-per-draft-order
             // idempotency across BOTH event producers (the fat webhook payload and the thin
@@ -2056,6 +2062,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/auto-watch.test.ts",
             "src/connection.test.ts",
             "src/dm-state.test.ts",
+            "src/dm-unsent-delete.test.ts",
             "src/dm-window.test.ts",
             "src/handlers.test.ts",
             "src/ingest.test.ts",

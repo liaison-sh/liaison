@@ -33,6 +33,29 @@ describe("formatValue", () => {
     expect(formatValue("not a date", { format: "date", locale: "en" })).toBe("not a date")
   })
 
+  it("an unformatted timestamp reads as a date and a time; a day or a midnight as the date", () => {
+    const v = "2026-11-24 22:47:30.548+00"
+    expect(nbsp(formatValue(v, { locale: "en", timeZone: "UTC" }))).toBe("Nov 24, 2026, 10:47 PM")
+    expect(nbsp(formatValue(v, { locale: "fr", timeZone: "Europe/Paris" }))).toBe(
+      "24 nov. 2026, 23:47",
+    )
+    expect(formatValue("2026-11-24", { locale: "en" })).toBe("Nov 24, 2026")
+    expect(formatValue("2026-11-24T00:00:00.000Z", { locale: "en", timeZone: "UTC" })).toBe(
+      "Nov 24, 2026",
+    )
+    expect(formatValue("INV-2026-11", { locale: "en" })).toBe("INV-2026-11")
+  })
+
+  it("a date column shows the day alone, Postgres' short offset included", () => {
+    expect(
+      formatValue("2026-11-24 22:47:30.548+00", {
+        format: "date",
+        locale: "en",
+        timeZone: "Asia/Tokyo",
+      }),
+    ).toBe("Nov 25, 2026")
+  })
+
   it("shows text as it came and nothing for an empty value", () => {
     expect(formatValue("Blue mug", { format: "number", locale: "en" })).toBe("Blue mug")
     expect(formatValue(null, { locale: "en" })).toBe("")

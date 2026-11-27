@@ -12,6 +12,7 @@
 import type { DbBatchOp } from "@liaison/app-sdk"
 import type { Platform } from "./adapters/types"
 import type { SocialToolCtx } from "./ctx"
+import { metadataObject } from "./quota"
 
 interface FindingRow {
   id: string
@@ -289,4 +290,59 @@ export async function removeMonitorTerm(
   if (!row) return { status: "skipped", reason: "not_found" }
   await ctx.db.delete("monitor_term", row.id)
   return { status: "removed" }
+}
+
+interface DmConversationRow {
+  id: string
+  status?: string | null
+  last_message_at?: string | null
+  metadata?: unknown
+}
+
+/** Messages removed per batch while deleting a conversation (the batch cap is 500 ops). */
+const DM_DELETE_BATCH = 400
+
+/**
+ * Delete a DM conversation from Liaison's inbox (`dm_delete_conversation`). Local
+ * only: nothing is deleted on Instagram or Facebook. Its stored messages are
+ * removed and the conversation is kept as a `deleted` row whose
+ * `metadata.historyClearedAt` cut-off stops a later sync or redelivery landing
+ * those messages again (ingest.ts `ingestDmMessages`). It stays out of the
+ * inbox until the person writes again: a NEW inbound message reopens it, with
+ * only the messages after the delete. No approval: nothing leaves Liaison.
+ */
+export async function deleteDmConversation(
+  ctx: SocialToolCtx,
+  params: { conversation_id: string },
+): Promise<{ status: "deleted" | "skipped"; reason?: string; messagesRemoved?: number }> {
+  const conv = (await ctx.db.findOne(
+    "dm_conversation",
+    params.conversation_id,
+  )) as DmConversationRow | null
+  if (!conv) return { status: "skipped", reason: "not_found" }
+  let messagesRemoved = 0
+  for (;;) {
+    const rows = (await ctx.db.findMany("dm_message", {
+      where: { conversation_id: conv.id },
+      limit: DM_DELETE_BATCH,
+    })) as Array<{ id: string }>
+    if (rows.length === 0) break
+    await ctx.db.batch({ ops: rows.map((r) => ({ delete: "dm_message", id: r.id })) })
+    messagesRemoved += rows.length
+    if (rows.length < DM_DELETE_BATCH) break
+  }
+  // The cut-off is the later of now and the newest message time it held, so a
+  // message dated ahead of this clock is not landed again either.
+  const now = Date.now()
+  const lastMs = conv.last_message_at ? Date.parse(conv.last_message_at) : Number.NaN
+  const cutoff = new Date(Number.isNaN(lastMs) ? now : Math.max(now, lastMs)).toISOString()
+  const meta = metadataObject(conv.metadata)
+  await ctx.db.update("dm_conversation", conv.id, {
+    status: "deleted",
+    last_message_snippet: null,
+    suggested_reply: null,
+    unread_count: 0,
+    metadata: { ...meta, historyClearedAt: cutoff },
+  })
+  return { status: "deleted", messagesRemoved }
 }

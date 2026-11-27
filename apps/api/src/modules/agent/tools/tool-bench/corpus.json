@@ -4049,5 +4049,21 @@
     "say": "aide-moi à configurer le webhook Stripe",
     "typed": ["webhook stripe", "configurer webhook", "signing secret whsec"],
     "any": ["stripe__webhook_status"]
+  },
+  {
+    "id": "C160",
+    "set": "seed",
+    "lang": "en",
+    "say": "delete this Instagram conversation from the inbox",
+    "typed": ["delete conversation", "delete instagram conversation"],
+    "any": ["social__dm_delete_conversation"]
+  },
+  {
+    "id": "C161",
+    "set": "seed",
+    "lang": "fr",
+    "say": "supprime cette conversation Instagram de la boîte",
+    "typed": ["supprimer conversation", "supprimer la conversation instagram"],
+    "any": ["social__dm_delete_conversation"]
   }
 ]

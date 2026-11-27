@@ -244,6 +244,58 @@ describe("exports", () => {
   })
 })
 
+describe("the PDF's table cells read like the screen's", () => {
+  it("a timestamp reads as a date and a time in the org's zone; a day as the date; money as money", async () => {
+    const computed = {
+      view: {
+        title: "Sales and support",
+        spec: { blocks: [] },
+        filters: [],
+        defaultFilters: {},
+        timeZone: "Europe/Paris",
+        version: 1,
+      },
+      blocks: [
+        {
+          block: { id: "l", title: "Latest invoices", type: "table" },
+          out: {
+            blockId: "l",
+            ok: true,
+            data: {
+              kind: "table",
+              columns: [
+                { field: "number", label: "Number" },
+                { field: "issued", label: "Issued" },
+                { field: "due", label: "Due", format: "date" },
+                { field: "total", label: "Total", format: "currency" },
+              ],
+              rows: [
+                {
+                  number: "INV-0042",
+                  issued: "2026-11-24 22:47:30.548+00",
+                  due: "2026-12-24",
+                  total: 1234.5,
+                },
+              ],
+              meta: { currency: "EUR" },
+            },
+            cached: false,
+            computedAt: "",
+            window: { mode: "fixed", dates: [] },
+            compareWindow: null,
+          },
+        },
+      ],
+    } as unknown as ComputedDashboard
+    const bytes = await renderDashboardPdf(computed, {}, new Date("2026-11-27T10:00:00Z"))
+    const text = (await extractPdfText(bytes)).replace(/\s+/g, " ")
+    expect(text).not.toContain("22:47:30")
+    expect(text).toContain("Nov 24, 2026, 11:47 PM")
+    expect(text).toContain("Dec 24, 2026")
+    expect(text).toContain("€1,234.50")
+  })
+})
+
 describe("measures in dependency order (step-3 review MED 7)", () => {
   const measures = [
     { label: "Margin %", expr: "margin / revenue * 100" },

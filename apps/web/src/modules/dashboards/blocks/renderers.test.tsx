@@ -102,6 +102,27 @@ describe("TableBlock", () => {
     expect(first.textContent).toContain("Nov 1, 2026")
   })
 
+  it("reads a timestamp column as a date and a time, never the raw text", () => {
+    const issued = {
+      kind: "table" as const,
+      columns: [
+        { field: "number", label: "Number" },
+        { field: "issued", label: "Issued" },
+        { field: "due", label: "Due" },
+      ],
+      rows: [{ number: "INV-0042", issued: "2026-11-24 22:47:30.548+00", due: "2026-12-24" }],
+    }
+    render(() => <TableBlock data={issued} locale="en" timeZone="Europe/Paris" />)
+    const row = (screen.getByTestId("block-table-row-0").textContent ?? "").replace(
+      /[\u00a0\u202f]/g,
+      " ",
+    )
+    expect(row).not.toContain("22:47:30")
+    expect(row).toContain("Nov 24, 2026, 11:47 PM")
+    expect(row).toContain("Dec 24, 2026")
+    expect(row).toContain("INV-0042")
+  })
+
   it("shows the empty state for no rows", () => {
     render(() => <TableBlock data={{ ...data, rows: [] }} locale="en" />)
     expect(screen.getByTestId("block-empty").textContent).toBe("No data for this block yet")

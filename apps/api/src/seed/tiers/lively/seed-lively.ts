@@ -36,6 +36,7 @@ import {
   seedAttentionEvents,
   seedNotificationDeliveries,
 } from "~/seed/factories/attention/events"
+import { seedDashboards } from "~/seed/factories/dashboards/dashboards"
 import { orgSlugOf } from "~/seed/factories/org/org"
 import { actorFor } from "~/seed/factories/people/actors"
 import { contactIdByEmail } from "~/seed/factories/people/contacts"
@@ -53,6 +54,7 @@ import { replaceSeededDemoOrg } from "../demo/replace-demo-org"
 import { type SeedDemoWorldResult, seedDemoWorld } from "../demo/seed-demo"
 import { BUGS_INBOX, SALES_INBOX, SUPPORT_INBOX, TICKET_CATEGORIES } from "../demo/support-specs"
 import { type ActivityPlan, type PlanInput, planActivity } from "./activity-plan"
+import { LIVELY_DASHBOARD_SPEC, LIVELY_DASHBOARD_TITLE } from "./dashboard-specs"
 import { LIVELY_LABEL_GROUPS, LIVELY_TASK_LABELS } from "./label-specs"
 
 /**
@@ -109,6 +111,8 @@ export interface LivelyActivity {
   notificationDeliveries: string[]
   /** Demo tasks holding a task label (the board's Labels filter has groups to offer). */
   labelledTasks: string[]
+  /** The founder's "Sales and support" dashboard, shared with the org (none without commerce). */
+  dashboards: string[]
 }
 
 export interface SeedLivelyResult {
@@ -653,6 +657,20 @@ async function seedLivelyActivity(
       })
     : { labelIds: [], labelledTaskIds: [] }
 
+  // ── Dashboard: the founder's sales and support figures, shared with the org.
+  // It reads invoicing and the carrier's queue, so it needs the commerce layer.
+  const dashboardIds =
+    labelAdmin && world.commerce
+      ? await seedDashboards(ctx, labelAdmin, [
+          {
+            key: "lively:sales-and-support",
+            title: LIVELY_DASHBOARD_TITLE,
+            visibility: "org",
+            spec: LIVELY_DASHBOARD_SPEC,
+          },
+        ])
+      : []
+
   // ── Read state: every room read but each person's newest few ────────────
   // The founder runs the org: every pending approval notifies her too. (She
   // is not seated in the others' chats with their agents: those are theirs.)
@@ -673,6 +691,7 @@ async function seedLivelyActivity(
     attentionEvents: attentionIds,
     notificationDeliveries: deliveryIds,
     labelledTasks: labels.labelledTaskIds,
+    dashboards: dashboardIds,
   }
   ctx.log(
     `lively: ${Object.entries(activity)

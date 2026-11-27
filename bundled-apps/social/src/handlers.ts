@@ -25,6 +25,7 @@ import {
 import {
   addMonitorTerm,
   correctTriage,
+  deleteDmConversation,
   dismissFinding,
   removeMonitorTerm,
   setTriage,
@@ -91,6 +92,10 @@ export const dismissFindingHandler = (
   params: Parameters<typeof dismissFinding>[1],
   ctx: SocialToolCtx,
 ) => dismissFinding(ctx, params)
+export const dmDeleteConversationHandler = (
+  params: Parameters<typeof deleteDmConversation>[1],
+  ctx: SocialToolCtx,
+) => deleteDmConversation(ctx, params)
 export const watchObjectHandler = (params: Parameters<typeof watchObject>[1], ctx: SocialToolCtx) =>
   watchObject(ctx, params)
 export const unwatchObjectHandler = (
@@ -497,6 +502,7 @@ async function syncOneDmAccount(ctx: SocialToolCtx, s: DmSyncRow): Promise<void>
         participant_handle?: string | null
         participant_external_id?: string | null
         participant_display_name?: string | null
+        metadata?: unknown
       } | null
       // An unchanged thread is listed with no messages fetched, so the adapter
       // knows nothing new about it: a sync must never move a stored value back
@@ -517,7 +523,9 @@ async function syncOneDmAccount(ctx: SocialToolCtx, s: DmSyncRow): Promise<void>
         // send_dm can resolve the owning Page's access token. The DB column
         // already exists (schema `metadata: json default {}`) and is persisted
         // on both the insert and update path since both share this `row`.
-        metadata: c.metadata ?? {},
+        // Merged over what the row already holds: a conversation deleted from the
+        // inbox keeps its cut-off (`historyClearedAt`, internal.ts) across syncs.
+        metadata: { ...metadataObject(prior?.metadata), ...(c.metadata ?? {}) },
       }
       if (prior) {
         await ctx.db.update("dm_conversation", prior.id, row)

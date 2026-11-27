@@ -141,9 +141,63 @@ services:
       timeout: 5s
       retries: 5
 
-  meilisearch:
+  # One-shot steps that carry a search database written by Meilisearch 1.10
+  # over to the version below, before it starts (deploy/meilisearch/upgrade.sh):
+  # 1.58 cannot open a 1.10 database, and its in-place upgrade (MEILI_UPGRADE_DB)
+  # starts at 1.12. `search-upgrade-dump` dumps a 1.10 database with 1.10 and
+  # keeps it as data.ms.v1.10; `search-upgrade-import` imports the dump with the
+  # new version. Both do nothing on a fresh or already upgraded volume.
+  search-upgrade-dump:
     image: getmeili/meilisearch:v1.10@sha256:9d1b9b02fe6c68f60b54ce40092d8078f051b9341c400c90f907607636b7c9c1
+    entrypoint: ["/bin/sh", "/upgrade/upgrade.sh", "dump"]
+    environment:
+      MEILI_MASTER_KEY: ${MEILISEARCH_MASTER_KEY:?MEILISEARCH_MASTER_KEY required}
+      MEILI_ENV: production
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_MAX_INDEXING_MEMORY: ${MEILI_MAX_INDEXING_MEMORY:-512Mb}
+    volumes:
+      - meili_data:/meili_data
+      - ./meilisearch:/upgrade:ro
+    network_mode: none
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    mem_limit: 1500m
+    cpus: 1.0
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  search-upgrade-import:
+    image: getmeili/meilisearch:v1.58.0@sha256:cee0d2e31191594ff8e1651eb144aabd95b389a0bc3532327ecfb9ed91dffe7e
+    entrypoint: ["/bin/sh", "/upgrade/upgrade.sh", "import"]
+    environment:
+      MEILI_MASTER_KEY: ${MEILISEARCH_MASTER_KEY:?MEILISEARCH_MASTER_KEY required}
+      MEILI_ENV: production
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_MAX_INDEXING_MEMORY: ${MEILI_MAX_INDEXING_MEMORY:-512Mb}
+    volumes:
+      - meili_data:/meili_data
+      - ./meilisearch:/upgrade:ro
+    network_mode: none
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    mem_limit: 1500m
+    cpus: 1.0
+    depends_on:
+      search-upgrade-dump: { condition: service_completed_successfully }
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.58.0@sha256:cee0d2e31191594ff8e1651eb144aabd95b389a0bc3532327ecfb9ed91dffe7e
     restart: unless-stopped
+    depends_on:
+      search-upgrade-import: { condition: service_completed_successfully }
     logging:
       driver: "json-file"
       options:
@@ -160,6 +214,10 @@ services:
       # outgrows the container, gets OOM-killed, and crash-loops re-running the
       # same batch at boot. Keep it well under mem_limit.
       MEILI_MAX_INDEXING_MEMORY: ${MEILI_MAX_INDEXING_MEMORY:-512Mb}
+      # A database from 1.12 or later is upgraded in place on the first start of
+      # a newer image (an `upgradeDatabase` task; take a backup first, see
+      # docs/self-hosting/docker.md). Without it a newer image refuses to start.
+      MEILI_UPGRADE_DB: "true"
     volumes:
       - meili_data:/meili_data
     networks: [internal]

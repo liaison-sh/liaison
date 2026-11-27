@@ -34,7 +34,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { Decrypter, generateX25519Identity, identityToRecipient } from "age-encryption"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { runOrgDeleteCli } from "~/cli/org-delete"
 import { sql } from "~/db"
 import { closeAllQueues, getJobQueue, JobsTestAccess } from "~/infra/jobs/jobs"
@@ -86,7 +86,7 @@ const MANIFESTS: LegalRetentionManifest[] = [
   },
 ]
 
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

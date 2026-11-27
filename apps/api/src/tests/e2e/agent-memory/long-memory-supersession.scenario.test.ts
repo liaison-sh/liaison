@@ -22,7 +22,7 @@
 // memory and these cases fail. See helpers/long-memory.ts.
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { sql } from "~/db"
 import { withRlsContext } from "~/db/rls"
 import * as jobsModule from "~/infra/jobs/jobs"
@@ -54,7 +54,7 @@ import {
 const ORIG_KEY = process.env.LIAISON_ANTHROPIC_API_KEY
 const spies: Array<{ mockRestore: () => void }> = []
 
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

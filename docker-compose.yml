@@ -44,15 +44,21 @@ services:
     mem_limit: 256m
     ports: ["127.0.0.1:6379:6379"]
   meilisearch:
-    image: getmeili/meilisearch:v1.11
+    image: getmeili/meilisearch:v1.58.0@sha256:cee0d2e31191594ff8e1651eb144aabd95b389a0bc3532327ecfb9ed91dffe7e
     mem_limit: 768m
     environment:
       MEILI_MASTER_KEY: dev-master-key
       MEILI_ENV: development
       MEILI_NO_ANALYTICS: "true"
+      # Later image bumps upgrade the index in place.
+      MEILI_UPGRADE_DB: "true"
     ports: ["127.0.0.1:7700:7700"]
     volumes:
-      - meili-data:/meili_data
+      # A new volume name: 1.58 cannot open the 1.11 index the old `meili-data`
+      # volume holds (no in-place upgrade before 1.12), and dev and test
+      # indexes are rebuilt from the database anyway. Remove the old one with
+      # `docker volume rm liaison_meili-data`.
+      - meili-data-v1-58:/meili_data
   # Dev app credentials match the OBJECT_STORAGE_ACCESS_KEY/SECRET_KEY default
   # in apps/api/src/lib/env.ts, so existing developer .env files keep working
   # with no edits. Identities (admin + the scoped app key) are rendered into
@@ -132,5 +138,5 @@ services:
         echo "objectstore-init: bucket $$OBJECT_STORAGE_BUCKET ready"
 
 volumes:
-  meili-data:
+  meili-data-v1-58:
   objectstore-data:

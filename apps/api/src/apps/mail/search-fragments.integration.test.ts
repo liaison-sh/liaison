@@ -14,7 +14,7 @@
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import {
   MailSearchEnrichmentTestAccess,
   registerMailSearchEnrichment,
@@ -37,7 +37,7 @@ import { createTestOrg } from "~/tests/helpers/org"
 const MAIL = drizzleSql.raw(`"${schemaRef("app_mail")}"`)
 const READ = "mail:conversations:read"
 const INDEX = `test_mailfrag_${crypto.randomUUID().slice(0, 8)}`
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

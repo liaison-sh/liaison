@@ -23,7 +23,7 @@ import type { RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { agentMemory } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
-import { effectiveIndexName, ensureMeiliVectorStore, getMeili } from "~/infra/search/client"
+import { effectiveIndexName, getMeili } from "~/infra/search/client"
 import { rootLogger } from "~/lib/logger"
 import { estimateTokens } from "~/modules/agent/context/compaction"
 import { MMR_LAMBDA, mmr } from "~/modules/agent/memory/rrf"
@@ -537,7 +537,6 @@ async function keywordCandidates(
   window: TimeWindow | null,
 ): Promise<Candidate[]> {
   try {
-    await ensureMeiliVectorStore()
     const result = await getMeili()
       .index(effectiveIndexName())
       .search(params.query, {
@@ -592,7 +591,6 @@ async function vectorCandidates(
     if (!Array.isArray(queryVector) || queryVector.length !== embedder.dimensions) {
       return { candidates: [], queryVector: null }
     }
-    await ensureMeiliVectorStore()
     const result = await getMeili()
       .index(effectiveIndexName())
       .search(null, {

@@ -14,7 +14,7 @@
 //   - one rebuild at a time.
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { sql } from "~/db"
 import * as jobsModule from "~/infra/jobs/jobs"
 import * as searchClientModule from "~/infra/search/client"
@@ -36,7 +36,7 @@ const tag = ORG.slice(0, 8)
 const LIVE = `test_rebuild_${tag}`
 const DIMS = 4
 
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

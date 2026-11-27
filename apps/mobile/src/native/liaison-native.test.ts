@@ -15,6 +15,7 @@ function fakePlugin(overrides: Partial<LiaisonNativePlugin> = {}): LiaisonNative
     apsEnvironment: async () => ({ environment: "sandbox" }),
     authenticate: async () => ({ url: "liaison://oauth-complete?code=abc" }),
     setThreadOnScreen: async () => {},
+    setBackdrop: async () => {},
     addListener: () => undefined,
     ...overrides,
   }
@@ -150,6 +151,26 @@ describe("the foreground push presentation (ForegroundPushPresenter.swift)", () 
     native.onPushPresentation(() => {})
     expect(sent).toEqual(["t1", null])
     expect(events).toEqual(["pushPresentation"])
+  })
+
+  it("forwards the app's resolved theme to the native backdrop on iOS only", () => {
+    const sent: string[] = []
+    const plugin = fakePlugin({
+      setBackdrop: async ({ theme }) => {
+        sent.push(theme)
+      },
+    })
+    createLiaisonNative({ available: () => true, plugin }).setBackdrop("light")
+    createLiaisonNative({ available: () => false, plugin }).setBackdrop("dark")
+    expect(sent).toEqual(["light"])
+  })
+
+  it("declares setBackdrop on the Swift plugin, painted by the bridge controller", () => {
+    const ios = path.join(import.meta.dir, "..", "..", "ios", "App", "App")
+    const plugin = readFileSync(path.join(ios, "LiaisonNativePlugin.swift"), "utf8")
+    const controller = readFileSync(path.join(ios, "MainViewController.swift"), "utf8")
+    expect(plugin).toContain('CAPPluginMethod(name: "setBackdrop"')
+    expect(controller).toContain("func paintBehindThePage(theme: String? = nil)")
   })
 
   it("does nothing where the plugin is not registered", () => {

@@ -15,6 +15,7 @@ import {
   Badge,
   type BadgeTone,
   Button,
+  ConfirmDialog,
   cx,
   EmptyState,
   PageHeader,
@@ -28,10 +29,15 @@ import {
  *  misleading "(no text)" wording (which read as a bug, not a platform
  *  fact). A genuinely absent body (null/undefined — shouldn't happen for a
  *  landed message, but defensive) keeps the neutral "(no text)" wording. */
-export function messageBubbleText(body: string | null | undefined): {
+export function messageBubbleText(
+  body: string | null | undefined,
+  unsent = false,
+): {
   text: string
   muted: boolean
 } {
+  // The sender unsent it: its text was cleared and is never shown again.
+  if (unsent) return { text: "Message unsent", muted: true }
   if (body == null) return { text: "(no text)", muted: true }
   if (body.length === 0) return { text: "[attachment]", muted: true }
   return { text: body, muted: false }
@@ -54,6 +60,14 @@ export interface MessageRow {
   direction: "inbound" | "outbound"
   body?: string | null
   occurred_at?: string | null
+  /** `metadata.unsent`: the sender unsent the message (ingest.ts). */
+  metadata?: { unsent?: boolean } | null
+}
+
+/** The delete confirm's text: the conversation goes from Liaison only. */
+export function deleteConfirmText(platform: ConversationRow["platform"] | undefined): string {
+  const name = platform === "instagram" ? "Instagram" : "Facebook"
+  return `It is removed from Liaison's inbox only, not deleted on ${name}. If the person writes again, it comes back with the new messages.`
 }
 
 /** dm_get's `{ conversation, messages }` envelope (reads.ts). The conversation
@@ -133,15 +147,37 @@ async function loadConversationDetail(conversationId: string): Promise<DmGetResu
 // list was last fetched. The compose box sends with send_dm as the person: their
 // own scope decides, so it sends at once unless an org policy parks it, which the
 // note then says ("Waiting for approval"), never "sent".
-export const ConversationDetailPanel: Component<{ conversation: ConversationRow | null }> = (
-  props,
-) => {
+export const ConversationDetailPanel: Component<{
+  conversation: ConversationRow | null
+  /** Called once the conversation was deleted from the inbox. */
+  onDeleted?: (conversationId: string) => void
+}> = (props) => {
   // The source function re-runs whenever `props.conversation?.id` changes,
   // which re-triggers the dm_get fetch — no extra effect needed.
   const [detail, { refetch }] = createResource(() => props.conversation?.id, loadConversationDetail)
   const [reply, setReply] = createSignal("")
   const [busy, setBusy] = createSignal(false)
   const [note, setNote] = createSignal<{ kind: "ok" | "err"; text: string } | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = createSignal(false)
+  const [deleting, setDeleting] = createSignal(false)
+  const [deleteError, setDeleteError] = createSignal<string | null>(null)
+
+  const remove = async () => {
+    const conversationId = props.conversation?.id
+    if (!conversationId || deleting()) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await app.invokeTool("dm_delete_conversation", { conversation_id: conversationId })
+      setConfirmingDelete(false)
+      props.onDeleted?.(conversationId)
+    } catch (e) {
+      setConfirmingDelete(false)
+      setDeleteError(e instanceof Error ? e.message : "Deleting failed")
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const fresh = createMemo<ConversationRow | null>(
     () => detail()?.conversation ?? props.conversation ?? null,
@@ -182,7 +218,36 @@ export const ConversationDetailPanel: Component<{ conversation: ConversationRow 
           <Badge tone={win().tone} testid="social-dm-window-pill">
             {win().label}
           </Badge>
+          <div class="ml-auto">
+            <Button
+              variant="ghost"
+              testid="social-dm-delete"
+              disabled={deleting()}
+              onClick={() => setConfirmingDelete(true)}
+            >
+              Delete
+            </Button>
+          </div>
         </div>
+        <Show when={deleteError()}>
+          {(err) => (
+            <p data-testid="social-dm-delete-error" class="text-[12px] text-error">
+              {err()}
+            </p>
+          )}
+        </Show>
+        <ConfirmDialog
+          open={confirmingDelete()}
+          title="Delete this conversation?"
+          body={deleteConfirmText(fresh()?.platform)}
+          confirmLabel="Delete"
+          danger
+          busy={deleting()}
+          onConfirm={() => void remove()}
+          onCancel={() => setConfirmingDelete(false)}
+          testid="social-dm-delete-dialog"
+          cancelTestid="social-dm-delete-cancel"
+        />
 
         <div
           data-testid="social-dm-thread"
@@ -194,10 +259,11 @@ export const ConversationDetailPanel: Component<{ conversation: ConversationRow 
           >
             <For each={messages()}>
               {(m) => {
-                const bubble = messageBubbleText(m.body)
+                const bubble = messageBubbleText(m.body, m.metadata?.unsent === true)
                 return (
                   <div
                     data-testid={`social-dm-message-${m.id}`}
+                    data-unsent={m.metadata?.unsent === true ? "true" : undefined}
                     class={cx(
                       "flex flex-col gap-0.5",
                       m.direction === "outbound" ? "items-end" : "items-start",
@@ -306,7 +372,7 @@ async function loadConversations(): Promise<DmListView> {
 }
 
 export const Messages: Component = () => {
-  const [rows] = app.createResource(loadConversations)
+  const [rows, { mutate, refetch }] = app.createResource(loadConversations)
   const [selected, setSelected] = createSignal<string | null>(null)
   const visible = createMemo<ConversationRow[]>(() => rows()?.conversations ?? [])
   const notices = createMemo<DmListNotice[]>(() => rows()?.notices ?? [])
@@ -372,7 +438,20 @@ export const Messages: Component = () => {
           </Show>
         </div>
         <div class="min-w-0 flex-1 overflow-y-auto">
-          <ConversationDetailPanel conversation={selectedRow()} />
+          <ConversationDetailPanel
+            conversation={selectedRow()}
+            onDeleted={(id) => {
+              // Gone from the list at once, then the list is read again.
+              const current = rows()
+              if (current)
+                mutate({
+                  ...current,
+                  conversations: current.conversations.filter((r) => r.id !== id),
+                })
+              setSelected(null)
+              void refetch()
+            }}
+          />
         </div>
       </div>
     </div>

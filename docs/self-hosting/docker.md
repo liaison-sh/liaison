@@ -215,6 +215,27 @@ Outside Docker, start the embedding process with `bun run embedder` from `apps/a
 | `LIAISON_EMBEDDER_SOCKET` | `/var/lib/liaison/run/embedder.sock` (host `./data/run`) | The embedding process's Unix socket. Outside Docker, unset: `liaison/embedder.sock` under `XDG_RUNTIME_DIR`, else under the temporary folder |
 | `LIAISON_EMBEDDER_DEADLINE_MS` | `150` | How long a search waits for the embedding process before it ranks by words alone |
 
+### Search vectors
+
+Memory search finds a message by its meaning as well as its words. Each message, conversation window, brief line and episode gets a vector from the organization's Google key (or OpenRouter on a managed instance), stored in MeiliSearch. `EMBEDDING_DIMENSIONS` sets their width for the whole server: `768` (the default), `1536` or `3072`. A 768-wide vector takes a quarter of the memory and disk of a 3072-wide one, for nearly the same results. Liaison asks the model for that width, then cuts and normalises what comes back, so every vector has it.
+
+An organization whose embedding model cannot reach the width (`text-embedding-004` stops at 768) searches by words only.
+
+Change the width on a running server:
+
+1. In `deploy/.env`, set `EMBEDDING_DIMENSIONS`.
+2. Run `docker compose up -d`.
+
+What happens next:
+
+- The leader process sees the index built at the old width and rebuilds it at the new one, beside the live index, then swaps it in. Search keeps answering throughout.
+- Until the swap, new documents are written without a vector. After it, the old vectors are gone (they have the wrong width), so matches by meaning are missing for a while. Matches by words are never affected.
+- The documents that had a vector, and those written during the change, then get a new one in the background, 50 per step with a one-second pause between steps. A restart resumes where it stopped. Documents that never had a vector, such as a history imported by words only, are not embedded.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `EMBEDDING_DIMENSIONS` | `768` | Width of the memory search vectors: `768`, `1536` or `3072` |
+
 ### Model keys
 
 These are platform fallbacks for organizations that have not added their own key. Leave them all empty if every organization brings its own.

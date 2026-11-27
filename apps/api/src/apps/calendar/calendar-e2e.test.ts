@@ -24,7 +24,7 @@ let orgAId: string
 let orgAUserId: string
 let orgAOtherUserId: string
 let orgBId: string
-let orgBUserId: string
+let _orgBUserId: string
 
 async function registerCalendarSchemaFor(orgId: string) {
   const { calendarAppManifest } = await import("~/apps/calendar/manifest-descriptor")
@@ -74,7 +74,7 @@ beforeAll(async () => {
       INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
       VALUES (gen_random_uuid(), ${orgBId}::uuid, ${`owner-${slug}-b@x.test`}, 'Owner B', 'active', 'h', 1, 1) RETURNING id
     `)) as any
-    orgBUserId = (ubOrg.rows ?? ubOrg)[0].id
+    _orgBUserId = (ubOrg.rows ?? ubOrg)[0].id
   })
   await registerCalendarSchemaFor(orgAId)
   await registerCalendarSchemaFor(orgBId)

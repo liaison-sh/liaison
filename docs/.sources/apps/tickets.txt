@@ -199,3 +199,4 @@ History, old mail and our own first mail raise nothing -> apps/api/src/apps/tick
 The person who opens the ticket is not told -> apps/api/src/apps/tickets/app.manifest.json:3245
 The item leaves the feed once someone replied, snoozed or closed -> apps/api/src/apps/tickets/app.manifest.json:3252
 CLI flag --notify-new-ticket -> apps/api/src/cli/tickets/inbox.ts:26
+A CSAT survey is in the ticket's language, else the org's -> apps/api/src/apps/tickets/admin.ts:1311

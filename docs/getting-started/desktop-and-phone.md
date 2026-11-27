@@ -61,7 +61,7 @@ The phone app is a shell around the same web app, for iPhone and Android.
 1. Open the app. At **Your workspace**, type your Liaison Cloud workspace name and tap **Continue**. On your own server, tap **Use a self-hosted server**, then at **Enter your Liaison org URL:** type your address and tap **Connect**. **Forgot it? Email me my workspaces** opens a page in your browser where you enter your email; it sends you the list of your workspaces.
 2. Sign in with your email and the 6-digit code, a password, or a sign-in provider your organization set up.
 
-If your server cannot be reached when you open the app (no network, or the server is restarting), the app opens signed in and says it is offline, then reconnects on its own. It asks for the workspace again only when the server answers that nothing is at that address. The first screen follows the phone's dark mode, and scrolls when the keyboard covers its links.
+If your server cannot be reached when you open the app (no network, or the server is restarting), the app opens signed in and shows **Can't reach your workspace** with **Try again**, never the sign-in form; it opens your workspace on its own as soon as the server answers. The same screen offers your other saved servers. It asks for the workspace again only when the server answers that nothing is at that address. The first screen follows the phone's dark mode, and scrolls when the keyboard covers its links.
 
 The phone app does not create accounts. An admin invites you first (see [Invite and manage users](../admin/users.md)).
 
@@ -71,7 +71,7 @@ The iPhone and iPad app follows the text size set in **Settings** > **Accessibil
 
 The phone app asks for the microphone only while you dictate a message, and for permission to send notifications.
 
-Turned on its side, a phone keeps the phone layout. On a tablet held upright, **Settings** shows its list of sections beside the page. In a resized iPad window, the top of the app stays clear of the window controls.
+Turned on its side, a phone keeps the phone layout. On a tablet held upright, **Settings** shows its list of sections beside the page. In a resized or zoomed iPad window, the top of the app stays clear of the window controls, and the band above it takes the app's light or dark background.
 
 A notification about a comment on a task is titled with the task. Tapping it opens the task with the comment brought into view.
 

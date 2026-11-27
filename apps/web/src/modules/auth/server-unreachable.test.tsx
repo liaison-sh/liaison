@@ -250,6 +250,54 @@ describe("wrapped shell, server unreachable", () => {
     expect(screen.queryByText("Protected content")).not.toBeInTheDocument()
   })
 
+  it("a signed-in phone waits on its own screen, never on a sign-in form, and opens when the server answers", async () => {
+    // iOS re-walk N5: a cold launch with no network opened on the sign-in
+    // form with two red lines, which read as signed out. The phone app is a
+    // shell with the native bridge and no address field to offer.
+    window.localStorage.setItem("liaison:session", "1")
+    stubShell()
+    vi.stubGlobal("__LIAISON_NATIVE__", {})
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"))
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { Route, Router } = await import("@solidjs/router")
+    const { ProtectedRoute } = await import("~/modules/auth/ProtectedRoute")
+    render(() => (
+      <Router>
+        <Route path="/login" component={() => <div>Login page</div>} />
+        <Route
+          path="*"
+          component={() => (
+            <ProtectedRoute>
+              <div>Protected content</div>
+            </ProtectedRoute>
+          )}
+        />
+      </Router>
+    ))
+
+    await vi.waitFor(
+      () => expect(screen.getByText("Can't reach your workspace")).toBeInTheDocument(),
+      { timeout: 5000 },
+    )
+    expect(
+      screen.getByText(
+        "Liaison at 127.0.0.1:18080 is not answering. You are still signed in: it opens as soon as the server answers.",
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument()
+    expect(screen.queryByText("Login page")).not.toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+
+    // The server answers: Retry signs the session in, no sign-in on the way.
+    fetchMock.mockResolvedValue(sessionResponse())
+    screen.getByRole("button", { name: "Try again" }).click()
+    await vi.waitFor(() => expect(screen.getByText("Protected content")).toBeInTheDocument(), {
+      timeout: 5000,
+    })
+    expect(screen.queryByText("Login page")).not.toBeInTheDocument()
+  })
+
   it("the login card names the server, offers the connect field and keeps the email form", async () => {
     window.localStorage.setItem("liaison:session", "1")
     stubShell()

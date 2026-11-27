@@ -124,6 +124,21 @@ describe("onConnectionEstablished (B10)", () => {
     )
     expect(await db.count("sync_state")).toBe(2)
     expect(await db.count("sync_state", { where: { source_type: "dm" } })).toBe(0)
+    // No DMs on YouTube: only the discovery kick is queued.
+    expect(ctx.__jobs.filter((j) => j.name === "dm-sync").length).toBe(0)
+    expect(ctx.__jobs.filter((j) => j.name === "discovery-sync").length).toBe(1)
+  })
+
+  test("a connection that carries DMs queues a deduplicated dm-sync next to discovery", async () => {
+    const db = createMockDb()
+    const ctx = makeCtx(db)
+    await onConnectionEstablished(instagramConnect, ctx)
+    const discovery = ctx.__jobs.filter((j) => j.name === "discovery-sync")
+    const dm = ctx.__jobs.filter((j) => j.name === "dm-sync")
+    expect(discovery.length).toBe(1)
+    expect(dm.length).toBe(1)
+    expect(dm[0]?.opts?.jobId).toBe("dm-sync-on-connect")
+    expect(dm[0]?.opts?.delay).toBeGreaterThan(0)
   })
 })
 

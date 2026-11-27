@@ -5,8 +5,8 @@
 //
 // On connect: FIRST-CONNECT APP-LEVEL SETUP ONLY — seed a `sync_state` row per
 // [platform, account_external_id, source_type] and enqueue an initial
-// `discovery-sync` so the first cycle runs immediately rather than waiting up to
-// 15 min. We do NOT call `registerScheduledJob` — the kernel already fans the
+// `discovery-sync` (and `dm-sync` for a connection that carries DMs) so the
+// first cycle runs immediately rather than waiting up to 15 (10) min. We do NOT call `registerScheduledJob` — the kernel already fans the
 // manifest-declared `jobs` out per connected org; a host-only scheduler call
 // from a sandboxed app is both impossible and a purity violation.
 //
@@ -42,6 +42,8 @@ interface ConnectionEvent {
 /** The discovery run a connect asks for: deduplicated while it waits or runs. */
 const DISCOVERY_KICK_JOB_ID = "discovery-sync-on-connect"
 const DISCOVERY_KICK_DELAY_MS = 5_000
+/** The DM sync a connect asks for, so DMs land without waiting for the next tick. */
+const DM_KICK_JOB_ID = "dm-sync-on-connect"
 
 const CONNECTION_SYNC_PLAN: Record<
   string,
@@ -241,6 +243,11 @@ export async function onConnectionEstablished(
     {},
     { delay: DISCOVERY_KICK_DELAY_MS, jobId: DISCOVERY_KICK_JOB_ID },
   )
+  // Same for direct messages: the DM sync runs every 10 min, so a connection
+  // that carries DMs asks for one run now, deduplicated the same way.
+  if (plan.some((p) => p.sourceTypes.includes("dm"))) {
+    await ctx.enqueueJob?.("dm-sync", {}, { delay: DISCOVERY_KICK_DELAY_MS, jobId: DM_KICK_JOB_ID })
+  }
 }
 
 export async function onConnectionDisconnected(

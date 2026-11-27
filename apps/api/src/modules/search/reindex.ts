@@ -509,6 +509,47 @@ async function replayAfterSwap(indexName: string): Promise<{ replayed: number; c
   }
 }
 
+/**
+ * The width change (EMBEDDING_DIMENSIONS): the live vectors are the wrong
+ * length for the shadow, so none is carried. The documents that carry one are
+ * noted instead (reembed-queue.ts), by the rows they come from, and the
+ * re-embed job gives them a vector at the new width once the shadow is live.
+ * Reads ids and kinds only, never the vectors themselves, and touches no
+ * database. Returns how many were noted.
+ */
+async function noteVectoredForReembed(live: Index, liveHasFlag: boolean): Promise<number> {
+  const { noteForReembed } = await import("~/modules/search/reembed-queue")
+  const filter = liveHasFlag
+    ? "has_vector = true"
+    : `app = "kernel" AND entity_type IN [${TRANSCRIPT_TYPES.map((t) => `"${t}"`).join(", ")}]`
+  let noted = 0
+  for (let offset = 0; ; offset += VECTOR_COPY_PAGE) {
+    const page = (await live.getDocuments({
+      filter,
+      fields: ["id", "org_id", "entity_type", "entity_id"],
+      limit: VECTOR_COPY_PAGE,
+      offset,
+    } as never)) as { results?: Doc[] }
+    const results = page.results ?? []
+    const byOrg = new Map<string, Doc[]>()
+    for (const doc of results) {
+      if (typeof doc.org_id !== "string") continue
+      const list = byOrg.get(doc.org_id) ?? []
+      list.push(doc)
+      byOrg.set(doc.org_id, list)
+    }
+    for (const [orgId, docs] of byOrg) noted += await noteForReembed(orgId, docs)
+    if (results.length < VECTOR_COPY_PAGE) break
+  }
+  return noted
+}
+
+/** The width a settings object's memory embedder declares, else null. */
+function memoryEmbedderWidth(embedders: Record<string, unknown> | null | undefined): number | null {
+  const e = embedders?.[MEMORY_EMBEDDER_NAME] as { dimensions?: unknown } | undefined
+  return typeof e?.dimensions === "number" ? e.dimensions : null
+}
+
 /** Copy vectors from `live` into `shadow` for the transcript ids this build wrote. */
 async function carryVectors(
   live: Index,
@@ -562,6 +603,8 @@ export interface RebuildResult {
   orgs: number
   docs: number
   vectorsCarried: number
+  /** Documents noted for a vector at the new width (the width changed), else 0. */
+  vectorsToReembed?: number
   replayed: number
   swapped: boolean
   /** Set when nothing ran because another rebuild holds the lock. */
@@ -689,14 +732,17 @@ export async function runReindex(): Promise<RebuildResult & { pruned: number }> 
     // Only an index with the memory embedder can hold vectors, and on Meili
     // 1.10 reading them from one without it is refused (the vector store is an
     // experimental feature a keyword-only deployment never turned on).
+    // A vector is carried only into an embedder of its own width: Meili fails
+    // the whole task for a vector of another length. Across a width change the
+    // vectored documents are noted for re-embedding instead.
+    const liveWidth = liveExists ? memoryEmbedderWidth(liveSettings.embedders) : null
+    const shadowWidth = memoryEmbedderWidth(embedders)
+    const liveHasFlag = (liveSettings.filterableAttributes ?? []).includes("has_vector")
+    const widthChanged = liveWidth !== null && shadowWidth !== null && liveWidth !== shadowWidth
+    const vectorsToReembed = widthChanged ? await noteVectoredForReembed(live, liveHasFlag) : 0
     const vectorsCarried =
-      liveExists && liveSettings.embedders?.[MEMORY_EMBEDDER_NAME]
-        ? await carryVectors(
-            live,
-            shadow,
-            transcriptIds,
-            (liveSettings.filterableAttributes ?? []).includes("has_vector"),
-          )
+      liveWidth !== null && !widthChanged
+        ? await carryVectors(live, shadow, transcriptIds, liveHasFlag)
         : 0
     transcriptIds.clear()
 
@@ -734,8 +780,24 @@ export async function runReindex(): Promise<RebuildResult & { pruned: number }> 
       log.warn({ err }, "Search rebuild: could not carry runtime settings over; next boot will")
     }
     await redis.del(EMBEDDER_REQUEST_KEY).catch(() => undefined)
+    // The new width is live: start the re-embed of what was noted. Best
+    // effort; the leader's boot check resumes any org still waiting.
+    if (widthChanged) {
+      const { resumeReembed } = await import("~/infra/jobs/embedding-backfill")
+      await resumeReembed().catch((err: unknown) =>
+        log.warn({ err }, "Search rebuild: could not start the re-embed; the next leader will"),
+      )
+    }
 
-    const result = { orgs: orgIds.length, docs, pruned: 0, vectorsCarried, replayed, swapped: true }
+    const result = {
+      orgs: orgIds.length,
+      docs,
+      pruned: 0,
+      vectorsCarried,
+      vectorsToReembed,
+      replayed,
+      swapped: true,
+    }
     log.info(
       { ...result, ms: Date.now() - started, fingerprint },
       "Search index rebuilt and swapped",

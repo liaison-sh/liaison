@@ -151,6 +151,11 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   stream_exists: 409,
   shop_stream_automatic: 409,
   issuer_from_shop_mapping: 409,
+  // The catch-up: a window that is not one, the shop's stream (caught up by its own order
+  // updates), a stream turned off.
+  invalid_window: 400,
+  shop_catch_up_elsewhere: 409,
+  stream_off: 409,
   card_stream_not_connected: 409,
   issuer_unknown: 503,
   // Card payments from the payments app: what waits in the queue, how to name it, the rate a

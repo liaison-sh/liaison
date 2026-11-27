@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { app } from "~/app"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { users } from "~/db/schema/kernel"
+import { userPreferences, users } from "~/db/schema/kernel"
 import type { EmailMessage, EmailProvider } from "~/infra/email"
 import {
   ConsoleEmailProvider,
@@ -93,6 +93,34 @@ describe("passwordless magic-link login", () => {
 
   afterAll(async () => {
     await releaseTestLock()
+  })
+
+  it("the sign-in code mail follows the recipient's language: their choice, else the org's", async () => {
+    const [{ org_id: orgId, id: userId }] = await sql<{ org_id: string; id: string }[]>`
+      SELECT org_id, id FROM kernel.users WHERE email = ${MAGIC_EMAIL} LIMIT 1`
+    await sql`UPDATE kernel.organizations SET default_locale = 'fr-FR' WHERE id = ${orgId}`
+    try {
+      const fr = await requestChallenge()
+      expect(fr.sent?.subject).toBe(`${fr.code} est votre code de connexion Liaison`)
+      expect(fr.sent?.html).toContain('<html lang="fr">')
+      expect(fr.sent?.text).toContain(`Votre code de vérification est ${fr.code}`)
+      expect(fr.sent?.text).toContain("Se connecter à Liaison")
+
+      // The person's own UI language wins over the org's.
+      await withPrivilegedDb(orgId, "test-magic-link-language", (tx) =>
+        tx
+          .insert(userPreferences)
+          .values({ userId, language: "en" })
+          .onConflictDoUpdate({ target: userPreferences.userId, set: { language: "en" } }),
+      )
+      await clearRedisPatterns(["magic:*", "magic-rate:*", "bruteforce:*"])
+      const en = await requestChallenge()
+      expect(en.sent?.subject).toBe(`${en.code} is your Liaison sign-in code`)
+      expect(en.sent?.html).toContain('<html lang="en">')
+    } finally {
+      await sql`UPDATE kernel.user_preferences SET language = NULL WHERE user_id = ${userId}`
+      await sql`UPDATE kernel.organizations SET default_locale = 'en-US' WHERE id = ${orgId}`
+    }
   })
 
   it("request always returns 200 + challengeId (no enumeration)", async () => {

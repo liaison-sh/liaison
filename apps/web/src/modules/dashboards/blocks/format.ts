@@ -2,7 +2,10 @@
 //
 // How a dashboard value reads, in the viewer's language. `percent` takes a
 // fraction (0.25 reads 25 %), as Intl does. A value that is not a number under
-// a number format is shown as it came: a source's own text is never coerced.
+// a number format is shown as it came: a source's own text is never coerced. A date
+// or timestamp reads through the shared rule (`@liaison/shared` date-cell), which the
+// dashboard PDF uses too.
+import { formatDateCell, parseCellTimestamp } from "@liaison/shared"
 import type { ValueFormat } from "../dashboards-client"
 
 export interface FormatOptions {
@@ -12,8 +15,6 @@ export interface FormatOptions {
   /** The org's time zone: a timestamp reads as that zone's day (a bare day stays as written). */
   timeZone?: string
 }
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ][\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)?$/
 
 function asNumber(value: unknown): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null
@@ -29,11 +30,10 @@ function asDate(value: unknown, timeZone?: string): { date: Date; timeZone?: str
     return Number.isNaN(value.getTime()) ? null : { date: value, timeZone }
   }
   if (typeof value === "number") return { date: new Date(value), timeZone }
-  if (typeof value === "string" && ISO_DATE.test(value)) {
-    const bare = value.length === 10
-    const d = new Date(bare ? `${value}T00:00:00Z` : value)
-    if (Number.isNaN(d.getTime())) return null
-    return { date: d, timeZone: bare ? "UTC" : timeZone }
+  if (typeof value === "string") {
+    const stamp = parseCellTimestamp(value)
+    if (!stamp) return null
+    return { date: stamp.date, timeZone: stamp.dayOnly || stamp.naive ? "UTC" : timeZone }
   }
   return null
 }
@@ -82,7 +82,7 @@ export function bucketLabel(value: unknown, locale: string): string | null {
 
 /** Does this x value read as a day (`2026-11-07`)? A chart's day axis is formatted as dates. */
 export function looksLikeDate(value: unknown): boolean {
-  return typeof value === "string" && ISO_DATE.test(value)
+  return typeof value === "string" && parseCellTimestamp(value) !== null
 }
 
 export function formatValue(value: unknown, opts: FormatOptions): string {
@@ -91,6 +91,9 @@ export function formatValue(value: unknown, opts: FormatOptions): string {
   if (format === "date") {
     const bucket = bucketLabel(value, locale)
     if (bucket) return bucket
+    if (typeof value === "string") {
+      return formatDateCell(value, { locale, timeZone: opts.timeZone, dateOnly: true }) ?? value
+    }
     const d = asDate(value, zone(opts.timeZone))
     return d
       ? d.date.toLocaleDateString(locale, {
@@ -100,6 +103,12 @@ export function formatValue(value: unknown, opts: FormatOptions): string {
           ...(d.timeZone ? { timeZone: d.timeZone } : {}),
         })
       : String(value)
+  }
+  // A column with no format holding a date or a timestamp: the date (and the time, unless
+  // midnight), never the source's raw text ("2026-11-24 22:47:30.548+00").
+  if (!format && typeof value === "string") {
+    const when = formatDateCell(value, { locale, timeZone: opts.timeZone })
+    if (when) return when
   }
   // A year bucket ("2026") is a label, never "2,026"; a real number stays a number.
   if (!format && typeof value === "string" && /^\d{4}$/.test(value)) return value

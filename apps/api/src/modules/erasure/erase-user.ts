@@ -10,6 +10,7 @@
  * the whole transaction back with no audit and no partial mutation.
  */
 import crypto from "node:crypto"
+import { ERASED_USER_DISPLAY_NAME } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import type { PrivilegedDb, RlsClient } from "~/db"
 import { extractRows } from "~/db"
@@ -126,7 +127,7 @@ async function ensureSentinelUser(tx: PrivilegedDb, orgId: string): Promise<stri
       VALUES (
         ${id}, ${orgId},
         ${`deleted-user-sentinel-${id}`},
-        'Deleted user',
+        ${ERASED_USER_DISPLAY_NAME},
         'deactivated'
       )
       ON CONFLICT (id) DO NOTHING
@@ -1122,11 +1123,14 @@ export async function eraseUser(
       //    match the token claims). Also clear all residual PII and re-auth
       //    material: recovery codes and TOTP are credentials that could otherwise
       //    re-authenticate the erased user, and settings/timezone/locale may
-      //    carry personal data.
+      //    carry personal data. The name becomes the neutral
+      //    ERASED_USER_DISPLAY_NAME (never the email placeholder, which every
+      //    message, note and comment the person left would then print as
+      //    their author); the email placeholder is what marks the row erased.
       await tx.execute(drizzleSql`
         UPDATE ${K}.users
         SET email = ${sentinel},
-            name = ${sentinel},
+            name = ${ERASED_USER_DISPLAY_NAME},
             password_hash = NULL,
             totp_secret = NULL,
             totp_enabled = false,

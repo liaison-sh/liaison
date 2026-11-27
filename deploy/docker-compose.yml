@@ -547,6 +547,9 @@ services:
       # here mounts (host ./data/run). No network port.
       LIAISON_EMBEDDER_SOCKET: ${LIAISON_EMBEDDER_SOCKET:-/var/lib/liaison/run/embedder.sock}
       LIAISON_EMBEDDER_DEADLINE_MS: ${LIAISON_EMBEDDER_DEADLINE_MS:-150}
+      # Width of the memory search vectors (768, 1536 or 3072; unset 768).
+      # Changing it rebuilds the search index once, then re-embeds in the background.
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-}
       LIAISON_DEMO_CODE_ATTEMPTS: ${LIAISON_DEMO_CODE_ATTEMPTS:-}
       LIAISON_DEMO_EDGE_OVERWRITES_XFF: ${LIAISON_DEMO_EDGE_OVERWRITES_XFF:-}
       LIAISON_DEMO_BOOKING_URL: ${LIAISON_DEMO_BOOKING_URL:-}

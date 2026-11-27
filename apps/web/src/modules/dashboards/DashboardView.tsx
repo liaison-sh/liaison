@@ -1081,6 +1081,7 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
               blockId={open().block.id}
               blockTitle={open().block.title}
               target={open().target}
+              timeZone={loaded()?.timeZone}
               contextKey={`${rangeKey() ?? ""}|${filterKey() ?? ""}`}
               windowNote={
                 open().target.previous && windows().compareWindow

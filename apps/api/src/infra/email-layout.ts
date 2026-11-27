@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import type { ShippedLocale } from "@liaison/shared"
 import { escapeHtml } from "~/infra/email"
+import { serverT } from "~/modules/i18n/server-i18n"
 
 /**
  * Shared, Liaison-branded HTML layout for transactional emails (password reset,
@@ -53,6 +55,11 @@ export interface BrandedEmailContent {
   brand?: string
   /** Hidden inbox-preview (preheader) text. Defaults to the first paragraph. */
   preview?: string
+  /**
+   * The recipient's language: the document's `lang` and the layout's own words
+   * (the code's lead-in). The caller words everything else in it. Default "en".
+   */
+  locale?: ShippedLocale
 }
 
 export interface RenderedEmail {
@@ -67,13 +74,15 @@ const MONO = "'SF Mono','Menlo','Consolas',monospace"
 /** Render a Liaison-branded transactional email (HTML + plain-text variants). */
 export function renderBrandedEmail(content: BrandedEmailContent): RenderedEmail {
   const brand = content.brand ?? "Liaison"
-  const codeLine = content.code ? `Your verification code is ${content.code}` : null
+  const locale = content.locale ?? "en"
+  const codeIntro = serverT(locale, "system-mail.layout.codeIntro")
+  const codeLine = content.code ? `${codeIntro} ${content.code}` : null
   const preview = content.preview ?? codeLine ?? content.paragraphs[0] ?? ""
 
   // The code: no letter-spacing, no spans between digits, so selecting or
   // detecting it yields exactly the code.
   const codeHtml = content.code
-    ? `<p class="muted" style="margin:0 0 6px 0;font-family:${SANS};font-size:13px;line-height:1.4;color:#7a786f;">Your verification code is</p>
+    ? `<p class="muted" style="margin:0 0 6px 0;font-family:${SANS};font-size:13px;line-height:1.4;color:#7a786f;">${escapeHtml(codeIntro)}</p>
         <p class="body-text" style="margin:0 0 18px 0;font-family:${MONO};font-size:30px;font-weight:600;line-height:1.2;color:#15171a;-webkit-user-select:all;user-select:all;">${escapeHtml(
           content.code,
         )}</p>`
@@ -115,7 +124,7 @@ export function renderBrandedEmail(content: BrandedEmailContent): RenderedEmail 
       : ""
 
   const html = `<!doctype html>
-<html lang="en">
+<html lang="${locale}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

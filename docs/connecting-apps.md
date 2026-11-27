@@ -441,7 +441,8 @@ Every connection is stored with an `ownerType`:
   `liaison connect <app>/<connection> --for <email>` (or the agent's gated
   `kernel__connect_link_send`, after an approval) mints a Liaison link at `/connect/link`. Only
   its hash is stored, bound to the org, the member and the connection; it
-  expires after 30 minutes and is consumed on first use. It never signs anyone
+  expires after 30 minutes and is consumed on first use. The email that carries it is
+  written in the member's language (see [Invite and manage users](admin/users.md#which-language-liaisons-emails-use)). It never signs anyone
   in: it works only when the signed-in user is that member (anyone else in the
   organization is told to sign in as them; a session of another organization
   gets the same answer as an unknown link), and then starts the same browser-bound personal

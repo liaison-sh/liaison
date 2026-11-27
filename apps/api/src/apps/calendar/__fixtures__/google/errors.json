@@ -1,0 +1,315 @@
+{
+  "_source": "Error bodies as the Google Calendar API v3 documents them (developers.google.com/calendar/api/guides/errors). Keyed by the fake's error name.",
+  "authError": {
+    "status": 401,
+    "body": {
+      "error": {
+        "code": 401,
+        "message": "Invalid Credentials",
+        "status": "UNAUTHENTICATED",
+        "errors": [
+          {
+            "domain": "global",
+            "reason": "authError",
+            "message": "Invalid Credentials",
+            "locationType": "header",
+            "location": "Authorization"
+          }
+        ]
+      }
+    }
+  },
+  "rateLimitExceeded": {
+    "status": 403,
+    "body": {
+      "error": {
+        "code": 403,
+        "message": "Rate Limit Exceeded",
+        "status": "PERMISSION_DENIED",
+        "errors": [
+          {
+            "domain": "usageLimits",
+            "reason": "rateLimitExceeded",
+            "message": "Rate Limit Exceeded"
+          }
+        ]
+      }
+    }
+  },
+  "userRateLimitExceeded": {
+    "status": 403,
+    "body": {
+      "error": {
+        "code": 403,
+        "message": "User Rate Limit Exceeded",
+        "status": "PERMISSION_DENIED",
+        "errors": [
+          {
+            "domain": "usageLimits",
+            "reason": "userRateLimitExceeded",
+            "message": "User Rate Limit Exceeded"
+          }
+        ]
+      }
+    }
+  },
+  "tooManyRequests": {
+    "status": 429,
+    "body": {
+      "error": {
+        "code": 429,
+        "message": "Too Many Requests",
+        "status": "RESOURCE_EXHAUSTED",
+        "errors": [
+          { "domain": "usageLimits", "reason": "rateLimitExceeded", "message": "Too Many Requests" }
+        ]
+      }
+    }
+  },
+  "backendError": {
+    "status": 500,
+    "body": {
+      "error": {
+        "code": 500,
+        "message": "Backend Error",
+        "status": "INTERNAL",
+        "errors": [{ "domain": "global", "reason": "backendError", "message": "Backend Error" }]
+      }
+    }
+  },
+  "serviceUnavailable": {
+    "status": 503,
+    "body": {
+      "error": {
+        "code": 503,
+        "message": "The service is currently unavailable.",
+        "status": "UNAVAILABLE",
+        "errors": [
+          {
+            "domain": "global",
+            "reason": "backendError",
+            "message": "The service is currently unavailable."
+          }
+        ]
+      }
+    }
+  },
+  "fullSyncRequired": {
+    "status": 410,
+    "body": {
+      "error": {
+        "code": 410,
+        "message": "Sync token is no longer valid, a full sync is required.",
+        "status": "GONE",
+        "errors": [
+          {
+            "domain": "calendar",
+            "reason": "fullSyncRequired",
+            "message": "Sync token is no longer valid, a full sync is required."
+          }
+        ]
+      }
+    }
+  },
+  "deleted": {
+    "status": 410,
+    "body": {
+      "error": {
+        "code": 410,
+        "message": "Resource has been deleted",
+        "status": "GONE",
+        "errors": [
+          { "domain": "global", "reason": "deleted", "message": "Resource has been deleted" }
+        ]
+      }
+    }
+  },
+  "notFound": {
+    "status": 404,
+    "body": {
+      "error": {
+        "code": 404,
+        "message": "Not Found",
+        "status": "NOT_FOUND",
+        "errors": [{ "domain": "global", "reason": "notFound", "message": "Not Found" }]
+      }
+    }
+  },
+  "conditionNotMet": {
+    "status": 412,
+    "body": {
+      "error": {
+        "code": 412,
+        "message": "Precondition Failed",
+        "status": "FAILED_PRECONDITION",
+        "errors": [
+          {
+            "domain": "global",
+            "reason": "conditionNotMet",
+            "message": "Precondition Failed",
+            "locationType": "header",
+            "location": "If-Match"
+          }
+        ]
+      }
+    }
+  },
+  "duplicate": {
+    "status": 409,
+    "body": {
+      "error": {
+        "code": 409,
+        "message": "The requested identifier already exists.",
+        "status": "ALREADY_EXISTS",
+        "errors": [
+          {
+            "domain": "global",
+            "reason": "duplicate",
+            "message": "The requested identifier already exists."
+          }
+        ]
+      }
+    }
+  },
+  "requiredAccessLevel": {
+    "status": 403,
+    "body": {
+      "error": {
+        "code": 403,
+        "message": "You need to have writer access to this calendar.",
+        "status": "PERMISSION_DENIED",
+        "errors": [
+          {
+            "domain": "calendar",
+            "reason": "requiredAccessLevel",
+            "message": "You need to have writer access to this calendar."
+          }
+        ]
+      }
+    }
+  },
+  "missingTimeZone": {
+    "status": 400,
+    "body": {
+      "error": {
+        "code": 400,
+        "message": "Missing time zone definition for start time.",
+        "status": "INVALID_ARGUMENT",
+        "errors": [
+          {
+            "domain": "global",
+            "reason": "required",
+            "message": "Missing time zone definition for start time."
+          }
+        ]
+      }
+    }
+  },
+  "missingEndTime": {
+    "status": 400,
+    "body": {
+      "error": {
+        "code": 400,
+        "message": "Missing end time.",
+        "status": "INVALID_ARGUMENT",
+        "errors": [{ "domain": "global", "reason": "required", "message": "Missing end time." }]
+      }
+    }
+  },
+  "timeRangeEmpty": {
+    "status": 400,
+    "body": {
+      "error": {
+        "code": 400,
+        "message": "The specified time range is empty.",
+        "status": "INVALID_ARGUMENT",
+        "errors": [
+          {
+            "domain": "calendar",
+            "reason": "timeRangeEmpty",
+            "message": "The specified time range is empty.",
+            "locationType": "parameter",
+            "location": "timeMax"
+          }
+        ]
+      }
+    }
+  },
+  "invalidResourceId": {
+    "status": 400,
+    "body": {
+      "error": {
+        "code": 400,
+        "message": "Invalid resource id value.",
+        "status": "INVALID_ARGUMENT",
+        "errors": [
+          { "domain": "global", "reason": "invalid", "message": "Invalid resource id value." }
+        ]
+      }
+    }
+  },
+  "invalidSyncTokenParams": {
+    "status": 400,
+    "body": {
+      "error": {
+        "code": 400,
+        "message": "Invalid parameter combination: syncToken cannot be used with timeMin, timeMax, updatedMin, q or orderBy.",
+        "status": "INVALID_ARGUMENT",
+        "errors": [
+          {
+            "domain": "global",
+            "reason": "invalidParameter",
+            "message": "Invalid parameter combination."
+          }
+        ]
+      }
+    }
+  },
+  "channelIdNotUnique": {
+    "status": 400,
+    "body": {
+      "error": {
+        "code": 400,
+        "message": "Channel id not unique.",
+        "status": "INVALID_ARGUMENT",
+        "errors": [
+          {
+            "domain": "global",
+            "reason": "channelIdNotUnique",
+            "message": "Channel id not unique."
+          }
+        ]
+      }
+    }
+  },
+  "pushWebhookBadDomain": {
+    "status": 400,
+    "body": {
+      "error": {
+        "code": 400,
+        "message": "WebHook callback must be HTTPS.",
+        "status": "INVALID_ARGUMENT",
+        "errors": [
+          {
+            "domain": "push",
+            "reason": "pushWebhookBadDomain",
+            "message": "WebHook callback must be HTTPS."
+          }
+        ]
+      }
+    }
+  },
+  "channelNotFound": {
+    "status": 404,
+    "body": {
+      "error": {
+        "code": 404,
+        "message": "Channel not found for project.",
+        "status": "NOT_FOUND",
+        "errors": [
+          { "domain": "global", "reason": "notFound", "message": "Channel not found for project." }
+        ]
+      }
+    }
+  }
+}

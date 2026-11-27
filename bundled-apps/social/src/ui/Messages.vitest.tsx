@@ -14,12 +14,17 @@ const calls: Call[] = []
 let sendResult: () => Promise<unknown> = () => Promise.resolve({ ok: true })
 let messages: Array<Record<string, unknown>> = []
 let lastInboundAt = new Date().toISOString()
+let deleteResult: () => Promise<unknown> = () => Promise.resolve({ status: "deleted" })
+let listRows: Array<Record<string, unknown>> = []
 
 vi.mock("@liaison/host", () => ({
   app: {
     invokeTool: (name: string, params: Record<string, unknown>) => {
       calls.push({ name, params })
       if (name === "send_dm") return sendResult()
+      if (name === "dm_delete_conversation") return deleteResult()
+      if (name === "dm_list")
+        return Promise.resolve({ conversations: listRows.map((r) => ({ ...r })), notices: [] })
       if (name === "dm_get")
         return Promise.resolve({
           conversation: {
@@ -52,6 +57,11 @@ beforeEach(() => {
   calls.length = 0
   lastInboundAt = new Date().toISOString()
   messages = [{ id: "m1", conversation_id: "c1", direction: "inbound", body: "Hi there" }]
+  listRows = []
+  deleteResult = () => {
+    listRows = listRows.filter((r) => r.id !== "c1")
+    return Promise.resolve({ status: "deleted", messagesRemoved: 1 })
+  }
   sendResult = () => {
     messages.push({ id: "m2", conversation_id: "c1", direction: "outbound", body: "Thanks!" })
     return Promise.resolve({ ok: true })
@@ -128,5 +138,63 @@ describe("Social DM compose", () => {
     lastInboundAt = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString()
     await mount()
     expect(screen.getByTestId("social-dm-send").textContent).toBe("Approve & send (human agent)")
+  })
+})
+
+describe("Social DM unsent message", () => {
+  it("shows Message unsent in place of the text", async () => {
+    messages = [
+      {
+        id: "m1",
+        conversation_id: "c1",
+        direction: "inbound",
+        body: null,
+        metadata: { unsent: true },
+      },
+    ]
+    await mount()
+    const row = screen.getByTestId("social-dm-message-m1")
+    expect(row.getAttribute("data-unsent")).toBe("true")
+    expect(row.textContent).toContain("Message unsent")
+  })
+})
+
+describe("Social DM delete", () => {
+  it("asks first, says it stays on Instagram, and cancel deletes nothing", async () => {
+    await mount()
+    fireEvent.click(screen.getByTestId("social-dm-delete"))
+    const dialog = await screen.findByTestId("social-dm-delete-dialog")
+    expect(dialog.textContent).toContain("not deleted on Instagram")
+    fireEvent.click(screen.getByTestId("social-dm-delete-cancel"))
+    await waitFor(() => expect(screen.queryByTestId("social-dm-delete-dialog")).toBeNull())
+    expect(calls.some((c) => c.name === "dm_delete_conversation")).toBe(false)
+  })
+
+  it("deletes the conversation and drops it from the list", async () => {
+    listRows = [{ ...conversation }]
+    const { Messages } = await import("./Messages")
+    render(() => <Messages />)
+    await screen.findByTestId("social-conversation-row-c1")
+    await screen.findByTestId("social-dm-message-m1")
+    fireEvent.click(screen.getByTestId("social-dm-delete"))
+    await screen.findByTestId("social-dm-delete-dialog")
+    fireEvent.click(screen.getByTestId("confirm-dialog-confirm-btn"))
+    await waitFor(() => expect(screen.queryByTestId("social-conversation-row-c1")).toBeNull())
+    expect(calls.filter((c) => c.name === "dm_delete_conversation")).toEqual([
+      { name: "dm_delete_conversation", params: { conversation_id: "c1" } },
+    ])
+    expect(screen.queryByTestId("social-dm-delete-dialog")).toBeNull()
+  })
+
+  it("a refused delete says why and keeps the conversation", async () => {
+    deleteResult = () => Promise.reject(new Error("forbidden: social:dm:write"))
+    await mount()
+    fireEvent.click(screen.getByTestId("social-dm-delete"))
+    await screen.findByTestId("social-dm-delete-dialog")
+    fireEvent.click(screen.getByTestId("confirm-dialog-confirm-btn"))
+    await waitFor(() =>
+      expect(screen.getByTestId("social-dm-delete-error").textContent).toContain("forbidden"),
+    )
+    expect(screen.getByTestId("social-dm-message-m1")).toBeTruthy()
   })
 })

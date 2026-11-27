@@ -1,0 +1,5 @@
+{
+  "reviewedOrigins": {
+    "apps/api/src/infra/jobs/embedding-backfill.ts#processReembedStep": "the re-embed job (search-embedding-reembed): payload.orgId is an org the message indexer noted documents for while the index changed width (kickReembed(orgId) from that indexing call's own org), or one read back from the Redis set those same calls wrote (resumeReembed, the leader after a restart); each step reads only that org's noted rows and writes only that org's documents"
+  }
+}

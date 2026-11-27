@@ -19,6 +19,10 @@
  */
 export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   // Generated references: their sources regenerate the page (docs:gen).
+  {
+    glob: "apps/api/src/modules/search/{embedding-dimensions,reembed-queue}.ts",
+    pages: ["self-hosting/docker"],
+  },
   { glob: "apps/api/src/lib/env.ts", pages: ["reference/env"] },
   { glob: "apps/api/src/cli/commands.ts", pages: ["reference/cli"] },
   { glob: "apps/api/src/cli/config/**", pages: ["reference/config", "provisioning-cli"] },

@@ -325,8 +325,10 @@ liaison erase-user <userId>
 - **`seed --tier lively --slug <slug>`**: the same company with ten people
   and two weeks of work up to now: team channels and each person's chats with
   their agent, about sixty tickets that moved, routine runs, sub agent runs,
-  notifications (each person's newest few still unread) and the tickets'
-  change history. For a private server or a trial: `--passwords` (or
+  notifications (each person's newest few still unread), the tickets'
+  change history and a "Sales and support" dashboard shared with the org
+  (invoiced total, open tickets, orders to prepare, invoiced by week, tickets
+  by category, latest invoices; not with `--no-commerce`). For a private server or a trial: `--passwords` (or
   `--passwords-env <VAR>`, which reads it from that environment variable)
   lets you sign in as any of the ten. Run again, it adds nothing; `--replace`
   deletes the earlier org under the slug first so the two weeks end now

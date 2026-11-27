@@ -75,6 +75,10 @@ export interface NormalizedMessage {
   participantExternalId?: string | null
   /** The own Page / IG account the delivery was addressed to (`entry.id`). */
   ownerExternalId?: string | null
+  /** The sender unsent (deleted) this message: Instagram delivers it as
+   *  `messaging[].message.is_deleted: true` with the message's `mid`. The stored
+   *  row keeps its place in the thread with its text cleared (ingest.ts). */
+  unsent?: boolean
 }
 
 /**

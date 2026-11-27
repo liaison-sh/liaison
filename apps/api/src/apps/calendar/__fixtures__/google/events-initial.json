@@ -1,0 +1,166 @@
+{
+  "_source": "events.list items (singleEvents=false, showDeleted=true) shaped from developers.google.com/calendar/api/v3/reference/events. Keyed by calendar id.",
+  "owner@example.test": [
+    {
+      "kind": "calendar#event",
+      "etag": "\"3400000000000001\"",
+      "id": "timed0001",
+      "status": "confirmed",
+      "summary": "Design review",
+      "description": "Agenda in the doc",
+      "location": "Room 2",
+      "created": "2026-10-01T08:00:00.000Z",
+      "updated": "2026-10-01T08:00:00.000Z",
+      "creator": { "email": "owner@example.test", "self": true },
+      "organizer": { "email": "owner@example.test", "self": true },
+      "start": { "dateTime": "2026-10-20T14:00:00+02:00", "timeZone": "Europe/Paris" },
+      "end": { "dateTime": "2026-10-20T15:00:00+02:00", "timeZone": "Europe/Paris" },
+      "iCalUID": "timed0001@google.com",
+      "sequence": 0,
+      "attendees": [
+        {
+          "email": "owner@example.test",
+          "organizer": true,
+          "self": true,
+          "responseStatus": "accepted"
+        },
+        { "email": "guest@example.test", "responseStatus": "needsAction" }
+      ],
+      "colorId": "5",
+      "reminders": { "useDefault": true },
+      "eventType": "default"
+    },
+    {
+      "kind": "calendar#event",
+      "etag": "\"3400000000000002\"",
+      "id": "allday0001",
+      "status": "confirmed",
+      "summary": "Offsite",
+      "created": "2026-10-01T08:00:00.000Z",
+      "updated": "2026-10-01T08:00:00.000Z",
+      "creator": { "email": "owner@example.test", "self": true },
+      "organizer": { "email": "owner@example.test", "self": true },
+      "start": { "date": "2026-10-22" },
+      "end": { "date": "2026-10-24" },
+      "transparency": "transparent",
+      "iCalUID": "allday0001@google.com",
+      "sequence": 0,
+      "reminders": { "useDefault": false },
+      "eventType": "default"
+    },
+    {
+      "kind": "calendar#event",
+      "etag": "\"3400000000000003\"",
+      "id": "weekly0001",
+      "status": "confirmed",
+      "summary": "Weekly sync",
+      "created": "2026-10-01T08:00:00.000Z",
+      "updated": "2026-10-01T08:00:00.000Z",
+      "creator": { "email": "owner@example.test", "self": true },
+      "organizer": { "email": "owner@example.test", "self": true },
+      "start": { "dateTime": "2026-10-19T09:00:00+02:00", "timeZone": "Europe/Paris" },
+      "end": { "dateTime": "2026-10-19T09:30:00+02:00", "timeZone": "Europe/Paris" },
+      "recurrence": ["RRULE:FREQ=WEEKLY;BYDAY=MO;COUNT=6"],
+      "iCalUID": "weekly0001@google.com",
+      "sequence": 0,
+      "reminders": { "useDefault": true },
+      "eventType": "default"
+    },
+    {
+      "kind": "calendar#event",
+      "etag": "\"3400000000000004\"",
+      "id": "weekly0001_20261102T080000Z",
+      "status": "confirmed",
+      "summary": "Weekly sync (moved)",
+      "created": "2026-10-01T08:00:00.000Z",
+      "updated": "2026-10-02T08:00:00.000Z",
+      "creator": { "email": "owner@example.test", "self": true },
+      "organizer": { "email": "owner@example.test", "self": true },
+      "start": { "dateTime": "2026-11-02T11:00:00+01:00", "timeZone": "Europe/Paris" },
+      "end": { "dateTime": "2026-11-02T11:30:00+01:00", "timeZone": "Europe/Paris" },
+      "recurringEventId": "weekly0001",
+      "originalStartTime": { "dateTime": "2026-11-02T09:00:00+01:00", "timeZone": "Europe/Paris" },
+      "iCalUID": "weekly0001@google.com",
+      "sequence": 1,
+      "reminders": { "useDefault": true },
+      "eventType": "default"
+    },
+    {
+      "kind": "calendar#event",
+      "etag": "\"3400000000000005\"",
+      "id": "weekly0001_20261109T080000Z",
+      "status": "cancelled",
+      "recurringEventId": "weekly0001",
+      "originalStartTime": { "dateTime": "2026-11-09T09:00:00+01:00", "timeZone": "Europe/Paris" }
+    },
+    {
+      "kind": "calendar#event",
+      "etag": "\"3400000000000006\"",
+      "id": "oldcancel01",
+      "status": "cancelled"
+    }
+  ],
+  "team0001@group.calendar.google.com": [
+    {
+      "kind": "calendar#event",
+      "etag": "\"3400000000000007\"",
+      "id": "teamlunch01",
+      "status": "confirmed",
+      "summary": "Team lunch",
+      "created": "2026-10-01T08:00:00.000Z",
+      "updated": "2026-10-01T08:00:00.000Z",
+      "creator": { "email": "owner@example.test" },
+      "organizer": {
+        "email": "team0001@group.calendar.google.com",
+        "displayName": "Team",
+        "self": true
+      },
+      "start": { "dateTime": "2026-10-21T12:30:00+02:00", "timeZone": "Europe/Paris" },
+      "end": { "dateTime": "2026-10-21T13:30:00+02:00", "timeZone": "Europe/Paris" },
+      "hangoutLink": "https://meet.google.com/abc-defg-hij",
+      "conferenceData": {
+        "conferenceId": "abc-defg-hij",
+        "conferenceSolution": { "key": { "type": "hangoutsMeet" }, "name": "Google Meet" },
+        "entryPoints": [
+          {
+            "entryPointType": "video",
+            "uri": "https://meet.google.com/abc-defg-hij",
+            "label": "meet.google.com/abc-defg-hij"
+          }
+        ]
+      },
+      "iCalUID": "teamlunch01@google.com",
+      "sequence": 0,
+      "reminders": { "useDefault": true },
+      "eventType": "default"
+    }
+  ],
+  "en.french#holiday@group.v.calendar.google.com": [
+    {
+      "kind": "calendar#event",
+      "etag": "\"3400000000000008\"",
+      "id": "20261111_holiday",
+      "status": "confirmed",
+      "summary": "Armistice",
+      "created": "2025-01-01T00:00:00.000Z",
+      "updated": "2025-01-01T00:00:00.000Z",
+      "creator": {
+        "email": "en.french#holiday@group.v.calendar.google.com",
+        "displayName": "Holidays in France",
+        "self": true
+      },
+      "organizer": {
+        "email": "en.french#holiday@group.v.calendar.google.com",
+        "displayName": "Holidays in France",
+        "self": true
+      },
+      "start": { "date": "2026-11-11" },
+      "end": { "date": "2026-11-12" },
+      "transparency": "transparent",
+      "visibility": "public",
+      "iCalUID": "20261111_holiday@google.com",
+      "sequence": 0,
+      "eventType": "default"
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "_source": "calendarList.list response shape (developers.google.com/calendar/api/v3/reference/calendarList). Owner address is a placeholder.",
+  "kind": "calendar#calendarList",
+  "items": [
+    {
+      "kind": "calendar#calendarListEntry",
+      "etag": "\"1700000000000000\"",
+      "id": "owner@example.test",
+      "summary": "owner@example.test",
+      "timeZone": "Europe/Paris",
+      "colorId": "14",
+      "backgroundColor": "#9fe1e7",
+      "foregroundColor": "#000000",
+      "selected": true,
+      "accessRole": "owner",
+      "primary": true,
+      "defaultReminders": [{ "method": "popup", "minutes": 10 }]
+    },
+    {
+      "kind": "calendar#calendarListEntry",
+      "etag": "\"1700000000000001\"",
+      "id": "team0001@group.calendar.google.com",
+      "summary": "Team",
+      "timeZone": "Europe/Paris",
+      "colorId": "7",
+      "backgroundColor": "#42d692",
+      "foregroundColor": "#000000",
+      "selected": true,
+      "accessRole": "writer",
+      "defaultReminders": []
+    },
+    {
+      "kind": "calendar#calendarListEntry",
+      "etag": "\"1700000000000002\"",
+      "id": "en.french#holiday@group.v.calendar.google.com",
+      "summary": "Holidays in France",
+      "timeZone": "Europe/Paris",
+      "colorId": "8",
+      "backgroundColor": "#16a765",
+      "foregroundColor": "#000000",
+      "selected": true,
+      "accessRole": "reader",
+      "defaultReminders": []
+    },
+    {
+      "kind": "calendar#calendarListEntry",
+      "etag": "\"1700000000000003\"",
+      "id": "colleague@example.test",
+      "summary": "colleague@example.test",
+      "timeZone": "Europe/Paris",
+      "backgroundColor": "#cabdbf",
+      "foregroundColor": "#000000",
+      "accessRole": "freeBusyReader",
+      "defaultReminders": []
+    }
+  ]
+}

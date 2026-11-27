@@ -2,6 +2,7 @@
 //
 // M2-1 T12. The approvals queue screen: its title line, and the collapse a
 // decided card leaves behind so the next one rises into the gap.
+import { Route, Router } from "@solidjs/router"
 import { cleanup, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -21,7 +22,10 @@ vi.mock("~/modules/shell/toast-store", () => ({ addToast: vi.fn() }))
 vi.mock("~/modules/shell/entity-opener", () => ({
   openEntity: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock("~/modules/shell/tab-store", () => ({ openTab: vi.fn() }))
+vi.mock("~/modules/shell/tab-store", () => ({
+  openTab: vi.fn(),
+  tabStore: { activeTabId: "tab-approvals", tabs: [] },
+}))
 vi.mock("~/modules/approvals/approvals-service", () => ({
   listDecidableByMe: vi.fn(async () => []),
   getApproval: vi.fn(),
@@ -33,8 +37,19 @@ vi.mock("~/modules/approvals/approvals-service", () => ({
 import type { AttentionItem } from "@liaison/shared"
 import { attentionStore } from "~/modules/shell/attention-store"
 import { _resetBranding, ensureBrandingLoaded } from "~/modules/shell/branding-store"
+import { openFromWork } from "~/modules/shell/open-from-work"
+import { resetPushNavOpener } from "~/primitives/createPushNav"
 import { setShellTier } from "~/tests/helpers/shell-tier"
 import { ApprovalsScreen, COLLAPSE_MS, soonestDeadlineMinutes } from "./ApprovalsScreen"
+
+/** The screen in a router, as the shell mounts it (its phone back control reads the route). */
+const renderScreen = () =>
+  render(() => (
+    <Router>
+      <Route path="/*" component={() => <ApprovalsScreen />} />
+    </Router>
+  ))
+
 import { handleWsCreate, handleWsUpdate, resetApprovalsStore } from "./approvals-store"
 
 const NOW = Date.parse("2026-04-30T12:00:00.000Z")
@@ -86,13 +101,43 @@ describe("ApprovalsScreen", () => {
   })
   afterEach(() => cleanup())
 
+  // iOS re-walk N2: opened from the phone's Work list, the screen (which hides
+  // the shell's top bar) carries "< Work" itself, the edge swipe's target too.
+  it("on the phone, opened from Work, shows a back control to Work", async () => {
+    setShellTier("phone")
+    try {
+      // The Approvals tab is the active one once the Work row opened it.
+      openFromWork(
+        () => "Work",
+        () => {},
+      )
+      renderScreen()
+      const back = await screen.findByTestId("approvals-back")
+      expect(back.textContent).toContain("Work")
+      expect(back.hasAttribute("data-phone-back")).toBe(true)
+    } finally {
+      resetPushNavOpener()
+      setShellTier("desktop")
+    }
+  })
+
+  it("shows no back control when not opened from Work", () => {
+    setShellTier("phone")
+    try {
+      renderScreen()
+      expect(screen.queryByTestId("approvals-back")).toBeNull()
+    } finally {
+      setShellTier("desktop")
+    }
+  })
+
   it("leads with the count and how long the soonest decision has", async () => {
     handleWsCreate(row({ id: "ar-1" }), "u-approver")
     handleWsCreate(
       row({ id: "ar-2", expiresAt: new Date(Date.now() + 9 * 60_000).toISOString() }),
       "u-approver",
     )
-    render(() => <ApprovalsScreen />)
+    renderScreen()
     await waitFor(() => expect(screen.getByTestId("approvals-count").textContent).toBe("2"))
     // The SAME humanised formatter the rows use, not raw minutes.
     expect(screen.getByTestId("approvals-summary").textContent).toContain("9m")
@@ -101,7 +146,7 @@ describe("ApprovalsScreen", () => {
   })
 
   it("says so plainly when nothing is waiting", async () => {
-    render(() => <ApprovalsScreen />)
+    renderScreen()
     await waitFor(() => expect(screen.getByTestId("approvals-empty")).toBeTruthy())
     expect(screen.getByTestId("approvals-count").textContent).toBe("0")
   })
@@ -116,7 +161,7 @@ describe("ApprovalsScreen", () => {
       ok: true,
       json: async () => ({ data: { orgName: "Fabrikam" } }),
     })) as never)
-    render(() => <ApprovalsScreen />)
+    renderScreen()
     await waitFor(() =>
       expect(screen.getByTestId("approvals-title-org").textContent).toBe("Fabrikam"),
     )
@@ -136,7 +181,7 @@ describe("ApprovalsScreen", () => {
     apiMocks.get.mockImplementation(async (path: string) =>
       path === "/org" ? { data: { name: "Resonant Audio Labs" } } : undefined,
     )
-    render(() => <ApprovalsScreen />)
+    renderScreen()
     await waitFor(() =>
       expect(screen.getByTestId("approvals-title-org").textContent).toBe("Resonant Audio Labs"),
     )
@@ -147,7 +192,7 @@ describe("ApprovalsScreen", () => {
   it("collapses a decided card in place, then drops it", async () => {
     handleWsCreate(row({ id: "ar-1" }), "u-approver")
     handleWsCreate(row({ id: "ar-2" }), "u-approver")
-    render(() => <ApprovalsScreen />)
+    renderScreen()
     await waitFor(() => expect(screen.getByTestId("approvals-item-ar-1")).toBeTruthy())
 
     handleWsUpdate(row({ id: "ar-1", status: "approved" }))
@@ -172,7 +217,7 @@ describe("ApprovalsScreen", () => {
   // came back detached between two reads, and an open deny sheet closed).
   it("keeps each card mounted when a refresh replaces its row", async () => {
     handleWsCreate(row({ id: "ar-1" }), "u-approver")
-    render(() => <ApprovalsScreen />)
+    renderScreen()
     await waitFor(() => expect(screen.getByTestId("approvals-item-ar-1")).toBeTruthy())
     const before = screen.getByTestId("approvals-item-ar-1")
 
@@ -193,7 +238,7 @@ describe("ApprovalsScreen", () => {
       row({ id: "ar-far", expiresAt: new Date(Date.now() + 3913 * 60_000).toISOString() }),
       "u-approver",
     )
-    render(() => <ApprovalsScreen />)
+    renderScreen()
     await waitFor(() => expect(screen.getByTestId("approvals-count").textContent).toBe("1"))
 
     const text = screen.getByTestId("approvals-summary").textContent ?? ""
@@ -246,7 +291,7 @@ describe("ApprovalsScreen", () => {
       currentScope = ["mail:approve", "kernel:scope_requests:admin"]
       attentionStore._setForTest({ items: [scopeRequest, wait], errors: [] })
       handleWsCreate(row({ id: "ar-1" }), "u-approver")
-      render(() => <ApprovalsScreen />)
+      renderScreen()
       await waitFor(() => expect(screen.getByTestId("approvals-count").textContent).toBe("3"))
       const others = screen.getByTestId("approvals-other-kinds")
       const access = others.querySelector('[data-kind="scope_request"]') as HTMLElement
@@ -269,7 +314,7 @@ describe("ApprovalsScreen", () => {
       setShellTier("phone")
       currentScope = ["mail:approve"]
       attentionStore._setForTest({ items: [scopeRequest, wait], errors: [] })
-      render(() => <ApprovalsScreen />)
+      renderScreen()
       await waitFor(() => expect(screen.getByTestId("approvals-count").textContent).toBe("1"))
       expect(screen.queryByTestId("attention-row-kernel-scope_request-sr-1")).toBeNull()
       expect(screen.getByTestId("routine-mailbox-wait-run")).toBeTruthy()

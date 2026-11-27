@@ -52,6 +52,11 @@ export interface EnsureUserInput {
   role: string
   /** Create the user with no password (sign-in by emailed code) when none is given. */
   allowPasswordless?: boolean
+  /**
+   * The person's locale (`users.locale`, BCP 47 such as `fr-FR`), written on CREATE only: the
+   * language system mails reach them in until they pick a UI language (recipient-locale.ts).
+   */
+  locale?: string
 }
 
 export interface EnsureUserResult {
@@ -115,7 +120,14 @@ export async function ensureUser(input: EnsureUserInput): Promise<EnsureUserResu
     await assertSeatRoom(tx, orgId)
     const [row] = await tx
       .insert(users)
-      .values({ orgId, email, passwordHash, name, status: "active" })
+      .values({
+        orgId,
+        email,
+        passwordHash,
+        name,
+        status: "active",
+        ...(input.locale ? { locale: input.locale } : {}),
+      })
       .returning({ id: users.id })
 
     const roleId = await resolveRoleId(tx, orgId, role)

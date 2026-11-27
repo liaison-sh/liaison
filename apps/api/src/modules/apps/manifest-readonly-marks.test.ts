@@ -327,9 +327,14 @@ const READ_ONLY: Record<string, string[]> = {
     "card_stream_issuer",
     // The bound revenue streams and the apps that could be bound.
     "revenue_streams_list",
+    // A stream's sales of a window as the catch-up would invoice them; nothing written.
+    "sales_catch_up_preview",
   ],
   monitoring: ["incidents_list", "incidents_get", "incidents_summary", "webhook_info"],
   stripe: [
+    // revenue-stream@1: a one-off checkout payment read back as a sale.
+    "rs_sale_get",
+    "rs_sales_list",
     "connection_precheck", // the key check run on a key before it is stored: records nothing
     "settings_load",
     // The webhook's setup: path, events, set or not, the state; never the secret.

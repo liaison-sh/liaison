@@ -139,7 +139,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `export` | Export the data the requester can see for one or more apps as a downloadable zip (per-app file + manifest.json). |  | `kernel:users:admin` |
 | `files_list` | List the files attached to one entity: pass its app, entityType and entityId. |  | `kernel:files:read` |
 | `files_merge_pdfs` | Merge stored PDFs into ONE new PDF, in the order you list them, and return { fileId, byteSize, pageCount, title }: a new kernel file you can download with kernel__files_read or pass to a send tool's attachments. |  | `kernel:files:read` |
-| `files_read` | Get a short lived signed download URL for one file id, plus that file's metadata, for any file type. |  | `kernel:files:read` |
+| `files_read` | Read one file by id. |  | `kernel:files:read` |
 | `files_upload_confirm` | Finish a kernel__files_upload_url upload after the PUT succeeded: checks the stored bytes against the declared size and type and returns { fileId }. |  | `kernel:files:read` |
 | `files_upload_url` | Put a LOCAL file into Liaison so a send tool can attach it. |  | `kernel:files:read` |
 | `find_repos_on_my_computer` | Find every git repository on the person's own computer, inside the places Liaison may look in (read-only, nothing changes). |  | `kernel:threads:read` |

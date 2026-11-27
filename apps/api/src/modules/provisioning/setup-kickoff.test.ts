@@ -627,10 +627,13 @@ describe("on Cloud, the first session starts from one goal", () => {
     const meta = row!.metadata as Json
     expect(meta.managed).toBe(true)
     expect(meta.goal).toBeUndefined()
-    expect(row!.content).toContain("Where do you want to start?")
+    // The company brief first, then the team, then the goal the card asks for.
+    expect(row!.content).toContain("starting with a quick brief on your company")
+    expect(row!.content.indexOf("brief")).toBeLessThan(row!.content.indexOf("invite your team"))
+    expect(row!.content).toContain("Where do you want to go from there?")
     expect(row!.content).not.toContain("your mailbox, Google sign-in")
     expect(systemEventLine({ content: row!.content, metadata: meta })).toContain(
-      "already asked them which one goal to start with",
+      "already asked them which goal comes after the company brief and the team",
     )
   }, 60_000)
 
@@ -671,7 +674,7 @@ describe("on Cloud, the first session starts from one goal", () => {
     expect(meta).toMatchObject({ managed: true, goal: "support" })
     expect(row!.content).toContain("customer support")
     expect(systemEventLine({ content: row!.content, metadata: meta })).toContain(
-      "their goal: support; start there",
+      "their goal: support.",
     )
   }, 60_000)
 

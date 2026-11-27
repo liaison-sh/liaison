@@ -4,7 +4,10 @@
 // embedder (S31). Zero data retention per request; the reported USD cost is
 // what the call is metered at. Verified against the provider: `google/gemini-embedding-001`
 // answers 3072 dimensions under `zdr: true`, the same vectors the Google
-// path stores, so a cell needs no reindex.
+// path stores. The request asks for the instance's width (`dimensions`, part
+// of OpenRouter's embeddings API); the caller still cuts and normalises what
+// comes back (modules/search/embedding-dimensions.ts), so a provider behind
+// OpenRouter that ignores the field stores the right width all the same.
 import { managedZdrRouting, openRouterFetch } from "~/modules/agent/providers/openrouter"
 
 /** A text longer than this is embedded on its opening (the Google path's cut). */
@@ -26,11 +29,16 @@ export class OpenRouterEmbeddingError extends Error {
   }
 }
 
-/** The request body: model, inputs, zero-retention routing. */
-export function buildOpenRouterEmbeddingRequest(upstreamId: string, texts: string[]) {
+/** The request body: model, inputs, output width when given, zero-retention routing. */
+export function buildOpenRouterEmbeddingRequest(
+  upstreamId: string,
+  texts: string[],
+  dimensions?: number,
+) {
   return {
     model: upstreamId,
     input: texts.map((t) => t.slice(0, EMBEDDING_INPUT_MAX_CHARS)),
+    ...(dimensions ? { dimensions } : {}),
     provider: managedZdrRouting(),
   }
 }
@@ -45,10 +53,12 @@ export async function openRouterEmbed(params: {
   upstreamId: string
   texts: string[]
   orgId: string
+  /** The output width to ask for. */
+  dimensions?: number
 }): Promise<OpenRouterEmbedResult> {
   const res = await openRouterFetch("/embeddings", {
     apiKey: params.apiKey,
-    body: buildOpenRouterEmbeddingRequest(params.upstreamId, params.texts),
+    body: buildOpenRouterEmbeddingRequest(params.upstreamId, params.texts, params.dimensions),
     signal: AbortSignal.timeout(EMBEDDING_TIMEOUT_MS),
     orgId: params.orgId,
   })

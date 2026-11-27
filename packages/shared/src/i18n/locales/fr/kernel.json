@@ -928,6 +928,7 @@
     "done": "Exportation téléchargée."
   },
   "deactivated": "Désactivé",
+  "deletedUser": "Utilisateur supprimé",
   "dictationErrors": {
     "demoKeyRequired": "Sur cette instance de démonstration, la dictée utilise votre propre clé OpenRouter ou Google. Ajoutez-en une dans Paramètres, Modèles d'IA.",
     "empty": "Aucune parole n'a été reconnue dans l'enregistrement.",
@@ -2560,6 +2561,11 @@
   "workHoursStart": "Début des heures de travail",
   "workModules": "Modules",
   "workTitle": "Travail",
+  "workspaceUnreachable": {
+    "title": "Impossible de joindre votre espace de travail",
+    "body": "Liaison sur {{host}} ne répond pas. Vous êtes toujours connecté : l'application s'ouvre dès que le serveur répond.",
+    "bodyNoHost": "Le serveur ne répond pas. Vous êtes toujours connecté : Liaison s'ouvre dès qu'il répond."
+  },
   "writeAMessage": "Écrire un message",
   "writeAMessageHint": "Écrire un message… (@ personnes, # discussions)",
   "youAdminBestOnLargerScreen": "Préférable sur un écran plus grand",
@@ -4055,6 +4061,7 @@
       "recurring_schedule_pause": "suspendre une facturation récurrente",
       "revenue_stream_sale_issue": "émettre la facture d'une vente",
       "revenue_stream_bind": "lier un flux de ventes",
+      "sales_catch_up": "facturer les ventes antérieures",
       "issuer_stream_set": "définir la série d'émission",
       "issuer_emails_confirm": "confirmer les e-mails de l'émetteur",
       "invoice_from_stripe_payment": "facturer un paiement Stripe",

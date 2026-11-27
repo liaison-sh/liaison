@@ -85,6 +85,29 @@ describe("the status bar following the app theme", () => {
     expect(bar.styles).toEqual(["DARK", "LIGHT", "DARK"])
   })
 
+  // iOS re-walk N6: a resized or zoomed iPad window showed a black band above
+  // the light app. What shows around the page follows the APP's theme.
+  it("paints what shows around the page in the theme, once per change", async () => {
+    const bar = recordingStatusBar()
+    const painted: string[] = []
+    const controller = createStatusBarController(bar.plugin, (theme) => painted.push(theme))
+    controller.setTheme("light")
+    controller.setTheme("light")
+    controller.setTheme("dark")
+    await Promise.resolve()
+    expect(painted).toEqual(["light", "dark"])
+  })
+
+  it("keeps the style when the backdrop painter throws", async () => {
+    const bar = recordingStatusBar()
+    const controller = createStatusBarController(bar.plugin, () => {
+      throw new Error("no native view")
+    })
+    expect(() => controller.setTheme("dark")).not.toThrow()
+    await Promise.resolve()
+    expect(bar.styles).toEqual(["DARK"])
+  })
+
   it("overlays the web view so the app keeps its own safe-area padding", async () => {
     const bar = recordingStatusBar()
     await createStatusBarController(bar.plugin).start()

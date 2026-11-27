@@ -12,7 +12,7 @@ import * as apps from "./apps"
 import { parseArgs } from "./args"
 import * as auth from "./auth"
 import { planConfig } from "./config-apply"
-import { Client } from "./http"
+import { Client, normalizeHost } from "./http"
 import { readCredentials } from "./store"
 
 const B = new Set(["wait", "yes", "admin", "config", "no-browser", "withdraw", "fresh", "verbose"])
@@ -273,6 +273,13 @@ describe("login", () => {
     await expect(
       auth.login(args("--host", "http://acme.example.com", "--no-browser"), io),
     ).rejects.toThrow("plain http")
+  })
+
+  it("allows plain http to this machine only: loopback and *.localhost", () => {
+    expect(normalizeHost("http://localhost:3000")).toBe("http://localhost:3000")
+    expect(normalizeHost("http://acme.localhost:3000")).toBe("http://acme.localhost:3000")
+    expect(() => normalizeHost("http://acme.localhost.example.com")).toThrow("plain http")
+    expect(() => normalizeHost("http://localhost-acme.com")).toThrow("plain http")
   })
 
   it("logout removes the sign-in", async () => {

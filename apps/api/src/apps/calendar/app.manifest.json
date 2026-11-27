@@ -400,6 +400,7 @@
       "trustBoundary": "user",
       "conditionalGate": true,
       "approvalImpact": "external",
+      "approvalCard": { "summary": "Create calendar event {{params.title}} and email its guests" },
       "handler": "calendarCreateEvent",
       "params": {
         "type": "object",
@@ -458,6 +459,7 @@
       "trustBoundary": "user",
       "conditionalGate": true,
       "approvalImpact": "external",
+      "approvalCard": { "summary": "Update calendar event {{params.title}} and email its guests" },
       "handler": "calendarUpdateEvent",
       "params": {
         "type": "object",
@@ -523,6 +525,7 @@
       "trustBoundary": "user",
       "conditionalGate": true,
       "approvalImpact": "external",
+      "approvalCard": { "summary": "Delete a calendar event" },
       "handler": "calendarDeleteEvent",
       "params": {
         "type": "object",

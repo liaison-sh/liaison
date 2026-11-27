@@ -35,6 +35,7 @@ export interface CalendarMethods {
   calendar_listAccounts: () => Promise<string>
   calendar_listEvents: (paramsJson: string) => Promise<string>
   calendar_searchEvents: (paramsJson: string) => Promise<string>
+  calendar_getEventForCaller: (eventId: string) => Promise<string>
   calendar_createEvent: (paramsJson: string) => Promise<string>
   calendar_updateEvent: (paramsJson: string) => Promise<string>
   calendar_deleteEvent: (paramsJson: string) => Promise<string>
@@ -1545,6 +1546,14 @@ export async function calendarListEvents(params: unknown, ctx: CalendarCtx): Pro
 
 export async function calendarSearchEvents(params: unknown, ctx: CalendarCtx): Promise<unknown> {
   return JSON.parse(await ctx.calendar_searchEvents(JSON.stringify(params ?? {})))
+}
+
+export async function calendarGetEvent(params: unknown, ctx: CalendarCtx): Promise<unknown> {
+  const eventId = (params as { eventId?: unknown } | null)?.eventId
+  if (typeof eventId !== "string" || eventId.trim() === "") {
+    throw new Error("eventId is required")
+  }
+  return JSON.parse(await ctx.calendar_getEventForCaller(eventId.trim()))
 }
 
 export async function calendarCreateEvent(params: unknown, ctx: CalendarCtx): Promise<unknown> {

@@ -38,6 +38,16 @@ You can bring events from another calendar tool as an `.ics` file. Upload the fi
 
 The view keeps itself up to date: an event that changes in Google, or that an agent or a teammate adds, appears in the open week or month without reloading. Weeks you already looked at show at once when you go back to them. If events cannot be loaded, a note under the header says so, with **Retry**.
 
+- Times are shown in your browser's time zone, named above the hour column. To see a second zone beside it (a colleague abroad), pick it under **Second time zone** in the sidebar; Liaison remembers it in this browser. An event whose own zone differs from yours says so in its tab.
+- An event with its own colour in Google shows in that colour; the others take their calendar's. A meeting you declined is faded and struck through.
+- A day with more all-day events than fit in the band shows **+N more**: click it to open that day.
+- An event that crosses midnight but lasts less than a day is drawn in the hours of both days.
+- The mini month follows the day you are looking at and marks every day that has an event, recurring ones included. "Today" moves on by itself at midnight.
+
+### Keyboard shortcuts
+
+Press **?** to see them. **t** goes to today, **j** and **k** to the next and previous day, week or month, **d**, **w** and **m** switch to the day, week and month views, and **c** opens a new event. **Esc** closes the new event card, and **Del** in an open event asks to delete it. Shortcuts do nothing while you type in a field.
+
 ## Create or edit an event
 
 1. Click an empty slot in the **Day** or **Week** view (or a day in **Month**). A small card opens at that spot with the time already chosen.
@@ -96,6 +106,7 @@ Ask "Open the quarter review" and the agent opens the calendar on that event's d
 | `list_accounts` | List connected Google Calendar accounts | `calendar:events:read` |
 | `list_calendars` | List calendars and whether each is selected for sync | `calendar:events:read` |
 | `list_events` | List events in a time window, with recurring events expanded | `calendar:events:read` |
+| `get_event` | Read one event by its id | `calendar:events:read` |
 | `search_events` | Search events by title, description and location | `calendar:events:read` |
 | `create_event` | Create an event, optionally with a Google Meet link | `calendar:events:write` |
 | `update_event` | Change time, title, description, location, guests or the Meet link, for one occurrence or the series | `calendar:events:write` |

@@ -45,6 +45,8 @@ export interface CalendarEventDto {
   pushError?: string | null
   /** Why a delete Google refused brought this event back. */
   pushNotice?: string | null
+  /** Google's per-event colour id ("1".."11"), null when the event uses its calendar's. */
+  colorId?: string | null
 }
 
 export interface CalendarAttendee {
@@ -70,6 +72,11 @@ export async function listEvents(
   params: { calendarId?: string; timeMin: string; timeMax: string },
 ): Promise<CalendarEventDto[]> {
   return invokeTool(api, "list_events", params)
+}
+
+/** One event by id (the local id, or a recurring series' Google id), null when not visible. */
+export async function getEvent(api: ApiClient, eventId: string): Promise<CalendarEventDto | null> {
+  return invokeTool(api, "get_event", { eventId })
 }
 
 export interface CreateEventInput {

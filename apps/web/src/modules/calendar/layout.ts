@@ -50,10 +50,19 @@ export function occurrenceDaySpan(occ: ExpandedOccurrence): { first: Date; last:
   return { first, last }
 }
 
+/**
+ * Whether an occurrence belongs in the all-day band: an all-day event, or a timed one lasting a
+ * day or more. A shorter timed event that crosses midnight (22:00-02:00) stays in the time grid,
+ * drawn on both days, as Google does.
+ */
 export function isSpanning(occ: ExpandedOccurrence): boolean {
   const span = occurrenceDaySpan(occ)
   if (!span) return false
-  return occ.allDay || dayDiff(span.first, span.last) > 0
+  if (occ.allDay) return true
+  if (dayDiff(span.first, span.last) === 0) return false
+  const start = occStartDate(occ)
+  const end = occEndDate(occ)
+  return !!start && !!end && end.getTime() - start.getTime() >= 86_400_000
 }
 
 export interface WeekSegment {

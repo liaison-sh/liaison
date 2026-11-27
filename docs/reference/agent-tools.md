@@ -436,6 +436,7 @@ Month and week calendar that syncs both ways with Google Calendar.
 | `activity_read` | The meetings a company's or a contact's people attend, in the 90 days before the cursor, newest first, for their timeline. |  | `calendar:events:read` |
 | `create_event` | Create a new event or meeting on a writable calendar. |  | `calendar:events:write` |
 | `delete_event` | Delete an event or meeting. |  | `calendar:events:write` |
+| `get_event` | Read one event by its eventId (as list_events returns it): title, times, description, location, guests and their answers, Meet link, recurrence. |  | `calendar:events:read` |
 | `list_accounts` | List connected Google Calendar accounts visible to the caller (their own personal connections plus every org-wide connection) — the generic kernel connections list deliberately excludes org-owned non-kernel connections, so Settings uses this app-specific tool instead (mirrors mail's listAccounts). |  | `calendar:events:read` |
 | `list_calendars` | List the connected Google calendars visible to the caller (personal calendars they own, plus org-wide calendars), each with `selected`: only selected calendars are synced and have events. |  | `calendar:events:read` |
 | `list_events` | List events in a time window, optionally scoped to one calendar. |  | `calendar:events:read` |
@@ -635,6 +636,11 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `recurring_schedule_update` | Change a recurring schedule, resume a paused one (status active), end it (status ended) or turn issue_mode auto on or off. | yes | `invoicing:documents:write` |
 | `retainer_draft_from_reconcile` | Make the invoice draft of one retainer month from its planned vs done card: the fee, any hours above the retainer, the activity report, and its issue approval. |  | `invoicing:documents:write` |
 | `retainer_terms_renew` | Renew a project's retainer from a signed agreement: its included hours, monthly fee and overage rate apply from the agreement's first month (at the earliest the next), the months before keep the old terms. |  | `invoicing:documents:write` |
+| `revenue_stream_bind` | Bind a sales app (one implementing revenue-stream@1) so each of its sales gets its invoice, under an issuer profile; or change a bound stream (streamId: mode auto/review/off, mail, label, issuer). | yes | `invoicing:settings:write` |
+| `revenue_stream_sale_issue` | Issue the invoice of one sale of a bound revenue stream (the sale is read again from its app). | yes | `invoicing:documents:write` |
+| `revenue_streams_list` | List the revenue streams: the sales apps whose sales this organization invoices automatically (provider app, issuer profile, mode auto/review/off, issue_from, mail), and the installed apps that could be bound. |  | `invoicing:settings:read` |
+| `sales_catch_up` | Invoice the sales a bound revenue stream's app took between paidFrom and paidTo that have no invoice yet: oldest first, one number each, issued today, then a credit note for each refund. | yes | `invoicing:documents:write` |
+| `sales_catch_up_preview` | Read only: every sale a bound revenue stream's app took between paidFrom and paidTo, oldest first, as the catch-up would invoice it: buyer, country, tax treatment, lines, tax as computed against the tax the source charged, totals, refunds, blockers (address, VAT number to validate, FX rate, tax gap) and the document it already has. |  | `invoicing:documents:read`, `invoicing:settings:read` |
 | `settings_hs_code_list` | List the org's HS-code library entries. |  | `invoicing:settings:read` |
 | `settings_issuer_profile_create` | Create an issuer profile. | yes | `invoicing:settings:write` |
 | `settings_issuer_profile_delete` | Delete an issuer profile by id. | yes | `invoicing:settings:write` |
@@ -917,6 +923,8 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `returns_refund` | Issue a refund against a Shopify return: moves money on the order. | yes | `shopify:returns:write` |
 | `returns_request` | Open a Shopify RETURN REQUEST for one or more shipped line items — the platform record that QUEUES a unit as inbound so it is inspected and restocked ON RECEIPT (use this to 'queue a unit to be restocked when it comes back', NOT an immediate inventory bump). | yes | `shopify:returns:write` |
 | `returns_search` | Search Shopify returns |  | `shopify:returns:read` |
+| `rs_sale_get` | revenue-stream@1 sale_get: the sale of one order, as the order's webhook delivered it (contract op, not agent visible). |  | `shopify:internal` |
+| `rs_sales_list` | revenue-stream@1 sales_list: the sales of the orders received in [paid_from, paid_to) (contract op, not agent visible). |  | `shopify:internal` |
 | `settings_load` | Load the Shopify Settings panel bundle: connection snapshot, identity-mapping rows, sync diagnostics, inventory allowlist, and Plus-only seed suggestions. |  | `shopify:admin:identity-map` |
 | `staff_overrides_delete` | Remove a Shopify staff identity override | yes | `shopify:admin:identity-map` |
 | `staff_overrides_upsert` | Map a Liaison user to a Shopify staff identity (admin override) | yes | `shopify:admin:identity-map` |
@@ -939,6 +947,7 @@ Watch Facebook, Instagram and YouTube activity and answer with approved replies.
 | `correct_triage` | Deliberately re-triage a finding after the fact (human correction). |  | `social:internal` |
 | `counts` | Sidebar badge counts: new findings, awaiting approval, open DMs. |  | `social:findings:read` |
 | `dismiss_finding` | Dismiss a finding (no reply needed). |  | `social:internal` |
+| `dm_delete_conversation` | Delete a direct-message conversation from Liaison's inbox. |  | `social:dm:write` |
 | `dm_get` | Get one conversation with its messages. |  | `social:dm:read` |
 | `dm_list` | List direct-message conversations, most recently active first. |  | `social:dm:read` |
 | `findings_get` | Get one social finding by id. |  | `social:findings:read` |
@@ -985,6 +994,8 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | `refund_document_link` | Record the credit note a Stripe refund became, or that none follows it. |  | `stripe:internal` |
 | `refunds_create` | Refund a Stripe charge, in full or in part (amountMinor in cents). | yes | `stripe:refunds:write` |
 | `refunds_for_charge` | Every refund of one Stripe charge, by id, read from Stripe, with the charge's invoice. |  | `stripe:internal` |
+| `rs_sale_get` | revenue-stream@1 sale_get: the sale of one one-off payment (a PaymentIntent paid through Checkout, with no Stripe invoice), read from its Checkout Session (contract op, not agent visible). |  | `stripe:internal` |
+| `rs_sales_list` | revenue-stream@1 sales_list: the one-off sales of the Checkout Sessions completed in [paid_from, paid_to) (contract op, not agent visible). |  | `stripe:internal` |
 | `settings_load` | The Stripe settings page's load: the connection state and the key's permissions from the last check. |  | `stripe:admin:connection` |
 | `subscription_cancel` | Cancel a Stripe subscription, at the end of its period unless atPeriodEnd is false. | yes | `stripe:subscriptions:write` |
 | `subscription_cancel_effect` | What cancelling a subscription changes: MRR, invoices and the company's open deals, for its approval card. |  | `stripe:subscriptions:read` |

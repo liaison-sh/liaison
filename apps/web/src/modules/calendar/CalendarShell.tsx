@@ -10,8 +10,10 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  For,
   Match,
   on,
+  onCleanup,
   Show,
   Switch,
   untrack,
@@ -20,9 +22,11 @@ import { onEntityChange } from "~/framework/entity-changes"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { shellTier } from "~/modules/shell/shell-tier"
+import { useTabIsActive } from "~/modules/shell/TabVisibilityContext"
 import { openTab } from "~/modules/shell/tab-store"
 import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
+import { Dialog } from "~/ui/Dialog"
 import { AgendaView } from "./AgendaView"
 import {
   type CalendarConnectionDto,
@@ -51,7 +55,9 @@ import { openEventTab, openNewEventTab } from "./event-tabs"
 import { MonthView } from "./MonthView"
 import { QuickCreate, type QuickCreateRequest } from "./QuickCreate"
 import { expandEvents } from "./rrule-expand"
+import { SHORTCUT_LIST, type ShortcutAction, shortcutFor } from "./shortcuts"
 import { TimeGridView } from "./TimeGridView"
+import { secondaryTimeZone } from "./time-zones"
 
 export interface CalendarShellProps {
   initialView: CalendarView
@@ -103,6 +109,8 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
   const firstDay = () => weekStartsOn(i18n.locale())
   const [view, setView] = createSignal<CalendarView>(loadPreferredView() ?? props.initialView)
   const [quick, setQuick] = createSignal<QuickCreateRequest | null>(null)
+  const [shortcutsOpen, setShortcutsOpen] = createSignal(false)
+  const tabActive = useTabIsActive()
   // At phone width the grid is replaced by an agenda; the view switcher and
   // the grid navigation belong to a surface that has columns to switch between.
   const phone = () => shellTier() === "phone"
@@ -377,6 +385,44 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
     const event = calendarStore.events.find((e) => e.eventId === eventId)
     if (event) openEventTab(event, i18n.t("calendar.untitledEvent"))
   }
+
+  function runShortcut(action: ShortcutAction): void {
+    switch (action) {
+      case "help":
+        setShortcutsOpen(true)
+        break
+      case "today":
+        setFocusedDate(new Date())
+        break
+      case "next":
+        step(1)
+        break
+      case "previous":
+        step(-1)
+        break
+      case "create":
+        openCreate()
+        break
+      default:
+        if (!phone()) switchView(action)
+    }
+  }
+
+  // Shortcuts belong to the calendar tab in front: tabs stay mounted, so a hidden one ignores
+  // keys. Esc closes the quick-create card here; the event tab handles Del.
+  const onShortcutKey = (e: KeyboardEvent) => {
+    if (!tabActive() || e.defaultPrevented) return
+    if (e.key === "Escape" && quick()) {
+      setQuick(null)
+      return
+    }
+    const action = shortcutFor(e)
+    if (!action) return
+    e.preventDefault()
+    runShortcut(action)
+  }
+  document.addEventListener("keydown", onShortcutKey)
+  onCleanup(() => document.removeEventListener("keydown", onShortcutKey))
 
   function refresh(): void {
     void reloadCurrentWindow(api)
@@ -691,6 +737,11 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
               }
               onMoveEvent={(eventId, start, end) => void moveEvent(eventId, start, end)}
               canDrag={canDrag}
+              secondaryTimeZone={secondaryTimeZone()}
+              onShowDay={(day) => {
+                setFocusedDate(new Date(day))
+                switchView("day")
+              }}
             />
           </Match>
         </Switch>
@@ -705,6 +756,37 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
           />
         )}
       </Show>
+
+      <Dialog open={shortcutsOpen()} onOpenChange={setShortcutsOpen}>
+        <Dialog.Content>
+          <Dialog.Title>{i18n.t("calendar.shortcuts.title")}</Dialog.Title>
+          <dl
+            class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm"
+            data-testid="calendar-shortcuts"
+          >
+            <For each={SHORTCUT_LIST}>
+              {(item) => (
+                <>
+                  <dt>
+                    <kbd class="rounded border border-border px-1.5 font-mono text-xs">
+                      {item.keys}
+                    </kbd>
+                  </dt>
+                  <dd class="text-text-secondary">{i18n.t(`calendar.shortcuts.${item.action}`)}</dd>
+                </>
+              )}
+            </For>
+            <dt>
+              <kbd class="rounded border border-border px-1.5 font-mono text-xs">Esc</kbd>
+            </dt>
+            <dd class="text-text-secondary">{i18n.t("calendar.shortcuts.escape")}</dd>
+            <dt>
+              <kbd class="rounded border border-border px-1.5 font-mono text-xs">Del</kbd>
+            </dt>
+            <dd class="text-text-secondary">{i18n.t("calendar.shortcuts.delete")}</dd>
+          </dl>
+        </Dialog.Content>
+      </Dialog>
     </div>
   )
 }

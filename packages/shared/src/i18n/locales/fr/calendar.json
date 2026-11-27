@@ -101,5 +101,21 @@
   "eventDeleted": "Événement supprimé",
   "undo": "Annuler",
   "eventMoved": "Événement déplacé",
-  "moveFailed": "L'événement n'a pas pu être déplacé : {{message}}"
+  "moveFailed": "L'événement n'a pas pu être déplacé : {{message}}",
+  "secondaryZone": "Second fuseau horaire",
+  "secondaryZoneNone": "Aucun",
+  "eventZoneNote": "Les heures sont dans votre fuseau ({{yours}}). Fuseau de cet événement : {{zone}}.",
+  "shortcuts": {
+    "title": "Raccourcis clavier",
+    "today": "Aller à aujourd’hui",
+    "next": "Jour, semaine ou mois suivant",
+    "previous": "Jour, semaine ou mois précédent",
+    "day": "Vue jour",
+    "week": "Vue semaine",
+    "month": "Vue mois",
+    "create": "Nouvel événement",
+    "help": "Afficher ces raccourcis",
+    "escape": "Fermer la carte du nouvel événement",
+    "delete": "Supprimer l’événement ouvert (avec confirmation)"
+  }
 }

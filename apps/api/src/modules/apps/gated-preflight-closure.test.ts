@@ -32,6 +32,9 @@ const MANIFEST_ROOTS = [
  * guard; so does adding a new gated tool without deciding either way.
  */
 const NO_PREFLIGHT_NEEDED: Record<string, string> = {
+  // conditionalGate: an agent's delete parks from inside the handler; the delete's own checks
+  // (calendar writable, the recurring scope) run on the approved call, as on a person's.
+  "calendar:delete_event": "parks only an agent's delete; checks run on approval",
   // Validated at stage time through a dedicated read-only bridge validator
   // (knowledge_create_validate / knowledge_update_validate) rather than a
   // manifest preflight: these tools gate from INSIDE their handler, and the

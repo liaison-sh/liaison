@@ -54,6 +54,38 @@ describe("mail-conversation-store", () => {
     expect(conversationStore.ids).toEqual(["older", "newer"])
   })
 
+  it("opening a conversation keeps its row's sender when the thread payload has none", async () => {
+    const { conversationStore, handleConversationEvent, setView, upsertConversation } =
+      await import("~/modules/mail/mail-conversation-store")
+    setView("inbox")
+    const row = {
+      id: "c1",
+      accountId: "mail-1",
+      subject: "Your volume quote",
+      snippet: "Thanks for the quote",
+      isRead: false,
+      isStarred: false,
+      status: "open" as const,
+      lastMessageAt: "2026-01-01T00:00:00.000Z",
+      messageCount: 1,
+      assignedTo: null,
+      contactId: null,
+      internalThreadId: null,
+      labels: ["INBOX"],
+      senderName: "Jane Doe",
+      senderEmail: "jane@example.com",
+      escalatedTicketId: null,
+      escalatedTicketHandle: null,
+      escalatedTicketStatus: null,
+    }
+    handleConversationEvent("create", row)
+    // The opened thread's conversation: read now, no list-derived sender.
+    upsertConversation({ ...row, isRead: true, senderName: null, senderEmail: null })
+    expect(conversationStore.byId.c1?.isRead).toBe(true)
+    expect(conversationStore.byId.c1?.senderName).toBe("Jane Doe")
+    expect(conversationStore.byId.c1?.senderEmail).toBe("jane@example.com")
+  })
+
   it("setView does not clear the list when selecting the active view", async () => {
     const { conversationStore, handleConversationEvent, setView } = await import(
       "~/modules/mail/mail-conversation-store"

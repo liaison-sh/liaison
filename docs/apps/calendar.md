@@ -88,7 +88,7 @@ This is off until you turn it on: open **Settings › Apps › Calendar** and sw
 
 ## Ask an agent
 
-Ask, for example, "What is on my calendar tomorrow?" or "Book a 30 minute call with orders@resonantaudiolabs.example on Thursday at 10 with a Meet link". The agent can create a real Google Meet link. It cannot create Teams or Zoom links. The calendar tools are not approval-gated, unless your organization adds an approval policy (see [Approve what agents do](../agents/approvals.md)).
+Ask, for example, "What is on my calendar tomorrow?" or "Book a 30 minute call with orders@resonantaudiolabs.example on Thursday at 10 with a Meet link". The agent can create a real Google Meet link. It cannot create Teams or Zoom links. When an agent should email the guests (an invitation, an update) or deletes an event, the change waits for your approval first; other calendar changes need none, unless your organization adds an approval policy (see [Approve what agents do](../agents/approvals.md)).
 
 Ask "Open the quarter review" and the agent opens the calendar on that event's day, with the event open.
 
@@ -111,10 +111,15 @@ Ask "Open the quarter review" and the agent opens the calendar on that event's d
 | `search_events` | Search events by title, description and location | `calendar:events:read` |
 | `create_event` | Create an event, optionally with a Google Meet link | `calendar:events:write` |
 | `update_event` | Change time, title, description, location, guests or the Meet link, for one occurrence, this and the following occurrences, or the series | `calendar:events:write` |
-| `delete_event` | Delete an event, one occurrence, this and the following occurrences, or the series | `calendar:events:write` |
+| `delete_event` | Delete an event, one occurrence, this and the following occurrences, or the series. Waits for your approval | `calendar:events:write` |
+| `respond_to_invitation` | Answer an invitation you received: yes, no or maybe | `calendar:events:write` |
 | `set_selected` | Turn sync on or off for a calendar | `calendar:events:write` |
 | `retry_import` | Re-run a failed account import | `calendar:events:write` |
 
 For this and the following occurrences, the series is split as in Google Calendar: the old series ends before that occurrence, and a new series with the change starts there. Cancelled occurrences after it stay cancelled; edited ones take the change.
+
+### Invitations and deletes from agents
+
+An agent's writes email nobody unless you ask it to invite or notify the guests. Then, and for every event an agent deletes, the change waits for your approval first: nothing reaches Google or the guests before you approve it. Your answer to an invitation (yes, no or maybe) goes to Google, which tells the organizer.
 
 See the [agent tool reference](../reference/agent-tools.md).

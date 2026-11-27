@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
 import { describe, expect, test } from "bun:test"
-import { classifySaleTax, type SaleTaxInput, supplyDateOf } from "./sale-tax"
+import { classifySaleTax, type SaleTaxInput, saleTaxSettings, supplyDateOf } from "./sale-tax"
 import { resolveLegalMention } from "./tax"
 
 type Buyer = SaleTaxInput["buyer"]
@@ -90,6 +90,113 @@ describe("classifySaleTax: a consumer's electronic services", () => {
     )
     expect(r.ok ? null : r.park).toBe("service_place_of_supply_review")
   })
+})
+
+describe("classifySaleTax: the issuer profile's VAT settings", () => {
+  test("the settings read off an issuer profile, both off by default", () => {
+    expect(saleTaxSettings({})).toEqual({
+      single_evidence_allowed: false,
+      eu_b2c_below_threshold: false,
+    })
+    expect(
+      saleTaxSettings({ vat_single_evidence: true, vat_eu_b2c_below_threshold: true }),
+    ).toEqual({ single_evidence_allowed: true, eu_b2c_below_threshold: true })
+  })
+
+  test("small seller (art. 24b(d)): one piece of evidence is enough, still none is not", () => {
+    const one = sale({ tax_evidence: { billing_country: "DE", ip_country: "BE" } })
+    const small = { ...one, ...saleTaxSettings({ vat_single_evidence: true }) }
+    const r = classifySaleTax(small)
+    expect(r.ok && [r.treatment, r.place_of_supply.agreeing]).toEqual([
+      "eu_b2c_oss",
+      ["billing_country"],
+    ])
+    const none = { ...sale({ tax_evidence: { ip_country: "BE" } }), single_evidence_allowed: true }
+    expect(classifySaleTax(none).ok ? null : (classifySaleTax(none) as { park: string }).park).toBe(
+      "place_of_supply_evidence",
+    )
+  })
+
+  test("setting off: one piece of evidence still parks (two needed)", () => {
+    const one = sale({ tax_evidence: { billing_country: "DE", ip_country: "BE" } })
+    const r = classifySaleTax({ ...one, ...saleTaxSettings({ vat_single_evidence: false }) })
+    expect(r.ok ? null : r.park).toBe("place_of_supply_evidence")
+  })
+
+  test("under EUR 10,000 and not in the OSS (art. 59c): an EU consumer pays the French rate", () => {
+    const r = classifySaleTax({
+      ...sale({}, [{ kind: "software", subtotal_minor: 10000n, source_tax_minor: 2000n }]),
+      eu_b2c_below_threshold: true,
+    })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.treatment).toBe("eu_domestic")
+    expect(r.line_rates_bp).toEqual([2000])
+    expect(r.place_of_supply).toMatchObject({ country: "FR", rule: "seller_establishment" })
+  })
+
+  test("under the threshold, goods distance sales are French VAT too (CGI 258 A)", () => {
+    const r = classifySaleTax({
+      ...sale({ tax_evidence: null }, [
+        { kind: "goods", subtotal_minor: 10000n, source_tax_minor: 2000n },
+      ]),
+      eu_b2c_below_threshold: true,
+    })
+    expect(r.ok && [r.treatment, r.line_rates_bp]).toEqual(["eu_domestic", [2000]])
+  })
+
+  test("an OSS-registered profile (setting off) never falls back to the French rate", () => {
+    const r = classifySaleTax({
+      ...sale({}, [{ kind: "software", subtotal_minor: 10000n, source_tax_minor: 2000n }]),
+      ...saleTaxSettings({ vat_eu_b2c_below_threshold: false }),
+    })
+    // Stripe charged 20 % to a German consumer: under the OSS that is a mismatch, never FR VAT.
+    expect(r.ok ? null : r.park).toBe("sale_tax_mismatch")
+    const right = classifySaleTax(sale({}))
+    expect(right.ok && [right.treatment, right.line_rates_bp]).toEqual(["eu_b2c_oss", [1900]])
+  })
+
+  test("the threshold changes nothing for businesses or consumers outside the EU", () => {
+    const b2b = classifySaleTax({
+      ...sale({ kind: "company", vat_id: "DE123456789", vat_id_valid: true }, [
+        { kind: "software", subtotal_minor: 10000n, source_tax_minor: 0n },
+      ]),
+      eu_b2c_below_threshold: true,
+    })
+    expect(b2b.ok && b2b.treatment).toBe("eu_reverse_charge")
+    const us = classifySaleTax({
+      ...sale({ country: "US", tax_evidence: { billing_country: "US", ip_country: "US" } }, [
+        { kind: "software", subtotal_minor: 1999n, source_tax_minor: 0n },
+      ]),
+      eu_b2c_below_threshold: true,
+    })
+    expect(us.ok && us.treatment).toBe("eu_export_non_eu")
+  })
+})
+
+describe("classifySaleTax: UK and Swiss consumers with no tax collected", () => {
+  for (const country of ["GB", "CH"]) {
+    test(`${country}: outside French VAT at 0 %, not held`, () => {
+      const r = classifySaleTax(
+        sale({ country, tax_evidence: { billing_country: country, card_country: country } }, [
+          { kind: "software", subtotal_minor: 2500n, source_tax_minor: 0n },
+        ]),
+      )
+      expect(r.ok).toBe(true)
+      if (!r.ok) return
+      expect(r.treatment).toBe("eu_export_non_eu")
+      expect(r.customer_kind).toBe("individual")
+      expect(r.operation_category).toBe("services")
+      expect(r.line_rates_bp).toEqual([0])
+      expect(
+        resolveLegalMention(r.treatment, "fr", {
+          category: r.operation_category,
+          customerKind: r.customer_kind,
+          issueDate: "2026-12-01",
+        }),
+      ).toBe("TVA non applicable, art. 259 B du CGI")
+    })
+  }
 })
 
 describe("classifySaleTax: businesses", () => {
@@ -195,6 +302,52 @@ describe("the mention of services supplied outside the EU", () => {
     expect(
       resolveLegalMention("eu_export_non_eu", "fr", { category: "goods", issueDate: "2026-12-01" }),
     ).toContain("262 I")
+  })
+})
+
+describe("the mention of digital services to a consumer outside the EU", () => {
+  test("art. 259 B in French and English, from its date", () => {
+    const opts = {
+      category: "services" as const,
+      customerKind: "individual",
+      issueDate: "2026-11-28",
+    }
+    expect(resolveLegalMention("eu_export_non_eu", "fr", opts)).toBe(
+      "TVA non applicable, art. 259 B du CGI",
+    )
+    expect(resolveLegalMention("eu_export_non_eu", "en", opts)).toBe(
+      "VAT not applicable, art. 259 B of the French Tax Code",
+    )
+  })
+
+  test("documents issued before keep their wording", () => {
+    expect(
+      resolveLegalMention("eu_export_non_eu", "fr", {
+        category: "services",
+        customerKind: "individual",
+        issueDate: "2026-11-27",
+      }),
+    ).toContain("262 I")
+  })
+
+  test("a business outside the EU keeps the B2B wording", () => {
+    const b2b = resolveLegalMention("eu_export_non_eu", "fr", {
+      category: "services",
+      customerKind: "business",
+      issueDate: "2026-12-01",
+    })
+    expect(b2b).toContain("259-1")
+    expect(b2b).not.toContain("259 B")
+  })
+
+  test("a consumer's mixed sale prints the goods export and the 259 B mention", () => {
+    const mixed = resolveLegalMention("eu_export_non_eu", "en", {
+      category: "mixed",
+      customerKind: "individual",
+      issueDate: "2026-12-01",
+    })
+    expect(mixed).toContain("Article 146")
+    expect(mixed).toContain("art. 259 B of the French Tax Code")
   })
 })
 

@@ -580,6 +580,21 @@ const SERVICES_OUTSIDE_EU: MentionEntry = {
 export const SERVICES_OUTSIDE_EU_FROM = "2026-11-28"
 
 /**
+ * Electronically supplied services to a CONSUMER established outside the EU: supplied outside
+ * France, so French VAT does not apply (CGI art. 259 B; Directive 2006/112/EC art. 59). A business
+ * buyer keeps SERVICES_OUTSIDE_EU (CGI art. 259-1°).
+ */
+const CONSUMER_SERVICES_OUTSIDE_EU: MentionEntry = {
+  en: "VAT not applicable, art. 259 B of the French Tax Code",
+  fr: "TVA non applicable, art. 259 B du CGI",
+  de: "Nicht steuerbar in Frankreich, Art. 259 B CGI",
+}
+
+/** The first issue date that prints CONSUMER_SERVICES_OUTSIDE_EU. Documents issued before keep
+ *  the wording they were issued with, on every re-render. */
+export const CONSUMER_SERVICES_OUTSIDE_EU_FROM = "2026-11-28"
+
+/**
  * The shipped legal-mention texts per (key, language), dated by legal period: `cgi` applies before
  * the CIBS switch date, `cibs` from it. The accountant's exact CIBS wording is still open, so until
  * it arrives the `cibs` period repeats the CGI text; a new wording is one edit to that period.
@@ -654,6 +669,9 @@ export interface LegalMentionOptions {
   /** The document's issue date (YYYY-MM-DD or a timestamp); selects the legal period. */
   issueDate?: string | null
   cibsSwitchDate?: string | null
+  /** The buyer's kind as the document stored it (`documents.customer_kind`): `individual` picks
+   *  the consumer wording of services outside the EU. Unknown reads as a business. */
+  customerKind?: string | null
 }
 
 /**
@@ -684,7 +702,12 @@ export function resolveLegalMention(
     (opts.category === "services" || opts.category === "mixed") &&
     (ISO_DATE.exec(String(opts.issueDate ?? ""))?.[1] ?? "") >= SERVICES_OUTSIDE_EU_FROM
   ) {
-    const services = SERVICES_OUTSIDE_EU[language] ?? SERVICES_OUTSIDE_EU.en
+    const issued = ISO_DATE.exec(String(opts.issueDate ?? ""))?.[1] ?? ""
+    const wording =
+      opts.customerKind === "individual" && issued >= CONSUMER_SERVICES_OUTSIDE_EU_FROM
+        ? CONSUMER_SERVICES_OUTSIDE_EU
+        : SERVICES_OUTSIDE_EU
+    const services = wording[language] ?? wording.en
     if (opts.category === "services") return services
     const g = table.eu_export_non_eu ?? SERVICES_OUTSIDE_EU
     const goods = g[language] ?? g.en

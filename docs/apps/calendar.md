@@ -88,8 +88,13 @@ Ask "Open the quarter review" and the agent opens the calendar on that event's d
 | `search_events` | Search events by title, description and location | `calendar:events:read` |
 | `create_event` | Create an event, optionally with a Google Meet link | `calendar:events:write` |
 | `update_event` | Change time, title, description, location, guests or the Meet link, for one occurrence or the series | `calendar:events:write` |
-| `delete_event` | Delete an event, one occurrence or the series | `calendar:events:write` |
+| `delete_event` | Delete an event, one occurrence or the series. Waits for your approval | `calendar:events:write` |
+| `respond_to_event` | Answer an invitation you received: yes, no or maybe | `calendar:events:write` |
 | `set_selected` | Turn sync on or off for a calendar | `calendar:events:write` |
 | `retry_import` | Re-run a failed account import | `calendar:events:write` |
+
+### Invitations and deletes from agents
+
+An agent's writes email nobody unless you ask it to invite or notify the guests. Then, and for every event an agent deletes, the change waits for your approval first: nothing reaches Google or the guests before you approve it. Your answer to an invitation (yes, no or maybe) goes to Google, which tells the organizer.
 
 See the [agent tool reference](../reference/agent-tools.md).

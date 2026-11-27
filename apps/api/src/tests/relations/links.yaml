@@ -494,6 +494,33 @@ links:
       Pm: a reader who loses the read scope of the other end is not driven in this file yet
       Ap: switching the owning app off is not driven in this file yet
 
+  - name: buyer-key-issuer
+    what: a website access key of the buyer invoices API to the issuer profile it reads
+    storedIn: kernel.buyer_invoice_keys.issuer_profile_id
+    columns: [kernel.buyer_invoice_keys.issuer_profile_id]
+    paths:
+      - apps/api/src/modules/buyer-invoices/
+    visibleState: []
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: C, Dx: a, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: a, Mi: a, Rv: a, Aw: a }
+    open:
+      Dl: a profile with documents cannot be deleted; a key whose profile is gone matches nothing and lists nothing, which the buyer invoices integration test does not drive yet
+
+  - name: buyer-link-key
+    what: a 5-minute download link of the buyer invoices API to the key that minted it, and the document it serves
+    storedIn: kernel.buyer_invoice_links.key_id, document_id
+    columns: [kernel.buyer_invoice_links.key_id, kernel.buyer_invoice_links.document_id]
+    paths:
+      - apps/api/src/modules/buyer-invoices/
+    visibleState: []
+    whoIsTold: []
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: C, Dx: a, Pm: a, Ap: C, Mv: a, Rs: a, Dr: e, Ex: a, Mi: a, Rv: a, Aw: a }
+    open:
+      Dl: revoking the key deletes its links (driven in modules/buyer-invoices/buyer-invoices.integration.test.ts, not in this file); an issued document is never deleted
+      Ap: invoicing switched off refuses the download (routes.ts servesInvoicing), not driven in this file yet
+
   - name: deal-value-deal
     what: a deal's amount to its deal
     storedIn: app_projects.deal_values.task_id

@@ -22,6 +22,7 @@ import { openEntity } from "~/modules/shell/entity-opener"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { useTabIsActive } from "~/modules/shell/TabVisibilityContext"
 import { openSearchMessageHit } from "~/modules/threads/reply-panel-store"
+import { searchFilterChips } from "./search-chips"
 
 interface SearchTabProps {
   entityId: string
@@ -61,18 +62,18 @@ const SearchTab: Component<SearchTabProps> = () => {
 
   const hits = createMemo(() => searchStore.hits)
   const total = createMemo(() => searchStore.total)
-  const appOptions = createMemo(() => {
-    const apps = new Set<string>()
-    for (const h of searchStore.hits) apps.add(h.app)
-    return Array.from(apps).sort()
-  })
-  const entityTypeOptions = createMemo(() => {
-    const types = new Set<string>()
-    for (const h of searchStore.hits) types.add(h.entity_type)
-    return Array.from(types).sort()
-  })
   const selectedApps = createMemo(() => new Set(searchStore.filters.app ?? []))
   const selectedTypes = createMemo(() => new Set(searchStore.filters.entityType ?? []))
+  // No two chips that read the same (an app and a record type both "Projects").
+  const chips = createMemo(() =>
+    searchFilterChips(searchStore.hits, {
+      selectedApps: selectedApps(),
+      appLabel: (app) => appLabel(app, i18n.t),
+      typeLabel: (type) => entityTypeChipLabel(type, i18n.t),
+    }),
+  )
+  const appOptions = () => chips().apps
+  const entityTypeOptions = () => chips().types
   const page = createMemo(() => ({
     offset: searchStore.offset,
     limit: searchStore.limit,

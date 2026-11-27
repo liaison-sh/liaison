@@ -1,0 +1,3 @@
+A phone in landscape keeps the phone layout: apps/web/src/modules/shell/shell-tier.ts (PHONE_LANDSCAPE_QUERY)
+Settings on a tablet shows its sections beside the page: apps/web/src/modules/settings/SettingsLayout.tsx (tablet)
+A windowed iPad keeps the header clear of the window controls: apps/mobile/ios/App/App/MainViewController.swift (publishWindowControlsInset), apps/web/src/modules/shell/Shell.tsx (--window-controls-top)

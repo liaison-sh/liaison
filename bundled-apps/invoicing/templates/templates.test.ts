@@ -277,6 +277,23 @@ describe("invoicing pdf templates — command shape", () => {
     expect(none).not.toContain("Customer ref:")
   })
 
+  test("invoice — a sale date other than the issue date prints as Date of sale; the same day prints nothing", () => {
+    const sold = texts(
+      invoiceTemplate(
+        shortInput({ document: { ...shortInput().document, supply_date: "2026-05-02" } }),
+      ),
+    )
+    expect(sold).toContain("Date of sale:")
+    expect(sold.some((t) => t.includes("2026") && t.includes("02"))).toBe(true)
+    const sameDay = texts(
+      invoiceTemplate(
+        shortInput({ document: { ...shortInput().document, supply_date: "2026-05-15" } }),
+      ),
+    )
+    expect(sameDay).not.toContain("Date of sale:")
+    expect(texts(invoiceTemplate(shortInput()))).not.toContain("Date of sale:")
+  })
+
   test("purchase order — po_number is never printed (this document already IS a purchase order)", () => {
     const t = texts(
       poTemplate(shortInput({ document: { ...shortInput().document, po_number: "PO-4471" } })),

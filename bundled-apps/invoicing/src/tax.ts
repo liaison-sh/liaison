@@ -563,6 +563,23 @@ const SERVICES_REVERSE_CHARGE: MentionEntry = {
 }
 
 /**
+ * Services supplied to a customer established outside the EU are not an export of goods: their
+ * place of supply is outside France, so French VAT does not apply (B2B: Directive 2006/112/EC
+ * art. 44, CGI art. 259-1°; electronic services to a consumer: Directive art. 58, CGI art. 259 D).
+ * OPEN: the exact wording, and the CGI article for consumers outside the EU, wait for the
+ * accountant's confirmation.
+ */
+const SERVICES_OUTSIDE_EU: MentionEntry = {
+  en: "VAT not applicable: place of supply of the services outside France (Articles 44 and 58 of Directive 2006/112/EC).",
+  fr: "TVA non applicable : lieu de la prestation de services situé hors de France (articles 259-1° et 259 D du CGI)",
+  de: "Nicht steuerbar in Frankreich: Ort der Dienstleistung ausserhalb Frankreichs (Art. 44 und 58 MwStSystRL).",
+}
+
+/** The first issue date that prints SERVICES_OUTSIDE_EU on services outside the EU. Documents
+ *  issued before keep the export wording they were issued with, on every re-render. */
+export const SERVICES_OUTSIDE_EU_FROM = "2026-11-28"
+
+/**
  * The shipped legal-mention texts per (key, language), dated by legal period: `cgi` applies before
  * the CIBS switch date, `cibs` from it. The accountant's exact CIBS wording is still open, so until
  * it arrives the `cibs` period repeats the CGI text; a new wording is one edit to that period.
@@ -661,6 +678,17 @@ export function resolveLegalMention(
     // One sentence each, one period between them, whether or not the goods text ends with one.
     if (opts.category === "mixed") return `${goods.replace(/\.\s*$/, "")}. ${services}`
     return services
+  }
+  if (
+    treatment === "eu_export_non_eu" &&
+    (opts.category === "services" || opts.category === "mixed") &&
+    (ISO_DATE.exec(String(opts.issueDate ?? ""))?.[1] ?? "") >= SERVICES_OUTSIDE_EU_FROM
+  ) {
+    const services = SERVICES_OUTSIDE_EU[language] ?? SERVICES_OUTSIDE_EU.en
+    if (opts.category === "services") return services
+    const g = table.eu_export_non_eu ?? SERVICES_OUTSIDE_EU
+    const goods = g[language] ?? g.en
+    return `${goods.replace(/\.\s*$/, "")}. ${services}`
   }
   const entry = table[treatment]
   if (!entry) return ""

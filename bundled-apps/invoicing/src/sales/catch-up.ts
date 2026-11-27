@@ -3,11 +3,11 @@
 // The catch-up of a revenue stream: the sales a provider took before the stream was bound (or
 // that no event brought), invoiced in sale-date order. Two tools:
 //
-//   revenue_stream_catch_up_preview  read only: every sale paid in the window (`sales_list` from
+//   sales_catch_up_preview  read only: every sale paid in the window (`sales_list` from
 //     the provider, each one as `sale_get` would answer), with its buyer, country, tax treatment,
 //     lines, tax as computed against the tax the source reported, totals, refunds, blockers, and
 //     the document it already has. Nothing is written.
-//   revenue_stream_catch_up          gated, never auto-approved: a person approves the run. It
+//   sales_catch_up          gated, never auto-approved: a person approves the run. It
 //     sorts the window's sales by sale date (oldest first), issues each one through `issueSale`
 //     (one number each, today's issue date, the sale date on the document's references), then a
 //     credit note for each refund of it, and STOPS at the first sale it cannot issue (parked,
@@ -194,7 +194,7 @@ async function previewOne(ctx: SaleCtx, stream: RevenueStream, issuerCountry: st
   }
 }
 
-/** `revenue_stream_catch_up_preview`: what the run would issue, in order. Writes nothing. */
+/** `sales_catch_up_preview`: what the run would issue, in order. Writes nothing. */
 export async function revenueStreamCatchUpPreview(ctx: SaleCtx, input: CatchUpInput) {
   const stream = await streamOf(ctx, input)
   if (!stream) return fail("stream_not_found", "streamId names no revenue stream.")
@@ -243,7 +243,7 @@ export type CatchUpStep =
   | { external_id: string; sold_at: string; outcome: "already_invoiced"; credit_notes: string[] }
   | { external_id: string; sold_at: string; outcome: "stopped"; reason: string }
 
-/** `revenue_stream_catch_up`: the approved run (see the header). */
+/** `sales_catch_up`: the approved run (see the header). */
 export async function revenueStreamCatchUp(ctx: CatchUpCtx, input: CatchUpInput) {
   if (!ctx.approval)
     return fail(

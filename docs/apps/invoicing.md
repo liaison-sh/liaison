@@ -79,8 +79,8 @@ A refund the app reports (`sale:refunded`) gives one credit note on the sale's i
 
 Sales paid before the stream was bound are invoiced only on a person's decision:
 
-1. `revenue_stream_catch_up_preview` with the stream and a window (`paidFrom`, `paidTo`) lists every sale of the window, oldest first: buyer, country, tax treatment, lines, the tax as computed next to the tax the app charged, totals, refunds, blockers (a missing address, a VAT number to check, a currency that needs the exchange rate, a tax gap) and the invoice a sale already has. It writes nothing.
-2. `revenue_stream_catch_up` with the same window waits for a person's approval, never automatic. It invoices each sale that has no invoice, oldest first, one number each, dated today, then a credit note for each refund. It stops at the first sale it cannot invoice, so the later ones keep their place in the numbering; fix the cause and approve the run again (sales already invoiced are skipped). A run lasts at most a minute: a long window may take more than one run, each going on where the last one stopped.
+1. `sales_catch_up_preview` with the stream and a window (`paidFrom`, `paidTo`) lists every sale of the window, oldest first: buyer, country, tax treatment, lines, the tax as computed next to the tax the app charged, totals, refunds, blockers (a missing address, a VAT number to check, a currency that needs the exchange rate, a tax gap) and the invoice a sale already has. It writes nothing.
+2. `sales_catch_up` with the same window waits for a person's approval, never automatic. It invoices each sale that has no invoice, oldest first, one number each, dated today, then a credit note for each refund. It stops at the first sale it cannot invoice, so the later ones keep their place in the numbering; fix the cause and approve the run again (sales already invoiced are skipped). A run lasts at most a minute: a long window may take more than one run, each going on where the last one stopped.
 
 ## Create a quote, proforma or purchase order
 

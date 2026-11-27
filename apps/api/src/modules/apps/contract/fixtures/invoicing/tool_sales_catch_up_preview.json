@@ -1,5 +1,5 @@
 {
-  "entry": "tool:revenue_stream_catch_up_preview",
+  "entry": "tool:sales_catch_up_preview",
   "params": {
     "streamId": "00000000-0000-4000-8000-0000000005a2",
     "paidFrom": "2026-11-01T00:00:00.000Z",

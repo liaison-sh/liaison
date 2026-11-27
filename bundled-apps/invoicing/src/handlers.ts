@@ -141,13 +141,13 @@ import {
   recurringScheduleUpdate,
   retainerTermsRenew,
 } from "./recurring/tools"
-import { onSaleApproved } from "./sales/issue-sale"
 import {
   type CatchUpCtx,
   type CatchUpInput,
   revenueStreamCatchUp,
   revenueStreamCatchUpPreview,
 } from "./sales/catch-up"
+import { onSaleApproved } from "./sales/issue-sale"
 import {
   type BindInput,
   revenueStreamBind,

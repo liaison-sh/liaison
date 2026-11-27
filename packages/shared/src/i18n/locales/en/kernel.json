@@ -4058,7 +4058,7 @@
       "recurring_schedule_pause": "pause recurring schedule",
       "revenue_stream_sale_issue": "issue a sale invoice",
       "revenue_stream_bind": "bind a revenue stream",
-      "revenue_stream_catch_up": "invoice earlier sales",
+      "sales_catch_up": "invoice earlier sales",
       "issuer_stream_set": "set issuer stream",
       "issuer_emails_confirm": "confirm issuer emails",
       "invoice_from_stripe_payment": "invoice Stripe payment",

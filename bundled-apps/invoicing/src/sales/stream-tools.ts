@@ -3,7 +3,7 @@
 // The revenue stream tools: `revenue_streams_list` (read) and `revenue_stream_bind` (gated, never
 // auto-approved: a person decides which sales app's sales this organization invoices, under which
 // issuer profile, and how). A new stream issues the sales paid from the moment it is bound; older
-// ones go through `revenue_stream_catch_up`.
+// ones go through `sales_catch_up`.
 
 import { REVENUE_STREAM } from "@liaison/app-sdk/contracts"
 import type { MutationsCtx } from "../mutations/shared"

@@ -59,6 +59,8 @@ const NO_PREFLIGHT_NEEDED: Record<string, string> = {
   // reaches a human in the first place.
   "invoicing:revenue_stream_bind":
     "a configuration choice the person makes on the card; the handler refuses an unknown app or issuer profile without writing",
+  "invoicing:sales_catch_up":
+    "its preview (sales_catch_up_preview) is the staging check; the approved run stops at the first sale it cannot issue",
   "invoicing:revenue_stream_sale_issue":
     "staged by the issuing flow after every check a sale can fail (tax, buyer, e-invoicing gate); the approved run reads the sale again",
   "invoicing:drafts_create": "validates before parking",

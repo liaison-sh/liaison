@@ -1516,13 +1516,13 @@ export function summarizeRevenueStreamCatchUp(
   const from = String(params.paidFrom ?? "").slice(0, 10)
   const to = String(params.paidTo ?? "").slice(0, 10)
   return done({
-    kind: "revenue_stream_catch_up",
+    kind: "sales_catch_up",
     title: `Invoice the sales paid from ${from} to ${to}`,
     subtitle: "Legal invoices, numbered in sale-date order; they cannot be deleted, only credited",
     lines: [
       "Each sale without an invoice gets one, issued today, oldest sale first; then a credit note for each of its refunds.",
       "The run stops at the first sale it cannot issue; later sales stay unissued so the numbers keep their order.",
-      "Check the list of revenue_stream_catch_up_preview (and your accountant) before approving.",
+      "Check the list of sales_catch_up_preview (and your accountant) before approving.",
     ],
   })
 }

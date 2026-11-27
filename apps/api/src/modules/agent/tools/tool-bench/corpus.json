@@ -2834,6 +2834,22 @@
     "any": ["invoicing__revenue_stream_bind"]
   },
   {
+    "id": "RS3",
+    "set": "seed",
+    "lang": "en",
+    "say": "show me which of the shop's earlier sales still need their invoice, without issuing anything",
+    "typed": ["catch up earlier sales preview", "sales without invoice before binding"],
+    "any": ["invoicing__sales_catch_up_preview"]
+  },
+  {
+    "id": "RS4",
+    "set": "seed",
+    "lang": "fr",
+    "say": "émets maintenant les factures des ventes passées, dans l'ordre",
+    "typed": ["rattrapage des factures", "facturer les ventes passées"],
+    "any": ["invoicing__sales_catch_up"]
+  },
+  {
     "id": "WI1",
     "set": "seed",
     "lang": "en",

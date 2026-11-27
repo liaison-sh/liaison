@@ -17,7 +17,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { randomUUID } from "node:crypto"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import knowledgeManifest from "~/apps/knowledge/app.manifest.json"
 import {
   createKnowledgeDocument,
@@ -51,7 +51,7 @@ const READER_SCOPES = [READ, "kernel:contacts:read"]
 const GRANTS = { sensitivity: ["confidential"], team: ["*"] }
 const CONTACTS = 60
 
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

@@ -7,7 +7,7 @@
 // filterable, which took down mail search, ticket free text and every search
 // scoped to an entity type. Real Meili, both shapes.
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import * as searchClientModule from "~/infra/search/client"
 import { SearchDriftTestAccess } from "~/modules/search/drift"
 import { expectedSettings } from "~/modules/search/index-shape"
@@ -20,7 +20,7 @@ const tag = ORG.slice(0, 8)
 const OLD = `test_shape_old_${tag}`
 const NEW = `test_shape_new_${tag}`
 const READ = "kernel:contacts:read"
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

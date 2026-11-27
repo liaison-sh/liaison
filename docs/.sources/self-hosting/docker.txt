@@ -14,8 +14,10 @@ redis:7-alpine -> deploy/docker-compose.yml:98
 redis maxmemory 384mb -> deploy/docker-compose.yml:113
 redis mem 512m -> deploy/docker-compose.yml:127
 Redis pub-sub, rate limiting, BullMQ queues -> README.md:139
+meilisearch v1.58.0 -> deploy/docker-compose.yml:167
+meili mem 1500m -> deploy/docker-compose.yml:159
 meilisearch v1.10 -> deploy/docker-compose.yml:138
-meili mem 1500m, MEILI_MEM_LIMIT -> deploy/docker-compose.yml:172
+meili mem 1500m, MEILI_MEM_LIMIT -> deploy/docker-compose.yml:207
 MEILI_MAX_INDEXING_MEMORY 512Mb, a third of the limit -> deploy/docker-compose.yml:158-163
 MEILI_MEM_LIMIT / MEILI_MAX_INDEXING_MEMORY in .env -> deploy/.env.example (search service block)
 Heavy profile 73k documents, 13k vectors -> apps/api/src/seed/bulk/search-profile.ts:54-66
@@ -302,3 +304,16 @@ Rolling deploy recreates or starts the sandbox service -> deploy/rolling-deploy.
 SANDBOX_POOL_RESERVED_INTERACTIVE passed by compose (2) -> deploy/docker-compose.yml (sandbox environment) ; packages/sandbox-supervisor/src/config.ts (laneCaps)
 Pool sized from LIAISON_SANDBOX_MEM_LIMIT / LIAISON_SANDBOX_CPUS passed as SANDBOX_SERVICE_* -> deploy/docker-compose.yml (sandbox environment) ; packages/sandbox-supervisor/src/config.ts (envServiceLimits, autoPoolSize)
 liaison-cli and liaison-desktop admitted whenever DEVICE_FLOW_CLIENTS is set -> apps/api/src/modules/auth/device-flow-routes.ts (initiate) ; apps/api/src/modules/mcp/device-client-policy.ts
+search-upgrade-stage stages the 1.10 binary, then exits -> deploy/docker-compose.yml:149
+meili_legacy volume holds the 1.10 binary while a 1.10 index waits -> deploy/docker-compose.yml:1255
+1.58 cannot open a 1.10 index; in-place upgrade starts at 1.12 -> deploy/meilisearch/upgrade.sh:7
+Dump with 1.10 on loopback, keep data.ms.v1.10 -> deploy/meilisearch/upgrade.sh:121
+Dump keeps documents, vectors, settings; nothing re-read, no re-embedding -> deploy/meilisearch/upgrade.sh:9
+Import into data.ms.importing, renamed when done; killed step restarts, partial import never served -> deploy/meilisearch/upgrade.sh:142
+Upgrade runs inside the search service, after the old container stopped -> deploy/meilisearch/upgrade.sh:22
+App waits for search healthy, start_period 2h -> deploy/docker-compose.yml:219
+search-upgrade log prefix -> deploy/meilisearch/upgrade.sh:41
+Later versions upgrade in place (MEILI_UPGRADE_DB) -> deploy/docker-compose.yml:196
+Older than 1.10 or 1.11 stops with a message -> deploy/meilisearch/upgrade.sh:55
+Missing index is created and rebuilt from the database at boot -> apps/api/src/modules/search/drift.ts:141
+Vectors are carried only from the live index -> apps/api/src/modules/search/reindex.ts:728

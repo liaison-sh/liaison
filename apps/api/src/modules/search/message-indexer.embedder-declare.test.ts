@@ -8,7 +8,7 @@
 // declared, every document written into it carries `_vectors`, and the swap
 // brings it live. Until then memory search is keyword only.
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { Index, MeiliSearch } from "meilisearch"
+import { Index, Meilisearch } from "meilisearch"
 import { sql } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import * as jobsModule from "~/infra/jobs/jobs"
@@ -30,7 +30,7 @@ const tag = ORG_ID.slice(0, 8)
 const INDEX_NAME = `test_embdecl_${tag}`
 const DIMENSIONS = 4
 
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

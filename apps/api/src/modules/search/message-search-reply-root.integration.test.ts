@@ -7,7 +7,7 @@
 // documents written by the real indexer, over real rows.
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { sql } from "~/db"
 import * as searchClientModule from "~/infra/search/client"
 import { ExternalSearchHandlersTestAccess } from "~/modules/search/external-handlers"
@@ -19,7 +19,7 @@ const MEMBER = crypto.randomUUID()
 const tag = ORG_ID.slice(0, 8)
 const THREADS_READ = "kernel:threads:read"
 const INDEX_NAME = `test_a17_${crypto.randomUUID().slice(0, 8)}`
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

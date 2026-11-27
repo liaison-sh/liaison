@@ -17,7 +17,7 @@
 //  * Re-embed before the new width is live: the step embeds into the old index.
 //  * Note every transcript document: the never-vectored message gets a vector.
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { sql } from "~/db"
 import { processReembedStep } from "~/infra/jobs/embedding-backfill"
 import * as jobsModule from "~/infra/jobs/jobs"
@@ -43,7 +43,7 @@ const THREAD = crypto.randomUUID()
 const tag = ORG.slice(0, 8)
 const LIVE = `test_width_${tag}`
 
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

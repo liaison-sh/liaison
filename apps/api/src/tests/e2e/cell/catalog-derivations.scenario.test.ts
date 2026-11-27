@@ -16,7 +16,7 @@ import {
   type RoleCell,
   type RoleProcess,
 } from "@liaison/test-helpers"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 
 // The parallel runner gives this file a private worker id; a plain `bun test`
 // run takes one clear of the lanes (0-3), the helper tests (50-61, 99) and the
@@ -50,7 +50,7 @@ async function until<T>(
 
 describe("S23: catalog derivations are the setup step's, never a booting process's", () => {
   let cell: RoleCell
-  let meili: MeiliSearch
+  let meili: Meilisearch
   let indexUid: string
   let policyAfterSetup: PolicySnapshot
   let settingsAfterSetup: string
@@ -94,7 +94,7 @@ describe("S23: catalog derivations are the setup step's, never a booting process
 
   beforeAll(async () => {
     cell = await createRoleCell(CELL_WORKER, [])
-    meili = new MeiliSearch({
+    meili = new Meilisearch({
       host: process.env.MEILISEARCH_HOST ?? "http://localhost:7700",
       apiKey: process.env.MEILISEARCH_API_KEY ?? "dev-master-key",
     })

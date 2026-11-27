@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { sql } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import * as searchClientModule from "~/infra/search/client"
@@ -23,7 +23,7 @@ const READ_THREAD_MSG_ID = "00000000-0000-0000-0000-000000d80011"
 // itself, into an index of its own, and never depends on what the shared one
 // holds or on whether it reads as ready.
 const INDEX = `test_chattools_${crypto.randomUUID().slice(0, 8)}`
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

@@ -1535,7 +1535,7 @@ describe("erase-user cascade (G2–G6)", () => {
 // text. Real erasure, real rows, a real private Meili index, then a rebuild.
 describe("erasure and the search index rebuild", () => {
   test("a rebuild after an erasure brings none of the erased user's text back, not even inside a window", async () => {
-    const { MeiliSearch } = await import("meilisearch")
+    const { Meilisearch } = await import("meilisearch")
     const jobsModule = await import("~/infra/jobs/jobs")
     const minimal = await import("~/seed/tiers/minimal")
     const { expectedSettings } = await import("~/modules/search/drift")
@@ -1546,7 +1546,7 @@ describe("erasure and the search index rebuild", () => {
       "~/modules/search/live-index-queue"
     )
     const { runReindex } = await import("~/modules/search/reindex")
-    const meili = new MeiliSearch({
+    const meili = new Meilisearch({
       host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
       apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
     })

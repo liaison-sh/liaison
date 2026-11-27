@@ -25,7 +25,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { ListObjectsV2Command } from "@aws-sdk/client-s3"
 import Redis from "ioredis"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { runOrgDeleteCli } from "~/cli/org-delete"
 import { sql } from "~/db"
 import { closeAllQueues } from "~/infra/jobs/jobs"
@@ -61,7 +61,7 @@ const INDEX = `test_org_residue_${tag}`
 /** The record that a deletion happened: it names the org on purpose. */
 const LEDGER_TABLES = new Set(["kernel.org_deletions"])
 
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

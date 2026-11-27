@@ -4055,6 +4055,7 @@
       "recurring_schedule_pause": "suspendre une facturation récurrente",
       "revenue_stream_sale_issue": "émettre la facture d'une vente",
       "revenue_stream_bind": "lier un flux de ventes",
+      "revenue_stream_catch_up": "facturer les ventes antérieures",
       "issuer_stream_set": "définir la série d'émission",
       "issuer_emails_confirm": "confirmer les e-mails de l'émetteur",
       "invoice_from_stripe_payment": "facturer un paiement Stripe",

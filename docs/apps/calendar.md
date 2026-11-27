@@ -36,6 +36,8 @@ You can bring events from another calendar tool as an `.ics` file. Upload the fi
 2. Switch between **Day**, **Week** and **Month**. Use **Today**, **Previous** and **Next** to move around.
 3. Your calendars are listed under **My calendars** in the sidebar.
 
+The view keeps itself up to date: an event that changes in Google, or that an agent or a teammate adds, appears in the open week or month without reloading. Weeks you already looked at show at once when you go back to them. If events cannot be loaded, a note under the header says so, with **Retry**.
+
 ## Create or edit an event
 
 1. Click **New event**, or click an existing event to edit it.

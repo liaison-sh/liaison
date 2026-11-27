@@ -88,5 +88,7 @@
       "fromCalendar": "Lire mes absences dans mon agenda",
       "fromCalendarHelp": "Activé, un message d'absence dans votre agenda Google principal vous marque absent, et un événement d'une journée qui ressemble à un congé vous est demandé une fois sur l'accueil. Pendant votre absence, les approbations qui vous attendent passent à la personne suivante. Désactivé, votre agenda ne change rien."
     }
-  }
+  },
+  "eventsLoadFailed": "Impossible de charger les événements. L'affichage n'est peut-être pas à jour.",
+  "retry": "Réessayer"
 }

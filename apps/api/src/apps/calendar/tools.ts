@@ -321,16 +321,6 @@ function rowToDto(row: RawEventRow): CalendarEventDto {
   }
 }
 
-/** SQL for a stored `{dateTime}` / `{date}` point column as timestamptz (an all-day date at
- * UTC midnight, like `calendarPointToDate`), NULL when the point is missing or unreadable. */
-function pointTimestampSql(column: string): string {
-  const c = column
-  return `(CASE
-    WHEN ${c}->>'dateTime' ~ '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}' THEN (${c}->>'dateTime')::timestamptz
-    WHEN ${c}->>'date' ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN ((${c}->>'date')::date)::timestamp AT TIME ZONE 'UTC'
-  END)`
-}
-
 /** How far before the window an exception's original slot may start and its occurrence still
  * overlap the window (the longest series occurrence we expect: a multi-week all-day block). */
 const EXCEPTION_ORIGINAL_LOOKBACK = "31 days"
@@ -381,9 +371,11 @@ export async function listEventsForCaller(
   const selectedOnly = sql`AND calendar_id NOT IN (
     SELECT id FROM ${sql.raw(schema)}.calendars WHERE org_id = ${orgId}::uuid AND selected = false
   )`
-  const startTs = sql.raw(pointTimestampSql("start"))
-  const endTs = sql.raw(pointTimestampSql(`"end"`))
-  const originalTs = sql.raw(pointTimestampSql("original_start_time"))
+  // The points as instants (an all-day date at UTC midnight), kept by the events table's
+  // `point_time_columns` trigger and indexed, so the window bounds are index range scans.
+  const startTs = sql.raw("start_at")
+  const endTs = sql.raw("end_at")
+  const originalTs = sql.raw("original_start_at")
   const rowsOf = <T>(result: unknown): T[] =>
     Array.isArray(result) ? (result as T[]) : (((result as { rows?: T[] }).rows ?? []) as T[])
 

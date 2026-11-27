@@ -1402,6 +1402,11 @@ export function bootstrapKernelApps(): void {
     tabType: "thread",
     entityId: id,
   }))
+  // A computer session's notice (needs you / done / failed) opens the session.
+  registerEntityOpener("kernel", "node_session", (_api, id) => ({
+    tabType: "kernel:session",
+    entityId: id,
+  }))
   registerEntityOpener("kernel", "approval_request", async (api, id) => {
     const row = await ensureApprovalLoaded(api, id)
     return { tabType: "thread", entityId: row.threadId, label: row.handle }

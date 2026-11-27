@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   registerContribution,
   registerTabType,
   resetRegistry,
   unregisterContributions,
 } from "~/framework/app-registry"
+import { setEnabledOrgFeatures } from "~/framework/org-features"
 import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
 import { installAudioContext, installMic, removeMic } from "~/modules/assist/dictation-fakes"
@@ -1080,6 +1081,9 @@ describe("TaskDetail copy link", () => {
 })
 
 describe("TaskDetail on a sales pipeline", () => {
+  beforeEach(() => setEnabledOrgFeatures([{ app: "projects", feature: "deals" }]))
+  afterEach(() => setEnabledOrgFeatures([]))
+
   it("the task page renders when the deal read fails", async () => {
     projectStore._setForTest({
       projectId: "p1",
@@ -1132,5 +1136,37 @@ describe("TaskDetail on a sales pipeline", () => {
     expect(queryByTestId("deal-panel")).toBeNull()
     expect(queryByTestId("deal-panel.loading")).toBeNull()
     expect(api.post).not.toHaveBeenCalledWith("/apps/run-tool", expect.anything())
+  })
+
+  // iOS re-walk N1: with deals off the panel read the deal anyway, the server
+  // refused ("Deals are off for this workspace") and the task showed "Could not
+  // read the deal".
+  it("with deals off for the workspace, shows no deal panel and reads no deal", async () => {
+    setEnabledOrgFeatures([])
+    projectStore._setForTest({
+      projectId: "p1",
+      current: { ...project(), kind: "pipeline" },
+      tasks: [],
+    })
+    const api = {
+      post: vi.fn(async () => task()),
+      get: vi.fn().mockResolvedValue({ id: "thread-1", hiddenFromList: true }),
+      patch: vi.fn(),
+      delete: vi.fn(),
+      getEnvelope: vi.fn(),
+    } as any
+    const { findByTestId, queryByTestId } = render(() => (
+      <ApiContext.Provider value={api}>
+        <TaskDetail entityId="t1" />
+      </ApiContext.Provider>
+    ))
+    await findByTestId("task-detail.description-section")
+    expect(queryByTestId("deal-panel")).toBeNull()
+    expect(queryByTestId("deal-panel.loading")).toBeNull()
+    expect(queryByTestId("deal-panel.error")).toBeNull()
+    expect(api.post).not.toHaveBeenCalledWith(
+      "/apps/run-tool",
+      expect.objectContaining({ toolName: "projects:deals_search" }),
+    )
   })
 })

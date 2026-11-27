@@ -12,6 +12,8 @@
 // the person can grant (Grant / Deny) and a run of their own routine waiting
 // for their private mailbox (Run now / Dismiss). Everything that waits on the
 // person is in one list, the same one Home's Approvals card and badge count.
+
+import { ChevronLeft } from "lucide-solid"
 import {
   type Component,
   createEffect,
@@ -40,6 +42,8 @@ import {
   orgName,
 } from "~/modules/shell/branding-store"
 import { currentHomeViewer } from "~/modules/shell/home-action-count"
+import { shellTier } from "~/modules/shell/shell-tier"
+import { createPushNav } from "~/primitives/createPushNav"
 
 /** How long a decided card keeps its place while it collapses. */
 export const COLLAPSE_MS = 220
@@ -69,6 +73,11 @@ export function soonestDeadlineMinutes(
 
 export const ApprovalsScreen: Component = () => {
   const i18n = useI18n()
+  // Opened from the phone's Work list: this screen hides the shell's top bar
+  // (it owns its large title), so it carries the way back itself, the edge
+  // swipe's target included (`data-phone-back`).
+  const pushNav = createPushNav()
+  const showBack = () => shellTier() === "phone" && pushNav.detailOpen()
   const api = useApi()
   const [now, setNow] = createSignal(Date.now())
   const tick = setInterval(() => setNow(Date.now()), 30_000)
@@ -160,6 +169,19 @@ export const ApprovalsScreen: Component = () => {
 
   return (
     <div class="flex h-full min-h-0 flex-col overflow-y-auto pb-6" data-testid="approvals-screen">
+      <Show when={showBack()}>
+        <button
+          type="button"
+          data-testid="approvals-back"
+          data-phone-back
+          aria-label={i18n.t("kernel.back")}
+          onClick={() => pushNav.popDetail()}
+          class="flex min-h-11 shrink-0 items-center gap-1 self-start px-2 text-[15px] text-text-secondary hover:bg-surface-hover"
+        >
+          <ChevronLeft size={20} />
+          {pushNav.backLabel()}
+        </button>
+      </Show>
       <div class="flex shrink-0 flex-col gap-0.5 px-4 pb-2 pt-3">
         <div class="flex items-baseline gap-2">
           <h1 class="text-[28px] font-bold leading-tight text-text">

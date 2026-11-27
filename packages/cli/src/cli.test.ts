@@ -252,7 +252,9 @@ describe("login", () => {
     heldScopes = ["kernel:apps:logs"]
     const { out, io } = capture()
     await auth.login(args("--host", host, "--no-browser"), io)
-    expect(out.join("\n")).toContain("ERR Not granted (your account does not hold it): kernel:apps:build.")
+    expect(out.join("\n")).toContain(
+      "ERR Not granted (your account does not hold it): kernel:apps:build.",
+    )
   })
 
   it("--admin and --config add their scopes, explicitly", async () => {

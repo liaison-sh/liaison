@@ -634,9 +634,7 @@ export async function uiConsent(args: ParsedArgs, io: Io): Promise<number> {
   io.out(
     `You are about to let the interface (ui.tsx) of ${link.appName} ${s.installed.version} run inside Liaison's own page.`,
   )
-  io.out(
-    "Until then the page shows to no one. Once approved, for every person who opens it:",
-  )
+  io.out("Until then the page shows to no one. Once approved, for every person who opens it:")
   io.out(
     "  - it runs with that person's signed-in session, on your organization's Liaison address;",
   )

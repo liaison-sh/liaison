@@ -52,7 +52,10 @@ describe("manifestDelta", () => {
     ])
     const more = {
       ...named,
-      roles: { member: { scopes: ["a-o1234abcd:x:read"] }, lead: { scopes: ["a-o1234abcd:x:write"] } },
+      roles: {
+        member: { scopes: ["a-o1234abcd:x:read"] },
+        lead: { scopes: ["a-o1234abcd:x:write"] },
+      },
     }
     expect(manifestDelta(withRole, more, "0.1.1")).toEqual([
       "New role a-o1234abcd.lead: a-o1234abcd:x:write.",

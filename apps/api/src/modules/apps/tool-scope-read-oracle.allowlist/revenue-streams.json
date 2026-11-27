@@ -8,5 +8,20 @@
     "bundled-apps/invoicing/src/sales/refunds.ts",
     "(fresh.scope as string | null) ?? null,",
     "an invoice document's goods or software split (the credit note's reversal lines)"
+  ],
+  [
+    "bundled-apps/invoicing/src/issue.ts",
+    "scope: input.scope ?? null,",
+    "a document's goods or software split (the sale preview renders each split as the issue would)"
+  ],
+  [
+    "bundled-apps/invoicing/src/handlers/shopify-order-paid.ts",
+    "buildIssueInput(split.scope, split.items, when, paidAt),",
+    "a document's goods or software split (the sale preview renders each split as the issue would)"
+  ],
+  [
+    "bundled-apps/invoicing/src/handlers/shopify-order-paid.ts",
+    "ctx.preview.filename(split.scope),",
+    "a document's goods or software split (the sale preview renders each split as the issue would)"
   ]
 ]

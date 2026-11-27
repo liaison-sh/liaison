@@ -7,6 +7,7 @@
 // emits one attention entry per overdue document.
 
 import { formatMoneyMinor } from "../money"
+import { creditedTotalMinor } from "../mutations/credit-coverage"
 
 export interface OverdueDocumentRow {
   id: string
@@ -21,6 +22,8 @@ export interface OverdueDocumentRow {
 }
 
 export interface OverdueScanDb {
+  /** A credit note named by an invoice's log but not among the issued documents read. */
+  findOne(entity: string, id: string): Promise<unknown>
   findMany(
     entity: string,
     opts?: {
@@ -84,6 +87,17 @@ export async function overdueScanJob(
     limit: 1000,
   })
   const docs = rows.map(toOverdueRow)
+  // The issued credit notes in hand: what each invoice was credited, with no query per invoice.
+  const raw = rows as Array<Record<string, unknown>>
+  const creditNotes = raw.filter((r) => r.type === "credit_note")
+  const creditedOf = async (doc: OverdueDocumentRow): Promise<bigint> => {
+    const row = raw.find((r) => String(r.id) === doc.id)
+    const log = (Array.isArray(row?.lifecycle_log) ? row.lifecycle_log : []) as Array<
+      Record<string, unknown>
+    >
+    if (creditNotes.length === 0 && !log.some((e) => e.event === "credit_note_issued")) return 0n
+    return creditedTotalMinor(ctx.db, { id: doc.id, lifecycle_log: log }, creditNotes)
+  }
 
   let emitted = 0
   let resolved = 0
@@ -105,7 +119,16 @@ export async function overdueScanJob(
     //
     // Deliberately narrow — only a past-due PAID invoice, never every paid
     // invoice in the ledger — so a large paid history costs no extra events.
-    if (doc.payment_status === "paid") {
+    // What is still owed: the total less the credit notes issued against it. An invoice its
+    // credits cover in full (`credited`, or covered before that state existed) owes nothing.
+    const total = BigInt(String(doc.grand_total_minor).split(".")[0] || "0")
+    const credited = doc.payment_status === "credited" ? total : await creditedOf(doc)
+    const owed = credited >= total ? 0n : total - credited
+    if (
+      doc.payment_status === "paid" ||
+      doc.payment_status === "credited" ||
+      (total > 0n && owed === 0n)
+    ) {
       if (overdueDays <= 0) continue
       await ctx.emit({
         entity: "detail",
@@ -127,7 +150,7 @@ export async function overdueScanJob(
     }
     if (overdueDays <= 0) continue
     // Nothing is owed on an invoice of zero (a final whose advances paid it all): never overdue.
-    if (BigInt(String(doc.grand_total_minor).split(".")[0] || "0") <= 0n) continue
+    if (total <= 0n) continue
 
     // `entity: "detail"` anchors the attention item to the document detail tab
     // (`invoicing:detail`); the frontend deep-links by opening tab type
@@ -148,6 +171,9 @@ export async function overdueScanJob(
         // the value it renders. formatMoneyMinor applies the ISO 4217 exponent
         // (JPY has no minor unit) and appends the code.
         grand_total_display: formatMoneyMinor(doc.grand_total_minor, doc.currency),
+        // What is due after the credit notes issued against it (the total when there are none).
+        amount_due_minor: owed.toString(),
+        amount_due_display: formatMoneyMinor(owed, doc.currency),
         currency: doc.currency,
         counterparty_contact_id: doc.counterparty_contact_id,
       },

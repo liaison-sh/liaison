@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.40.3",
+  "version": "0.40.5",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -894,7 +894,8 @@
             "unpaid",
             "partial",
             "paid",
-            "refunded"
+            "refunded",
+            "credited"
           ],
           "default": "unpaid"
         },
@@ -7262,7 +7263,7 @@
         "event": "detail:document_overdue",
         "kind": "invoicing:document.overdue",
         "urgency": 50,
-        "summary": "Overdue: {{data.number}}: {{data.days_overdue}} days past due ({{data.grand_total_display}})",
+        "summary": "Overdue: {{data.number}}: {{data.days_overdue}} days past due ({{data.amount_due_display}} due)",
         "recipients": {
           "kind": "scope_holders",
           "scope": "invoicing:documents:read"

@@ -42,6 +42,10 @@ const ISSUER_WRITE_COLUMNS = [
   "require_two_eyes",
   "auto_email_enabled",
   "sale_thanks_enabled",
+  "sale_thanks_sender",
+  "reply_to_email",
+  "vat_single_evidence",
+  "vat_eu_b2c_below_threshold",
   "prices_include_tax",
   "mail_account_id",
   "timezone",
@@ -110,6 +114,10 @@ export const ISSUER_SENSITIVE_COLUMNS: ReadonlyArray<string> = [
   "require_two_eyes",
   "auto_email_enabled",
   "sale_thanks_enabled",
+  "sale_thanks_sender",
+  "reply_to_email",
+  "vat_single_evidence",
+  "vat_eu_b2c_below_threshold",
   "mail_account_id",
 ]
 

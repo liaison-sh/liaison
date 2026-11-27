@@ -46,7 +46,7 @@ export type OpenTarget =
   | { kind: "detail"; app: string; entity: string }
   /** Routines and skills are panes of the page of the agent that owns them. */
   | { kind: "agent-item"; pane: "routines" | "skills" }
-  /** An event is the calendar tab's own dialog: the tab has no route per event. */
+  /** An event opens through the calendar, which loads its day and then opens the event's tab. */
   | { kind: "calendar-event" }
   /** The record's only page is in another system: no tab here. */
   | { kind: "outside"; entity: string }
@@ -122,7 +122,11 @@ export const KERNEL_OPEN_VIEWS: readonly OpenView[] = [
   kernelTab("help", "Help"),
 ]
 
-/** Records that open inside a tab without having a tab type or a detail panel of their own. */
+/**
+ * Records that open through another tab. They win over a tab type of the same name: the
+ * calendar's event tab edits an event the calendar has already loaded, so the agent opens the
+ * calendar on the event's day, which then opens the event's tab.
+ */
 const RECORDS_INSIDE_A_TAB: Readonly<Record<string, readonly OpenView[]>> = {
   calendar: [
     {
@@ -184,7 +188,6 @@ export function openViewsOf(orgId: string, app: string): OpenView[] | null {
   const views = manifestViews(orgId, app)
   if (!views) return null
   const out = new Map<string, OpenView>()
-  for (const inside of RECORDS_INSIDE_A_TAB[app] ?? []) out.set(inside.view, inside)
   for (const [entity, panel] of Object.entries(views.detail ?? {})) {
     if (DETAIL_PANELS_WITH_NO_SINGLE_ID.has(`${app}:${entity}`)) continue
     out.set(entity, {
@@ -199,6 +202,7 @@ export function openViewsOf(orgId: string, app: string): OpenView[] | null {
   for (const [view, tab] of Object.entries(views.tabTypes ?? {})) {
     out.set(view, tabView(orgId, app, view, tab))
   }
+  for (const inside of RECORDS_INSIDE_A_TAB[app] ?? []) out.set(inside.view, inside)
   return [...out.values()]
 }
 

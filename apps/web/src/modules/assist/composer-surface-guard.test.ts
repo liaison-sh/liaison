@@ -31,7 +31,7 @@ const EXCLUDED: Record<string, { fields: number; reason: string }> = {
   "agent/MemoryTree.tsx": { fields: 1, reason: "agent memory entry (configuration)" },
   "app-builder/BuilderView.tsx": { fields: 1, reason: "a preview's JSON params (developer input)" },
   // Not in the spec's list of composer surfaces (Definitions).
-  "calendar/EventDialog.tsx": { fields: 1, reason: "event description, not a listed surface" },
+  "calendar/CalendarEventTab.tsx": { fields: 1, reason: "event description, not a listed surface" },
   "threads/ChannelDetailsDialog.tsx": { fields: 1, reason: "channel description, not listed" },
   "projects/Checklist.tsx": { fields: 4, reason: "checklist item fields, not listed" },
   "bug-report/BugReportDialog.tsx": { fields: 1, reason: "bug report, not listed" },

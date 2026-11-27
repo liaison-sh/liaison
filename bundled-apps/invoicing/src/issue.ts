@@ -1767,6 +1767,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
           (documentInsert.einvoice?.operation_category as OperationCategory | null | undefined) ??
           null,
         issueDate: draft.issued_at,
+        customerKind: (documentInsert.einvoice?.customer_kind as string | null | undefined) ?? null,
       },
     )
     const templateData = buildTemplateData({

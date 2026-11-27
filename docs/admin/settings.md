@@ -118,6 +118,8 @@ On a managed instance, an admin can have the organization's invitations, notific
 
 Until a domain is verified, these emails are sent as "<organization> via Liaison". Sign-in codes, sign-in links and password resets always come from the service's own address, whatever the organization's domain. **Remove domain** goes back to the "via Liaison" sender. A domain already used by another organization is refused, and so is a domain that cannot be added right now: the service's operator is told.
 
+This sender (or, on a self-hosted server, the organization's `email.from` address) is also the **notifications sender** an app can send customer mail through when it has no mailbox, such as an issuer profile's thank-you mail of a sale ([Invoicing](../apps/invoicing.md)). Replies go to the address the app gives, else to the organization's `email.replyTo`.
+
 ### Export the organization's data
 
 1. Open **Settings › Organization**.

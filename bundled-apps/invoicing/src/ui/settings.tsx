@@ -55,6 +55,14 @@ export interface IssuerProfileDraft {
   require_two_eyes?: boolean
   auto_email_enabled?: boolean
   sale_thanks_enabled?: boolean
+  /** Where the thank-you mail goes out from: the mailbox (default) or the org's notifications sender. */
+  sale_thanks_sender?: "mailbox" | "notifications"
+  /** Reply-To of a thank-you mail sent through the notifications sender. */
+  reply_to_email?: string | null
+  /** Small seller (Reg. 282/2011 art. 24b(d)): one piece of location evidence is enough. */
+  vat_single_evidence?: boolean
+  /** Under the EUR 10,000 EU threshold and not registered for the OSS: French VAT for EU consumers. */
+  vat_eu_b2c_below_threshold?: boolean
   /** The mailbox documents are emailed from (a mail account id); null when none is chosen. */
   mail_account_id?: string | null
   /** Typed unit prices are gross (tax included). Mirrors the Shopify shop's
@@ -130,6 +138,10 @@ const ISSUER_SAVE_FIELDS = [
   "require_two_eyes",
   "auto_email_enabled",
   "sale_thanks_enabled",
+  "sale_thanks_sender",
+  "reply_to_email",
+  "vat_single_evidence",
+  "vat_eu_b2c_below_threshold",
   "prices_include_tax",
   "mail_account_id",
   "timezone",
@@ -667,6 +679,93 @@ export const InvoicingIssuerProfiles: Component = () => {
                     <span class="text-text-tertiary">
                       {tr(
                         "One mail per sale with your logo, what was bought, the total and the invoice attached, sent from the mailbox above. Off: the plain invoice mail, when automatic emails are on.",
+                      )}
+                    </span>
+                  </span>
+                </label>
+
+                <Show when={d().sale_thanks_enabled}>
+                  <div class="grid grid-cols-2 gap-2 pl-6">
+                    <label class="col-span-2 flex items-center gap-2">
+                      <span class="w-32 text-text-tertiary">{tr("Send the thank-you from")}</span>
+                      <select
+                        data-testid="issuer-sale-thanks-sender"
+                        value={d().sale_thanks_sender ?? "mailbox"}
+                        onChange={(e) =>
+                          setEditing({
+                            ...d(),
+                            sale_thanks_sender:
+                              e.currentTarget.value === "notifications"
+                                ? "notifications"
+                                : "mailbox",
+                          })
+                        }
+                        class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                      >
+                        <option value="mailbox">{tr("The mailbox above")}</option>
+                        <option value="notifications">
+                          {tr("The organization's notifications sender")}
+                        </option>
+                      </select>
+                    </label>
+                    <Show when={d().sale_thanks_sender === "notifications"}>
+                      <label class="col-span-2 flex items-center gap-2">
+                        <span class="w-32 text-text-tertiary">{tr("Reply-to address")}</span>
+                        <input
+                          type="email"
+                          data-testid="issuer-reply-to-email"
+                          value={d().reply_to_email ?? ""}
+                          placeholder={tr("Optional")}
+                          onInput={(e) =>
+                            setEditing({ ...d(), reply_to_email: e.currentTarget.value || null })
+                          }
+                          class={cx(inputClass, "flex-1")}
+                        />
+                      </label>
+                    </Show>
+                  </div>
+                </Show>
+
+                {/* VAT on cross-border sales to consumers: both off by default (two pieces of
+                    location evidence; the buyer's country rate through the OSS). */}
+                <label class="flex items-start gap-2 border-t border-border-subtle pt-2">
+                  <input
+                    type="checkbox"
+                    data-testid="issuer-vat-single-evidence"
+                    checked={!!d().vat_single_evidence}
+                    onChange={(e) =>
+                      setEditing({ ...d(), vat_single_evidence: e.currentTarget.checked })
+                    }
+                    class="mt-0.5"
+                  />
+                  <span class="flex flex-col gap-0.5">
+                    <span class="text-text">
+                      {tr("Small seller (under EUR 100,000 cross-border digital B2C)")}
+                    </span>
+                    <span class="text-text-tertiary">
+                      {tr(
+                        "Your telecom, broadcasting and electronic services to consumers in other countries stayed under EUR 100,000 this calendar year and last: one piece of evidence of the buyer's country is enough (EU Reg. 282/2011 art. 24b). Off: two are needed. Check with your accountant.",
+                      )}
+                    </span>
+                  </span>
+                </label>
+                <label class="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    data-testid="issuer-vat-eu-b2c-below-threshold"
+                    checked={!!d().vat_eu_b2c_below_threshold}
+                    onChange={(e) =>
+                      setEditing({ ...d(), vat_eu_b2c_below_threshold: e.currentTarget.checked })
+                    }
+                    class="mt-0.5"
+                  />
+                  <span class="flex flex-col gap-0.5">
+                    <span class="text-text">
+                      {tr("Under EUR 10,000 EU-wide, not registered for the OSS")}
+                    </span>
+                    <span class="text-text-tertiary">
+                      {tr(
+                        "Your sales of digital services and distance sales of goods to consumers in other EU countries stayed under EUR 10,000 this calendar year and last, and you have not opted for the OSS (One-Stop Shop): they are charged French VAT. Off (the default, and the right choice once you are registered for the OSS): the buyer's country rate. Check with your accountant.",
                       )}
                     </span>
                   </span>

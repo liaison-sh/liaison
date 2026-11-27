@@ -145,6 +145,10 @@ export interface CalendarEventDto {
   pushError: string | null
   /** Why a delete Google refused brought this event back; else null. */
   pushNotice: string | null
+  /** Google's busy/free: "transparent" (free), "opaque" (busy), null when not synced yet. */
+  transparency: string | null
+  /** Google's eventType (default, outOfOffice, focusTime, workingLocation, ...), else null. */
+  eventType: string | null
 }
 
 export interface CalendarAttendeeDto {
@@ -200,6 +204,8 @@ export interface RawEventRow {
   guests_can_modify?: boolean | null
   push_error?: string | null
   push_notice?: string | null
+  transparency?: string | null
+  event_type?: string | null
 }
 
 function toDate(point: unknown): Date | null {
@@ -318,6 +324,8 @@ function rowToDto(row: RawEventRow): CalendarEventDto {
     attendeesEditable: row.organizer_self !== false || row.guests_can_modify === true,
     pushError: row.push_error ?? null,
     pushNotice: row.push_notice ?? null,
+    transparency: row.transparency ?? null,
+    eventType: row.event_type ?? null,
   }
 }
 
@@ -331,7 +339,7 @@ const UNTIL_DATE_PATTERN = "UNTIL=([0-9]{8})"
 
 const EVENT_COLUMNS = `id, calendar_id, google_event_id, title, description, location, start, "end", all_day,
   recurrence, recurring_event_id, original_start_time, status, hangout_link, attendees,
-  organizer_self, guests_can_modify, push_error, push_notice`
+  organizer_self, guests_can_modify, push_error, push_notice, transparency, event_type`
 
 /**
  * listEventsForCaller — the RAW rows the window needs, with their full field set: plain events

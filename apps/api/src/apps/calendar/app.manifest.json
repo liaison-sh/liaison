@@ -224,6 +224,11 @@
           "required": false,
           "description": "Google's eventType, as sent and nothing else (default, outOfOffice, focusTime, ...). Also added by migration 0267 where the table already exists; NULL until the next sync."
         },
+        "transparency": {
+          "type": "string",
+          "required": false,
+          "description": "Google's busy/free as sent: opaque (busy) or transparent (free). NULL until the next sync, or when Google omits it (busy). find_free_slots reads it."
+        },
         "externalRef": {
           "type": "string",
           "required": false,

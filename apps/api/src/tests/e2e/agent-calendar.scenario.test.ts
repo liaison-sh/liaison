@@ -389,4 +389,62 @@ describeLive("Agent + Calendar Scenario", () => {
     const done = events.find((e) => e.event === "done")
     expect(done).toBeDefined()
   }, 180_000)
+
+  it("S2: 'find 30 min with A and B next week' returns free slots through calendar__find_free_slots", async () => {
+    const threadId = await seedAgentThread(env.db.sql, ks, world.org.id, agentUser.id)
+    const { status, events } = await consumeSse(url, "/api/agent/chat", agentUser.token, {
+      threadId,
+      content: [
+        "Find 30 minutes next week with priya.shah@agentqa.test and marcus.webb@agentqa.test.",
+        "Only propose times, do not create anything yet.",
+        `For reference, today is ${new Date().toISOString().slice(0, 10)}.`,
+      ].join("\n"),
+      modelId: TOOL_MODEL,
+    })
+    if (isProviderUnavailable(events)) {
+      console.log("agent-calendar S2: provider unavailable — skipping")
+      return
+    }
+    expect(status).toBe(200)
+    const calls = events.filter(
+      (e) =>
+        e.event === "tool-call" && /calendar__find_free_slots/.test((e.data as any).toolName ?? ""),
+    )
+    if (calls.length === 0) {
+      console.log(
+        "agent-calendar S2: no find_free_slots call — event stream:",
+        JSON.stringify(events),
+      )
+    }
+    expect(calls.length).toBeGreaterThanOrEqual(1)
+    const call = calls[calls.length - 1]!
+    const args = (call.data as any).args ?? (call.data as any).input ?? {}
+    expect(Number(args.durationMinutes ?? 30)).toBe(30)
+    const asked = (Array.isArray(args.attendees) ? args.attendees : []).map((a: unknown) =>
+      String(a).toLowerCase(),
+    )
+    expect(asked).toEqual(
+      expect.arrayContaining(["priya.shah@agentqa.test", "marcus.webb@agentqa.test"]),
+    )
+    const result = events.find(
+      (e) =>
+        e.event === "tool-result" && (e.data as any).toolCallId === (call.data as any).toolCallId,
+    )
+    const data = (result?.data as any)?.result as
+      | { slots?: Array<{ start: string; end: string }>; attendees?: Array<{ status: string }> }
+      | undefined
+    expect(data?.slots?.length ?? 0).toBeGreaterThan(0)
+    for (const slot of data?.slots ?? []) {
+      expect(Date.parse(slot.end) - Date.parse(slot.start)).toBe(30 * 60 * 1000)
+    }
+    // An org-owned account cannot ask Google about the guests: the tool says so per guest.
+    expect((data?.attendees ?? []).every((a) => a.status === "no_account")).toBe(true)
+    // Nothing was created: proposing times writes nothing.
+    expect(
+      events.some(
+        (e) =>
+          e.event === "tool-call" && /calendar__create_event/.test((e.data as any).toolName ?? ""),
+      ),
+    ).toBe(false)
+  }, 180_000)
 })

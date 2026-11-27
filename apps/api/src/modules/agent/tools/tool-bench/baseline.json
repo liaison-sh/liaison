@@ -1942,7 +1942,7 @@
     },
     "mail__compose": {
       "desc": 1769,
-      "schema": 927
+      "schema": 974
     },
     "mail__composeForApp": {
       "desc": 153,
@@ -1994,7 +1994,7 @@
     },
     "mail__reply": {
       "desc": 1062,
-      "schema": 892
+      "schema": 939
     },
     "mail__search": {
       "desc": 1691,

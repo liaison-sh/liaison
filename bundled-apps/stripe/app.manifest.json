@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.41",
+  "version": "0.1.42",
   "kind": "app",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -190,6 +190,40 @@
     "failureCode"
   ],
   "tools": {
+    "rs_sale_get": {
+      "description": "revenue-stream@1 sale_get: the sale of one one-off payment (a PaymentIntent paid through Checkout, with no Stripe invoice), read from its Checkout Session (contract op, not agent visible).",
+      "requiredScopes": ["stripe:internal"],
+      "handler": "rs_sale_get",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "readOnly": true,
+      "timeoutMs": 20000,
+      "params": {
+        "type": "object",
+        "properties": { "external_id": { "type": "string" } },
+        "required": ["external_id"]
+      }
+    },
+    "rs_sales_list": {
+      "description": "revenue-stream@1 sales_list: the one-off sales of the Checkout Sessions completed in [paid_from, paid_to) (contract op, not agent visible).",
+      "requiredScopes": ["stripe:internal"],
+      "handler": "rs_sales_list",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "readOnly": true,
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "paid_from": { "type": "string" },
+          "paid_to": { "type": "string" },
+          "cursor": { "type": ["string", "null"] }
+        },
+        "required": ["paid_from", "paid_to"]
+      }
+    },
     "connection_check": {
       "deferLoading": true,
       "description": "Check the saved Stripe key: one read per permission Liaison uses and a refund probe that creates nothing. Says which permission is missing, or that the key is wrong, of another account or of the other mode.",
@@ -492,7 +526,8 @@
       "searchKeywords": [
         "mrr",
         "recurring",
-        "revenu"
+        "revenu",
+        "revenue"
       ]
     },
     "invoices_search": {
@@ -1345,6 +1380,13 @@
       }
     }
   },
+  "implements": [
+    {
+      "contract": "revenue-stream",
+      "version": 1,
+      "tools": { "sale_get": "rs_sale_get", "sales_list": "rs_sales_list" }
+    }
+  ],
   "events": {
     "emits": [
       "customer:updated",
@@ -1364,6 +1406,7 @@
       "dispute:closed",
       "dispute:response_state",
       "payment:unmatched",
+      "sale:paid",
       "connection:state_changed",
       "card_number:masked"
     ],

@@ -1549,6 +1549,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // proof that the shop's sale maps to exactly the order payload it replaced.
             "src/sales/issue-sale.test.ts",
             "src/sales/shopify-sale.golden.test.ts",
+            "src/sales/catch-up.test.ts",
             // Quotes ARE Shopify draft orders: the four draft_order:* handlers, mock-driven
             // (createMockDb + stubbed executeTool). Pins the one-quote-per-draft-order
             // idempotency across BOTH event producers (the fat webhook payload and the thin
@@ -1979,6 +1980,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/connection.test.ts",
             "src/verify.test.ts",
             "src/dispatch.test.ts",
+            // One-off Checkout payments as revenue-stream@1 sales.
+            "src/sales.test.ts",
             "src/pan-scan.parity.test.ts",
             "src/sync.test.ts",
             "src/match.test.ts",

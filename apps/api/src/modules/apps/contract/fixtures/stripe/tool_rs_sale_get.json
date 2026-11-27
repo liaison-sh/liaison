@@ -1,0 +1,20 @@
+{
+  "entry": "tool:rs_sale_get",
+  "params": {
+    "external_id": "pi_contract_1"
+  },
+  "recordedFrom": "a payment with no Checkout Session (contract replay, hand-written)",
+  "unrecorded": {
+    "reason": "hand-written, not recorded: a recording needs a restricted Stripe key with Checkout Sessions Read, which the recording run does not have yet"
+  },
+  "calls": [
+    {
+      "method": "fetch",
+      "args": [
+        "https://api.stripe.com/v1/checkout/sessions?payment_intent=pi_contract_1&limit=1&expand%5B0%5D=data.line_items&expand%5B1%5D=data.payment_intent.latest_charge",
+        "{\"method\":\"GET\",\"headers\":{\"Stripe-Version\":\"2026-10-28.endive\"},\"auth\":{\"connection\":\"stripe\",\"scheme\":\"bearer\",\"fields\":[\"restrictedKey\"]}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"object\\\":\\\"list\\\",\\\"data\\\":[],\\\"has_more\\\":false}\"}"
+    }
+  ]
+}

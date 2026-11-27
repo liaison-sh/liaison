@@ -330,6 +330,10 @@ describe("payments no invoice explains", () => {
     })
     expect(unmatched[0]?.data.description).not.toContain(PAN)
     expect(unmatched[0]?.data.description).toContain("7107")
+    // The same payment announced as a revenue-stream@1 sale, by its PaymentIntent.
+    const sales = of("sale:paid")
+    expect(sales).toHaveLength(1)
+    expect(sales[0]?.data).toMatchObject({ external_id: "pi_U1" })
   })
 })
 

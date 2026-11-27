@@ -385,7 +385,27 @@ async function moneyEvents(
     const customerId = typeof obj.customer === "string" ? obj.customer : null
     const customer = await customerOf(ctx, customerId, stripeUpdated)
     const data = unmatchedPayload(obj, customer, tally)
-    return [{ entity: "payment", action: "unmatched", entityId: data.charge_id, data: { ...data } }]
+    const unmatched = {
+      entity: "payment",
+      action: "unmatched",
+      entityId: data.charge_id,
+      data: { ...data },
+    }
+    // A one-off payment is also a revenue-stream@1 sale (sales.ts): a bound stream reads it from
+    // its Checkout Session; with none bound, the unmatched payment above is all that follows.
+    const intent = typeof obj.payment_intent === "string" ? obj.payment_intent : null
+    if (!intent) return [unmatched]
+    const at =
+      typeof obj.created === "number" ? new Date(obj.created * 1000).toISOString() : stripeUpdated
+    return [
+      unmatched,
+      {
+        entity: "sale",
+        action: "paid",
+        entityId: intent,
+        data: { external_id: intent, occurred_at: at },
+      },
+    ]
   }
   return []
 }

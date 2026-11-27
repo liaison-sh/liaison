@@ -128,6 +128,8 @@ The agent sees the outcome as a fact in its transcript and carries on. When the 
 
 When a request your own agent proposed for you waits more than a day, your agent writes to you about it in your conversation with it, once a day while it waits (or every 3 days, weekly, or never, as you choose in **Settings**, **Notifications**, **Approval reminders**), with a link to each request. It first reads each request and what it acts on, and tells you when one looks outdated instead of asking you to approve it. That message reaches your notifications like any new message. See [Reminders for requests you forget](approvals.md#reminders-for-requests-you-forget).
 
+After the agent read data that needs a scope, a write others could read waits too, and its card says when approving it shares that data with people who lack the scope. A write by your organization's own app back into its own data says so only when someone who uses the app lacks a scope the conversation read.
+
 An organization can also hold back actions after an agent has read text from outside, such as an inbound email or a web page. See [Agent safety in Approvals](../agents/approvals.md#hold-actions-after-outside-content).
 
 ### When an agent says it will act and does not

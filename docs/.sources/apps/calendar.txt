@@ -70,4 +70,3 @@ Shortcut keys -> apps/web/src/modules/calendar/shortcuts.ts:16
 Shortcuts ignored while typing -> apps/web/src/modules/calendar/shortcuts.ts:41
 Del asks to delete the open event -> apps/web/src/modules/calendar/CalendarEventTab.tsx:110
 Shortcut sheet labels -> packages/shared/src/i18n/locales/en/calendar.json:108
-get_event -> apps/api/src/apps/calendar/app.manifest.json:378

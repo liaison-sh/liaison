@@ -106,7 +106,6 @@ Ask "Open the quarter review" and the agent opens the calendar on that event's d
 | `list_accounts` | List connected Google Calendar accounts | `calendar:events:read` |
 | `list_calendars` | List calendars and whether each is selected for sync | `calendar:events:read` |
 | `list_events` | List events in a time window, with recurring events expanded | `calendar:events:read` |
-| `get_event` | Read one event by its id | `calendar:events:read` |
 | `search_events` | Search events by title, description and location | `calendar:events:read` |
 | `create_event` | Create an event, optionally with a Google Meet link | `calendar:events:write` |
 | `update_event` | Change time, title, description, location, guests or the Meet link, for one occurrence or the series | `calendar:events:write` |

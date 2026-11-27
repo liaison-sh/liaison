@@ -14,7 +14,8 @@ export interface MonthViewProps {
   occurrences: ExpandedOccurrence[]
   calendarColors: Record<string, string>
   onSelectEvent?: (eventId: string) => void
-  onSelectDay?: (day: Date) => void
+  /** A click on a day's empty space; `anchor` is the viewport point to anchor a popover at. */
+  onSelectDay?: (day: Date, anchor: { x: number; y: number }) => void
   onFocusDay?: (day: Date) => void
 }
 
@@ -101,9 +102,13 @@ export const MonthView: Component<MonthViewProps> = (props) => {
                         class={`group relative flex min-h-[6.5rem] cursor-pointer flex-col border-r border-border-subtle px-1 pb-1 last:border-r-0 transition-colors hover:bg-[color-mix(in_srgb,var(--color-accent)_4%,transparent)] ${inMonth ? "" : "bg-[color-mix(in_srgb,var(--color-border)_18%,transparent)]"}`}
                         data-testid="calendar-day-cell"
                         data-date={`${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`}
-                        onClick={() => props.onSelectDay?.(day)}
+                        onClick={(e) =>
+                          props.onSelectDay?.(new Date(day), { x: e.clientX, y: e.clientY })
+                        }
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") props.onSelectDay?.(day)
+                          if (e.key !== "Enter") return
+                          const r = e.currentTarget.getBoundingClientRect()
+                          props.onSelectDay?.(new Date(day), { x: r.left, y: r.top })
                         }}
                         role="button"
                         tabIndex={0}

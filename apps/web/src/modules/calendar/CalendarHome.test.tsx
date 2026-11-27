@@ -49,7 +49,7 @@ vi.mock("~/modules/calendar/calendar-store", () => ({
   loadPreferredView: () => "month",
   persistPreferredView: vi.fn(),
 }))
-vi.mock("~/modules/calendar/EventDialog", () => ({ EventDialog: () => null }))
+vi.mock("~/modules/calendar/QuickCreate", () => ({ QuickCreate: () => null }))
 
 import { CalendarShell, calendarHomeState } from "~/modules/calendar/CalendarShell"
 import { canManageOrgCalendars } from "~/modules/calendar/calendar-api"

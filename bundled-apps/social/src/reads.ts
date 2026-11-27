@@ -184,7 +184,8 @@ export async function dmList(
     last_message_at?: string | null
     last_inbound_at?: string | null
   }>
-  // Default view hides noise: archived threads, and degenerate shells with
+  // Default view hides noise: archived threads, threads deleted from the inbox
+  // (dm_delete_conversation), and degenerate shells with
   // NOTHING to show (no snippet — Meta returns some conversations with zero
   // messages and no counterpart: deleted/blocked accounts). An explicit
   // status param still returns exactly what was asked for.
@@ -193,7 +194,10 @@ export async function dmList(
   const filtered = (
     params.status
       ? rows
-      : rows.filter((r) => r.status !== "archived" && r.last_message_snippet != null)
+      : rows.filter(
+          (r) =>
+            r.status !== "archived" && r.status !== "deleted" && r.last_message_snippet != null,
+        )
   )
     .sort((a, b) => recency(b) - recency(a))
     .slice(0, params.limit ?? 100)

@@ -13,6 +13,7 @@ import { instagramAdapter } from "./adapters/instagram"
 import type { NormalizedFinding, NormalizedMessage, Platform } from "./adapters/types"
 import type { SocialToolCtx } from "./ctx"
 import { livePagesOnly, META_PAGE_IDS_KEY } from "./meta-pages"
+import { metadataObject } from "./quota"
 
 /** Adapters that can parse a verified webhook body. */
 const WEBHOOK_PARSERS: Partial<
@@ -355,6 +356,27 @@ interface ConvRow {
   last_inbound_at?: string | null
 }
 
+/** What the Messages thread and the list preview show for an unsent message. */
+export const UNSENT_TEXT = "Message unsent"
+
+/** Whether a stored `dm_message` row was unsent by its sender (`metadata.unsent`). */
+export function isUnsentRow(row: { metadata?: unknown } | null | undefined): boolean {
+  return metadataObject(row?.metadata).unsent === true
+}
+
+/**
+ * The cut-off of a conversation deleted from Liaison's inbox
+ * (`dm_conversation.metadata.historyClearedAt`, set by `dm_delete_conversation`):
+ * messages up to it are never landed again, by a re-sync or a redelivery. Null
+ * when the conversation was never deleted.
+ */
+export function historyClearedAt(row: { metadata?: unknown } | null | undefined): number | null {
+  const at = metadataObject(row?.metadata).historyClearedAt
+  if (typeof at !== "string") return null
+  const ms = Date.parse(at)
+  return Number.isNaN(ms) ? null : ms
+}
+
 /**
  * Dedup-upsert one inbound/outbound DM message into `dm_message`, keyed on
  * `[conversation_id, external_id]` (the table's UNIQUE constraint). Returns
@@ -373,7 +395,22 @@ export async function upsertDmMessage(
     const existing = (await ctx.db.findMany("dm_message", {
       where: { conversation_id: conversationId, external_id: m.externalId },
       limit: 1,
-    })) as Array<{ id: string; direction?: string }>
+    })) as Array<{ id: string; direction?: string; metadata?: unknown }>
+    if (existing[0] && m.unsent) {
+      // The sender unsent it: the row stays in the thread as "Message unsent",
+      // its text and attachments cleared for good.
+      if (isUnsentRow(existing[0])) return { created: false, inbound }
+      await ctx.db.update("dm_message", existing[0].id, {
+        body: null,
+        attachments: [],
+        metadata: {
+          ...metadataObject(existing[0].metadata),
+          unsent: true,
+          unsentAt: new Date().toISOString(),
+        },
+      })
+      return { created: false, inbound, changed: true }
+    }
     if (existing[0]) {
       // Repair-on-resync: a re-fetched message whose classification CHANGED
       // (the IG self-identity bug mislabelled our own replies as inbound)
@@ -385,6 +422,29 @@ export async function upsertDmMessage(
       }
       return { created: false, inbound }
     }
+  }
+  if (m.unsent) {
+    // An unsend for a message never stored here (it arrived before the
+    // connection, or its delivery was lost): a tombstone under its id, so a
+    // later sync that still lists the message never lands its text. It is not
+    // news: no `dm:received`, no reopen.
+    if (!m.externalId) return { created: false, inbound }
+    try {
+      await ctx.db.insert("dm_message", {
+        conversation_id: conversationId,
+        external_id: m.externalId,
+        direction: m.direction,
+        body: null,
+        occurred_at: m.occurredAt ?? new Date().toISOString(),
+        delivery_status: inbound ? "received" : "sent",
+        metadata: { unsent: true, unsentAt: new Date().toISOString() },
+      })
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err
+      // A concurrent parse landed the message first: unsend that row instead.
+      return upsertDmMessage(ctx, conversationId, m)
+    }
+    return { created: false, inbound, changed: true }
   }
   try {
     await ctx.db.insert("dm_message", {
@@ -432,6 +492,11 @@ export function dmSnippet(body: string | null | undefined): string | null {
   return body.slice(0, 120)
 }
 
+/** A stored message's list preview: `UNSENT_TEXT` once its sender unsent it. */
+export function messageSnippet(row: StoredMessageRow): string | null {
+  return isUnsentRow(row) ? UNSENT_TEXT : dmSnippet(row.body)
+}
+
 /**
  * Land a batch of DM messages against their conversations: dedup-upsert each,
  * emit `dm:received` for each NEW inbound row, then recompute each touched
@@ -450,9 +515,23 @@ export async function ingestDmMessages(
   // only those may be reopened. A duplicate (Meta redelivery, webhook and
   // poller racing) or a re-fetched old message is not news.
   const newInbound = new Set<string>()
+  // Each conversation's stored row, read once per batch: a conversation deleted
+  // from the inbox never takes back the messages it held (its cut-off).
+  const stored = new Map<string, ConversationStateRow | null>()
+  const storedRow = async (id: string) => {
+    if (!stored.has(id))
+      stored.set(id, (await ctx.db.findOne("dm_conversation", id)) as ConversationStateRow | null)
+    return stored.get(id) ?? null
+  }
   for (const m of messages) {
     const conv = convByExternalId.get(m.conversationExternalId)
     if (!conv) continue
+    const cutoff = historyClearedAt(await storedRow(conv.id))
+    if (cutoff !== null) {
+      const at = m.occurredAt ? Date.parse(m.occurredAt) : Number.NaN
+      // A message with no time is landed: only a dated one can predate the delete.
+      if (!Number.isNaN(at) && at <= cutoff) continue
+    }
     const res = await upsertDmMessage(ctx, conv.id, m)
     // Every conversation the batch names is refreshed, a duplicate included:
     // a second delivery of the same message (Meta retries, or a webhook and
@@ -469,7 +548,10 @@ export async function ingestDmMessages(
   // Once per conversation, after the whole batch: a batch arrives newest
   // first, so a per-message write would leave the OLDEST message as the
   // conversation's last inbound time and snippet.
-  for (const id of touched) await refreshConversationState(ctx, id, { reopen: newInbound.has(id) })
+  for (const id of touched)
+    await refreshConversationState(ctx, (await storedRow(id)) ?? id, {
+      reopen: newInbound.has(id),
+    })
   return { ingested }
 }
 
@@ -480,12 +562,14 @@ export interface ConversationStateRow {
   last_inbound_at?: string | null
   last_message_at?: string | null
   last_message_snippet?: string | null
+  metadata?: unknown
 }
 
 interface StoredMessageRow {
   direction?: string
   occurred_at?: string | null
   body?: string | null
+  metadata?: unknown
 }
 
 /** The later of two timestamps, null only when both are absent or unparsable. */
@@ -509,7 +593,8 @@ export function laterIso(
  * caller just inserted that new inbound message: the newest STORED message
  * being inbound proves nothing (an operator archives a thread after the
  * customer's last word), so without it a `handled` or `archived` thread stays
- * as set. `snoozed` and `awaiting_approval` are a person's or an approval's
+ * as set. A conversation `deleted` from the inbox comes back the same way, on
+ * a new inbound message only. `snoozed` and `awaiting_approval` are a person's or an approval's
  * call and stay as set.
  */
 export function nextConversationStatus(
@@ -518,7 +603,11 @@ export function nextConversationStatus(
   reopen = false,
 ): string {
   const status = current ?? "open"
-  if (reopen && latestDirection === "inbound" && (status === "handled" || status === "archived"))
+  if (
+    reopen &&
+    latestDirection === "inbound" &&
+    (status === "handled" || status === "archived" || status === "deleted")
+  )
     return "open"
   if (latestDirection === "outbound" && status === "open") return "handled"
   return status
@@ -563,7 +652,7 @@ export async function refreshConversationState(
   const lastMessage = laterIso(conv.last_message_at, latest.occurred_at)
   if (lastMessage !== null && !sameInstant(lastMessage, conv.last_message_at))
     patch.last_message_at = lastMessage
-  const snippet = dmSnippet(latest.body)
+  const snippet = messageSnippet(latest)
   if (snippet !== null && snippet !== conv.last_message_snippet)
     patch.last_message_snippet = snippet
   const status = nextConversationStatus(conv.status, latest.direction, opts.reopen === true)

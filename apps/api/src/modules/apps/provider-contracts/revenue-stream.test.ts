@@ -7,6 +7,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { sql } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
 import {
   flushEventHandlers,
@@ -21,6 +22,8 @@ import {
 import { validateAppManifest } from "~/modules/apps/contract"
 import { registerApps, teardownAppRegistrations } from "~/modules/apps/runtime"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { insertAppRow } from "~/seed/factories/app-tables"
+import { insertSql } from "~/seed/factories/org/test-rows"
 
 const KEY = "revenue-stream@1"
 const OPS = { sale_get: "rs_sale_get", sales_list: "rs_sales_list" }
@@ -174,7 +177,9 @@ describe("revenue-stream@1 delivery and calls", () => {
       [ORG, `rs-${ORG.slice(0, 8)}`],
       [OTHER_ORG, `rs-${OTHER_ORG.slice(0, 8)}`],
     ]) {
-      await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${id}, 'Revenue Org', ${slug})`
+      await sql.unsafe(
+        insertSql("kernel.organizations", { id: id!, name: "Revenue Org", slug: slug! }),
+      )
     }
     initEventBus()
     const r1 = await registerApps([deliveryConsumer(ORG)] as never, ORG)
@@ -265,7 +270,9 @@ describe("revenue-stream@1 delivery and calls", () => {
       status: "error",
       error: { code: "contract_provider_unavailable" },
     })
-    await sql`INSERT INTO app_rscons.streams (org_id, provider_app) VALUES (${ORG}, 'rspay')`
+    await withPrivilegedDb(ORG, "test", (tx) =>
+      insertAppRow(tx as never, "rscons", "streams", { org_id: ORG, provider_app: "rspay" }),
+    )
     expect(await call("rspay")).toMatchObject({
       status: "completed",
       provider: "rspay",

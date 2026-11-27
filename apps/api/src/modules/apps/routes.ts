@@ -9,6 +9,7 @@ import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { appFrameOriginsEnabled } from "~/lib/app-frame-host"
+import { hostBindingEnabled } from "~/lib/org-host"
 import { extractRlsContext } from "~/lib/request-rls"
 import { success } from "~/lib/response"
 import { quoteIdent } from "~/lib/sql-utils"
@@ -36,7 +37,7 @@ import {
   grantedDeclaredHosts,
   mintAppFrameUrl,
 } from "~/modules/apps/app-frame-host-route"
-import { appVisibleToOrg } from "~/modules/apps/app-org-scope"
+import { appOwnerOrg, appVisibleToOrg } from "~/modules/apps/app-org-scope"
 import {
   dimensionDefRegistry,
   entityRegistry,
@@ -61,6 +62,7 @@ import {
   setAdminOrgAppFeature,
 } from "~/modules/apps/org-features"
 import { restToolCall } from "~/modules/apps/rest-tool-call"
+import { orgPrivateBundleRefused } from "~/modules/apps/ui-bundle-routes"
 import { boundHost, signUiBundleToken } from "~/modules/apps/ui-bundle-token"
 import { invokeAppExport, toHttpException } from "~/modules/export/invoke-export"
 import { hasScope } from "~/modules/permissions/permissions"
@@ -455,6 +457,13 @@ appRoutes.get("/features", async (c) => {
   return c.json({ data: enabledFeaturesFor(orgId) })
 })
 
+/** An app's views without its activity-bar entry (its page is not served here). */
+function withoutActivityBar(views: unknown): unknown {
+  if (!views || typeof views !== "object" || Array.isArray(views)) return views
+  const { activityBar: _dropped, ...rest } = views as Record<string, unknown>
+  return rest
+}
+
 appRoutes.get("/manifests", async (c) => {
   const orgId = c.get("orgId")
   await ensureAppsForOrg(orgId)
@@ -476,6 +485,13 @@ appRoutes.get("/manifests", async (c) => {
     uiBundleUrl: string | null
     /** The app's frame on an origin of its own (LIAISON_APP_FRAME_ORIGIN_TEMPLATE), when it has one. */
     frameUrl?: string
+    /**
+     * Why an installed interface is not served here: `no_org_hosts` (an
+     * organization's own app on a server without LIAISON_ORG_HOST_TEMPLATE),
+     * `not_approved` (no admin approved it yet) or `wrong_host` (not the owning
+     * organization's address). The shell then offers no page for it.
+     */
+    pageUnavailable?: "no_org_hosts" | "not_approved" | "wrong_host"
   }> = []
   for (const [, entry] of manifestRegistry.entriesOf(orgId)) {
     if (entry.name === "kernel") continue // kernel is not a manifest app; its data is hardcoded on the frontend
@@ -490,10 +506,26 @@ appRoutes.get("/manifests", async (c) => {
     // A first-party interface runs in a browser tab's page; any other one runs
     // there in the sandboxed frame (apps/web framework/bootstrap.ts, S16).
     let firstParty = false
+    let pageUnavailable: "no_org_hosts" | "not_approved" | "wrong_host" | undefined
     if (uiBundleUrl) {
       const trust = await getInstallTrust(entry.name)
       firstParty = trust.uiTrust === "first-party"
-      if (trust.uiTrust === null) {
+      // An organization's own app serves its interface only on that
+      // organization's address (ui-bundle-routes.ts): wherever the bundle route
+      // would refuse it, the shell gets no URL, so it offers no page that cannot load.
+      const orgPrivate = (await appOwnerOrg(entry.name)) !== null
+      const bundleVersion = /\/([^/]+)\/ui\.js$/.exec(uiBundleUrl)?.[1]
+      if (orgPrivate && !hostBindingEnabled()) {
+        pageUnavailable = "no_org_hosts"
+      } else if (trust.uiTrust === null) {
+        pageUnavailable = "not_approved"
+      } else if (
+        orgPrivate &&
+        (!bundleVersion || (await orgPrivateBundleRefused(c, entry.name, bundleVersion)))
+      ) {
+        pageUnavailable = "wrong_host"
+      }
+      if (pageUnavailable) {
         uiBundleUrl = null
       } else if (trust.uiTrust !== "first-party") {
         // A non-first-party bundle is fetched with a token bound to this app and version.
@@ -530,7 +562,9 @@ appRoutes.get("/manifests", async (c) => {
       ...(signed ? { signed: true } : {}),
       manifest: {
         name: entry.name,
-        views: entry.views,
+        // No activity-bar entry for an interface that is not served here: it
+        // would open a tab with nothing in it.
+        views: pageUnavailable ? withoutActivityBar(entry.views) : entry.views,
         slots: entry.slots,
         contributions: entry.contributions,
         bulk: entry.bulk,
@@ -556,6 +590,7 @@ appRoutes.get("/manifests", async (c) => {
         attention: entry.attention,
       },
       uiBundleUrl,
+      ...(pageUnavailable ? { pageUnavailable } : {}),
       ...(frameUrl ? { frameUrl } : {}),
       ...(uiBundleUrl && servedVersion
         ? { externalHosts: (await grantedDeclaredHosts(entry.name, servedVersion)).linkHosts }

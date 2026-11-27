@@ -883,7 +883,12 @@ before; its name cannot carry an organization key. The rules:
   sandboxed frame: its code never runs in Liaison's page and never holds a
   member's session. A server without organization addresses
   (`LIAISON_ORG_HOST_TEMPLATE` unset) serves no custom app interface; its
-  tools, jobs and webhooks still run.
+  tools, jobs and webhooks still run. There the activity bar offers no page
+  for it, `GET /api/apps/manifests` says why (`pageUnavailable:
+  "no_org_hosts"`), and approving the interface is refused (409) with the
+  reason. Wherever else its interface is not served (not approved yet, or not
+  the organization's own address), the activity bar offers no page either
+  (`not_approved`, `wrong_host`).
 - The operator of the server can disable it during an incident. A disabled app
   stays installed with its data, but nothing of it runs and it cannot be
   upgraded or uninstalled (409 `custom_app_disabled`) until the operator

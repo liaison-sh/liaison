@@ -32,6 +32,11 @@ describe("building-an-org-app skill example", () => {
     expect(Object.keys(files).sort()).toEqual(["app.manifest.json", "handlers.ts", "ui.tsx"])
   })
 
+  test("styles its page with the app UI kit, not bare HTML", () => {
+    // A page of bare elements renders unstyled in the frame; the example shows the kit.
+    expect(files["ui.tsx"]).toMatch(/from "@liaison\/app-ui\/kit"/)
+  })
+
   test("builds and type-checks clean as a custom app", async () => {
     const r = await buildDraft(files, { appName: APP, version: "0.1.0", typecheck: true })
     expect(r.errors).toEqual([])

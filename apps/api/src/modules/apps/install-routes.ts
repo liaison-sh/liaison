@@ -15,6 +15,7 @@ import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-instal
 import { customAppsEnabled } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { appsLogger as log } from "~/lib/logger"
+import { hostBindingEnabled } from "~/lib/org-host"
 import { fetchWithPinnedHost, UnsafeOutboundUrlError } from "~/lib/outbound-fetch"
 import { readStreamCapped } from "~/lib/read-capped-body"
 import { success } from "~/lib/response"
@@ -634,6 +635,15 @@ installRoutes.post(
     const trust = await getInstallTrust(name)
     if (!trust.installed || !trust.version) {
       throw new HTTPException(404, { message: `App '${name}' is not installed` })
+    }
+    // An organization's own app runs its interface only on that organization's
+    // address. Without organization addresses there is nowhere to show it:
+    // approving would change nothing, so say so instead.
+    if (body.approved && !hostBindingEnabled() && (await isOrgPrivateApp(name))) {
+      throw new HTTPException(409, {
+        message:
+          "This server has no address per organization (LIAISON_ORG_HOST_TEMPLATE is not set), so an organization's own app has no page here, only its tools. Its operator can set LIAISON_ORG_HOST_TEMPLATE to serve it.",
+      })
     }
     const version = trust.version
     const userId = c.get("userId")

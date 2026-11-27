@@ -25,6 +25,7 @@ import { Button } from "~/ui/Button"
 import { AgendaView } from "./AgendaView"
 import {
   type CalendarConnectionDto,
+  type CalendarPoint,
   canRetryCalendarImport,
   retryCalendarImport,
 } from "./calendar-api"
@@ -295,9 +296,9 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
     setQuick({ start: from, end, allDay, x: anchor.x, y: anchor.y })
   }
 
-  function selectEvent(eventId: string): void {
+  function selectEvent(eventId: string, start?: CalendarPoint | null): void {
     const event = calendarStore.events.find((e) => e.eventId === eventId)
-    if (event) openEventTab(event, i18n.t("calendar.untitledEvent"))
+    if (event) openEventTab(event, i18n.t("calendar.untitledEvent"), start)
   }
 
   function refresh(): void {

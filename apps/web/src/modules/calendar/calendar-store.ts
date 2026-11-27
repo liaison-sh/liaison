@@ -14,6 +14,7 @@ import {
   type CalendarEventDto,
   type CalendarListItem,
   type CreateEventInput,
+  type DeleteEventOptions,
   listCalendarConnections,
   listCalendars,
   listEvents,
@@ -213,9 +214,9 @@ export async function updateCalendarEvent(api: ApiClient, input: UpdateEventInpu
 export async function deleteCalendarEvent(
   api: ApiClient,
   eventId: string,
-  scope?: "occurrence" | "series",
+  options: DeleteEventOptions = {},
 ): Promise<void> {
-  await apiDeleteEvent(api, eventId, scope)
+  await apiDeleteEvent(api, eventId, options)
 }
 
 /**

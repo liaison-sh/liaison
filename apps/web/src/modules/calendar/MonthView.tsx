@@ -6,14 +6,15 @@ import { type Component, createMemo, For, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { isSameDay, monthGridDays, weekdayLabels, weekStartsOn } from "./date-utils"
 import { isSpanning, layoutWeekSegments, occStartDate, type WeekSegment } from "./layout"
-import type { ExpandedOccurrence } from "./rrule-expand"
+import type { CalendarEventPoint, ExpandedOccurrence } from "./rrule-expand"
 
 export interface MonthViewProps {
   year: number
   month: number // 0-indexed
   occurrences: ExpandedOccurrence[]
   calendarColors: Record<string, string>
-  onSelectEvent?: (eventId: string) => void
+  /** `start`: the occurrence clicked (a recurring series opens at that occurrence). */
+  onSelectEvent?: (eventId: string, start?: CalendarEventPoint | null) => void
   /** A click on a day's empty space; `anchor` is the viewport point to anchor a popover at. */
   onSelectDay?: (day: Date, anchor: { x: number; y: number }) => void
   onFocusDay?: (day: Date) => void
@@ -136,9 +137,11 @@ export const MonthView: Component<MonthViewProps> = (props) => {
                                 type="button"
                                 class="mt-px flex w-full min-w-0 items-center gap-1 rounded px-1 py-px text-left text-xs leading-4 transition-colors hover:bg-[color-mix(in_srgb,var(--color-border)_40%,transparent)]"
                                 data-testid="calendar-event-chip"
+                                data-declined={occ.declined ? "true" : undefined}
+                                classList={{ "opacity-60 line-through": occ.declined === true }}
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  props.onSelectEvent?.(occ.eventId)
+                                  props.onSelectEvent?.(occ.eventId, occ.start)
                                 }}
                               >
                                 <span
@@ -195,9 +198,11 @@ export const MonthView: Component<MonthViewProps> = (props) => {
                             color: `color-mix(in srgb, ${color} 70%, var(--color-text))`,
                           }}
                           data-testid="calendar-span-band"
+                          data-declined={seg.occ.declined ? "true" : undefined}
+                          classList={{ "opacity-60 line-through": seg.occ.declined === true }}
                           onClick={(e) => {
                             e.stopPropagation()
-                            props.onSelectEvent?.(seg.occ.eventId)
+                            props.onSelectEvent?.(seg.occ.eventId, seg.occ.start)
                           }}
                         >
                           {seg.occ.title ?? i18n.t("calendar.untitledEvent")}

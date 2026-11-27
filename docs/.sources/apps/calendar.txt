@@ -56,3 +56,11 @@ Notice naming the field and the replaced value -> apps/api/src/apps/calendar/syn
 Quiet item on Home after a conflict -> apps/api/src/apps/calendar/app.manifest.json:687
 Times sent with the calendar's time zone -> apps/api/src/apps/calendar/handlers.ts:689
 Read-only calendars refuse new events and edits -> apps/api/src/modules/apps/sandbox/bridge/calendar.ts:70
+Teammates and contacts suggested as guests, any address accepted -> apps/web/src/modules/calendar/attendee-search.ts:22
+Send invitations ticked when guests are added -> apps/web/src/modules/calendar/CalendarEventTab.tsx:134
+Going? Yes Maybe No for an invitation you received -> apps/web/src/modules/calendar/CalendarEventTab.tsx:138
+Declined events struck through and faded -> apps/web/src/modules/calendar/rrule-expand.ts:34
+An occurrence opens at that occurrence -> apps/web/src/modules/calendar/event-tabs.ts:71
+This event / This and following / All events; a rule change not for one occurrence -> apps/web/src/modules/calendar/CalendarEventTab.tsx:353
+All events moves the series by what the occurrence moved -> apps/web/src/modules/calendar/series-edit.ts:87
+Repeat editor: every, weekdays, ends; unknown rules kept -> apps/web/src/modules/calendar/recurrence-rule.ts:31

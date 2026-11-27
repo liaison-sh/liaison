@@ -2,7 +2,9 @@
 // The event tab: the full editor for one event (opened from the grid, the agenda or "More
 // options" in the quick-create popover), or for a new one (`new-<n>` tab id). Its actions sit at
 // the top of the view. Saving or deleting closes the tab and leaves the calendar where it was; a
-// delete asks first and offers Undo.
+// delete asks first and offers Undo. An event of a recurring meeting asks which occurrences a
+// save or a delete applies to (this one, this and the following ones, all of them). Guests are
+// emailed only when "Send invitations" is ticked; the account's own invitation is answered here.
 import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
@@ -10,7 +12,14 @@ import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
 import { Dialog } from "~/ui/Dialog"
 import { Input } from "~/ui/Input"
-import type { CalendarAttendee, CalendarEventDto } from "./calendar-api"
+import { createAttendeeSearch } from "./attendee-search"
+import {
+  type CalendarAttendee,
+  type CalendarEventDto,
+  type RsvpResponse,
+  respondToEvent,
+  type SeriesScope,
+} from "./calendar-api"
 import {
   calendarStore,
   createCalendarEvent,
@@ -28,18 +37,32 @@ import {
   validateForm,
   withAllDay,
 } from "./event-form"
-import { closeEventTab, openedEvent, takeDraft } from "./event-tabs"
+import { closeEventTab, openedEvent, parseEventTabEntityId, takeDraft } from "./event-tabs"
+import {
+  buildRepeat,
+  NO_REPEAT,
+  parseRepeat,
+  type RepeatFreq,
+  type RepeatRule,
+  WEEKDAY_CODES,
+  withRule,
+} from "./recurrence-rule"
+import {
+  isRecurringMaster as isMasterEvent,
+  occurrenceView,
+  scopeTarget,
+  seriesContextOf,
+  seriesTimes,
+} from "./series-edit"
 
-const RECURRENCE_OPTIONS = ["none", "daily", "weekly", "monthly"] as const
-type RecurrenceChoice = (typeof RECURRENCE_OPTIONS)[number]
+const REPEAT_FREQS: RepeatFreq[] = ["none", "daily", "weekly", "monthly", "yearly"]
+const RSVP_CHOICES: RsvpResponse[] = ["accepted", "tentative", "declined"]
+/** What the scope dialog is asking about. */
+type PendingAction = "save" | "delete" | { rsvp: RsvpResponse }
 const ATTENDEE_STATUSES = new Set(["accepted", "declined", "tentative", "needsAction"])
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 /** How long Undo stays offered after a delete. */
 const UNDO_MS = 8000
-
-function recurrenceToRrule(choice: RecurrenceChoice): string[] | undefined {
-  return choice === "none" ? undefined : [`RRULE:FREQ=${choice.toUpperCase()}`]
-}
 
 const fieldClass = "w-full min-w-0 rounded-sm border border-border bg-bg px-2 py-1.5 text-sm"
 
@@ -48,53 +71,88 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
   const i18n = useI18n()
   const entityId = () => props.entityId ?? ""
   const isNew = () => entityId().startsWith("new-")
+  // `<series id>~<occurrence>` for one occurrence of a recurring meeting.
+  const target = () => parseEventTabEntityId(entityId())
 
   const event = createMemo<CalendarEventDto | null>(() => {
     if (isNew()) return null
-    return (
-      calendarStore.events.find((e) => e.eventId === entityId()) ?? openedEvent(entityId()) ?? null
-    )
+    const id = target().eventId
+    return calendarStore.events.find((e) => e.eventId === id) ?? openedEvent(id) ?? null
   })
+  const series = createMemo(() => seriesContextOf(event(), target().occurrence))
+  /** The event as the form shows it: a series at the occurrence it was opened at. */
+  const shown = (): CalendarEventDto | null => {
+    const e = event()
+    const ctx = series()
+    return e && ctx?.kind === "master" ? occurrenceView(e, ctx.occurrence) : e
+  }
 
   const [form, setForm] = createSignal<EventFormValues>(
-    formFromEvent(event(), takeDraft(entityId()) ?? {}, calendarStore.calendars),
+    formFromEvent(shown(), takeDraft(entityId()) ?? {}, calendarStore.calendars),
   )
-  const [recurrence, setRecurrence] = createSignal<RecurrenceChoice>("none")
+  const initialRepeat = parseRepeat(event()?.recurrence ?? null)
+  const [repeat, setRepeat] = createSignal<RepeatRule>(initialRepeat ?? NO_REPEAT)
+  const [repeatChanged, setRepeatChanged] = createSignal(false)
   const [attendees, setAttendees] = createSignal<CalendarAttendee[]>(event()?.attendees ?? [])
   const [attendeesChanged, setAttendeesChanged] = createSignal(false)
   const [attendeeInput, setAttendeeInput] = createSignal("")
+  /** Null until the person touches it: then their choice; before, on when guests were added. */
+  const [notifyChoice, setNotifyChoice] = createSignal<boolean | null>(null)
   const [error, setError] = createSignal<string | null>(null)
   const [saving, setSaving] = createSignal(false)
   const [confirmDelete, setConfirmDelete] = createSignal(false)
+  const [pending, setPending] = createSignal<PendingAction | null>(null)
+  const suggest = createAttendeeSearch(
+    api,
+    () => new Set(attendees().map((a) => a.email.toLowerCase())),
+  )
 
   onMount(() => {
     if (calendarStore.calendars.length === 0) {
       void loadCalendarsList(api).then(() => {
         if (!form().calendarId) {
-          setForm(formFromEvent(event(), takeDraft(entityId()) ?? {}, calendarStore.calendars))
+          setForm(formFromEvent(shown(), takeDraft(entityId()) ?? {}, calendarStore.calendars))
         }
       })
     }
   })
 
   const update = (patch: Partial<EventFormValues>) => setForm({ ...form(), ...patch })
+  const editRepeat = (patch: Partial<RepeatRule>) => {
+    setRepeat({ ...repeat(), ...patch })
+    setRepeatChanged(true)
+  }
 
   const writableCalendars = createMemo(() =>
     calendarStore.calendars.filter((c) => c.selected !== false && isWritableCalendar(c)),
   )
-  // A recurring master is read-only here until series editing lands (one occurrence's own row,
-  // an exception, stays editable).
-  const isRecurringMaster = () => {
-    const rec = event()?.recurrence
-    return Array.isArray(rec) && rec.length > 0
-  }
+  const isRecurringMaster = () => isMasterEvent(event())
   const attendeesEditable = () => event()?.attendeesEditable !== false
-  const readOnly = () => isRecurringMaster()
+  /** A repeat rule this editor cannot show is kept as it is, never rewritten. */
+  const repeatEditable = () => isNew() || (isRecurringMaster() && initialRepeat !== null)
+  /** Guests get Google's email: ticked by the person, or by default when guests were added. */
+  const notify = () => notifyChoice() ?? (attendeesChanged() && attendees().length > 0)
+  const sendUpdates = () =>
+    notify() && attendees().length > 0 ? { sendUpdates: "all" as const } : {}
+  /** The account's own guest entry, when someone else invited it. */
+  const ownInvite = createMemo(() => {
+    const list = event()?.attendees ?? []
+    const self = list.find((a) => a.self === true)
+    return self && !self.organizer ? self : null
+  })
 
   function attendeeStatusLabel(status: string | undefined): string {
     return i18n.t(
       `calendar.attendeeStatus.${status && ATTENDEE_STATUSES.has(status) ? status : "needsAction"}`,
     )
+  }
+
+  function addAttendee(email: string): void {
+    if (attendees().some((a) => a.email.toLowerCase() === email.toLowerCase())) return
+    setAttendees([...attendees(), { email }])
+    setAttendeesChanged(true)
+    setAttendeeInput("")
+    suggest.clear()
   }
 
   function addAttendees(): boolean {
@@ -129,39 +187,64 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
   }
 
   async function save(): Promise<void> {
-    if (readOnly()) return
     const invalid = validateForm(form())
     if (invalid) {
       setError(i18n.t(invalid))
       return
     }
     if (attendeesEditable() && !addAttendees()) return
+    // A recurring meeting: which occurrences first.
+    if (event() && series()) {
+      setPending("save")
+      return
+    }
+    await saveWith(null)
+  }
+
+  async function saveWith(scope: SeriesScope | null): Promise<void> {
+    setPending(null)
     setSaving(true)
     setError(null)
     try {
       const current = event()
+      const ctx = series()
       if (current) {
         const hadMeet = Boolean(current.hangoutLink)
+        const times = timesPayload(form())
+        const scoped = ctx && scope ? scopeTarget(current, ctx, scope) : null
+        // The whole series moves by what the form moved its occurrence; an edited occurrence
+        // keeps its own time out of a whole-series change.
+        const timeFields =
+          scope === "series"
+            ? ctx?.kind === "master"
+              ? seriesTimes(current, ctx.occurrence, times)
+              : {}
+            : times
+        const rule =
+          repeatChanged() && scope !== "occurrence" ? buildRepeat(repeat(), form().allDay) : null
         await updateCalendarEvent(api, {
-          eventId: current.eventId,
+          eventId: scoped?.eventId ?? current.eventId,
           title: form().title.trim(),
           description: form().description,
           location: form().location,
-          ...timesPayload(form()),
+          ...timeFields,
           ...(attendeesChanged() ? { attendees: attendees().map((a) => a.email) } : {}),
           ...(form().meet !== hadMeet
             ? { conference: form().meet ? ("google_meet" as const) : ("none" as const) }
             : {}),
-          ...(current.recurringEventId ? { scope: "occurrence" as const } : {}),
+          ...(scoped ? { scope: scoped.scope } : {}),
+          ...(scoped?.occurrenceStart ? { occurrenceStart: scoped.occurrenceStart } : {}),
+          ...(rule !== null ? { recurrence: withRule(current.recurrence, rule) } : {}),
+          ...sendUpdates(),
         })
       } else {
-        await createCalendarEvent(
-          api,
-          createPayload(form(), {
-            recurrence: recurrenceToRrule(recurrence()),
+        await createCalendarEvent(api, {
+          ...createPayload(form(), {
+            recurrence: buildRepeat(repeat(), form().allDay),
             attendees: attendees().map((a) => a.email),
           }),
-        )
+          ...sendUpdates(),
+        })
       }
       void reloadCurrentWindow(api)
       close()
@@ -172,18 +255,28 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
     }
   }
 
-  async function remove(): Promise<void> {
+  function askDelete(): void {
+    if (series()) setPending("delete")
+    else setConfirmDelete(true)
+  }
+
+  async function remove(scope: SeriesScope | null = null): Promise<void> {
     const current = event()
     if (!current) return
     setConfirmDelete(false)
+    setPending(null)
     setSaving(true)
     setError(null)
+    const ctx = series()
+    const scoped = ctx && scope ? scopeTarget(current, ctx, scope) : null
     try {
-      await deleteCalendarEvent(
-        api,
-        current.eventId,
-        current.recurringEventId ? "occurrence" : undefined,
-      )
+      await deleteCalendarEvent(api, scoped?.eventId ?? current.eventId, {
+        ...(scoped ? { scope: scoped.scope } : {}),
+        ...(scoped?.occurrenceStart ? { occurrenceStart: scoped.occurrenceStart } : {}),
+        ...(notifyChoice() === true && (current.attendees?.length ?? 0) > 0
+          ? { sendUpdates: "all" as const }
+          : {}),
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setSaving(false)
@@ -193,7 +286,7 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
     void reloadCurrentWindow(api)
     close()
     // Undo puts a deleted one-off event back (a cancelled occurrence comes back with the series).
-    if (!current.recurringEventId) {
+    if (!ctx) {
       const snapshot = formFromEvent(current, {}, calendarStore.calendars)
       const guests = (current.attendees ?? []).map((a) => a.email)
       addToast({
@@ -217,6 +310,56 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
     }
   }
 
+  /** The account's answer: a recurring meeting asks for this occurrence or all of them. */
+  function answer(response: RsvpResponse): void {
+    if (series()) setPending({ rsvp: response })
+    else void answerWith(response, null)
+  }
+
+  async function answerWith(response: RsvpResponse, scope: SeriesScope | null): Promise<void> {
+    const current = event()
+    if (!current) return
+    setPending(null)
+    setSaving(true)
+    setError(null)
+    const ctx = series()
+    const scoped = ctx && scope ? scopeTarget(current, ctx, scope) : null
+    try {
+      await respondToEvent(api, {
+        eventId: scoped?.eventId ?? current.eventId,
+        response,
+        ...(scoped && scoped.scope !== "following" ? { scope: scoped.scope } : {}),
+        ...(scoped?.occurrenceStart ? { occurrenceStart: scoped.occurrenceStart } : {}),
+      })
+      setAttendees(
+        attendees().map((a) => (a.self === true ? { ...a, responseStatus: response } : a)),
+      )
+      void reloadCurrentWindow(api)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function chooseScope(scope: SeriesScope): void {
+    const action = pending()
+    if (action === "save") void saveWith(scope)
+    else if (action === "delete") void remove(scope)
+    else if (action) void answerWith(action.rsvp, scope)
+  }
+
+  /** The choices the dialog offers: an answer is for one occurrence or all of them. */
+  const scopeChoices = (): SeriesScope[] => {
+    const action = pending()
+    if (action && typeof action === "object") return ["occurrence", "series"]
+    // A new repeat rule applies from an occurrence on, never to one occurrence alone.
+    if (action === "save" && repeatChanged()) return ["following", "series"]
+    return ["occurrence", "following", "series"]
+  }
+
+  const ownStatus = () => attendees().find((a) => a.self === true)?.responseStatus
+
   return (
     <div class="flex h-full min-h-0 flex-col" data-testid="calendar-event-tab">
       {/* Actions at the top of the view. */}
@@ -228,8 +371,8 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
           <Button
             variant="ghost"
             size="sm"
-            disabled={saving() || readOnly()}
-            onClick={() => setConfirmDelete(true)}
+            disabled={saving()}
+            onClick={askDelete}
             data-testid="event-delete"
           >
             {i18n.t("calendar.deleteEvent")}
@@ -238,12 +381,7 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
         <Button variant="outline" size="sm" onClick={close} data-testid="event-cancel">
           {i18n.t("calendar.cancel")}
         </Button>
-        <Button
-          size="sm"
-          disabled={saving() || readOnly()}
-          onClick={() => void save()}
-          data-testid="event-save"
-        >
+        <Button size="sm" disabled={saving()} onClick={() => void save()} data-testid="event-save">
           {i18n.t("calendar.save")}
         </Button>
       </div>
@@ -272,6 +410,28 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
             >
               {i18n.t("calendar.joinMeet")}
             </a>
+          </Show>
+
+          <Show when={ownInvite()}>
+            <div class="flex flex-wrap items-center gap-2" data-testid="event-rsvp">
+              <span class="text-xs font-medium text-text-secondary">
+                {i18n.t("calendar.rsvpQuestion")}
+              </span>
+              <For each={RSVP_CHOICES}>
+                {(choice) => (
+                  <Button
+                    size="sm"
+                    variant={ownStatus() === choice ? "default" : "outline"}
+                    aria-pressed={ownStatus() === choice}
+                    disabled={saving()}
+                    onClick={() => answer(choice)}
+                    data-testid={`event-rsvp-${choice}`}
+                  >
+                    {i18n.t(`calendar.rsvp.${choice}`)}
+                  </Button>
+                )}
+              </For>
+            </div>
           </Show>
 
           <Input
@@ -367,24 +527,139 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
                 </For>
               </select>
             </label>
-            <Show when={isNew()}>
+            <Show when={repeatEditable()}>
               <label class="flex min-w-0 flex-1 flex-col gap-1">
                 <span class="text-xs font-medium text-text-secondary">
                   {i18n.t("calendar.recurrence")}
                 </span>
                 <select
                   class={fieldClass}
-                  value={recurrence()}
-                  onChange={(e) => setRecurrence(e.currentTarget.value as RecurrenceChoice)}
+                  value={repeat().freq}
+                  onChange={(e) => editRepeat({ freq: e.currentTarget.value as RepeatFreq })}
                   data-testid="event-recurrence-select"
                 >
-                  <For each={RECURRENCE_OPTIONS}>
+                  <For each={REPEAT_FREQS}>
                     {(opt) => <option value={opt}>{i18n.t(`calendar.recurrence.${opt}`)}</option>}
                   </For>
                 </select>
               </label>
             </Show>
           </div>
+
+          <Show when={repeatEditable() && repeat().freq !== "none"}>
+            <div
+              class="flex flex-col gap-2 rounded-sm border border-border p-2"
+              data-testid="event-repeat-editor"
+            >
+              <label class="flex items-center gap-2 text-sm">
+                {i18n.t("calendar.repeatEvery")}
+                <input
+                  type="number"
+                  min="1"
+                  class={`${fieldClass} w-16`}
+                  value={repeat().interval}
+                  onInput={(e) =>
+                    editRepeat({
+                      interval: Math.max(1, Math.floor(Number(e.currentTarget.value) || 1)),
+                    })
+                  }
+                  data-testid="event-repeat-interval"
+                />
+                {i18n.t(`calendar.repeatUnit.${repeat().freq}`)}
+              </label>
+              <Show when={repeat().freq === "weekly"}>
+                <div class="flex flex-wrap gap-1" data-testid="event-repeat-days">
+                  <For each={WEEKDAY_CODES}>
+                    {(day) => (
+                      <button
+                        type="button"
+                        aria-pressed={repeat().byDay.includes(day)}
+                        class={`rounded-full border px-2 py-0.5 text-xs ${
+                          repeat().byDay.includes(day)
+                            ? "border-accent bg-[color-mix(in_srgb,var(--color-accent)_14%,transparent)] text-accent"
+                            : "border-border text-text-secondary"
+                        }`}
+                        onClick={() =>
+                          editRepeat({
+                            byDay: repeat().byDay.includes(day)
+                              ? repeat().byDay.filter((d) => d !== day)
+                              : [...repeat().byDay, day],
+                          })
+                        }
+                        data-testid={`event-repeat-day-${day}`}
+                      >
+                        {i18n.t(`calendar.weekday.${day}`)}
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </Show>
+              <div class="flex flex-wrap items-center gap-2 text-sm">
+                <span>{i18n.t("calendar.repeatEnds")}</span>
+                <select
+                  class={`${fieldClass} w-auto`}
+                  value={repeat().end.kind}
+                  onChange={(e) => {
+                    const kind = e.currentTarget.value
+                    editRepeat({
+                      end:
+                        kind === "until"
+                          ? {
+                              kind: "until",
+                              date: form().allDay
+                                ? form().startDate
+                                : form().startLocal.slice(0, 10),
+                            }
+                          : kind === "count"
+                            ? { kind: "count", count: 10 }
+                            : { kind: "never" },
+                    })
+                  }}
+                  data-testid="event-repeat-end"
+                >
+                  <option value="never">{i18n.t("calendar.repeatEnd.never")}</option>
+                  <option value="until">{i18n.t("calendar.repeatEnd.until")}</option>
+                  <option value="count">{i18n.t("calendar.repeatEnd.count")}</option>
+                </select>
+                <Show
+                  when={repeat().end.kind === "until" ? (repeat().end as { date: string }) : null}
+                >
+                  {(end) => (
+                    <input
+                      type="date"
+                      class={`${fieldClass} w-auto`}
+                      value={end().date}
+                      onInput={(e) =>
+                        editRepeat({ end: { kind: "until", date: e.currentTarget.value } })
+                      }
+                      data-testid="event-repeat-until"
+                    />
+                  )}
+                </Show>
+                <Show
+                  when={repeat().end.kind === "count" ? (repeat().end as { count: number }) : null}
+                >
+                  {(end) => (
+                    <input
+                      type="number"
+                      min="1"
+                      class={`${fieldClass} w-20`}
+                      value={end().count}
+                      onInput={(e) =>
+                        editRepeat({
+                          end: {
+                            kind: "count",
+                            count: Math.max(1, Math.floor(Number(e.currentTarget.value) || 1)),
+                          },
+                        })
+                      }
+                      data-testid="event-repeat-count"
+                    />
+                  )}
+                </Show>
+              </div>
+            </div>
+          </Show>
 
           <label class="flex items-center gap-2 text-sm">
             <input
@@ -439,7 +714,7 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
                           <Show when={a.organizer}> · {i18n.t("calendar.organizer")}</Show>
                         </div>
                       </div>
-                      <Show when={attendeesEditable() && !readOnly()}>
+                      <Show when={attendeesEditable()}>
                         <button
                           type="button"
                           class="shrink-0 text-xs text-text-secondary hover:text-text"
@@ -471,7 +746,10 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
                   class={`${fieldClass} flex-1`}
                   type="email"
                   value={attendeeInput()}
-                  onInput={(e) => setAttendeeInput(e.currentTarget.value)}
+                  onInput={(e) => {
+                    setAttendeeInput(e.currentTarget.value)
+                    suggest.setQuery(e.currentTarget.value)
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault()
@@ -490,10 +768,40 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
                   {i18n.t("calendar.addAttendee")}
                 </Button>
               </div>
+              <Show when={suggest.results().length > 0}>
+                <ul
+                  class="flex flex-col rounded-sm border border-border bg-bg"
+                  data-testid="event-attendee-suggestions"
+                >
+                  <For each={suggest.results()}>
+                    {(s) => (
+                      <li>
+                        <button
+                          type="button"
+                          class="flex w-full min-w-0 items-baseline gap-2 px-2 py-1 text-left text-xs hover:bg-surface-hover"
+                          onClick={() => addAttendee(s.email)}
+                          data-testid="event-attendee-suggestion"
+                        >
+                          <span class="truncate font-medium text-text">{s.name}</span>
+                          <span class="truncate text-text-secondary">{s.email}</span>
+                        </button>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </Show>
             </Show>
-            <span class="text-xs text-text-secondary" data-testid="event-attendees-no-invite">
-              {i18n.t("calendar.attendeesNotNotified")}
-            </span>
+            <Show when={attendees().length > 0 && attendeesEditable()}>
+              <label class="mt-1 flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={notify()}
+                  onChange={(e) => setNotifyChoice(e.currentTarget.checked)}
+                  data-testid="event-send-invitations"
+                />
+                {i18n.t("calendar.sendInvitations")}
+              </label>
+            </Show>
           </div>
 
           <Show when={event()?.pushError ?? event()?.pushNotice}>
@@ -503,9 +811,9 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
               </div>
             )}
           </Show>
-          <Show when={isRecurringMaster()}>
+          <Show when={isRecurringMaster() && initialRepeat === null}>
             <div class="text-xs text-text-secondary" data-testid="event-recurring-note">
-              {i18n.t("calendar.recurringNotEditable")}
+              {i18n.t("calendar.recurrenceKept")}
             </div>
           </Show>
           <Show when={error()}>
@@ -518,6 +826,51 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
         </form>
       </div>
 
+      <Dialog open={pending() !== null} onOpenChange={(open) => !open && setPending(null)}>
+        <Dialog.Content>
+          <Dialog.Title>
+            {pending() === "delete"
+              ? i18n.t("calendar.scopeDeleteTitle")
+              : typeof pending() === "object"
+                ? i18n.t("calendar.scopeRsvpTitle")
+                : i18n.t("calendar.scopeSaveTitle")}
+          </Dialog.Title>
+          <div class="mt-2 flex flex-col gap-1" data-testid="event-scope-dialog">
+            <For each={scopeChoices()}>
+              {(scope) => (
+                <Button
+                  variant="outline"
+                  onClick={() => chooseScope(scope)}
+                  data-testid={`event-scope-${scope}`}
+                >
+                  {i18n.t(`calendar.scope.${scope}`)}
+                </Button>
+              )}
+            </For>
+          </div>
+          <Show when={pending() === "delete" && (event()?.attendees?.length ?? 0) > 0}>
+            <label class="mt-3 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={notifyChoice() === true}
+                onChange={(e) => setNotifyChoice(e.currentTarget.checked)}
+                data-testid="event-delete-notify"
+              />
+              {i18n.t("calendar.notifyCancellation")}
+            </label>
+          </Show>
+          <div class="mt-4 flex justify-end">
+            <Button
+              variant="ghost"
+              onClick={() => setPending(null)}
+              data-testid="event-scope-cancel"
+            >
+              {i18n.t("calendar.cancel")}
+            </Button>
+          </div>
+        </Dialog.Content>
+      </Dialog>
+
       <Dialog open={confirmDelete()} onOpenChange={setConfirmDelete}>
         <Dialog.Content>
           <Dialog.Title>{i18n.t("calendar.deleteConfirmTitle")}</Dialog.Title>
@@ -526,6 +879,17 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
               title: event()?.title || i18n.t("calendar.untitledEvent"),
             })}
           </p>
+          <Show when={(event()?.attendees?.length ?? 0) > 0}>
+            <label class="mt-3 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={notifyChoice() === true}
+                onChange={(e) => setNotifyChoice(e.currentTarget.checked)}
+                data-testid="event-delete-notify"
+              />
+              {i18n.t("calendar.notifyCancellation")}
+            </label>
+          </Show>
           <div class="mt-4 flex justify-end gap-2">
             <Button
               variant="outline"

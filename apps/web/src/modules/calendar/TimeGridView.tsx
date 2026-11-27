@@ -16,7 +16,7 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { useTabIsActive } from "~/modules/shell/TabVisibilityContext"
 import { isSameDay, weekDays } from "./date-utils"
 import { isSpanning, layoutDayColumns, layoutWeekSegments, type WeekSegment } from "./layout"
-import type { ExpandedOccurrence } from "./rrule-expand"
+import type { CalendarEventPoint, ExpandedOccurrence } from "./rrule-expand"
 
 export interface TimeGridViewProps {
   /** first visible day (for week: the week start; for day: the day itself) */
@@ -25,7 +25,8 @@ export interface TimeGridViewProps {
   dayCount: 1 | 7
   occurrences: ExpandedOccurrence[]
   calendarColors: Record<string, string>
-  onSelectEvent?: (eventId: string) => void
+  /** `start`: the occurrence clicked (a recurring series opens at that occurrence). */
+  onSelectEvent?: (eventId: string, start?: CalendarEventPoint | null) => void
   /** A click on an empty slot (30-min snap); `anchor` is the viewport point for a popover. */
   onSelectSlot?: (start: Date, anchor: { x: number; y: number }) => void
 }
@@ -163,7 +164,9 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                       color: `color-mix(in srgb, ${color} 70%, var(--color-text))`,
                     }}
                     data-testid="calendar-span-band"
-                    onClick={() => props.onSelectEvent?.(seg.occ.eventId)}
+                    data-declined={seg.occ.declined ? "true" : undefined}
+                    classList={{ "opacity-60 line-through": seg.occ.declined === true }}
+                    onClick={() => props.onSelectEvent?.(seg.occ.eventId, seg.occ.start)}
                   >
                     {seg.occ.title ?? i18n.t("calendar.untitledEvent")}
                   </button>
@@ -265,9 +268,11 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                             "border-left": `3px solid ${color}`,
                           }}
                           data-testid="calendar-timed-event"
+                          data-declined={block.occ.declined ? "true" : undefined}
+                          classList={{ "opacity-60 line-through": block.occ.declined === true }}
                           onClick={(e) => {
                             e.stopPropagation()
-                            props.onSelectEvent?.(block.occ.eventId)
+                            props.onSelectEvent?.(block.occ.eventId, block.occ.start)
                           }}
                         >
                           <span

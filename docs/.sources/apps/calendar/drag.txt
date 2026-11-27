@@ -1,0 +1,7 @@
+Drag over empty time to create; the card opens with that range: apps/web/src/modules/calendar/TimeGridView.tsx (onPointerUp, onCreateRange), apps/web/src/modules/calendar/CalendarShell.tsx (onCreateRange)
+Drag an event to another time or day; Month drop keeps its time: apps/web/src/modules/calendar/TimeGridView.tsx (startSession), apps/web/src/modules/calendar/MonthView.tsx (onMoveEventToDay), apps/web/src/modules/calendar/CalendarShell.tsx (moveEventToDay)
+Resize by the bottom edge: apps/web/src/modules/calendar/TimeGridView.tsx (calendar-event-resize)
+Esc cancels; Undo puts it back: apps/web/src/modules/calendar/TimeGridView.tsx (onKeyDown), apps/web/src/modules/calendar/CalendarShell.tsx (moveEvent)
+Quarter-hour snap: apps/web/src/modules/calendar/drag-math.ts (SNAP_MIN)
+All-day events move to another day in Month and keep their length: apps/web/src/modules/calendar/CalendarShell.tsx (moveEventToDay)
+Dropping an occurrence of a recurring event asks which occurrences move: apps/web/src/modules/calendar/CalendarShell.tsx (moveSeries, move-scope-dialog)

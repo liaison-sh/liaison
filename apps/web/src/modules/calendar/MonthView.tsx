@@ -18,6 +18,28 @@ export interface MonthViewProps {
   /** A click on a day's empty space; `anchor` is the viewport point to anchor a popover at. */
   onSelectDay?: (day: Date, anchor: { x: number; y: number }) => void
   onFocusDay?: (day: Date) => void
+  /** A timed event dropped on another day: same time of day, that date. */
+  /** `occurrence`: the occurrence of a recurring series that was dragged (its original start). */
+  onMoveEventToDay?: (eventId: string, day: Date, occurrence?: CalendarEventPoint | null) => void
+  canDrag?: (eventId: string) => boolean
+}
+
+/** The drag payload type: an event id, nothing a drop outside the calendar could act on. */
+const DRAG_TYPE = "application/x-liaison-calendar-event"
+
+/** The drag payload: the event id and the dragged occurrence's start, nothing else. */
+function dragPayload(eventId: string, start: CalendarEventPoint | null | undefined): string {
+  return JSON.stringify({ id: eventId, start: start ?? null })
+}
+
+function readDragPayload(raw: string): { id: string; occurrence: CalendarEventPoint | null } {
+  try {
+    const v = JSON.parse(raw) as { id?: unknown; start?: CalendarEventPoint | null }
+    if (typeof v.id === "string") return { id: v.id, occurrence: v.start ?? null }
+  } catch {
+    // A bare id (an older payload).
+  }
+  return { id: raw, occurrence: null }
 }
 
 const MAX_LANES = 2
@@ -102,6 +124,16 @@ export const MonthView: Component<MonthViewProps> = (props) => {
                       <div
                         class={`group relative flex min-h-[6.5rem] cursor-pointer flex-col border-r border-border-subtle px-1 pb-1 last:border-r-0 transition-colors hover:bg-[color-mix(in_srgb,var(--color-accent)_4%,transparent)] ${inMonth ? "" : "bg-[color-mix(in_srgb,var(--color-border)_18%,transparent)]"}`}
                         data-testid="calendar-day-cell"
+                        onDragOver={(e) => {
+                          if (e.dataTransfer?.types.includes(DRAG_TYPE)) e.preventDefault()
+                        }}
+                        onDrop={(e) => {
+                          const raw = e.dataTransfer?.getData(DRAG_TYPE)
+                          if (!raw) return
+                          e.preventDefault()
+                          const { id, occurrence } = readDragPayload(raw)
+                          props.onMoveEventToDay?.(id, new Date(day), occurrence)
+                        }}
                         data-date={`${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`}
                         onClick={(e) =>
                           props.onSelectDay?.(new Date(day), { x: e.clientX, y: e.clientY })
@@ -139,6 +171,14 @@ export const MonthView: Component<MonthViewProps> = (props) => {
                                 data-testid="calendar-event-chip"
                                 data-declined={occ.declined ? "true" : undefined}
                                 classList={{ "opacity-60 line-through": occ.declined === true }}
+                                draggable={props.canDrag?.(occ.eventId) ?? false}
+                                onDragStart={(e) => {
+                                  e.dataTransfer?.setData(
+                                    DRAG_TYPE,
+                                    dragPayload(occ.eventId, occ.start),
+                                  )
+                                  if (e.dataTransfer) e.dataTransfer.effectAllowed = "move"
+                                }}
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   props.onSelectEvent?.(occ.eventId, occ.start)

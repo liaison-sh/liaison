@@ -10,6 +10,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  For,
   Match,
   on,
   Show,
@@ -21,13 +22,17 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { openTab } from "~/modules/shell/tab-store"
+import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
+import { Dialog } from "~/ui/Dialog"
 import { AgendaView } from "./AgendaView"
 import {
   type CalendarConnectionDto,
+  type CalendarEventDto,
   type CalendarPoint,
   canRetryCalendarImport,
   retryCalendarImport,
+  type SeriesScope,
 } from "./calendar-api"
 import {
   type CalendarView,
@@ -39,16 +44,25 @@ import {
   loadCalendarsList,
   loadEventsForWindow,
   loadPreferredView,
+  patchEventLocally,
   persistPreferredView,
   reloadCurrentWindow,
   setFocusedDate,
+  updateCalendarEvent,
 } from "./calendar-store"
 import { startOfMonthGrid, startOfWeek, weekDays, weekStartsOn } from "./date-utils"
-import { nextHalfHour } from "./event-form"
+import { addDays, nextHalfHour, toLocalDateValue } from "./event-form"
 import { openEventTab, openNewEventTab } from "./event-tabs"
 import { MonthView } from "./MonthView"
 import { QuickCreate, type QuickCreateRequest } from "./QuickCreate"
 import { expandEvents } from "./rrule-expand"
+import {
+  occurrenceView,
+  scopeTarget,
+  seriesContextOf,
+  seriesTimes,
+  type TimesPayload,
+} from "./series-edit"
 import { TimeGridView } from "./TimeGridView"
 
 export interface CalendarShellProps {
@@ -294,6 +308,158 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
       ? new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1)
       : new Date(from.getTime() + 30 * 60_000)
     setQuick({ start: from, end, allDay, x: anchor.x, y: anchor.y })
+  }
+
+  /** An event the grid may drag: a timed event in the week and day grids, any event to another
+   * day in the month (an all-day one keeps its length in days). A recurring meeting asks which
+   * occurrences move once dropped. */
+  function canDrag(eventId: string): boolean {
+    const e = calendarStore.events.find((x) => x.eventId === eventId)
+    return !!e && !!(e.start?.dateTime || e.start?.date)
+  }
+
+  /** A drop on a recurring meeting waits here for "this / following / all". */
+  const [pendingMove, setPendingMove] = createSignal<{
+    event: CalendarEventDto
+    occurrence: CalendarPoint | null
+    times: TimesPayload
+  } | null>(null)
+
+  /** Move or resize: painted at once, saved behind it, put back with a note if refused, and
+   * undoable for a few seconds once saved. A recurring meeting asks which occurrences first. */
+  async function moveEvent(
+    eventId: string,
+    start: Date,
+    end: Date,
+    occurrence?: CalendarPoint | null,
+  ): Promise<void> {
+    const event = calendarStore.events.find((e) => e.eventId === eventId)
+    if (!event) return
+    const times = { start: start.toISOString(), end: end.toISOString(), allDay: false }
+    if (seriesContextOf(event, occurrence ?? null)) {
+      setPendingMove({ event, occurrence: occurrence ?? null, times })
+      return
+    }
+    await moveOneOff(event, times)
+  }
+
+  async function moveOneOff(event: CalendarEventDto, times: TimesPayload): Promise<void> {
+    const eventId = event.eventId
+    const point = (template: CalendarPoint | null, value: string): CalendarPoint =>
+      times.allDay
+        ? { date: value }
+        : { dateTime: value, ...(template?.timeZone ? { timeZone: template.timeZone } : {}) }
+    const before = patchEventLocally(eventId, {
+      start: point(event.start, times.start),
+      end: point(event.end, times.end),
+    })
+    if (!before) return
+    try {
+      await updateCalendarEvent(api, { eventId, ...times })
+    } catch (err) {
+      patchEventLocally(eventId, before)
+      addToast({
+        message: i18n.t("calendar.moveFailed", {
+          message: err instanceof Error ? err.message : String(err),
+        }),
+        type: "error",
+      })
+      return
+    }
+    void reloadCurrentWindow(api)
+    addToast({
+      message: i18n.t("calendar.eventMoved"),
+      type: "info",
+      durationMs: 8000,
+      action: {
+        label: i18n.t("calendar.undo"),
+        onClick: () => {
+          const back = times.allDay
+            ? { start: before.start?.date, end: before.end?.date }
+            : { start: before.start?.dateTime, end: before.end?.dateTime }
+          if (!back.start || !back.end) return
+          patchEventLocally(eventId, before)
+          void updateCalendarEvent(api, {
+            eventId,
+            start: back.start,
+            end: back.end,
+            allDay: times.allDay,
+          })
+            .then(() => reloadCurrentWindow(api))
+            .catch(() => reloadCurrentWindow(api))
+        },
+      },
+    })
+  }
+
+  /** The drop on a recurring meeting, for the occurrences chosen. */
+  async function moveSeries(scope: SeriesScope): Promise<void> {
+    const move = pendingMove()
+    setPendingMove(null)
+    if (!move) return
+    const ctx = seriesContextOf(move.event, move.occurrence)
+    if (!ctx) return
+    const target = scopeTarget(move.event, ctx, scope)
+    const timeFields =
+      scope === "series"
+        ? ctx.kind === "master"
+          ? seriesTimes(move.event, ctx.occurrence, move.times)
+          : move.times
+        : move.times
+    try {
+      await updateCalendarEvent(api, {
+        eventId: target.eventId,
+        scope: target.scope,
+        ...(target.occurrenceStart ? { occurrenceStart: target.occurrenceStart } : {}),
+        ...timeFields,
+      })
+      addToast({ message: i18n.t("calendar.eventMoved"), type: "info" })
+    } catch (err) {
+      addToast({
+        message: i18n.t("calendar.moveFailed", {
+          message: err instanceof Error ? err.message : String(err),
+        }),
+        type: "error",
+      })
+    }
+    void reloadCurrentWindow(api)
+  }
+
+  /** A month drop: the same time on another day; an all-day event keeps its length in days. */
+  function moveEventToDay(eventId: string, day: Date, occurrence?: CalendarPoint | null): void {
+    const event = calendarStore.events.find((e) => e.eventId === eventId)
+    if (!event) return
+    const ctx = seriesContextOf(event, occurrence ?? null)
+    const shown = ctx?.kind === "master" ? occurrenceView(event, ctx.occurrence) : event
+    if (shown.start?.date && shown.end?.date) {
+      const from = shown.start.date
+      const target = toLocalDateValue(day)
+      if (target === from) return
+      const days = Math.round(
+        (Date.parse(`${target}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000,
+      )
+      const times = { start: target, end: addDays(shown.end.date, days), allDay: true }
+      if (ctx) setPendingMove({ event, occurrence: occurrence ?? null, times })
+      else void moveOneOff(event, times)
+      return
+    }
+    if (!shown.start?.dateTime || !shown.end?.dateTime) return
+    const start = new Date(shown.start.dateTime)
+    const end = new Date(shown.end.dateTime)
+    const next = new Date(
+      day.getFullYear(),
+      day.getMonth(),
+      day.getDate(),
+      start.getHours(),
+      start.getMinutes(),
+    )
+    if (next.getTime() === start.getTime()) return
+    void moveEvent(
+      eventId,
+      next,
+      new Date(next.getTime() + (end.getTime() - start.getTime())),
+      occurrence,
+    )
   }
 
   function selectEvent(eventId: string, start?: CalendarPoint | null): void {
@@ -591,6 +757,8 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
               calendarColors={calendarColors()}
               onSelectEvent={selectEvent}
               onSelectDay={(day, anchor) => openCreate(day, anchor, true)}
+              canDrag={canDrag}
+              onMoveEventToDay={moveEventToDay}
               onFocusDay={(day) => {
                 setFocusedDate(new Date(day))
                 switchView("day")
@@ -607,10 +775,45 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
               calendarColors={calendarColors()}
               onSelectEvent={selectEvent}
               onSelectSlot={(start, anchor) => openCreate(start, anchor)}
+              onCreateRange={(start, end, anchor) =>
+                setQuick({ start, end, allDay: false, x: anchor.x, y: anchor.y })
+              }
+              onMoveEvent={(eventId, start, end, occurrence) =>
+                void moveEvent(eventId, start, end, occurrence)
+              }
+              canDrag={canDrag}
             />
           </Match>
         </Switch>
       </Show>
+
+      <Dialog open={pendingMove() !== null} onOpenChange={(open) => !open && setPendingMove(null)}>
+        <Dialog.Content>
+          <Dialog.Title>{i18n.t("calendar.scopeMoveTitle")}</Dialog.Title>
+          <div class="mt-2 flex flex-col gap-1" data-testid="move-scope-dialog">
+            <For each={["occurrence", "following", "series"] as SeriesScope[]}>
+              {(scope) => (
+                <Button
+                  variant="outline"
+                  onClick={() => void moveSeries(scope)}
+                  data-testid={`move-scope-${scope}`}
+                >
+                  {i18n.t(`calendar.scope.${scope}`)}
+                </Button>
+              )}
+            </For>
+          </div>
+          <div class="mt-4 flex justify-end">
+            <Button
+              variant="ghost"
+              onClick={() => setPendingMove(null)}
+              data-testid="move-scope-cancel"
+            >
+              {i18n.t("calendar.cancel")}
+            </Button>
+          </div>
+        </Dialog.Content>
+      </Dialog>
 
       <Show when={quick()}>
         {(request) => (

@@ -15,6 +15,15 @@ import {
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useTabIsActive } from "~/modules/shell/TabVisibilityContext"
 import { isSameDay, weekDays } from "./date-utils"
+import {
+  createRange,
+  DRAG_THRESHOLD_PX,
+  deltaMinutes,
+  MIN_DURATION_MIN,
+  minutesAt,
+  moveRange,
+  resizeEnd,
+} from "./drag-math"
 import { isSpanning, layoutDayColumns, layoutWeekSegments, type WeekSegment } from "./layout"
 import type { CalendarEventPoint, ExpandedOccurrence } from "./rrule-expand"
 
@@ -29,6 +38,41 @@ export interface TimeGridViewProps {
   onSelectEvent?: (eventId: string, start?: CalendarEventPoint | null) => void
   /** A click on an empty slot (30-min snap); `anchor` is the viewport point for a popover. */
   onSelectSlot?: (start: Date, anchor: { x: number; y: number }) => void
+  /** A drag over empty slots (15-min snap): the range it covered. */
+  onCreateRange?: (start: Date, end: Date, anchor: { x: number; y: number }) => void
+  /** An event dragged to a new time (move) or a new end (resize); `occurrence`: the occurrence
+   * of a recurring series that was dragged (its original start). */
+  onMoveEvent?: (
+    eventId: string,
+    start: Date,
+    end: Date,
+    occurrence?: CalendarEventPoint | null,
+  ) => void
+  /** Whether an event may be dragged. */
+  canDrag?: (eventId: string) => boolean
+}
+
+type Drag =
+  | { kind: "create"; day: number; anchorMin: number; currentMin: number }
+  | {
+      kind: "move" | "resize"
+      eventId: string
+      day: number
+      start: Date
+      end: Date
+      deltaMin: number
+      deltaDays: number
+      /** The occurrence's own start (a series shows every occurrence under one id). */
+      occurrence?: CalendarEventPoint | null
+      /** Not draggable: the pointer only opens it. */
+      fixed?: boolean
+    }
+
+interface DragSession {
+  drag: Drag
+  x0: number
+  y0: number
+  moved: boolean
 }
 
 const HOUR_PX = 48
@@ -54,6 +98,135 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
   )
   const today = new Date()
   const hours = Array.from({ length: 24 }, (_, h) => h)
+
+  // --- Drag: create over empty slots, move an event, resize its bottom edge. Pointer events on
+  // the document while a drag runs; a pointer that barely moved is a click. Esc cancels.
+  const columns: HTMLDivElement[] = []
+  const [drag, setDrag] = createSignal<Drag | null>(null)
+  let session: DragSession | null = null
+
+  function dayIndexAt(clientX: number, fallback: number): number {
+    for (let i = 0; i < columns.length; i++) {
+      const r = columns[i]?.getBoundingClientRect()
+      if (r && clientX >= r.left && clientX < r.right) return i
+    }
+    return fallback
+  }
+  function minutesAtY(clientY: number): number {
+    const r = columns[0]?.getBoundingClientRect()
+    return minutesAt(clientY - (r?.top ?? 0), HOUR_PX)
+  }
+
+  function onPointerMove(e: PointerEvent): void {
+    if (!session) return
+    if (session.drag.kind !== "create" && session.drag.fixed) return
+    if (!session.moved) {
+      if (Math.hypot(e.clientX - session.x0, e.clientY - session.y0) < DRAG_THRESHOLD_PX) return
+      session.moved = true
+    }
+    const d = session.drag
+    if (d.kind === "create") {
+      session.drag = { ...d, currentMin: Math.min(minutesAtY(e.clientY), 24 * 60 - 15) }
+    } else {
+      const deltaMin = deltaMinutes(e.clientY - session.y0, HOUR_PX)
+      const deltaDays = d.kind === "move" ? dayIndexAt(e.clientX, d.day) - d.day : 0
+      session.drag = { ...d, deltaMin, deltaDays }
+    }
+    setDrag(session.drag)
+  }
+
+  function endSession(): void {
+    session = null
+    setDrag(null)
+    document.removeEventListener("pointermove", onPointerMove)
+    document.removeEventListener("pointerup", onPointerUp)
+    document.removeEventListener("keydown", onKeyDown)
+  }
+
+  function onPointerUp(e: PointerEvent): void {
+    const s = session
+    endSession()
+    if (!s) return
+    const anchor = { x: e.clientX, y: e.clientY }
+    const d = s.drag
+    const day = days()[d.day]
+    if (!day) return
+    if (d.kind === "create") {
+      if (!s.moved) {
+        // A click: the 30-minute slot under the pointer, as before.
+        const m = Math.floor(d.anchorMin / 30) * 30
+        props.onSelectSlot?.(
+          new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, m),
+          anchor,
+        )
+        return
+      }
+      const range = createRange(day, d.anchorMin, d.currentMin)
+      props.onCreateRange?.(range.start, range.end, anchor)
+      return
+    }
+    if (!s.moved) {
+      props.onSelectEvent?.(d.eventId, d.occurrence)
+      return
+    }
+    const next = ghostRange(d)
+    if (next.start.getTime() === d.start.getTime() && next.end.getTime() === d.end.getTime()) return
+    props.onMoveEvent?.(d.eventId, next.start, next.end, d.occurrence)
+  }
+
+  function onKeyDown(e: KeyboardEvent): void {
+    if (e.key === "Escape") endSession()
+  }
+
+  function startSession(e: PointerEvent, d: Drag): void {
+    if (e.button !== 0) return
+    e.preventDefault()
+    session = { drag: d, x0: e.clientX, y0: e.clientY, moved: false }
+    document.addEventListener("pointermove", onPointerMove)
+    document.addEventListener("pointerup", onPointerUp)
+    document.addEventListener("keydown", onKeyDown)
+  }
+  onCleanup(endSession)
+
+  function ghostRange(d: Extract<Drag, { kind: "move" | "resize" }>): { start: Date; end: Date } {
+    if (d.kind === "resize") return { start: d.start, end: resizeEnd(d.start, d.end, d.deltaMin) }
+    return moveRange(d.start, d.end, d.deltaMin, d.deltaDays)
+  }
+
+  /** The ghost block to draw in column `col`, in minutes from its midnight. */
+  function ghostIn(col: number): { top: number; bottom: number; title: string | null } | null {
+    const d = drag()
+    if (!d) return null
+    if (d.kind === "create") {
+      if (d.day !== col) return null
+      const lo = Math.min(d.anchorMin, d.currentMin)
+      const hi = Math.max(d.anchorMin, d.currentMin) + 15
+      return { top: lo, bottom: hi, title: null }
+    }
+    const { start, end } = ghostRange(d)
+    const day = days()[col]
+    if (!day || !isSameDay(start, day)) return null
+    const startMin = start.getHours() * 60 + start.getMinutes()
+    const endMin = isSameDay(end, day) ? end.getHours() * 60 + end.getMinutes() : 24 * 60
+    const occ = props.occurrences.find((o) => o.eventId === d.eventId)
+    return {
+      top: startMin,
+      bottom: Math.max(startMin + MIN_DURATION_MIN, endMin),
+      title: occ?.title ?? null,
+    }
+  }
+
+  function ghostLabel(col: number): string {
+    const g = ghostIn(col)
+    const day = days()[col]
+    if (!g || !day) return ""
+    const at = (m: number) =>
+      new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, m).toLocaleTimeString(
+        i18n.locale(),
+        { hour: "numeric", minute: "2-digit" },
+      )
+    return `${at(g.top)} - ${at(g.bottom)}`
+  }
 
   const isTabActive = useTabIsActive()
   const [nowMin, setNowMin] = createSignal(nowMinutes())
@@ -202,23 +375,24 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
           </div>
           {/* day columns */}
           <For each={days()}>
-            {(day) => {
+            {(day, colIndex) => {
               const blocks = createMemo(() => layoutDayColumns(day, props.occurrences))
               const isToday = isSameDay(day, today)
               return (
                 <div
-                  class="relative border-r border-border-subtle last:border-r-0"
-                  data-testid={`calendar-day-column-${day.toDateString()}`}
-                  onClick={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect()
-                    const min = ((e.clientY - rect.top) / HOUR_PX) * 60
-                    const snapped = Math.floor(min / 30) * 30
-                    props.onSelectSlot?.(
-                      new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, snapped),
-                      { x: e.clientX, y: e.clientY },
-                    )
+                  ref={(el) => {
+                    columns[colIndex()] = el
                   }}
-                  onKeyDown={() => {}}
+                  class="relative touch-none select-none border-r border-border-subtle last:border-r-0"
+                  data-testid={`calendar-day-column-${day.toDateString()}`}
+                  onPointerDown={(e) =>
+                    startSession(e, {
+                      kind: "create",
+                      day: colIndex(),
+                      anchorMin: minutesAtY(e.clientY),
+                      currentMin: minutesAtY(e.clientY),
+                    })
+                  }
                   role="presentation"
                 >
                   {/* hour lines */}
@@ -267,12 +441,57 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                             "background-color": `color-mix(in srgb, ${color} 16%, var(--color-bg))`,
                             "border-left": `3px solid ${color}`,
                           }}
+                          classList={{
+                            "opacity-40": (() => {
+                              const d = drag()
+                              return (
+                                d !== null &&
+                                d.kind !== "create" &&
+                                d.eventId === block.occ.eventId &&
+                                d.occurrence?.dateTime === block.occ.start?.dateTime
+                              )
+                            })(),
+                            "opacity-60 line-through": block.occ.declined === true,
+                          }}
                           data-testid="calendar-timed-event"
                           data-declined={block.occ.declined ? "true" : undefined}
-                          classList={{ "opacity-60 line-through": block.occ.declined === true }}
+                          data-event-id={block.occ.eventId}
+                          onPointerDown={(e) => {
+                            e.stopPropagation()
+                            const draggable = props.canDrag?.(block.occ.eventId) ?? false
+                            const start = block.occ.start?.dateTime
+                            const end = block.occ.end?.dateTime
+                            if (!draggable || !start || !end) {
+                              // Not draggable: a click still opens it.
+                              startSession(e, {
+                                kind: "move",
+                                eventId: block.occ.eventId,
+                                day: colIndex(),
+                                start: new Date(0),
+                                end: new Date(0),
+                                deltaMin: 0,
+                                deltaDays: 0,
+                                occurrence: block.occ.start,
+                                fixed: true,
+                              })
+                              return
+                            }
+                            startSession(e, {
+                              kind: "move",
+                              eventId: block.occ.eventId,
+                              day: colIndex(),
+                              start: new Date(start),
+                              end: new Date(end),
+                              deltaMin: 0,
+                              deltaDays: 0,
+                              occurrence: block.occ.start,
+                            })
+                          }}
                           onClick={(e) => {
                             e.stopPropagation()
-                            props.onSelectEvent?.(block.occ.eventId, block.occ.start)
+                            // Keyboard activation only; a pointer click is handled on pointerup.
+                            if (e.detail === 0)
+                              props.onSelectEvent?.(block.occ.eventId, block.occ.start)
                           }}
                         >
                           <span
@@ -289,10 +508,52 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                               })}
                             </span>
                           </Show>
+                          <Show when={props.canDrag?.(block.occ.eventId)}>
+                            <span
+                              class="absolute inset-x-0 bottom-0 h-1.5 cursor-ns-resize"
+                              data-testid="calendar-event-resize"
+                              onPointerDown={(e) => {
+                                e.stopPropagation()
+                                const start = block.occ.start?.dateTime
+                                const end = block.occ.end?.dateTime
+                                if (!start || !end) return
+                                startSession(e, {
+                                  kind: "resize",
+                                  eventId: block.occ.eventId,
+                                  day: colIndex(),
+                                  start: new Date(start),
+                                  end: new Date(end),
+                                  deltaMin: 0,
+                                  deltaDays: 0,
+                                  occurrence: block.occ.start,
+                                })
+                              }}
+                            />
+                          </Show>
                         </button>
                       )
                     }}
                   </For>
+                  {/* drag ghost */}
+                  <Show when={ghostIn(colIndex())}>
+                    {(g) => (
+                      <div
+                        class="pointer-events-none absolute inset-x-0.5 z-40 flex flex-col overflow-hidden rounded-md border border-accent bg-[color-mix(in_srgb,var(--color-accent)_18%,var(--color-bg))] px-1.5 py-0.5 shadow-[0_4px_14px_rgba(0,0,0,0.18)]"
+                        style={{
+                          top: `${(g().top / 60) * HOUR_PX}px`,
+                          height: `${Math.max(12, ((g().bottom - g().top) / 60) * HOUR_PX - 2)}px`,
+                        }}
+                        data-testid="calendar-drag-ghost"
+                      >
+                        <Show when={g().title}>
+                          <span class="truncate text-xs font-medium text-text">{g().title}</span>
+                        </Show>
+                        <span class="truncate text-[11px] tabular-nums text-text-secondary">
+                          {ghostLabel(colIndex())}
+                        </span>
+                      </div>
+                    )}
+                  </Show>
                 </div>
               )
             }}

@@ -3,7 +3,7 @@
 // Recurring events in the event tab: a weekly series made in the tab, then one occurrence opened
 // from a later week and changed for "This and following events": the weeks before keep the old
 // title, that week and the ones after show the new one. Deleting "This event" then takes one
-// occurrence out and leaves the others.
+// occurrence out and leaves the others, and dragging an occurrence asks which occurrences move.
 
 import type { Page } from "@playwright/test"
 import { expect, test } from "../fixtures/test"
@@ -77,5 +77,20 @@ test.describe("Calendar — recurring events", () => {
     await expect(events.filter({ hasText: newTitle })).toHaveCount(0, { timeout: 15000 })
     await page.getByTestId("calendar-nav-next").click()
     await expect(events.filter({ hasText: newTitle })).toHaveCount(1, { timeout: 15000 })
+
+    // Dragging an occurrence of a series asks which occurrences move; "All events" moves the
+    // series an hour later.
+    const block = events.filter({ hasText: newTitle })
+    const box = (await block.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + 4)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2, box.y + 28, { steps: 4 })
+    await page.mouse.move(box.x + box.width / 2, box.y + 52, { steps: 4 })
+    await page.mouse.up()
+    await expect(page.getByTestId("move-scope-dialog")).toBeVisible()
+    await page.getByTestId("move-scope-series").click()
+    await expect
+      .poll(async () => Math.round((await block.boundingBox())!.y - box.y), { timeout: 15000 })
+      .toBe(48)
   })
 })

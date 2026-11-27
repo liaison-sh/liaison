@@ -128,5 +128,8 @@
   "weekday.SU": "dim.",
   "weekday.TH": "jeu.",
   "weekday.TU": "mar.",
-  "weekday.WE": "mer."
+  "weekday.WE": "mer.",
+  "eventMoved": "Événement déplacé",
+  "moveFailed": "L'événement n'a pas pu être déplacé : {{message}}",
+  "scopeMoveTitle": "Déplacer l'événement récurrent"
 }

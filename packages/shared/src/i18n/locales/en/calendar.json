@@ -128,5 +128,8 @@
   "weekday.SU": "Sun",
   "weekday.TH": "Thu",
   "weekday.TU": "Tue",
-  "weekday.WE": "Wed"
+  "weekday.WE": "Wed",
+  "eventMoved": "Event moved",
+  "moveFailed": "The event could not be moved: {{message}}",
+  "scopeMoveTitle": "Move the recurring event"
 }

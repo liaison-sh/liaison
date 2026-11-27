@@ -150,6 +150,7 @@ const TREATED: Record<string, [Treatment, string]> = {
   "modules/approvals/prompt-materialize.ts": ["stored-ids", "an approval's notify list"],
   "modules/approvals/reminders.ts": ["stored-ids", "an approval's notify list"],
   "modules/approvals/routed-reminders.ts": ["stored-ids", "an approval's notify list"],
+  "modules/approvals/waiting-on-others.ts": ["stored-ids", "an approval's notify list"],
   "modules/approvals/resolve-ref.ts": [
     "stored-ids",
     "the names of the people an approval waits on",

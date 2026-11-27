@@ -826,7 +826,10 @@ when it is unset. The one exception is a custom app, below.
 
 **Custom apps (every edition).** An org admin with `kernel:apps:admin`
 installs their own app for their own organization only, with
-`POST /api/apps/custom/install` (same body as `/install`: `url` and the grants).
+`POST /api/apps/custom/install` (same body as `/install`: `url` and the grants),
+from their own browser session: a device sign-in (such as the `liaison` command
+line) is refused there and publishes through the app builder, which asks a
+person to approve.
 No other organization on the server sees or runs it: not its tools, jobs,
 webhooks, events, interface, dashboard sources or MCP tools. This holds on a
 self-hosted server too, so on a server with several organizations an app one

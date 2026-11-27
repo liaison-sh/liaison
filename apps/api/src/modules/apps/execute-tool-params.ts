@@ -460,6 +460,43 @@ function formatZodParamError(
   return renderParamError(toolName, lines)
 }
 
+/**
+ * A manifest tool's arguments against its declared JSON Schema: the weak-model
+ * coercions, the unknown-parameter check, then ajv. Returns the coerced
+ * arguments; throws a 400 naming each wrong field. Also the app builder's
+ * preview (app-builder/preview.ts), so a try refuses what a real call would.
+ */
+export function validateManifestToolParams(
+  fqName: string,
+  schema: object,
+  rawParams: unknown,
+): unknown {
+  // Weak models routinely serialise array/object tool arguments as a JSON
+  // *string* (e.g. `attachments: "[\"<id>\"]"`). Coerce such values back to
+  // the declared shape before validation so a stringified array is accepted
+  // rather than failing ajv with an opaque "Invalid parameters". Only ever
+  // turns a guaranteed rejection into a possible success.
+  const validatedParams = coerceJsonStringParams(rawParams, schema)
+  const manifestSchema = schema as {
+    properties?: Record<string, unknown>
+    additionalProperties?: unknown
+  }
+  // A typo'd parameter would otherwise be silently dropped — flag it.
+  if (manifestSchema.additionalProperties !== true) {
+    assertKnownParams(fqName, validatedParams, Object.keys(manifestSchema.properties ?? {}))
+  }
+  const validate = paramValidator(schema as unknown as SchemaObject)
+  if (
+    !validate(validatedParams) &&
+    !(validate.errors ?? []).every((err) => isRefUuidFormatError(validatedParams, err))
+  ) {
+    throw new HTTPException(400, {
+      message: formatAjvParamError(fqName, validate.errors, validatedParams, schema),
+    })
+  }
+  return validatedParams
+}
+
 export function validateParamsForTool(
   tool: NonNullable<ReturnType<typeof toolRegistry.get>>,
   _orgId: string,
@@ -471,39 +508,11 @@ export function validateParamsForTool(
 
   if (isManifestHandler(tool.handler)) {
     if (tool.params && typeof tool.params === "object" && "type" in tool.params) {
-      // Weak models routinely serialise array/object tool arguments as a JSON
-      // *string* (e.g. `attachments: "[\"<id>\"]"`). Coerce such values back to
-      // the declared shape before validation so a stringified array is accepted
-      // rather than failing ajv with an opaque "Invalid parameters". Only ever
-      // turns a guaranteed rejection into a possible success.
-      validatedParams = coerceJsonStringParams(validatedParams, tool.params)
-      const manifestSchema = tool.params as {
-        properties?: Record<string, unknown>
-        additionalProperties?: unknown
-      }
-      // A typo'd parameter would otherwise be silently dropped — flag it.
-      if (manifestSchema.additionalProperties !== true) {
-        assertKnownParams(
-          `${appName}:${name}`,
-          validatedParams,
-          Object.keys(manifestSchema.properties ?? {}),
-        )
-      }
-      const validate = paramValidator(tool.params as unknown as SchemaObject)
-      const params = validatedParams
-      if (
-        !validate(validatedParams) &&
-        !(validate.errors ?? []).every((err) => isRefUuidFormatError(params, err))
-      ) {
-        throw new HTTPException(400, {
-          message: formatAjvParamError(
-            `${appName}:${name}`,
-            validate.errors,
-            validatedParams,
-            tool.params,
-          ),
-        })
-      }
+      validatedParams = validateManifestToolParams(
+        `${appName}:${name}`,
+        tool.params,
+        validatedParams,
+      )
     }
   } else if (tool.params && typeof (tool.params as any).safeParse === "function") {
     // Same weak-model coercion as the manifest/ajv branch above, for Zod-typed

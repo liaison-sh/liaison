@@ -132,6 +132,25 @@ async function signatureConfigFor(
  * operator's included, gets 404 as if it did not exist. Every other app keeps
  * the instance-operator rule (`requireInstanceOperator`).
  */
+/**
+ * Installing code, or changing which code runs and what it may reach, is a
+ * person's act. A restricted (device-flow) session is a program's token, the
+ * remote CLI's included: it may ask for a publish through the app builder (an
+ * approval card a person decides, app-builder/routes.ts), never install,
+ * upgrade, roll back, uninstall or widen an app's outbound domains here by
+ * itself. The one exception is the interface consent (/:name/ui-approval),
+ * which takes the person's typed confirmation.
+ */
+const refuseRestrictedInstall = createMiddleware<AppEnv>(async (c, next) => {
+  if (c.get("sessionRestricted") === true) {
+    throw new HTTPException(403, {
+      message:
+        "A device sign-in (such as the liaison CLI) cannot install or change installed apps. Publish through the app builder (liaison apps publish), which asks a person to approve, or do it in the app in your browser.",
+    })
+  }
+  await next()
+})
+
 const requireAppManager = createMiddleware<AppEnv>(async (c, next) => {
   const name = c.req.param("name") ?? ""
   if (await isOrgPrivateApp(name)) {
@@ -229,6 +248,7 @@ function strictDomains(value: unknown): string[] {
 installRoutes.post(
   "/install",
   requireScope("kernel:apps:admin"),
+  refuseRestrictedInstall,
   requireInstanceOperator,
   async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as {
@@ -308,6 +328,7 @@ installRoutes.post(
   "/custom/install",
   requireCustomApps,
   requireScope("kernel:apps:admin"),
+  refuseRestrictedInstall,
   async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as {
       url?: string
@@ -378,6 +399,7 @@ installRoutes.get("/install-permission", requireScope("kernel:apps:admin"), asyn
 installRoutes.post(
   "/catalog/:name/install",
   requireScope("kernel:apps:admin"),
+  refuseRestrictedInstall,
   requireInstanceOperator,
   async (c) => {
     // Registry apps install through the URL path's consent screen, never in one click.
@@ -491,6 +513,7 @@ installRoutes.post(
 installRoutes.post(
   "/:name/upgrade/apply",
   requireScope("kernel:apps:admin"),
+  refuseRestrictedInstall,
   requireAppManager,
   async (c) => {
     const name = assertValidAppName(c.req.param("name"))
@@ -549,6 +572,7 @@ installRoutes.post(
 installRoutes.post(
   "/:name/rollback",
   requireScope("kernel:apps:admin"),
+  refuseRestrictedInstall,
   requireAppManager,
   async (c) => {
     const name = assertValidAppName(c.req.param("name"))
@@ -592,9 +616,20 @@ installRoutes.post(
   requireAppManager,
   async (c) => {
     const name = assertValidAppName(c.req.param("name"))
-    const body = (await c.req.json().catch(() => ({}))) as { approved?: boolean }
+    const body = (await c.req.json().catch(() => ({}))) as { approved?: boolean; confirm?: unknown }
     if (typeof body.approved !== "boolean") {
       throw new HTTPException(400, { message: "approved (boolean) is required" })
+    }
+    // From a device sign-in (the liaison CLI), the person consents in the
+    // terminal: the CLI names what the interface may do and the person types the
+    // app's name back. The server takes it only with that name, never a bare
+    // `approved: true`, and records that it came from a device sign-in.
+    // Withdrawing needs no confirmation.
+    const viaDevice = c.get("sessionRestricted") === true
+    if (viaDevice && body.approved && body.confirm !== name) {
+      throw new HTTPException(400, {
+        message: `Confirm this approval: send confirm with the app's name (${name}) after the person has read what its interface may do.`,
+      })
     }
     const trust = await getInstallTrust(name)
     if (!trust.installed || !trust.version) {
@@ -621,7 +656,7 @@ installRoutes.post(
         app: name,
         entityType: "app_install",
         action: body.approved ? "app.ui_full_access.approved" : "app.ui_full_access.withdrawn",
-        metadata: { version },
+        metadata: { version, ...(viaDevice ? { via: "device-session" } : {}) },
       })
     })
     resetInstallTrustCache(name)
@@ -673,6 +708,7 @@ installRoutes.get("/:name/outbound", requireScope("kernel:apps:admin"), async (c
 installRoutes.post(
   "/:name/outbound",
   requireScope("kernel:apps:admin"),
+  refuseRestrictedInstall,
   requireAppManager,
   async (c) => {
     const name = assertValidAppName(c.req.param("name"))
@@ -729,23 +765,29 @@ installRoutes.post(
 )
 
 // DELETE /:name — uninstall an app.
-installRoutes.delete("/:name", requireScope("kernel:apps:admin"), requireAppManager, async (c) => {
-  // An app the operator disabled stays until the operator enables it (or the org purge).
-  if (await isCustomAppDisabled(c.req.param("name"))) {
-    throw new CustomAppDisabledError(c.req.param("name"))
-  }
-  const name = assertValidAppName(c.req.param("name"))
-  // An app another workspace still has added stays installed (A4): its
-  // admins remove it there first.
-  const others = await otherWorkspacesWithApp(c.get("orgId"), name)
-  if (others > 0) {
-    throw new HTTPException(409, {
-      message: `${name} is still added in ${others} other workspace${others === 1 ? "" : "s"}. It can be uninstalled once ${others === 1 ? "it removes" : "they remove"} it.`,
-    })
-  }
-  await uninstallApp({ name })
-  return success(c, { uninstalled: name })
-})
+installRoutes.delete(
+  "/:name",
+  requireScope("kernel:apps:admin"),
+  refuseRestrictedInstall,
+  requireAppManager,
+  async (c) => {
+    // An app the operator disabled stays until the operator enables it (or the org purge).
+    if (await isCustomAppDisabled(c.req.param("name"))) {
+      throw new CustomAppDisabledError(c.req.param("name"))
+    }
+    const name = assertValidAppName(c.req.param("name"))
+    // An app another workspace still has added stays installed (A4): its
+    // admins remove it there first.
+    const others = await otherWorkspacesWithApp(c.get("orgId"), name)
+    if (others > 0) {
+      throw new HTTPException(409, {
+        message: `${name} is still added in ${others} other workspace${others === 1 ? "" : "s"}. It can be uninstalled once ${others === 1 ? "it removes" : "they remove"} it.`,
+      })
+    }
+    await uninstallApp({ name })
+    return success(c, { uninstalled: name })
+  },
+)
 
 /**
  * The publisher an installed app's manifest names (`author`), so the App store

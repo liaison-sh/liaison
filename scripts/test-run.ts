@@ -419,6 +419,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/custom-apps-switch.test.ts",
             "src/tests/integration/app-builder.test.ts",
             "src/tests/integration/app-builder-workers.test.ts",
+            // The remote CLI's server side: a device sign-in builds, never installs by itself.
+            "src/tests/integration/app-builder-cli.test.ts",
             // Outbound domains need consent: the install's granted domains,
             // enforced in the bridge, framed image and link hosts included.
             "src/tests/integration/app-egress-grants.test.ts",

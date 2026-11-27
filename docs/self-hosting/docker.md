@@ -93,7 +93,7 @@ You can point Liaison at Amazon S3, Cloudflare R2 or any S3-compatible endpoint 
 | `OBJECT_STORE_ADMIN_ACCESS_KEY`, `OBJECT_STORE_ADMIN_SECRET_KEY` | Object store admin, used only to create the bucket |
 | `OBJECT_STORAGE_ACCESS_KEY`, `OBJECT_STORAGE_SECRET_KEY` | The app's own object store credentials, limited to the bucket |
 | `BASE_URL`, `ALLOWED_ORIGINS` | The URL people reach Liaison at |
-| `DEVICE_FLOW_CLIENTS` | Allowed device-flow client IDs. Keep `mcp-cli`. The desktop app is allowed whenever this is set |
+| `DEVICE_FLOW_CLIENTS` | Allowed device-flow client IDs. Keep `mcp-cli`. The desktop app and the `liaison` command line (`liaison-cli`) are allowed whenever this is set |
 
 ### Version
 

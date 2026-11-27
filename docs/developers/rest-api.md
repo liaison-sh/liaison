@@ -105,6 +105,10 @@ On a managed instance, two refusals come from the workspace's subscription rathe
 
 A device sign-in (a command-line tool or another program holding a token capped to the scopes it declared) can run tools through these routes, and its calls count as a program's, never as a person's click. A gated tool waits for a person's approval and answers `{ "data": { "blocked": { … } } }`, and outside-text and host rules apply as they do for an [MCP client](mcp.md). A message it posts to an agent does not count as a person typing either.
 
+The `liaison` command line signs in this way under the client id `liaison-cli`, which every server with device sign-in on accepts. Its token holds at most `kernel:apps:build` and `kernel:apps:logs` unless it asks for more, and then only read scopes and `kernel:apps:admin`, `kernel:roles:admin`, `kernel:agents:admin`, `kernel:skills:write` and `kernel:routines:write`; any other scope is refused at sign-in. A device sign-in never installs an app: `POST /api/apps/builder/drafts/:id/publish` answers `202` with `{ "status": "pending_approval", "approvalId", "summary" }` (the approval card a person decides), and the routes that install or change installed apps (`/api/apps/install`, `/api/apps/custom/install`, `/api/apps/catalog/:name/install`, `/api/apps/:name/upgrade/apply`, `/api/apps/:name/rollback`, `POST /api/apps/:name/outbound`, `DELETE /api/apps/:name`) answer `403`. Approving an app's interface (`POST /api/apps/:name/ui-approval`) from a device sign-in needs `confirm` set to the app's name.
+
+The app builder's drafts also take `POST /api/apps/builder/drafts` (`base_name`, `title`, `template` or `files`), `PUT /api/apps/builder/drafts/:id/files` (`files`, `mode`, `message`) and `GET /api/apps/builder/drafts/:id/status` (the version installed and the past publishes), all with `kernel:apps:build`.
+
 For automation, prefer the tools made for it:
 
 - [`liaison` CLI](../provisioning-cli.md) for provisioning: org, users, roles, mailboxes, API keys, connectors (`liaison config apply`).

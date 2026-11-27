@@ -84,7 +84,14 @@ export interface CreateEventInput {
   recurrence?: string[]
   /** "google_meet" adds a Meet link; "none" removes one. */
   conference?: "google_meet" | "none"
+  /** "all": Google emails the guests (the "Send invitations" choice); omitted: nobody. */
+  sendUpdates?: SendUpdates
 }
+
+/** Which occurrences of a recurring meeting a change applies to. */
+export type SeriesScope = "occurrence" | "following" | "series"
+export type SendUpdates = "all" | "externalOnly" | "none"
+export type RsvpResponse = "accepted" | "declined" | "tentative"
 
 export async function createEvent(
   api: ApiClient,
@@ -102,9 +109,13 @@ export interface UpdateEventInput {
   end?: string
   allDay?: boolean
   attendees?: string[]
+  recurrence?: string[]
   /** Required by the API for an event that belongs to a recurring meeting. */
-  scope?: "occurrence" | "series"
+  scope?: SeriesScope
+  /** With scope "occurrence" or "following" on a series: that occurrence's original start. */
+  occurrenceStart?: string
   conference?: "google_meet" | "none"
+  sendUpdates?: SendUpdates
 }
 
 export async function updateEvent(
@@ -114,12 +125,31 @@ export async function updateEvent(
   return invokeTool(api, "update_event", input)
 }
 
+export interface DeleteEventOptions {
+  scope?: SeriesScope
+  occurrenceStart?: string
+  sendUpdates?: SendUpdates
+}
+
 export async function deleteEvent(
   api: ApiClient,
   eventId: string,
-  scope?: "occurrence" | "series",
+  options: DeleteEventOptions = {},
 ): Promise<void> {
-  await invokeTool(api, "delete_event", { eventId, ...(scope ? { scope } : {}) })
+  await invokeTool(api, "delete_event", { eventId, ...options })
+}
+
+/** The signed-in account's own answer to an invitation (yes, no, maybe). */
+export async function respondToEvent(
+  api: ApiClient,
+  input: {
+    eventId: string
+    response: RsvpResponse
+    scope?: "occurrence" | "series"
+    occurrenceStart?: string
+  },
+): Promise<void> {
+  await invokeTool(api, "respond_to_invitation", input)
 }
 
 // --- Connect / settings (kernel connections framework) ---

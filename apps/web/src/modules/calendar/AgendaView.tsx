@@ -13,7 +13,7 @@
 // pinning: it is the SAME `expandEvents` output the month and week views lay
 // out, regrouped, never a second source of events.
 import { type Component, createMemo, For, Show } from "solid-js"
-import type { ExpandedOccurrence } from "./rrule-expand"
+import type { CalendarEventPoint, ExpandedOccurrence } from "./rrule-expand"
 
 export interface AgendaDay {
   /** Local calendar day, `YYYY-MM-DD`, stable to sort and to key on. */
@@ -91,7 +91,8 @@ export interface AgendaViewProps {
   locale: string
   allDayLabel: string
   emptyLabel: string
-  onSelectEvent: (eventId: string) => void
+  /** `start`: the occurrence clicked (a recurring series opens at that occurrence). */
+  onSelectEvent: (eventId: string, start?: CalendarEventPoint | null) => void
   onSelectDay: (day: Date) => void
 }
 
@@ -160,7 +161,9 @@ export const AgendaView: Component<AgendaViewProps> = (props) => {
                     <button
                       type="button"
                       data-testid={`calendar-agenda-event-${occurrence.eventId}`}
-                      onClick={() => props.onSelectEvent(occurrence.eventId)}
+                      data-declined={occurrence.declined ? "true" : undefined}
+                      classList={{ "opacity-60 line-through": occurrence.declined === true }}
+                      onClick={() => props.onSelectEvent(occurrence.eventId, occurrence.start)}
                       class="flex min-h-[52px] w-full items-center gap-3 px-4 text-left hover:bg-surface-hover"
                     >
                       {/* Wide enough for a 12 hour clock ("09:00 AM"): at 52px

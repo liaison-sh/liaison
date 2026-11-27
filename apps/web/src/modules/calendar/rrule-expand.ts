@@ -26,6 +26,13 @@ export interface ExpandedOccurrence {
   end: CalendarEventPoint
   allDay: boolean
   recurrenceComplex: boolean
+  /** The signed-in account declined this invitation: drawn struck through and faded. */
+  declined?: boolean
+}
+
+/** The account's own attendee entry (Google marks it `self`) answered "declined". */
+export function isDeclined(e: Pick<CalendarEventLike, "attendees">): boolean {
+  return (e.attendees ?? []).some((a) => a.self === true && a.responseStatus === "declined")
 }
 
 function toDate(point: CalendarEventPoint | null | undefined): Date | null {
@@ -47,6 +54,7 @@ function ownOccurrence(e: CalendarEventLike, recurrenceComplex: boolean): Expand
     end: e.end!,
     allDay: e.allDay,
     recurrenceComplex,
+    ...(isDeclined(e) ? { declined: true } : {}),
   }
 }
 
@@ -149,6 +157,7 @@ function expandMaster(
         : { ...master.end, dateTime: occ.end.toISOString() },
       allDay: master.allDay,
       recurrenceComplex: false,
+      ...(isDeclined(master) ? { declined: true } : {}),
     })
   }
   return out

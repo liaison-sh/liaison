@@ -36,6 +36,10 @@ export interface DocumentData {
   number: string
   issued_at: string
   due_at: string | null
+  /** The date of the sale or supply, YYYY-MM-DD. Printed as "Date of sale" only when it differs
+   *  from the issue date: a French mandatory mention (CGI ann. II art. 242 nonies A, I; Directive
+   *  2006/112/EC art. 226 point 7). Absent on documents issued before the column existed. */
+  supply_date?: string | null
   currency: string
   subtotal_minor: bigint
   tax_total_minor: bigint
@@ -950,6 +954,14 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
   ry -= 18
 
   const metaLines: Array<[string, string]> = [["Issued", formatDateLike(input.document.issued_at)]]
+  const supplyDate = input.document.supply_date?.trim()
+  if (
+    input.document.type === "invoice" &&
+    supplyDate &&
+    supplyDate.slice(0, 10) !== String(input.document.issued_at ?? "").slice(0, 10)
+  ) {
+    metaLines.push(["Date of sale", formatDateLike(supplyDate)])
+  }
   if (input.document.due_at) metaLines.push(["Due", formatDateLike(input.document.due_at)])
   // An Incoterm says who carries goods: a document of services alone has none.
   if (input.document.operation_category !== "services") {

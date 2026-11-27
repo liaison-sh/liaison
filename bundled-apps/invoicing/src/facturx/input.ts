@@ -201,6 +201,9 @@ export function facturxInputFrom(src: FacturxSource): FacturxInput {
         ? null
         : big(d.tax_total_eur_minor),
     service_period: servicePeriod,
+    // The sale date, stored only when it differs from the issue date (see issue.ts). At issue it
+    // still rides on the insert's `source`; read back it is the flat column.
+    supply_date: src.type === "invoice" ? dateOnly(d.supply_date ?? source.supply_date) : null,
     lines,
     subtotal_minor: big(d.subtotal_minor),
     tax_total_minor: big(d.tax_total_minor),

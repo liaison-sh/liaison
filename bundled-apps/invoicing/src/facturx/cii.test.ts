@@ -139,6 +139,43 @@ describe("buildCii", () => {
   })
 })
 
+describe("the sale date (BT-72)", () => {
+  test("a sale date is the actual delivery date, after the ship-to party", () => {
+    const x = buildCii(fxDocument({ supply_date: "2026-10-21" }))
+    expect(x).toContain(
+      '<ram:ActualDeliverySupplyChainEvent><ram:OccurrenceDateTime><udt:DateTimeString format="102">20261021</udt:DateTimeString></ram:OccurrenceDateTime></ram:ActualDeliverySupplyChainEvent>',
+    )
+    const delivery = x.split("<ram:ApplicableHeaderTradeDelivery>")[1] ?? ""
+    if (delivery.includes("<ram:ShipToTradeParty>"))
+      expect(delivery.indexOf("<ram:ShipToTradeParty>")).toBeLessThan(
+        delivery.indexOf("<ram:ActualDeliverySupplyChainEvent>"),
+      )
+  })
+
+  test("no sale date, no delivery event", () => {
+    expect(buildCii(fxDocument())).not.toContain("ActualDeliverySupplyChainEvent")
+  })
+
+  test("the input reads the stored column, or the issue-time source", () => {
+    const base = { number: "FA-1", issued_at: "2026-11-03", operation_category: "goods" }
+    const from = (doc: Record<string, unknown>) =>
+      facturxInputFrom({ type: "invoice", doc: { ...base, ...doc }, lines: [], issuer: {} })
+        .supply_date
+    expect(from({ supply_date: "2026-10-30" })).toBe("2026-10-30")
+    expect(from({ source: { supply_date: "2026-10-29" } })).toBe("2026-10-29")
+    expect(from({})).toBeNull()
+    // A credit note never states a sale date: it corrects an invoice that does.
+    expect(
+      facturxInputFrom({
+        type: "credit_note",
+        doc: { ...base, supply_date: "2026-10-30" },
+        lines: [],
+        issuer: {},
+      }).supply_date,
+    ).toBeNull()
+  })
+})
+
 describe("vatBreakdown", () => {
   test("groups by rate, sums line taxes, highest rate first", () => {
     const g = vatBreakdown(

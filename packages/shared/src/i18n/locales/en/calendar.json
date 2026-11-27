@@ -90,5 +90,14 @@
     }
   },
   "eventsLoadFailed": "Could not load the events. What you see may be out of date.",
-  "retry": "Retry"
+  "retry": "Retry",
+  "eventTabLabel": "Event",
+  "addTitle": "Add title",
+  "addMeet": "Add a Google Meet video call",
+  "moreOptions": "More options",
+  "eventNotFound": "This event is not in the loaded calendar any more. Close this tab and open it again from the calendar.",
+  "deleteConfirmTitle": "Delete this event?",
+  "deleteConfirmBody": "“{{title}}” will be removed from the calendar and from Google.",
+  "eventDeleted": "Event deleted",
+  "undo": "Undo"
 }

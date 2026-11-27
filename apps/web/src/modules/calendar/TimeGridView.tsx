@@ -26,7 +26,8 @@ export interface TimeGridViewProps {
   occurrences: ExpandedOccurrence[]
   calendarColors: Record<string, string>
   onSelectEvent?: (eventId: string) => void
-  onSelectSlot?: (start: Date) => void
+  /** A click on an empty slot (30-min snap); `anchor` is the viewport point for a popover. */
+  onSelectSlot?: (start: Date, anchor: { x: number; y: number }) => void
 }
 
 const HOUR_PX = 48
@@ -211,6 +212,7 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                     const snapped = Math.floor(min / 30) * 30
                     props.onSelectSlot?.(
                       new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, snapped),
+                      { x: e.clientX, y: e.clientY },
                     )
                   }}
                   onKeyDown={() => {}}

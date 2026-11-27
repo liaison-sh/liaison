@@ -29,6 +29,7 @@ import { ensureBrandingLoaded, orgName } from "~/modules/shell/branding-store"
 import { openTab } from "~/modules/shell/tab-store"
 import { addToast } from "~/modules/shell/toast-store"
 import { loadAgentDirectory, personalAgentFor } from "~/modules/threads/agent-directory"
+import { openDetailFrom } from "~/primitives/createPushNav"
 import { avatarColors } from "~/ui/avatar-palette"
 import { Switch } from "~/ui/Switch"
 import NativeServersSection from "./NativeServersSection"
@@ -148,12 +149,15 @@ export const YouScreen: Component = () => {
       return
     }
     if (target.kind === "route") {
-      openTab({
-        type: "agents:agent",
-        entityId: "self",
-        label: agentName() ?? i18n.t("kernel.youAgentFallback"),
-        routePath: target.path,
-      })
+      // Back on the agent page returns here, to You, labelled so.
+      openDetailFrom({ label: i18n.t("kernel.youTitle"), returnTo: "/settings" }, () =>
+        openTab({
+          type: "agents:agent",
+          entityId: "self",
+          label: agentName() ?? i18n.t("kernel.youAgentFallback"),
+          routePath: target.path,
+        }),
+      )
     }
   }
 

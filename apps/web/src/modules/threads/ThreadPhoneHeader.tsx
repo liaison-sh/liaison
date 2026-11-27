@@ -267,6 +267,7 @@ const ThreadPhoneHeader: Component<ThreadPhoneHeaderProps> = (props) => {
       <button
         type="button"
         data-testid="phone-thread-back"
+        data-phone-back
         aria-label={i18n.t("kernel.back")}
         onClick={back}
         class="flex min-h-11 shrink-0 items-center gap-0.5 rounded-md pl-1 pr-1.5 text-text-secondary hover:bg-surface-hover"

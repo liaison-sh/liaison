@@ -131,6 +131,7 @@ const PhoneTopBar: Component = () => {
           <button
             type="button"
             data-testid="main-panel-back"
+            data-phone-back
             aria-label={i18n.t("kernel.back")}
             onClick={() => pushNav.popDetail()}
             class="flex min-h-11 shrink-0 items-center gap-0.5 rounded-md pl-1 pr-1.5 text-text-secondary hover:bg-surface-hover"

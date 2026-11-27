@@ -282,6 +282,7 @@ const SettingsLayout: Component<SettingsLayoutProps> = (_props) => {
           <button
             type="button"
             data-testid="settings-phone-back"
+            data-phone-back
             aria-label={i18n.t("kernel.youTitle")}
             onClick={backToYou}
             class="flex min-h-11 shrink-0 items-center gap-1 px-2 text-[15px] text-text-secondary hover:bg-surface-hover"

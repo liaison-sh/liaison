@@ -39,6 +39,7 @@ const TicketPhoneHeader: Component<TicketPhoneHeaderProps> = (props) => {
       <button
         type="button"
         data-testid="ticket-phone-back"
+        data-phone-back
         aria-label={i18n.t("kernel.back")}
         class="flex min-h-11 shrink-0 items-center gap-0.5 rounded-md pl-1 pr-2 text-[15px] text-text-secondary hover:bg-surface-hover"
         onClick={() => backToList()}

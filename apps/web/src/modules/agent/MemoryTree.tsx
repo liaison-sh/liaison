@@ -877,6 +877,7 @@ const MemoryTree: Component<Props> = (props) => {
             <button
               type="button"
               data-testid="agent-memory-back"
+              data-phone-back
               onClick={() => setOpenMemoryPath(null)}
               class="flex min-h-11 items-center gap-1 px-4 text-[13px] text-text-secondary"
             >

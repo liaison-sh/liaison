@@ -76,6 +76,10 @@ export function registerAgentApp(): void {
         icon: AgentsIcon,
         // `:entityId` is the agent's HANDLE, the way a person names an agent.
         urlPattern: "/agents/:entityId",
+        // No agents list sits above an agent: `/agents` redirects to the
+        // viewer's own agent, so Back from a deep-linked agent page went
+        // nowhere. On the phone the apps are reached from Work.
+        parentRoute: "/work",
         defaultLabel: "Agent",
         defaultLabelKey: "kernel.nav.agent",
         resolveLabel: resolveAgentLabel,

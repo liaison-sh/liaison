@@ -3,8 +3,7 @@
 // stateful fake Google Calendar (connect -> import -> initial sync -> watch -> Google-side edit ->
 // push notification -> incremental sync; Liaison create -> push -> echo suppressed).
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { sql as drizzleSql } from "drizzle-orm"
-import { withSystemDb } from "~/db/privileged"
+import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
 import { acquireAppSchemaJsLock, releaseAppSchemaJsLock } from "~/tests/helpers/app-schema-lock"
 import { FakeGoogleCalendar } from "./fake-google-calendar"
 import { createCalendarSyncHarness } from "./sync-harness"
@@ -18,16 +17,13 @@ let userId: string
 beforeAll(async () => {
   await acquireAppSchemaJsLock("app_calendar")
   const slug = `cal-harness-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
-  await withSystemDb("calendar-harness-fixture", async (tx) => {
-    const o: unknown = await tx.execute(drizzleSql`
-      INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (gen_random_uuid(), 'Calendar Harness Org', ${slug}) RETURNING id`)
-    orgId = firstId(o)
-    const u: unknown = await tx.execute(drizzleSql`
-      INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
-      VALUES (gen_random_uuid(), ${orgId}::uuid, ${`owner-${slug}@x.test`}, 'Owner', 'active', 'h', 1, 1)
-      RETURNING id`)
-    userId = firstId(u)
+  orgId = await seedOrgRow({ name: "Calendar Harness Org", slug })
+  userId = await seedUserRow({
+    orgId,
+    email: `owner-${slug}@x.test`,
+    name: "Owner",
+    status: "active",
+    passwordHash: "h",
   })
   const { calendarAppManifest } = await import("~/apps/calendar/manifest-descriptor")
   const { resetAppRegistries, setDeclaredEmits } = await import("~/modules/apps/app-registries")
@@ -44,13 +40,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await releaseAppSchemaJsLock("app_calendar")
 })
-
-function firstId(res: unknown): string {
-  const rows = Array.isArray(res) ? res : (res as { rows?: Array<{ id: string }> }).rows
-  const id = (rows?.[0] as { id?: string } | undefined)?.id
-  if (!id) throw new Error("fixture insert returned no id")
-  return id
-}
 
 describe("calendar sync harness against the fake Google Calendar", () => {
   it("connect imports the calendars, syncs their events and watches them", async () => {

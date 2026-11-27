@@ -11,7 +11,6 @@
 import { sql as drizzleSql } from "drizzle-orm"
 import manifest from "~/apps/calendar/app.manifest.json"
 import type { CalendarKernelConnectionEvent } from "~/apps/calendar/sync"
-import { withSystemDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
 import type { EnqueueOptions } from "~/infra/jobs/jobs"
 import { CORE_APP_MODULES } from "~/modules/apps/core/registry"
@@ -283,13 +282,16 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
       return notes.length
     },
 
-    /** A raw read on the system connection (assertions). */
+    /** A raw read as the harness user, who sees every calendar of the org (assertions). */
     async sql<T>(query: ReturnType<typeof drizzleSql>): Promise<T[]> {
-      return withSystemDb("calendar-harness-read", async (tx) => {
-        const res: unknown = await tx.execute(query)
-        const rows = Array.isArray(res) ? res : (res as { rows?: unknown[] }).rows
-        return (rows ?? []) as T[]
-      })
+      return withRlsContext(
+        { actorType: "user", userId, orgId, scopes: ["*"], dimensionGrants: { "*": ["*"] } },
+        async (tx) => {
+          const res: unknown = await tx.execute(query)
+          const rows = Array.isArray(res) ? res : (res as { rows?: unknown[] }).rows
+          return (rows ?? []) as T[]
+        },
+      )
     },
 
     /** The local calendar row for a Google calendar id. */

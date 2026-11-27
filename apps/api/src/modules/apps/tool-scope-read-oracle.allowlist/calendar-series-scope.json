@@ -1,0 +1,47 @@
+[
+  [
+    "apps/api/src/modules/apps/sandbox/bridge/calendar.ts",
+    "let scope = target.scope",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/api/src/modules/apps/sandbox/bridge/calendar.ts",
+    "if (target.scope === \"following\" && target.splitAt) {",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/api/src/modules/apps/sandbox/bridge/calendar.ts",
+    "if (target.scope === \"following\" && target.splitAt) {",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/api/src/apps/calendar/sync.ts",
+    "if (params.scope !== \"occurrence\" && params.scope !== \"following\" && params.scope !== \"series\") {",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/api/src/apps/calendar/sync.ts",
+    "if (params.scope !== \"occurrence\" && params.scope !== \"following\" && params.scope !== \"series\") {",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/api/src/apps/calendar/sync.ts",
+    "if (params.scope !== \"occurrence\" && params.scope !== \"following\" && params.scope !== \"series\") {",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/api/src/apps/calendar/sync.ts",
+    "if (params.scope === \"series\") return { eventId: master.id, scope: \"series\" }",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/api/src/apps/calendar/sync.ts",
+    "`scope: \"${params.scope}\" on a recurring meeting needs occurrenceStart: the original start (ISO date-time, or date for an all-day series) of the occurrence to ${verb}.`,",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/api/src/apps/calendar/sync.ts",
+    "if (params.scope === \"following\") {",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ]
+]

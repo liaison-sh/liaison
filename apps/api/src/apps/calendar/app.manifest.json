@@ -142,7 +142,7 @@
           "type": "boolean",
           "default": false
         },
-        "fullSyncId": "string?",
+        "fullSyncRun": "string?",
         "calaccess": "string"
       },
       "personalScope": {
@@ -205,7 +205,7 @@
         "googleUpdatedAt": "date?",
         "attendeesBase": "json?",
         "pushBase": "json?",
-        "seenSyncId": "string?",
+        "seenSyncRun": "string?",
         "organizerSelf": "boolean?",
         "guestsCanModify": "boolean?",
         "pushError": "string?",

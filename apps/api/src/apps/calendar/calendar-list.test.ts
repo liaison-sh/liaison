@@ -155,7 +155,7 @@ describe("G11: a full resync keeps event ids", () => {
     expect(lunch?.id).toBe(lunchId)
     expect(lunch?.title).toBe("Team lunch (Friday)")
     expect(await h.event(TEAM, "standup0001")).toBeNull()
-    expect((await h.calendar(TEAM))?.full_sync_id).toBeNull()
+    expect((await h.calendar(TEAM))?.full_sync_run).toBeNull()
     expect((await h.calendar(TEAM))?.sync_token).toBeTruthy()
   })
 

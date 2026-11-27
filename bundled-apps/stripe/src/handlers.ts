@@ -19,6 +19,8 @@ import {
   verifyStripeDelivery,
 } from "./verify"
 
+// revenue-stream@1 provider ops (contractOnly): one-off Checkout payments as sales
+export { rs_sale_get, rs_sales_list } from "./sales"
 export { summarizeRefundsCreate, summarizeSubscriptionCancel } from "./summarizers"
 export { homeLoad } from "./sync/home"
 export { activityRead } from "./tools/activity"

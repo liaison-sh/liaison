@@ -1,0 +1,22 @@
+{
+  "entry": "tool:revenue_stream_catch_up_preview",
+  "params": {
+    "streamId": "00000000-0000-4000-8000-0000000005a2",
+    "paidFrom": "2026-11-01T00:00:00.000Z",
+    "paidTo": "2026-12-01T00:00:00.000Z"
+  },
+  "recordedFrom": "an install with no stream yet (contract replay, no provider call)",
+  "expectError": {
+    "reason": "recorded on a contract install with no stream, so the replay pins the stream_not_found refusal (nothing read from a provider, nothing written)"
+  },
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "revenue_streams",
+        "{\"where\":{\"id\":\"00000000-0000-4000-8000-0000000005a2\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

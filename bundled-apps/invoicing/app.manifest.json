@@ -2028,6 +2028,49 @@
       "readOnly": true,
       "params": { "type": "object", "properties": {}, "additionalProperties": false }
     },
+    "revenue_stream_catch_up_preview": {
+      "description": "Read only: every sale a bound revenue stream's app took between paidFrom and paidTo, oldest first, as the catch-up would invoice it: buyer, country, tax treatment, lines, tax as computed against the tax the source charged, totals, refunds, blockers (address, VAT number to validate, FX rate, tax gap) and the document it already has. Nothing is written. Hand the list to a person before revenue_stream_catch_up.",
+      "searchKeywords": ["rattrapage", "ventes", "catch-up", "backfill", "revenue", "stream"],
+      "deferLoading": true,
+      "requiredScopes": ["invoicing:documents:read", "invoicing:settings:read"],
+      "handler": "revenueStreamCatchUpPreviewHandler",
+      "readOnly": true,
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "streamId": { "type": "string" },
+          "paidFrom": { "type": "string" },
+          "paidTo": { "type": "string" }
+        },
+        "required": ["streamId", "paidFrom", "paidTo"],
+        "additionalProperties": false
+      }
+    },
+    "revenue_stream_catch_up": {
+      "summarizer": "summarizeRevenueStreamCatchUp",
+      "description": "Invoice the sales a bound revenue stream's app took between paidFrom and paidTo that have no invoice yet: oldest first, one number each, issued today, then a credit note for each refund. Stops at the first sale that cannot be issued and leaves the later ones unissued, so the numbers keep sale-date order. Legal invoices cannot be undone: run revenue_stream_catch_up_preview first. A person approves; never automatic.",
+      "searchKeywords": ["rattrapage", "ventes", "catch-up", "backfill", "revenue", "stream"],
+      "deferLoading": true,
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "revenueStreamCatchUpHandler",
+      "timeoutMs": 60000,
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "approvalDedupeKeyParam": "streamId",
+      "params": {
+        "type": "object",
+        "properties": {
+          "streamId": { "type": "string" },
+          "paidFrom": { "type": "string" },
+          "paidTo": { "type": "string" }
+        },
+        "required": ["streamId", "paidFrom", "paidTo"],
+        "additionalProperties": false
+      },
+      "approvalCard": { "summary": "Invoice a sales app's earlier sales" }
+    },
     "revenue_stream_sale_issue": {
       "summarizer": "summarizeRevenueStreamSaleIssue",
       "description": "Issue the invoice of one sale of a bound revenue stream (the sale is read again from its app). A stream in review mode asks a person for each sale with this card; a person decides it, never automatically.",
@@ -7045,6 +7088,7 @@
   "events": {
     "subscribes": {
       "contract:revenue-stream@1/sale:paid": "onSaleEvent",
+      "contract:revenue-stream@1/sale:refunded": "onSaleRefunded",
       "shopify/order:updated": "onShopifyOrderUpdated",
       "shopify/order:cancelled": "onShopifyOrderCancelled",
       "shopify/refund:created": "onShopifyRefundCreated",

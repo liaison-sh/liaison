@@ -1,0 +1,13 @@
+{
+  "entry": "tool:revenue_stream_catch_up",
+  "params": {
+    "streamId": "00000000-0000-4000-8000-0000000005a2",
+    "paidFrom": "2026-11-01T00:00:00.000Z",
+    "paidTo": "2026-12-01T00:00:00.000Z"
+  },
+  "recordedFrom": "a call outside a person's approval (contract replay)",
+  "expectError": {
+    "reason": "replayed without an approval, so the run refuses (approval_required) before it reads anything: it issues legal invoices only on a person's decision"
+  },
+  "calls": []
+}

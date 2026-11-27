@@ -1,0 +1,22 @@
+{
+  "entry": "tool:rs_sales_list",
+  "params": {
+    "paid_from": "2026-11-01T00:00:00.000Z",
+    "paid_to": "2026-11-02T00:00:00.000Z",
+    "cursor": null
+  },
+  "recordedFrom": "a day with no completed Checkout Session (contract replay, hand-written)",
+  "unrecorded": {
+    "reason": "hand-written, not recorded: a recording needs a restricted Stripe key with Checkout Sessions Read, which the recording run does not have yet"
+  },
+  "calls": [
+    {
+      "method": "fetch",
+      "args": [
+        "https://api.stripe.com/v1/checkout/sessions?status=complete&created%5Bgte%5D=1793491200&created%5Blt%5D=1793577600&limit=100&expand%5B0%5D=data.line_items&expand%5B1%5D=data.payment_intent.latest_charge",
+        "{\"method\":\"GET\",\"headers\":{\"Stripe-Version\":\"2026-10-28.endive\"},\"auth\":{\"connection\":\"stripe\",\"scheme\":\"bearer\",\"fields\":[\"restrictedKey\"]}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"object\\\":\\\"list\\\",\\\"data\\\":[],\\\"has_more\\\":false}\"}"
+    }
+  ]
+}

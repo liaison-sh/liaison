@@ -285,7 +285,11 @@ export function googleConnectionsOf(
   const connections: Array<{ app: string; connection: string; scopes: string[] }> = []
   for (const [[org, app, connection], config] of connectionConfigRegistry.entriesOf(orgId)) {
     if (org !== orgId || !isGoogleConnection(config)) continue
-    connections.push({ app, connection, scopes: config.scopes ?? [] })
+    // Optional scopes (asked for later, Calendar's free/busy) belong on the consent screen too:
+    // an External app's grant refuses any scope its data access list leaves out.
+    const scopes = [...(config.scopes ?? [])]
+    for (const s of config.optionalScopes ?? []) if (!scopes.includes(s)) scopes.push(s)
+    connections.push({ app, connection, scopes })
   }
   return connections
 }

@@ -16,6 +16,8 @@ Calendar brings your Google calendars into Liaison. You see your events by day, 
 
 Calendar uses the workspace's Google OAuth client, shared with Gmail (see [Mail](mail.md#connect-gmail)). Calendar access is a Google-sensitive scope, so the Google app must be an Internal Google Workspace app or a verified External app.
 
+Finding a free time with guests also needs Google's free/busy permission (`calendar.freebusy`). Liaison asks for it only the first time someone uses it, so existing connections keep working and only that person sees Google's consent screen again. A self-hosted server whose Google app is External must list this scope on its consent screen too: `liaison guide google --feature calendar` prints it with the other Calendar scopes.
+
 A calendar admin (`calendar:accounts:admin`) manages org-wide calendar connections that everyone in the organization can see.
 
 If an import fails, the account shows **Retry**. If access was revoked, reconnect the account. Disconnecting deletes the calendars and events imported from that account from Liaison. Your events stay in Google Calendar.
@@ -67,6 +69,14 @@ This is off until you turn it on: open **Settings › Apps › Calendar** and sw
 
 Ask, for example, "What is on my calendar tomorrow?" or "Book a 30 minute call with orders@resonantaudiolabs.example on Thursday at 10 with a Meet link". The agent can create a real Google Meet link. It cannot create Teams or Zoom links. The calendar tools are not approval-gated, unless your organization adds an approval policy (see [Approve what agents do](../agents/approvals.md)).
 
+### Find a time with an agent
+
+Ask, for example, "Find 30 minutes with amina@resonantaudiolabs.example and lucas@resonantaudiolabs.example next week". The agent looks for times when you and your guests are all free, inside working hours (Monday to Friday, 09:00 to 18:00 in your time zone unless you say otherwise), and offers you a few. Once you pick one, it creates the event with the guests.
+
+- Your own busy times come from your synced calendars. An event marked free in Google, a meeting you declined and an all-day event that is not marked busy never block a slot.
+- Your guests' busy times come from Google's free/busy, read with your Google account. Until you allow free/busy once, the slots only account for your own calendar and the agent says so.
+- A guest whose calendar Google does not share with your account (often someone outside your organization) is reported as unknown.
+
 Ask "Open the quarter review" and the agent opens the calendar on that event's day, with the event open.
 
 ## Roles and scopes
@@ -86,6 +96,7 @@ Ask "Open the quarter review" and the agent opens the calendar on that event's d
 | `list_calendars` | List calendars and whether each is selected for sync | `calendar:events:read` |
 | `list_events` | List events in a time window, with recurring events expanded | `calendar:events:read` |
 | `search_events` | Search events by title, description and location | `calendar:events:read` |
+| `find_free_slots` | Find free times of a given length for you and your guests, inside working hours | `calendar:events:read` |
 | `create_event` | Create an event, optionally with a Google Meet link | `calendar:events:write` |
 | `update_event` | Change time, title, description, location, guests or the Meet link, for one occurrence or the series | `calendar:events:write` |
 | `delete_event` | Delete an event, one occurrence or the series | `calendar:events:write` |

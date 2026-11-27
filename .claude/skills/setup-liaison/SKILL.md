@@ -483,7 +483,11 @@ any time". The basics come first, in this order; then the menu.
   are only for an External client. Ask for the project's ID once (it is in
   the console's project picker) and pass `--project <id>`: every API link then
   opens with the project selected. Enable only the APIs of the feature being
-  set up (`--feature mail`, then later `--feature calendar`...).
+  set up (`--feature mail`, then later `--feature calendar`...). On an External
+  client, the consent screen's data access list must hold every scope the guide
+  prints, including the ones asked for later (Calendar's `calendar.freebusy`,
+  requested the first time someone uses Find a time): a scope missing there is
+  refused when the person consents.
 - **Each open connection**: run the command `setup state` names for it
   (`liaison guide google --email <address> --feature <app> --project <id> --json`,
   `liaison guide shopify --cli --json`, `liaison guide imap --email <address>`, or `liaison guide

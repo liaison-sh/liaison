@@ -37,6 +37,8 @@ import { getFrontendRedirectUrl } from "~/modules/apps/connections/service"
 import { writeAuditLog } from "~/modules/audit/service"
 import { getOrgEmailConfig, getOrgSenderTransport } from "~/modules/org/email-from"
 import { hasScope } from "~/modules/permissions/permissions"
+import { recipientLocale } from "~/modules/i18n/recipient-locale"
+import { serverT } from "~/modules/i18n/server-i18n"
 
 const log = appsLogger.child({ module: "connect-links" })
 
@@ -430,19 +432,21 @@ export async function emailConnectLink(input: {
   const { link } = input
   const what = connectionLabel(input.appName, input.connectionName)
   const minutes = Math.max(1, Math.round((link.expiresAt.getTime() - Date.now()) / 60_000))
-  const subject = `Connect your account to Liaison (${what})`
+  const locale = await recipientLocale(input.orgId, { userId: link.user.id })
+  const t = (key: string, params: Record<string, string | number> = {}) =>
+    serverT(locale, `system-mail.connectLink.${key}`, params)
+  const subject = t("subject", { what })
   const { html, text } = renderBrandedEmail({
     subject,
-    eyebrow: "Connect",
-    heading: "Connect your own account",
+    locale,
+    eyebrow: t("eyebrow"),
+    heading: t("heading"),
     paragraphs: [
-      `${input.senderName ?? "Your Liaison admin"} asks you to connect your own account for ${what}. It stays yours: a personal connection only you and your agent use.`,
-      `Open the link and sign in to Liaison as ${link.user.email}. It works only for you, once, for the next ${minutes} minutes.`,
+      t("body", { sender: input.senderName ?? t("senderFallback"), what }),
+      t("signIn", { email: link.user.email, minutes }),
     ],
-    cta: { label: "Connect my account", href: link.url },
-    footer: [
-      "If you weren't expecting this, ignore it: nothing happens until you sign in and consent.",
-    ],
+    cta: { label: t("cta"), href: link.url },
+    footer: [t("footer")],
   })
   const emailConfig = await getOrgEmailConfig(input.orgId)
   // Managed edition: the org's own verified sender, else "<Org> via Liaison",

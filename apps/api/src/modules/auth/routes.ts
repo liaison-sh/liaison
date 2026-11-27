@@ -120,6 +120,8 @@ import { getOrgEmailConfig } from "~/modules/org/email-from"
 import { removeAllPushDeliveryForUser } from "~/modules/push/end-user-push"
 import { noteSignIn } from "~/modules/security/admin-signin"
 import { emitSecurityEvent } from "~/modules/security/security-events"
+import { serverT } from "~/modules/i18n/server-i18n"
+import { recipientLocale } from "~/modules/i18n/recipient-locale"
 
 /** Return access token in body, refresh token wherever this caller can keep it.
  *  A browser gets the HttpOnly cookie; one of the wrapped shells' own origins
@@ -709,11 +711,13 @@ auth.post("/totp/step-up", async (c) => {
   }
 
   const emailConfig = await getOrgEmailConfig(orgId)
-  const copy = stepUpEmailCopy(code, purpose)
+  const locale = await recipientLocale(orgId, { userId })
+  const copy = stepUpEmailCopy(code, purpose, locale)
   const subject = copy.subject
   const { html, text } = renderBrandedEmail({
     subject,
-    eyebrow: "Security",
+    locale,
+    eyebrow: copy.eyebrow,
     heading: copy.heading,
     code,
     paragraphs: copy.paragraphs,
@@ -1220,19 +1224,17 @@ auth.post("/password-reset/request", zValidator("json", passwordResetRequestSche
 
     const resetUrl = `${await orgPublicBaseUrl(user.orgId)}/reset-password/confirm?token=${token}`
     const emailConfig = await getOrgEmailConfig(user.orgId)
-    const subject = "Reset your password"
+    const locale = await recipientLocale(user.orgId, { userId: user.id })
+    const t = (key: string) => serverT(locale, `system-mail.passwordReset.${key}`)
+    const subject = t("subject")
     const { html, text } = renderBrandedEmail({
       subject,
-      eyebrow: "Security",
-      heading: "Reset your password",
-      paragraphs: [
-        "We received a request to reset the password for your account. Click the button below to choose a new one.",
-        "This link expires in 1 hour and can only be used once. If you didn't request a reset, you can safely ignore this email -- your password won't change.",
-      ],
-      cta: { label: "Reset your password", href: resetUrl },
-      footer: [
-        "You're receiving this because a password reset was requested for this email address.",
-      ],
+      locale,
+      eyebrow: t("eyebrow"),
+      heading: t("heading"),
+      paragraphs: [t("body"), t("expiry")],
+      cta: { label: t("cta"), href: resetUrl },
+      footer: [t("footer")],
     })
     // Not awaited (see padToResponseFloor): waiting for the mail server would
     // tell a caller which addresses have an account.

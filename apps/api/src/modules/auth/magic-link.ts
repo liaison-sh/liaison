@@ -16,6 +16,8 @@ import { AuthServiceError, createSession } from "~/modules/auth/auth"
 import { demoMagicLinkAllowed } from "~/modules/demo/demo-login"
 import { getOrgEmailConfig } from "~/modules/org/email-from"
 import { emitSecurityEvent } from "~/modules/security/security-events"
+import { serverT } from "~/modules/i18n/server-i18n"
+import { recipientLocale } from "~/modules/i18n/recipient-locale"
 
 /**
  * The instance-wide refusal of an emailed sign-in code, on an instance that
@@ -270,18 +272,19 @@ export async function requestMagicLink(
 
   const magicUrl = `${base}/login/magic?challengeId=${encodeURIComponent(minted.challengeId)}&token=${encodeURIComponent(minted.linkToken)}`
   const emailConfig = await getOrgEmailConfig(user.orgId)
-  const subject = `${code} is your Liaison sign-in code`
+  // The recipient's language: their choice, else their org's (recipient-locale.ts).
+  const locale = await recipientLocale(user.orgId, { userId: user.id })
+  const t = (key: string) => serverT(locale, `system-mail.signIn.${key}`, { code })
+  const subject = t("subject")
   const { html, text } = renderBrandedEmail({
     subject,
-    eyebrow: "Sign in",
-    heading: "Your sign-in code",
+    locale,
+    eyebrow: t("eyebrow"),
+    heading: t("heading"),
     code,
-    paragraphs: [
-      "Enter it to sign in. The code expires in 10 minutes and can be used once. You can also just tap the button below on this device.",
-      "If you didn't try to sign in, you can safely ignore this email — no one can access your account without this code or link.",
-    ],
-    cta: { label: "Sign in to Liaison", href: magicUrl },
-    footer: ["You're receiving this because a sign-in was requested for this email address."],
+    paragraphs: [t("body"), t("ignore")],
+    cta: { label: t("cta"), href: magicUrl },
+    footer: [t("footer")],
   })
   // Not awaited: an unknown address skips the send entirely, so waiting for the
   // mail server would tell a caller which addresses have an account. A provider

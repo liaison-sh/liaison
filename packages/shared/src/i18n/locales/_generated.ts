@@ -23,6 +23,7 @@ import en_Portal_auth from "./en/portal-auth.json"
 import en_Projects from "./en/projects.json"
 import en_Secret_request from "./en/secret-request.json"
 import en_Setup_guides from "./en/setup-guides.json"
+import en_System_mail from "./en/system-mail.json"
 import en_Tickets from "./en/tickets.json"
 import en_Tours from "./en/tours.json"
 import fr_Agreement_evidence from "./fr/agreement-evidence.json"
@@ -45,6 +46,7 @@ import fr_Portal_auth from "./fr/portal-auth.json"
 import fr_Projects from "./fr/projects.json"
 import fr_Secret_request from "./fr/secret-request.json"
 import fr_Setup_guides from "./fr/setup-guides.json"
+import fr_System_mail from "./fr/system-mail.json"
 import fr_Tickets from "./fr/tickets.json"
 import fr_Tours from "./fr/tours.json"
 
@@ -75,6 +77,7 @@ export const GENERATED_DICTIONARIES: Record<
     projects: en_Projects as LocaleDict,
     "secret-request": en_Secret_request as LocaleDict,
     "setup-guides": en_Setup_guides as LocaleDict,
+    "system-mail": en_System_mail as LocaleDict,
     tickets: en_Tickets as LocaleDict,
     tours: en_Tours as LocaleDict,
   },
@@ -99,6 +102,7 @@ export const GENERATED_DICTIONARIES: Record<
     projects: fr_Projects as LocaleDict,
     "secret-request": fr_Secret_request as LocaleDict,
     "setup-guides": fr_Setup_guides as LocaleDict,
+    "system-mail": fr_System_mail as LocaleDict,
     tickets: fr_Tickets as LocaleDict,
     tours: fr_Tours as LocaleDict,
   },

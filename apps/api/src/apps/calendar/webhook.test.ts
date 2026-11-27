@@ -224,6 +224,10 @@ describe("calendar watch channels + webhook", () => {
         expiration: farExpiry,
       })
 
+      // Renewal only looks at calendars past their first sync (they hold a sync token).
+      await tx.execute(drizzleSql`
+        UPDATE app_calendar.calendars SET sync_token = 'tok'
+        WHERE id IN (${nearId}::uuid, ${boundaryId}::uuid, ${farId}::uuid)`)
       const needingRenewal = await findCalendarsForWatchRenewal(tx as any, orgId, 12)
       const ids = needingRenewal.map((c) => c.id)
       expect(ids).toContain(nearId)

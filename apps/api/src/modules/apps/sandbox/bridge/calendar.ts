@@ -228,7 +228,10 @@ export function createCalendarMethods(
       const headers = JSON.parse(headersJson) as Record<string, string>
       const channelId = headers["x-goog-channel-id"] ?? headers["X-Goog-Channel-ID"] ?? ""
       const resourceId = headers["x-goog-resource-id"] ?? headers["X-Goog-Resource-ID"] ?? ""
+      const state = headers["x-goog-resource-state"] ?? headers["X-Goog-Resource-State"] ?? ""
       if (!channelId || !resourceId) return
+      // The handshake Google posts once a channel is created: no change to fetch.
+      if (state === "sync") return
       await handleGooglePushNotification(
         txDb,
         orgId,
@@ -280,6 +283,23 @@ export function createCalendarMethods(
       const { findCalendarsForPollFallback } = await import("~/apps/calendar/sync")
       const rows = await findCalendarsForPollFallback(txDb, orgId, staleMinutes)
       return JSON.stringify(rows)
+    },
+
+    calendar_claimSyncPending: async (calendarId: string): Promise<string> => {
+      requireApp("calendar", "calendar_claimSyncPending")
+      const { claimCalendarSyncPending } = await import("~/apps/calendar/sync")
+      return JSON.stringify(await claimCalendarSyncPending(txDb, orgId, calendarId))
+    },
+
+    calendar_recordSyncFailure: async (
+      calendarId: string,
+      operation: string,
+      errorKind: string,
+      detail: string,
+    ): Promise<void> => {
+      requireApp("calendar", "calendar_recordSyncFailure")
+      const { recordSyncFailure } = await import("~/apps/calendar/sync")
+      await recordSyncFailure(txDb, orgId, calendarId, operation, errorKind, detail)
     },
 
     calendar_markCalendarPolled: async (calendarId: string): Promise<void> => {

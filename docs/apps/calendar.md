@@ -40,18 +40,20 @@ The view keeps itself up to date: an event that changes in Google, or that an ag
 
 ## Create or edit an event
 
-1. Click **New event**, or click an existing event to edit it.
-2. Fill in **Title**, **Start** and **End** (or tick **All day**), **Description**, **Location**, **Calendar** and **Recurrence** (**Does not repeat**, **Daily**, **Weekly**, **Monthly**).
-3. Add **Attendees** as comma-separated email addresses.
-4. Click **Save**, or **Delete** to remove the event.
+1. Click an empty slot in the **Day** or **Week** view (or a day in **Month**). A small card opens at that spot with the time already chosen.
+2. Type a title and press Enter. Pick another **Calendar** or tick **Add a Google Meet video call** first if you need to.
+3. For everything else, click **More options**: the event opens in its own tab with **Title**, **Start** and **End** (or **All day**), **Calendar**, **Recurrence** (**Does not repeat**, **Daily**, **Weekly**, **Monthly**), **Location**, **Description** and **Attendees**.
+4. Click an existing event to open it in its tab. **Save**, **Cancel** and **Delete** sit at the top. **Delete** asks first, and **Undo** in the note that follows puts the event back.
+
+**New event** opens the tab directly, starting at the next half hour. Only calendars you can write to are offered. An all-day event keeps its days when you edit it: the end you see is its last day.
+
+Attendees are not emailed: changes in Liaison do not send Google invitations. Only the organizer can change an event's guest list. A recurring event cannot be edited here yet, because a change would affect the whole series; one occurrence that was already changed in Google can be. An event with a Meet link shows **Join with Google Meet**.
 
 ### When the event also changed in Google
 
 Liaison sends only what you changed. If someone edited the event in Google meanwhile (a new description while you moved the time here), both changes are kept. If the same field changed on both sides, the newer change wins: the event then shows a notice naming the field and the value that was replaced, and you get a quiet item on Home.
 
 Times are sent with the calendar's time zone, so a weekly meeting at 09:00 stays at 09:00 when the clocks change. Calendars you can only read (a holidays calendar, a calendar shared with you to view) cannot take new events or edits: Liaison refuses the change instead of keeping an event Google would reject.
-
-Attendees are not emailed: changes in Liaison do not send Google invitations. Only the organizer can change an event's guest list. A recurring event cannot be edited here yet, because a change would affect the whole series. An event with a Meet link shows **Join with Google Meet**.
 
 ## Away days from your calendar
 

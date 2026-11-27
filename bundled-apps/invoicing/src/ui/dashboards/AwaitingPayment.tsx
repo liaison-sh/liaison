@@ -18,7 +18,13 @@ export function isOutstanding(r: DocumentRow): boolean {
   // must never appear as an outstanding receivable even though their payment_status defaults to
   // 'unpaid' like everything else. Explicit type gate, not just relying on the (also-true) absence of
   // due_at, mirrors the overdue-scan job's belt-and-braces `doc.type !== "invoice"` guard.
-  return r.type !== "credit_note" && r.status === "issued" && r.payment_status !== "paid"
+  // An invoice its credit notes settle in full (`credited`) owes nothing either.
+  return (
+    r.type !== "credit_note" &&
+    r.status === "issued" &&
+    r.payment_status !== "paid" &&
+    r.payment_status !== "credited"
+  )
 }
 
 function ageDescending(rows: DocumentRow[]): DocumentRow[] {

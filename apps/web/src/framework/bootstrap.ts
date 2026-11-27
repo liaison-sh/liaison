@@ -378,6 +378,9 @@ export function bootstrapKernelApps(): void {
         icon: MessageSquare,
         entityIcon: ThreadTabIcon,
         urlPattern: "/threads/:entityId",
+        // A conversation opened from a push tap or a link goes back to the
+        // conversation list: no screen answers `/threads`.
+        parentRoute: "/chats",
         defaultLabel: "Thread",
         // The list's copy, else the conversation read by id: a tab whose
         // conversation left the list (archived, or beyond the 50 most recent)
@@ -568,6 +571,8 @@ export function bootstrapKernelApps(): void {
         sidebar: DashboardsSidebar,
         icon: LayoutGrid,
         urlPattern: "/dashboard/:entityId",
+        // No screen answers the bare head: Back goes to the Dashboards list.
+        parentRoute: "/dashboards",
         defaultLabel: "Dashboard",
         defaultLabelKey: "kernel.nav.dashboard",
         resolveLabel: (entityId) => dashboardTitle(entityId),
@@ -582,6 +587,8 @@ export function bootstrapKernelApps(): void {
         sidebar: DashboardsSidebar,
         icon: Table2,
         urlPattern: "/dashboard-table/:entityId",
+        // No screen answers the bare head: Back goes to the Dashboards list.
+        parentRoute: "/dashboards",
         defaultLabel: "Table",
         defaultLabelKey: "kernel.nav.dashboardTable",
         resolveLabel: (entityId) => tableTitle(entityId),

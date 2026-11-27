@@ -89,6 +89,7 @@ export interface CalendarMethods {
   calendar_findCalendarsForPollFallback: (staleMinutes: number) => Promise<string>
   calendar_markCalendarPolled: (calendarId: string) => Promise<void>
   calendar_claimSyncPending: (calendarId: string) => Promise<string>
+  calendar_findAccountsForListRefresh: () => Promise<string>
   calendar_recordSyncFailure: (
     calendarId: string,
     operation: string,
@@ -214,7 +215,33 @@ export async function calendarImport(payload: unknown, ctx: CalendarCtx): Promis
     pageToken = body.nextPageToken
   } while (pageToken)
 
-  await ctx.calendar_importCalendars(accountId, JSON.stringify(entries))
+  const imported = JSON.parse(
+    await ctx.calendar_importCalendars(accountId, JSON.stringify(entries)),
+  ) as { removed?: Array<{ channelId: string; resourceId: string }> } | null
+  // Calendars Google no longer lists were removed locally: their channels are stopped on Google.
+  for (const channel of imported?.removed ?? []) {
+    await stopChannelOnGoogle(ctx, token, channel.channelId, channel.resourceId)
+  }
+}
+
+/**
+ * calendarListRefresh — the daily `calendar-list-refresh` cron: re-imports every connected
+ * account's calendar list, so a calendar added in Google appears (unselected unless the account
+ * can write to it), a renamed or recoloured one is updated, and one removed in Google goes with
+ * its events and channel. A calendar already synced keeps its sync token (no full re-list).
+ */
+export async function calendarListRefresh(_payload: unknown, ctx: CalendarCtx): Promise<void> {
+  const accounts = JSON.parse(await ctx.calendar_findAccountsForListRefresh()) as Array<{
+    id: string
+  }>
+  const day = new Date().toISOString().slice(0, 10)
+  for (const account of accounts) {
+    await ctx.enqueueJob(
+      "calendar-import",
+      JSON.stringify({ accountId: account.id }),
+      JSON.stringify({ jobId: `calendar-import:${account.id}:refresh:${day}` }),
+    )
+  }
 }
 
 interface CalendarRowShape {
@@ -223,6 +250,7 @@ interface CalendarRowShape {
   google_calendar_id: string
   sync_token: string | null
   calaccess: string
+  selected?: boolean
 }
 
 interface AccountRowShape {
@@ -238,6 +266,8 @@ function buildEventsListQuery(opts: {
 }): string {
   return buildQueryString({
     singleEvents: "false",
+    // Google's largest page: a long calendar history takes a tenth of the round trips.
+    maxResults: "2500",
     syncToken: opts.syncToken ?? undefined,
     showDeleted: opts.syncToken ? undefined : "true",
     pageToken: opts.pageToken ?? undefined,
@@ -357,6 +387,8 @@ export async function calendarInitialSync(payload: unknown, ctx: CalendarCtx): P
   const calendarJson = await ctx.calendar_getCalendar(calendarId)
   const calendar = JSON.parse(calendarJson) as CalendarRowShape | null
   if (!calendar) return
+  // Deselected since the job was queued (or never selected): nothing to list or watch.
+  if (calendar.selected === false) return
   const accountJson = await ctx.calendar_getAccount(calendar.account_id)
   const account = JSON.parse(accountJson) as AccountRowShape | null
   if (!account) return

@@ -494,7 +494,7 @@ describe("calendar inbound sync", () => {
     })
   })
 
-  it("410 SyncTokenGone wipes only Google-born rows (preserving pending local-born rows) and re-triggers initial sync exactly once", async () => {
+  it("410 SyncTokenGone keeps the rows, re-triggers initial sync exactly once, and that sync sweeps only Google-born rows it did not list", async () => {
     await withSystemDb("calendar-410", async (tx) => {
       const { calendarId, accountId } = await seedCalendar(tx as any)
       await applyInitialSyncPages(tx as any, orgId, calendarId, accountId, [
@@ -524,8 +524,34 @@ describe("calendar inbound sync", () => {
         jobs.push({ jobName, payload })
       })
 
+      // The rows stay until the full resync has listed: their ids do not change.
+      const kept = await getEventByGoogleId(tx as any, orgId, calendarId, "evt-google-born")
+      expect(kept?.title).toBe("Google born")
+      const stillListed = {
+        id: "evt-still-there",
+        status: "confirmed",
+        etag: '"st1"',
+        summary: "Still there",
+        start: { dateTime: "2026-07-07T09:00:00Z" },
+        end: { dateTime: "2026-07-07T09:30:00Z" },
+        updated: "2026-07-01T00:00:00.000Z",
+      }
+      await applyInitialSyncPages(tx as any, orgId, calendarId, accountId, [
+        { items: [stillListed], nextSyncToken: "tok-warm" },
+      ])
+      const before = await getEventByGoogleId(tx as any, orgId, calendarId, "evt-still-there")
+      await recoverFromSyncTokenGone(tx as any, orgId, calendarId, async () => {})
+      await applyInitialSyncPages(tx as any, orgId, calendarId, accountId, [
+        {
+          items: [{ ...stillListed, etag: '"st2"', summary: "Still there (renamed)" }],
+          nextSyncToken: "tok-1",
+        },
+      ])
       const googleBorn = await getEventByGoogleId(tx as any, orgId, calendarId, "evt-google-born")
       expect(googleBorn).toBeUndefined()
+      const after = await getEventByGoogleId(tx as any, orgId, calendarId, "evt-still-there")
+      expect(after?.id).toBe(before?.id)
+      expect(after?.title).toBe("Still there (renamed)")
 
       const [pendingRow] = (await tx.execute(drizzleSql`
         SELECT count(*)::int AS c FROM app_calendar.events
@@ -540,7 +566,7 @@ describe("calendar inbound sync", () => {
         SELECT sync_token FROM app_calendar.calendars WHERE id = ${calendarId}::uuid
       `)) as any
       const cal = (calRow.rows ?? calRow)[0] ?? (Array.isArray(calRow) ? calRow[0] : calRow)
-      expect(cal.sync_token).toBe(null)
+      expect(cal.sync_token).toBe("tok-1")
 
       expect(jobs.filter((j) => j.jobName === "calendar-initial-sync").length).toBe(1)
     })
@@ -637,8 +663,8 @@ describe("account active transition + streamed pages", () => {
       await applyInitialSyncPages(counting, orgId, calendarId, accountId, [
         { items: page(120, "a", "2026-07-01T00:00:00.000Z"), nextSyncToken: "tok-batch" },
       ])
-      // One upsert, the token, the account roll-up. Was 120 upserts + 2.
-      expect(statements.length).toBeLessThanOrEqual(4)
+      // The calendar's resync mark, one upsert, the token, the account roll-up. Was 120 upserts + 2.
+      expect(statements.length).toBeLessThanOrEqual(5)
 
       statements.length = 0
       const incremental = [

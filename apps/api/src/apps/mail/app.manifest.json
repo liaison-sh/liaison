@@ -66,7 +66,7 @@
       }
     ]
   },
-  "version": "1.13.4",
+  "version": "1.13.5",
   "description": "Email integration: Gmail and IMAP/SMTP",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -921,14 +921,19 @@
         "properties": {
           "followUp": {
             "type": "object",
-            "description": "This mail follows up on earlier mail: it stops if they reply.",
+            "description": "This mail follows up on earlier mail: it stops if they reply. Exactly the keys refs and classification. A reminder about an invoice, a payment or an account is {refs: [{kind, id}], classification: \"service\"}, naming that record; a follow-up that names no record counts as commercial.",
+            "additionalProperties": false,
             "properties": {
               "refs": {
                 "type": "array",
-                "description": "The records it is about, as {kind, id}.",
+                "description": "The records it is about, as {kind, id}, e.g. {kind: \"stripe:invoice\", id: \"in_...\"}.",
                 "items": {
                   "type": "object",
-                  "properties": { "kind": { "type": "string" }, "id": { "type": "string" } },
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "type": "string", "minLength": 1 },
+                    "id": { "type": "string", "minLength": 1 }
+                  },
                   "required": ["kind", "id"]
                 }
               },
@@ -1487,14 +1492,19 @@
         "properties": {
           "followUp": {
             "type": "object",
-            "description": "This mail follows up on earlier mail: it stops if they reply.",
+            "description": "This mail follows up on earlier mail: it stops if they reply. Exactly the keys refs and classification. A reminder about an invoice, a payment or an account is {refs: [{kind, id}], classification: \"service\"}, naming that record; a follow-up that names no record counts as commercial.",
+            "additionalProperties": false,
             "properties": {
               "refs": {
                 "type": "array",
-                "description": "The records it is about, as {kind, id}.",
+                "description": "The records it is about, as {kind, id}, e.g. {kind: \"stripe:invoice\", id: \"in_...\"}.",
                 "items": {
                   "type": "object",
-                  "properties": { "kind": { "type": "string" }, "id": { "type": "string" } },
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "type": "string", "minLength": 1 },
+                    "id": { "type": "string", "minLength": 1 }
+                  },
                   "required": ["kind", "id"]
                 }
               },

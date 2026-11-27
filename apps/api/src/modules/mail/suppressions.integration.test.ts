@@ -488,6 +488,41 @@ describe("lawful basis, notice, record and retention", () => {
     expect(refusal.message).toContain("Nothing was sent")
   })
 
+  it("a payment reminder that names its invoice is a service mail: it stages for a contact with no lawful basis", async () => {
+    const to = unique("billing")
+    await recordProspect(orgId, to, { lawfulBasis: null })
+    const id = blockedId(
+      await call("mail:compose", {
+        accountId: account,
+        to: [to],
+        subject: "Your payment did not go through",
+        textBody: "The card payment for invoice 12 was declined. You can update the card here.",
+        followUp: { refs: [{ kind: "fixture:invoice", id: "12" }], classification: "service" },
+      }),
+    )
+    const [row] = await sql<Array<{ guard: { classification: string; mode: string } }>>`
+      SELECT current_payload->'sendGuard' AS guard FROM kernel.approval_requests WHERE id = ${id}`
+    expect(row?.guard.classification).toBe("service")
+    expect(row?.guard.mode).toBe("followup")
+  })
+
+  it("a follow-up that names no record counts as commercial, and the refusal says so and how to name it", async () => {
+    const to = unique("billing-noref")
+    await recordProspect(orgId, to, { lawfulBasis: null })
+    const refusal = refusalOf(
+      await call("mail:compose", {
+        accountId: account,
+        to: [to],
+        subject: "Your payment did not go through",
+        textBody: "The card payment for invoice 12 was declined.",
+        followUp: { classification: "service" },
+      }),
+    )
+    expect(refusal.message).toContain(`No lawful basis is recorded for ${to}`)
+    expect(refusal.message).toContain("names no record")
+    expect(refusal.message).toContain('classification: "service"')
+  })
+
   it("a contact at its company's business domain with no recorded consumer status counts as a business, and the agent's commercial mail to it is staged", async () => {
     const to = unique("dealer")
     const contactId = await recordProspect(orgId, to, { lawfulBasis: "customer", isConsumer: null })

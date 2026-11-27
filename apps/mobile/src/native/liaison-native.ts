@@ -17,6 +17,8 @@
 //   (the system banner, or nothing for the conversation on screen). It needs
 //   the conversation on screen (setThreadOnScreen) and reports each decision
 //   (`pushPresentation`) so the push client can post it as the receipt.
+// - setBackdrop: the app's resolved theme, so what shows around the page (a
+//   windowed iPad's top band, a bounce) is the app's background, not black.
 //
 // Android has no such plugin: its one native piece is `authenticate`, from a
 // plugin of its own (`LiaisonAuthSession`, android/app/src/main/java/sh/
@@ -42,6 +44,7 @@ export interface LiaisonNativePlugin {
   apsEnvironment: () => Promise<{ environment: string }>
   authenticate: (options: AuthenticateOptions) => Promise<{ url: string }>
   setThreadOnScreen: (options: { threadId: string | null }) => Promise<void>
+  setBackdrop: (options: { theme: "light" | "dark" }) => Promise<void>
   addListener: (event: "pushPresentation", handler: (event: unknown) => void) => unknown
 }
 
@@ -59,6 +62,8 @@ export interface LiaisonNative {
   authenticate: (options: AuthenticateOptions) => Promise<string | null>
   /** Tells the native presenter which conversation is on screen. */
   setThreadOnScreen: (threadId: string | null) => void
+  /** Paints what shows around the page (a windowed iPad's top inset) in the app's theme. */
+  setBackdrop: (theme: "light" | "dark") => void
   /** Each foreground presentation the native presenter decided. */
   onPushPresentation: (handler: (event: unknown) => void) => void
 }
@@ -112,6 +117,10 @@ export function createLiaisonNative(deps: {
     setThreadOnScreen: (threadId) => {
       if (!deps.available()) return
       void deps.plugin.setThreadOnScreen({ threadId }).catch(() => undefined)
+    },
+    setBackdrop: (theme) => {
+      if (!deps.available()) return
+      void deps.plugin.setBackdrop({ theme }).catch(() => undefined)
     },
     onPushPresentation: (handler) => {
       if (!deps.available()) return
@@ -173,4 +182,9 @@ export function nativeThreadOnScreen(threadId: string | null): void {
  */
 export function onPushPresentation(handler: (event: unknown) => void): void {
   native.onPushPresentation(handler)
+}
+
+/** Paints what shows around the page in the app's resolved theme; nothing without the plugin. */
+export function nativeBackdrop(theme: "light" | "dark"): void {
+  native.setBackdrop(theme)
 }

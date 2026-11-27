@@ -2560,6 +2560,11 @@
   "workHoursStart": "Début des heures de travail",
   "workModules": "Modules",
   "workTitle": "Travail",
+  "workspaceUnreachable": {
+    "title": "Impossible de joindre votre espace de travail",
+    "body": "Liaison sur {{host}} ne répond pas. Vous êtes toujours connecté : l'application s'ouvre dès que le serveur répond.",
+    "bodyNoHost": "Le serveur ne répond pas. Vous êtes toujours connecté : Liaison s'ouvre dès qu'il répond."
+  },
   "writeAMessage": "Écrire un message",
   "writeAMessageHint": "Écrire un message… (@ personnes, # discussions)",
   "youAdminBestOnLargerScreen": "Préférable sur un écran plus grand",

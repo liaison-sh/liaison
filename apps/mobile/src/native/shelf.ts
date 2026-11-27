@@ -32,7 +32,7 @@ import {
   hideKeyboardAccessoryBar,
   type KeyboardEventsPlugin,
 } from "./keyboard"
-import { authenticate } from "./liaison-native"
+import { authenticate, nativeBackdrop } from "./liaison-native"
 import { createConnectivity, type NetworkPlugin } from "./network"
 import { createPushPermission } from "./push-permission"
 import { createShare } from "./share"
@@ -80,7 +80,7 @@ const hapticsPlugin: HapticsPlugin = {
 
 /** Publishes the bridge on `target` and arms the splash fallback. */
 export function installNativeShelf(target: object): void {
-  const statusBar = createStatusBarController(statusBarPlugin)
+  const statusBar = createStatusBarController(statusBarPlugin, nativeBackdrop)
   const splash = createSplashGate({ plugin: SplashScreen })
   const connectivity = createConnectivity(Network as unknown as NetworkPlugin)
 

@@ -1,0 +1,7 @@
+{
+  "key": {
+    "kernel.workspaceUnreachable.title": "Impossible de joindre votre espace de travail",
+    "kernel.workspaceUnreachable.body": "Liaison sur {{host}} ne répond pas. Vous êtes toujours connecté : l'application s'ouvre dès que le serveur répond.",
+    "kernel.workspaceUnreachable.bodyNoHost": "Le serveur ne répond pas. Vous êtes toujours connecté : Liaison s'ouvre dès qu'il répond."
+  }
+}

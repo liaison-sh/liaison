@@ -21,7 +21,8 @@ public class LiaisonNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticati
         CAPPluginMethod(name: "receiptQueueRemove", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "receiptQueueAppend", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "debugConsumeForcedRegisterFailure", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "setThreadOnScreen", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "setThreadOnScreen", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setBackdrop", returnType: CAPPluginReturnPromise)
     ]
 
     /// Held until it completes: a session nobody retains is deallocated and
@@ -51,6 +52,16 @@ public class LiaisonNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticati
         let threadId = (raw?.isEmpty ?? true) ? nil : raw
         DispatchQueue.main.async {
             ForegroundPushPresenter.threadOnScreen = threadId
+            call.resolve()
+        }
+    }
+
+    /// The theme the web app resolved, for what shows around the page
+    /// (src/native/status-bar.ts; MainViewController.paintBehindThePage).
+    @objc func setBackdrop(_ call: CAPPluginCall) {
+        let theme = call.getString("theme")
+        DispatchQueue.main.async { [weak self] in
+            (self?.bridge?.viewController as? MainViewController)?.paintBehindThePage(theme: theme)
             call.resolve()
         }
     }

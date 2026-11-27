@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "@solidjs/router"
 import { createSignal } from "solid-js"
 import {
   getTabType,
+  patternToUrl,
   tabDisplayLabel,
   tabTypeRegistryVersion,
   urlToTabInfo,
@@ -66,11 +67,40 @@ export function isDetailRoute(pathname: string): boolean {
   return patternIsDetail(registration.urlPattern) && info.entityId !== ""
 }
 
-/** The master route for a rendered pathname, or "/" when nothing matches. */
-function masterRouteForPath(pathname: string): string {
+/**
+ * The screen Back goes UP to from the detail at `pathname`, as a route the
+ * shell can actually render. A tab type may name it (`parentRoute`: a
+ * conversation's list is `/chats`, not the `/threads` its pattern implies).
+ * Otherwise the pathname is cut back one level at a time, from the pattern's
+ * own entity tail, until a prefix resolves to a registered screen that is not
+ * itself a detail: the bare pattern head is not enough, since `/threads`
+ * matches no screen at all (an unmatched route, a dead page) and
+ * `/projects/tasks` reads as the project whose id is "tasks". Nothing left
+ * resolves: Home.
+ */
+export function parentRouteForPath(pathname: string): string {
   const info = urlToTabInfo(pathname)
   const registration = info ? getTabType(info.type) : undefined
-  return registration ? masterRouteFor(registration.urlPattern) : "/"
+  if (!registration) return "/"
+  if (registration.parentRoute) return registration.parentRoute
+  const parts = segments(pathname)
+  // The pattern's entity tail may span several path segments (`:entityId+`),
+  // so the cut starts at the pattern's head, read off the real path so an
+  // earlier dynamic scope keeps its value.
+  for (
+    let depth = Math.min(segments(registration.urlPattern).length - 1, parts.length - 1);
+    depth > 0;
+    depth--
+  ) {
+    const candidate = `/${parts.slice(0, depth).join("/")}`
+    const found = urlToTabInfo(candidate)
+    const parent = found ? getTabType(found.type) : undefined
+    if (!found || !parent || isDetailRoute(candidate)) continue
+    // The screen's canonical url: `/knowledge/documents` resolves to the
+    // Knowledge root by prefix, and Back lands on that root's own route.
+    return patternToUrl(parent.urlPattern, found.entityId)
+  }
+  return "/"
 }
 
 /** Marker written into the pushed history entry's state by `pushDetail`. */
@@ -133,7 +163,7 @@ export function createPushNav(): PushNav {
   /** The registered label of the route a Back would land on. */
   const masterLabel = (): string | null => {
     tabTypeRegistryVersion()
-    const master = masterRouteForPath(location.pathname)
+    const master = parentRouteForPath(location.pathname)
     const info = urlToTabInfo(master)
     const registration = info ? getTabType(info.type) : undefined
     if (!info || !registration) return null
@@ -149,16 +179,19 @@ export function createPushNav(): PushNav {
       navigate(path, { state: { [PUSHED_DETAIL]: true } })
     },
     backLabel: () => (detailOpen() ? (pushedFromLabel() ?? masterLabel()) : null),
-    // A deep link opened straight into a detail has nothing behind it: a
-    // browser back there leaves the app entirely. Only the entry `pushDetail`
-    // marked is safe to pop; everything else goes UP to the master route.
+    // A deep link opened straight into a detail (a push notification tap, a
+    // `liaison://` link, a cold start) has nothing of ours behind it: a
+    // browser back there lands wherever the app happened to be, or leaves it.
+    // Only the entry `pushDetail` marked is safe to pop; everything else goes
+    // UP to the parent screen, REPLACING the detail entry, so a later history
+    // back does not bounce the user into the detail they just left.
     popDetail: () => {
       setPushedFromLabel(null)
       if (historyHasPushedDetail()) {
         navigate(-1)
         return
       }
-      navigate(masterRouteForPath(location.pathname))
+      navigate(parentRouteForPath(location.pathname), { replace: true })
     },
   }
 }

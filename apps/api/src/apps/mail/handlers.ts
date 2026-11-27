@@ -5028,6 +5028,8 @@ async function stageAndLoadAttachments(
   fileIds: string[],
   accountId: string,
   suppliedBytes?: Record<string, string> | null,
+  /** Files sent inline (an HTML body's `cid:` images), by file id: their content id. */
+  inline?: ReadonlyMap<string, string>,
 ): Promise<{
   parts: OutboundAttachmentPart[]
   stagedFileIds: string[]
@@ -5086,11 +5088,13 @@ async function stageAndLoadAttachments(
       }
       bytesBase64 = supplied
     }
+    const contentId = inline?.get(sourceFileId)
     parts.push({
       filename: decoded.filename ?? copied.filename,
       mimeType: decoded.mimeType ?? copied.mimeType,
       bytesBase64,
-      disposition: "attachment",
+      disposition: contentId ? "inline" : "attachment",
+      ...(contentId ? { contentId } : {}),
     })
   }
   return { parts, stagedFileIds, sealedFileIds, refusedFileIds }
@@ -6889,12 +6893,32 @@ async function _doCompose(
     }
     let attachmentParts: OutboundAttachmentPart[] = []
     let stagedFileIds: string[] = []
-    if (Array.isArray(params.attachments) && params.attachments.length > 0) {
+    // Images an app's HTML body shows inline (`cid:`), composeForApp only: an issuer's logo.
+    const inline = new Map<string, string>()
+    if (auditToolName === "mail:composeForApp" && Array.isArray(params.inlineImages)) {
+      for (const img of params.inlineImages as Array<{ fileId?: unknown; contentId?: unknown }>) {
+        if (
+          typeof img?.fileId === "string" &&
+          typeof img?.contentId === "string" &&
+          /^[A-Za-z0-9._-]{1,64}$/.test(img.contentId)
+        ) {
+          inline.set(img.fileId, img.contentId)
+        }
+      }
+    }
+    const fileIds = [
+      ...(Array.isArray(params.attachments) ? (params.attachments as string[]) : []),
+      ...[...inline.keys()].filter(
+        (id) => !(Array.isArray(params.attachments) && params.attachments.includes(id)),
+      ),
+    ]
+    if (fileIds.length > 0) {
       const staged = await stageAndLoadAttachments(
         ctx,
-        params.attachments,
+        fileIds,
         account.id,
         (params as any).__mailboxAttachments ?? null,
+        inline,
       )
       const refusal = refuseOrAskForSealedAttachments(staged)
       if (refusal) {

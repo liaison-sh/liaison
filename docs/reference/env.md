@@ -162,6 +162,7 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `GMAIL_PUSH_SERVICE_ACCOUNT` | `string (email)` |  | no | The service account the push subscription signs its OIDC tokens as (--push-auth-service-account); checked with GMAIL_PUSH_AUDIENCE. |
 | `META_APP_SECRET` | `string` |  | no | Managed edition: the app secret of the Meta app every workspace's Facebook connection uses. It verifies deliveries to this server's /webhooks/_cell/meta (X-Hub-Signature-256), which reach each workspace by Page id. Unset: no server-level Meta callback. |
 | `META_APP_ID` | `string` |  | no | Managed edition: the app id of that same Meta app. With META_APP_SECRET it is the OAuth client of every workspace's Facebook connection (and of Instagram through Facebook login) when the workspace has no Meta app of its own. Unset: each workspace brings its own. |
+| `META_INSTAGRAM_CONFIG_ID` | `string` |  | no | Managed edition: the Configuration ID (digits) of the Facebook Login for Business configuration of that same Meta app, the `config_id` of the Instagram (Unified login) sign-in. Used while a workspace connects Instagram with the instance's Meta app and set no instagramLoginConfigurationId of its own (the workspace's setting wins). Unset: each workspace sets its own. |
 | `LIAISON_CELL_PUBLIC_ADDRESSES` | `string` |  | no | This server's own public IPv4/IPv6 addresses, comma-separated. An organization's custom app (managed edition) can never fetch them: traffic from the host to its own public address can reach any port published on all interfaces. Unset: only its host names (BASE_URL, ALLOWED_ORIGINS, the org host template) are refused that way. |
 | `LIAISON_TEST_CELL` | `boolean` | `false` | no | A throwaway test server. Only then may an org transfer agent inject a fault (`liaison org transfer agent --fail-at`): elsewhere the CLI and the agent refuse it. Only then may a managed server boot with a demo, load harness or QA flag on (lib/managed-boot.ts). Never set on a server that holds real organizations. |
 | `LIAISON_EDITION` | `"self_hosted" \| "managed"` |  | no | The instance edition (lib/edition.ts). `managed` turns on the managed edition and makes the server refuse to boot without the settings it needs (lib/managed-boot.ts). Unset = self-hosted (a server that sets the legacy control-plane pair below without it refuses to start). |
@@ -317,7 +318,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/modules/apps/connections/sql/credentials.ts:145`, `apps/api/src/modules/apps/connections/sql/credentials.ts:165` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/modules/apps/connections/sql/credentials.ts:154` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:157` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1891` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1903` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:522`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |
@@ -342,7 +343,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ORG_MAINTENANCE_FLAG_PATH` | `apps/api/src/middleware/org-maintenance.ts:25` |
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:473` |
-| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:590`, `apps/api/src/middleware/public-surface-limits.ts:144`, `apps/api/src/middleware/rate-limiter.ts:261` and 1 more |
+| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:593`, `apps/api/src/middleware/public-surface-limits.ts:144`, `apps/api/src/middleware/rate-limiter.ts:261` and 2 more |
 | `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:71` |
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:74` |

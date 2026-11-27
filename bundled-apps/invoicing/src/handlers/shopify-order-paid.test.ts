@@ -83,6 +83,8 @@ function issuerProfileToRow(
         ? String(profile.invoice_approval_threshold_minor)
         : null,
     auto_email_enabled: profile.auto_email_enabled ?? false,
+    sale_thanks_enabled: profile.sale_thanks_enabled ?? false,
+    logo_file_id: profile.logo_file_id ?? null,
     mail_account_id: profile.mail_account_id ?? null,
     timezone: profile.timezone ?? null,
     email_templates: profile.email_templates ?? {},
@@ -838,6 +840,29 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     const args = extras.executeToolCalls.find((c) => c.name === "mail:composeForApp")!
       .args as Record<string, unknown>
     expect(args.attachments).toEqual([legal[0]!.file_id])
+  })
+
+  test("step 13: an issuer that opted in sends ONE branded thank-you, even with auto-email off", async () => {
+    const thanksOn: IssuerProfileRow = {
+      ...issuerFR,
+      auto_email_enabled: false,
+      sale_thanks_enabled: true,
+      logo_file_id: "logo-file-1",
+    }
+    const { ctx, extras } = makeCtx({
+      issuerProfiles: [{ profile: thanksOn, shopify_shop_id: "shop-1" }],
+    })
+    const result = await onShopifyOrderPaid(basePayload(), ctx)
+    expect(result.status).toBe("ok")
+    const calls = extras.executeToolCalls.filter((c) => c.name === "mail:composeForApp")
+    expect(calls).toHaveLength(1)
+    const args = calls[0]!.args as Record<string, unknown>
+    expect(args.accountId).toBe("mail-account-1")
+    expect(args.to).toEqual(["buyer@example.com"])
+    expect(String(args.htmlBody)).toContain('src="cid:issuer-logo"')
+    expect(String(args.textBody)).toContain("INV-")
+    expect(args.inlineImages).toEqual([{ fileId: "logo-file-1", contentId: "issuer-logo" }])
+    expect(args.attachments).toHaveLength(1)
   })
 
   test("step 13: auto_email_enabled=false → no mail tool call", async () => {

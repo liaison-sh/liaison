@@ -48,6 +48,7 @@ import { deliveryFileId } from "../legal-originals/delivery"
 import { formatMoneyMinor, lineSubtotal, lineTax, majorDecimalToMinor, netOfTax } from "../money"
 import { isFullyCredited } from "../mutations"
 import { isUniqueViolation } from "../mutations/quote-proforma-po"
+import { planSaleMail } from "../sale-thanks"
 import { classify, EXEMPT_TREATMENTS, isUntaxedIntraEuSaleWithoutVat } from "../tax"
 
 export interface OrderPaidPayload {
@@ -213,12 +214,17 @@ export interface IssuerProfileRow {
   prefix_po?: string
   invoice_approval_threshold_minor?: bigint | number | string | null
   auto_email_enabled?: boolean
+  /** Opted in to the branded thank-you mail of each sale (`sale_thanks`, src/sale-thanks.ts). */
+  sale_thanks_enabled?: boolean
   /** Typed unit prices are GROSS (tax included) under this profile, mirroring the Shopify
    *  shop's "include tax in prices" setting. See `netLinesForIssuer` in mutations.ts. */
   prices_include_tax?: boolean
   mail_account_id?: string | null
   timezone?: string | null
-  email_templates?: Record<string, { subject?: string; body?: string }>
+  email_templates?: Record<
+    string,
+    { subject?: string; body?: string; html?: string; text?: string }
+  >
   logo_file_id?: string | null
   /** Seller identity (printed mentions, VAT-on-debits default, Factur-X seller). */
   vat_on_debits_default?: boolean | null
@@ -422,12 +428,14 @@ function toIssuerProfileRow(row: unknown): IssuerProfileRow {
     invoice_approval_threshold_minor:
       (r.invoice_approval_threshold_minor as bigint | number | string | null | undefined) ?? null,
     auto_email_enabled: !!r.auto_email_enabled,
+    sale_thanks_enabled: r.sale_thanks_enabled === true,
     prices_include_tax: !!r.prices_include_tax,
     mail_account_id: (r.mail_account_id as string | null | undefined) ?? null,
     timezone: (r.timezone as string | null | undefined) ?? null,
     email_templates:
-      (r.email_templates as Record<string, { subject?: string; body?: string }> | undefined) ??
-      undefined,
+      (r.email_templates as
+        | Record<string, { subject?: string; body?: string; html?: string; text?: string }>
+        | undefined) ?? undefined,
     // The seller identity the PDF mentions and a Factur-X carries (dropped here before, so an
     // order-paid invoice lost the seller SIREN mentions the manual path printed).
     logo_file_id: (r.logo_file_id as string | null | undefined) ?? null,
@@ -1262,10 +1270,31 @@ export async function onShopifyOrderPaid(
     pdfFileIds.push(delivery.file_id ?? d.pdf_file_id)
   }
 
-  // Step 13 — auto-email via mail:composeForApp (no Mail-side approval).
-  // One email for the order, every rendered invoice attached.
-  if (issuer.auto_email_enabled && pdfFileIds.length === issued.length) {
-    if (!issuer.mail_account_id) {
+  // Step 13 — the sale's mail via mail:composeForApp (no Mail-side approval): one mail for the
+  // order, every rendered invoice attached. An issuer that opted in sends the branded thank-you
+  // (`sale_thanks`); any other keeps the plain invoice mail, only with auto-email on.
+  const mailPlan =
+    pdfFileIds.length === issued.length
+      ? planSaleMail({
+          issuer,
+          to: customer.email,
+          attachments: pdfFileIds,
+          thanks: {
+            buyer: { name: customer.legal_name ?? null, language: null },
+            // The thanks mail states totals and lines; the plain mail only the numbers, so it
+            // reads nothing more than it always did.
+            documents: issuer.sale_thanks_enabled
+              ? await issuedTotals(ctx, issued)
+              : issued.map((d) => ({ number: d.number, grand_total_minor: "0", currency: "EUR" })),
+            lines: issuer.sale_thanks_enabled ? await issuedLines(ctx, issued) : [],
+            sold_on: /^\d{4}-\d{2}-\d{2}/.test(payload.createdAt ?? "")
+              ? String(payload.createdAt).slice(0, 10)
+              : new Date().toISOString().slice(0, 10),
+          },
+        })
+      : ({ kind: "none" } as const)
+  if (mailPlan.kind !== "none") {
+    if (mailPlan.kind === "no_mailbox") {
       await insertDeferred(ctx.db, {
         event_id: payload.id,
         event_payload_json: parkPayload,
@@ -1277,20 +1306,8 @@ export async function onShopifyOrderPaid(
         },
       })
     } else {
-      const templates = issuer.email_templates ?? {}
-      const tpl = templates.invoice_paid ?? {}
-      const numbers = issued.map((d) => d.number).join(", ")
-      const subject = (tpl.subject ?? "Invoice {{number}}").replace("{{number}}", numbers)
-      const textBody = (tpl.body ?? "Please find your invoice attached.").replace(
-        "{{number}}",
-        numbers,
-      )
       const composeResult = await ctx.executeTool("mail:composeForApp", {
-        accountId: issuer.mail_account_id,
-        to: [customer.email],
-        subject,
-        textBody,
-        attachments: pdfFileIds,
+        ...mailPlan.params,
         originating_approval_id: ctx.approval?.approvalRequestId ?? null,
       })
       if (composeResult.status === "error") {
@@ -1322,6 +1339,50 @@ export async function onShopifyOrderPaid(
     pdf_file_id: primary.pdf_file_id,
     documents: issued,
   }
+}
+
+/** The totals of the issued invoices of one order, as the sale's mail states them. */
+async function issuedTotals(
+  ctx: OrderPaidCtx,
+  issued: ReadonlyArray<{ document_id: string; number: string }>,
+): Promise<Array<{ number: string; grand_total_minor: string; currency: string }>> {
+  const out: Array<{ number: string; grand_total_minor: string; currency: string }> = []
+  for (const d of issued) {
+    const row = (
+      (await ctx.db.findMany("documents", { where: { id: d.document_id }, limit: 1 })) as Array<
+        Record<string, unknown>
+      >
+    )[0]
+    out.push({
+      number: d.number,
+      grand_total_minor: String(row?.grand_total_minor ?? "0"),
+      currency: String(row?.currency ?? "EUR"),
+    })
+  }
+  return out
+}
+
+/** The lines of the issued invoices of one order, VAT included, in document order. */
+async function issuedLines(
+  ctx: OrderPaidCtx,
+  issued: ReadonlyArray<{ document_id: string }>,
+): Promise<Array<{ description: string; quantity: string; total_minor: string }>> {
+  const out: Array<{ description: string; quantity: string; total_minor: string }> = []
+  for (const d of issued) {
+    const rows = (await ctx.db.findMany("document_lines", {
+      where: { document_id: d.document_id },
+      orderBy: { position: "asc" },
+      limit: 500,
+    })) as Array<Record<string, unknown>>
+    for (const r of rows) {
+      out.push({
+        description: String(r.description ?? ""),
+        quantity: String(r.quantity ?? "1"),
+        total_minor: String(r.total_minor ?? "0"),
+      })
+    }
+  }
+  return out
 }
 
 // ───────────────────────────────────────────────────────────────────────────

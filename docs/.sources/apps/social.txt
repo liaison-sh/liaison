@@ -117,3 +117,9 @@ old messages never land again after the delete -> bundled-apps/social/src/ingest
 a new inbound message reopens a deleted conversation -> bundled-apps/social/src/ingest.ts:609
 a connect queues one DM sync -> bundled-apps/social/src/connection.ts:249
 DM sync runs every 10 minutes -> bundled-apps/social/app.manifest.json:329
+a send held by approval says Waiting for approval -> bundled-apps/social/src/ui/Messages.tsx:163
+the sent message appears in the conversation (thread re-read) -> bundled-apps/social/src/ui/Messages.tsx:164
+human agent label between 24 hours and 7 days -> bundled-apps/social/src/ui/Messages.tsx:275
+human agent window is 24 h to 7 d -> bundled-apps/social/src/ui/Messages.tsx:91
+compose box replaced by Open in after the window closes -> bundled-apps/social/src/ui/Messages.tsx:228
+managed server Meta app for every workspace (META_APP_ID, META_APP_SECRET, META_INSTAGRAM_CONFIG_ID): Connect without own client; server secret checks webhooks and webhooks_setup -> apps/api/src/modules/apps/connections/oauth-client.ts (CELL_META_ENV) ; apps/api/src/modules/apps/instance-config-defaults.ts (instanceClientConfigDefault) ; apps/api/src/modules/apps/cell-locked-config.ts (socialMetaAppSecret)

@@ -1001,4 +1001,7 @@ export const FR: Record<string, string> = {
   "Your website's server lists a signed-in buyer's invoices and credit notes with a key. A key reads one issuer profile only.":
     "Le serveur de votre site liste les factures et avoirs d'un acheteur connecté avec une clé. Une clé ne lit qu'un seul profil émetteur.",
   Website: "Site web",
+  "Thank-you mail for each sale": "Mail de remerciement pour chaque vente",
+  "One mail per sale with your logo, what was bought, the total and the invoice attached, sent from the mailbox above. Off: the plain invoice mail, when automatic emails are on.":
+    "Un mail par vente avec votre logo, les articles achetés, le total et la facture jointe, envoyé depuis la boîte ci-dessus. Désactivé : le mail de facture simple, si les envois automatiques sont activés.",
 }

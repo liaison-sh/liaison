@@ -69,7 +69,9 @@ export const ApiProvider: ParentComponent = (props) => {
         })
         return
       }
-      addToast({ message, type: "error" })
+      // One burst of refused requests (the request limit, a server fault) is one
+      // notice, not a stack of the same sentence.
+      addToast({ message, type: "error", once: true })
     },
   })
   apiRef = api

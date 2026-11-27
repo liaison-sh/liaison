@@ -321,6 +321,7 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   // The docs renderer feeds the site and the web build's Help tab bundle (modules/help).
   { glob: "scripts/docs/**", suites: ["root"] },
   { glob: "scripts/git-hooks.test.ts", suites: ["root"] },
+  { glob: "scripts/bundled-app-ui-exports*", suites: ["root"] },
   { glob: ".gitleaks.toml", suites: ["root"] },
   { glob: "scripts/load-test*.ts", suites: ["root"] },
   { glob: "scripts/lib/load-seed.ts", suites: ["root"] },

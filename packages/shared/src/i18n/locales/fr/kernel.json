@@ -3305,6 +3305,10 @@
     "requestedOutboundDomains": "Hôtes que cette application peut joindre (accordés par l'installation)",
     "newOutboundDomains": "Nouveaux hôtes que cette version peut joindre (accordés par la mise à jour)"
   },
+  "pluginMount": {
+    "rateLimited": "Trop de requêtes pour l'instant. Patientez un instant, puis réessayez.",
+    "retry": "Réessayer"
+  },
   "settingsPage": {
     "appSecrets": {
       "webhookAddress": "URL du point de terminaison",
@@ -3334,6 +3338,8 @@
     "savedToast": "Enregistré",
     "notSaved": "Non enregistré",
     "retry": "Réessayer",
+    "loadFailed": "Ces réglages n'ont pas pu être chargés. Réessayez.",
+    "loadRateLimited": "Trop de requêtes pour l'instant. Patientez un instant, puis réessayez.",
     "waitingApproval": "En attente d'approbation",
     "fieldUnavailable": "Impossible de lire cette valeur : {{message}}",
     "noSettings": "Rien à configurer ici pour vous.",

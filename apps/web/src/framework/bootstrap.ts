@@ -176,9 +176,11 @@ import {
 import { setAppExternalHosts } from "./host-app-calls"
 import {
   browserAppFrameUrl,
+  bundleTokenExpiresSoon,
   isolatedAppExports,
   isolatedFrameUrl,
   originBoundFrameOrigin,
+  resetBundleSources,
 } from "./isolated-app"
 import { importAppModule, verifiedFirstPartyApp } from "./verified-app"
 
@@ -1602,6 +1604,7 @@ export function resetBootstrap(): void {
   registeredManifestApps.clear()
   heldTabTypes.clear()
   clearCompatMode()
+  resetBundleSources()
 }
 
 export const trustedAppExports: Record<string, () => Promise<Record<string, unknown>>> = {
@@ -1830,7 +1833,22 @@ async function registerManifestAppEntry(
       }
       // The URLs carry a short-lived token fixed now; a frame mounted after it
       // has nearly run out asks the app list again for this app's fresh ones.
+      // The URLs last fetched are kept and handed to every frame mounted while
+      // they still have life left: without that, each frame of a long session
+      // asked the app list again.
+      let lastFresh: { bundleUrl: string; frameUrl: string } | null = null
       const freshUrls = async (): Promise<{ bundleUrl: string; frameUrl: string } | null> => {
+        if (
+          lastFresh &&
+          !bundleTokenExpiresSoon(lastFresh.bundleUrl) &&
+          !(ownOriginFrame && bundleTokenExpiresSoon(lastFresh.frameUrl))
+        ) {
+          return lastFresh
+        }
+        lastFresh = await fetchFreshUrls()
+        return lastFresh
+      }
+      const fetchFreshUrls = async (): Promise<{ bundleUrl: string; frameUrl: string } | null> => {
         const freshEntry = (await freshManifestEntries())?.find((e) => e.name === name)
         const fresh = freshEntry?.uiBundleUrl
         if (!fresh) return null

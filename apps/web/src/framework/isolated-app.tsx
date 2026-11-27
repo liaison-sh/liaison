@@ -53,9 +53,14 @@ import {
 } from "solid-js"
 import { getTabType, urlToTabInfo } from "~/framework/app-registry"
 import { MissingExportNotice } from "~/framework/MissingExportNotice"
+import {
+  collectDeclaredComponentNames,
+  collectSettingsBlockComponentNames,
+} from "~/framework/manifest-exports"
 import { pagePath } from "~/framework/spa-navigate"
 import { APP_ICON_SET } from "~/lib/app-icon-set"
 import { isNativeShell } from "~/lib/native-bridge"
+import { onSessionTeardown } from "~/lib/session-lifecycle"
 import { currentLocale } from "~/modules/i18n/i18n-context"
 import {
   appSettingsPath,
@@ -612,10 +617,47 @@ export function bundleTokenExpiresSoon(url: string, now = Date.now()): boolean {
   }
 }
 
-async function fetchBundleSource(url: string): Promise<string> {
-  const response = await fetch(url)
-  if (!response.ok) throw new Error(`the app's UI bundle answered ${response.status}`)
-  return response.text()
+/**
+ * The bundle's text, fetched once per app version and shared by every frame of
+ * the app. A settings page draws a frame per custom block, a tab bar one per
+ * open tab: fetching the same bundle again for each one is what made a few
+ * settings pages in a row run into the per-user request limit. The token
+ * (`?t=`) is left out of the key: it changes, the app version's bytes do not.
+ * A failed fetch is forgotten, so the next frame asks again.
+ */
+const bundleSources = new Map<string, Promise<string>>()
+
+function bundleSourceKey(url: string): string {
+  try {
+    const u = new URL(url)
+    u.searchParams.delete("t")
+    u.hash = ""
+    return u.href
+  } catch {
+    return url
+  }
+}
+
+/** Forget the bundles fetched so far (a new manifest load, session teardown, tests). */
+export function resetBundleSources(): void {
+  bundleSources.clear()
+}
+onSessionTeardown(resetBundleSources)
+
+export function fetchBundleSource(url: string): Promise<string> {
+  const key = bundleSourceKey(url)
+  let source = bundleSources.get(key)
+  if (!source) {
+    source = fetch(url).then((response) => {
+      if (!response.ok) throw new Error(`the app's UI bundle answered ${response.status}`)
+      return response.text()
+    })
+    bundleSources.set(key, source)
+    source.catch(() => {
+      if (bundleSources.get(key) === source) bundleSources.delete(key)
+    })
+  }
+  return source
 }
 
 /** The component the registry gets for one declared export of an isolated app. */
@@ -980,6 +1022,19 @@ function labelResolverNames(manifest: any): Set<string> {
 }
 
 /**
+ * Names the kernel looks up only to see whether an app happens to provide them:
+ * a settings section's note (`<Section>SettingsNote`, SectionView) and the live
+ * frames that change its settings (`settingsChangeEvents`, data rather than a
+ * view). An in-page module simply lacks them; the frame bag must not answer
+ * with a frame, which would load the whole bundle only to report the export
+ * missing (a console error and a fetch per section). Isolated apps draw no
+ * section notes.
+ */
+export function isOptionalExportProbe(name: string): boolean {
+  return name === "settingsChangeEvents" || /^[A-Za-z0-9_-]+SettingsNote$/.test(name)
+}
+
+/**
  * The export bag the registry reads for an isolated app: every view it names
  * is the frame, every icon the one drawn from its manifest (isolatedAppIcon), every label resolver one that
  * keeps the manifest's label. No code of the app's runs in the page.
@@ -991,6 +1046,10 @@ export function isolatedAppExports(
   const icons = iconNames(manifest)
   const icon = isolatedAppIcon(manifest)
   const resolvers = labelResolverNames(manifest)
+  const declared = new Set([
+    ...collectDeclaredComponentNames(manifest),
+    ...collectSettingsBlockComponentNames(manifest),
+  ])
   const views = new Map<string, unknown>()
   return new Proxy({} as Record<string, unknown>, {
     has: (_target, name) => typeof name === "string",
@@ -1001,6 +1060,7 @@ export function isolatedAppExports(
       if (icons.has(name)) return icon
       if (resolvers.has(name)) return () => undefined
       if (name === "registerEntityPreviews" || name === "registerAppHooks") return undefined
+      if (isOptionalExportProbe(name) && !declared.has(name)) return undefined
       let view = views.get(name)
       if (!view) {
         view = isolatedView({ ...options, exportName: name })

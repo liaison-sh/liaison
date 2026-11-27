@@ -243,6 +243,7 @@ const SecuritySettings: Component = () => {
                   onInput={(e) => setStepUpCode((e.currentTarget as HTMLInputElement).value)}
                   autofocus
                   autocomplete="one-time-code"
+                  inputmode="numeric"
                 />
                 <Show when={error()}>
                   <p class="text-xs text-error">{error()}</p>
@@ -301,6 +302,7 @@ const SecuritySettings: Component = () => {
                 onInput={(e) => setConfirmCode((e.currentTarget as HTMLInputElement).value)}
                 autofocus
                 autocomplete="one-time-code"
+                inputmode="numeric"
               />
               <Show when={error()}>
                 <p class="text-xs text-error">{error()}</p>

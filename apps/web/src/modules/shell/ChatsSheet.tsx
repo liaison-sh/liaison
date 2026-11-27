@@ -112,6 +112,7 @@ export const ChatsSheet: Component = () => {
               <button
                 type="button"
                 data-testid="chats-sheet-back"
+                data-phone-back
                 aria-label={i18n.t("kernel.back")}
                 onClick={backToList}
                 class="flex min-h-11 min-w-11 items-center justify-center rounded-md text-text-secondary hover:bg-surface-hover"

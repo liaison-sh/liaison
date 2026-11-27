@@ -1,0 +1,2 @@
+A tap on a notification about an item the app cannot open opens Home and says so: apps/web/src/modules/notifications/open-route.ts (openNotificationRoute)
+The message: packages/shared/src/i18n/locales/en/kernel.json (shellUi.notificationItemUnavailable)

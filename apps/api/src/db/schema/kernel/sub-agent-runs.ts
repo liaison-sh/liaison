@@ -86,14 +86,18 @@ export const agentRuns = kernel.table(
     index("agent_runs_org_root_idx").on(table.orgId, table.rootRunId),
     index("agent_runs_org_status_idx").on(table.orgId, table.status),
     index("agent_runs_org_thread_idx").on(table.orgId, table.threadId),
-    // The agent must belong to the RUN'S OWN ORG, the class 0072 closed.
-    // ON DELETE SET NULL: an agent hard-deleted (personal-agent erasure) costs
-    // the name, never the run row or its audit trail.
+    // The agent must belong to the RUN'S OWN ORG, the class 0072 closed. An
+    // agent hard-deleted (personal-agent erasure) costs the name, never the run
+    // row or its audit trail. The migration (0357) spells the delete rule
+    // `ON DELETE SET NULL (agent_id)`: a bare SET NULL on this composite key
+    // would also null the NOT NULL org_id and fail the delete. Drizzle's
+    // builder cannot express the column list, so the rule lives in the SQL and
+    // this declaration carries the columns only.
     foreignKey({
       columns: [table.agentId, table.orgId],
       foreignColumns: [agents.id, agents.orgId],
       name: "agent_runs_agent_org_fk",
-    }).onDelete("set null"),
+    }),
     index("agent_runs_agent_idx")
       .on(table.agentId)
       .where("agent_id IS NOT NULL" as any),

@@ -63,6 +63,22 @@ export function isBranding(value: unknown): value is RuntimeBranding {
  */
 export const BRANDING_TIMEOUT_MS = 8000
 
+/** When the branding of a stored server that did not answer at launch is asked for again. */
+export const BRANDING_RETRY_MS = 60_000
+
+/**
+ * The server did not answer at all: no network, a timeout, or a gateway in
+ * front of it that is up while the server behind it is not (5xx). Not the
+ * same as an answer that says "no Liaison here" (a 404, a page that is not
+ * the branding shape), which is about the ADDRESS.
+ */
+export class BrandingUnreachableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "BrandingUnreachableError"
+  }
+}
+
 export async function fetchRuntimeBranding(
   serverAddress: string,
   fetchImpl: typeof fetch = fetch,
@@ -78,12 +94,19 @@ export async function fetchRuntimeBranding(
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => {
           controller.abort()
-          reject(new Error("branding request timed out"))
+          reject(new BrandingUnreachableError("branding request timed out"))
         }, timeoutMs)
       }),
     ])
+  } catch (err) {
+    if (err instanceof BrandingUnreachableError) throw err
+    // fetch rejects only when no answer came back at all.
+    throw new BrandingUnreachableError(`branding request failed: ${String(err)}`)
   } finally {
     if (timer !== undefined) clearTimeout(timer)
+  }
+  if (response.status >= 500) {
+    throw new BrandingUnreachableError(`branding request failed with status ${response.status}`)
   }
   if (!response.ok) {
     throw new Error(`branding request failed with status ${response.status}`)
@@ -194,7 +217,19 @@ type PromptMode = "cloud" | "address"
 
 const LINK_STYLE =
   "font:inherit;font-size:13px;min-height:44px;padding:0 4px;border:0;background:transparent;" +
-  "color:#3f4a63;text-decoration:underline;cursor:pointer"
+  "color:var(--fl-link);text-decoration:underline;cursor:pointer"
+
+/** The palette's element id. Exported for the tests. */
+export const FIRST_LAUNCH_STYLE_ID = "liaison-first-launch-style"
+
+/**
+ * The screen's colours, light and dark. It follows the device's appearance
+ * like the app after it: a light screen under a dark device's status bar left
+ * the clock and battery white on near white, and the bar's style is the web
+ * app's to set (native/status-bar.ts), not this screen's.
+ */
+const FIRST_LAUNCH_PALETTE = `#${FIRST_LAUNCH_ID}{color-scheme:light;--fl-bg:#e5e6ea;--fl-text:#1f2937;--fl-card:#f7f7f9;--fl-card-border:#dcdde2;--fl-muted:#6b7280;--fl-field:#ffffff;--fl-field-border:#d1d5db;--fl-field-text:#111827;--fl-link:#3f4a63;--fl-button:#3f4a63;--fl-button-text:#ffffff;--fl-alert:#b42318}
+@media (prefers-color-scheme: dark){#${FIRST_LAUNCH_ID}{color-scheme:dark;--fl-bg:#111113;--fl-text:#e5e7eb;--fl-card:#1b1b1e;--fl-card-border:#2c2c31;--fl-muted:#9ca3af;--fl-field:#232327;--fl-field-border:#3a3a41;--fl-field-text:#f3f4f6;--fl-link:#c3c9de;--fl-button:#5a6688;--fl-button-text:#ffffff;--fl-alert:#f97066}}`
 
 export function createFirstLaunch(deps: FirstLaunchDependencies): FirstLaunch {
   const doc = deps.document
@@ -255,15 +290,25 @@ export function createFirstLaunch(deps: FirstLaunchDependencies): FirstLaunch {
       "display:flex",
       "flex-direction:column",
       "gap:12px",
-      "justify-content:center",
+      // The card is centred by its own auto margins, not by the column: a
+      // column centred with `justify-content` cannot scroll back up to what
+      // overflows above it. And it MUST scroll: with the keyboard up (a phone
+      // in landscape, or a short one) the links under the field were out of
+      // reach on a page that could not move.
+      "justify-content:flex-start",
+      "overflow-y:auto",
+      "-webkit-overflow-scrolling:touch",
       "padding:24px",
       // The status bar and the home indicator are not ours to draw under.
       "padding-top:calc(24px + env(safe-area-inset-top))",
-      "padding-bottom:calc(24px + env(safe-area-inset-bottom))",
+      // The keyboard covers the bottom of the page (the web app publishes its
+      // height as --keyboard-inset, apps/web primitives/keyboardInset.ts),
+      // so the page can scroll its last link above it.
+      "padding-bottom:calc(24px + max(env(safe-area-inset-bottom), var(--keyboard-inset, 0px)))",
       // The same backdrop, card and colours as the sign-in screen that follows.
       "align-items:center",
-      "background:#e5e6ea",
-      "color:#1f2937",
+      "background:var(--fl-bg)",
+      "color:var(--fl-text)",
       "font:15px/1.45 -apple-system,BlinkMacSystemFont,system-ui,sans-serif",
     ].join(";")
 
@@ -331,21 +376,23 @@ export function createFirstLaunch(deps: FirstLaunchDependencies): FirstLaunch {
     card.style.cssText = [
       "width:100%",
       "max-width:360px",
+      "margin:auto 0",
+      "flex-shrink:0",
       "box-sizing:border-box",
       "display:flex",
       "flex-direction:column",
       "gap:12px",
       "padding:24px",
-      "background:#f7f7f9",
-      "border:1px solid #dcdde2",
+      "background:var(--fl-card)",
+      "border:1px solid var(--fl-card-border)",
       "border-radius:14px",
     ].join(";")
     const brand = doc.createElement("div")
     brand.textContent = "Liaison"
     brand.style.cssText = "font-size:22px;font-weight:700;text-align:center;margin-bottom:4px"
     label.style.cssText = "font-size:13px;font-weight:600"
-    helper.style.cssText = "margin:0;font-size:13px;color:#6b7280"
-    alert.style.cssText = "margin:0;font-size:13px;color:#b42318"
+    helper.style.cssText = "margin:0;font-size:13px;color:var(--fl-muted)"
+    alert.style.cssText = "margin:0;font-size:13px;color:var(--fl-alert)"
     confirm.style.cssText = "margin:0;font-size:13px"
     // 16px, never the card's inherited 15px: iOS zooms the page on focus into
     // a field under 16px, and Capacitor then DISABLES the pinch gesture the
@@ -353,24 +400,25 @@ export function createFirstLaunch(deps: FirstLaunchDependencies): FirstLaunch {
     // undone and every screen after sign-in stayed ~7% too large, cut off on
     // the right and at the tab bar.
     const fieldStyle =
-      "font:inherit;font-size:16px;padding:12px;border:1px solid #d1d5db;border-radius:8px;background:#ffffff;color:#111827"
+      "font:inherit;font-size:16px;padding:12px;border:1px solid var(--fl-field-border);border-radius:8px;background:var(--fl-field);color:var(--fl-field-text)"
     input.style.cssText = fieldStyle
     // 44 points is the smallest control a thumb reliably hits.
     button.style.cssText =
       "font:inherit;font-weight:600;min-height:44px;padding:12px;border:0;border-radius:8px;" +
-      "background:#3f4a63;color:#ffffff"
+      "background:var(--fl-button);color:var(--fl-button-text)"
 
     if (cloud) {
       // The name, then the fixed domain it lives under, in one bordered field.
       const row = doc.createElement("div")
       row.style.cssText =
-        "display:flex;align-items:center;border:1px solid #d1d5db;border-radius:8px;background:#ffffff;overflow:hidden"
+        "display:flex;align-items:center;border:1px solid var(--fl-field-border);border-radius:8px;background:var(--fl-field);overflow:hidden"
       input.style.cssText =
-        "font:inherit;font-size:16px;padding:12px;border:0;background:transparent;color:#111827;flex:1;min-width:0;outline:none"
+        "font:inherit;font-size:16px;padding:12px;border:0;background:transparent;color:var(--fl-field-text);flex:1;min-width:0;outline:none"
       const suffix = doc.createElement("span")
       suffix.setAttribute("data-testid", "first-launch-workspace-suffix")
       suffix.textContent = `.${cloudDomain}`
-      suffix.style.cssText = "font-size:16px;color:#6b7280;padding:0 12px 0 0;white-space:nowrap"
+      suffix.style.cssText =
+        "font-size:16px;color:var(--fl-muted);padding:0 12px 0 0;white-space:nowrap"
       row.append(input, suffix)
       const links = doc.createElement("div")
       links.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:0"
@@ -387,7 +435,10 @@ export function createFirstLaunch(deps: FirstLaunchDependencies): FirstLaunch {
         card.append(linkButton(copy.useCloud, "first-launch-use-cloud", () => switchTo("cloud")))
       }
     }
-    section.append(card)
+    const palette = doc.createElement("style")
+    palette.id = FIRST_LAUNCH_STYLE_ID
+    palette.textContent = FIRST_LAUNCH_PALETTE
+    section.append(palette, card)
     doc.documentElement.appendChild(section)
     showing = { section, resolve }
 
@@ -399,6 +450,23 @@ export function createFirstLaunch(deps: FirstLaunchDependencies): FirstLaunch {
       confirm.hidden = false
     }
     if (offered !== null && modeFor(offered) === mode) prefill(offered)
+  }
+
+  /** The title, once the server answers again: when the device is back online, or in a minute. */
+  const retryBrandingWhenOnline = (address: string): void => {
+    const view = doc.defaultView
+    let done = false
+    const retry = (): void => {
+      if (done) return
+      void fetchRuntimeBranding(address, deps.fetchImpl)
+        .then((branding) => {
+          done = true
+          applyBranding(doc, branding)
+        })
+        .catch(() => {})
+    }
+    view?.addEventListener("online", retry)
+    view?.setTimeout(retry, BRANDING_RETRY_MS)
   }
 
   return {
@@ -433,7 +501,19 @@ export function createFirstLaunch(deps: FirstLaunchDependencies): FirstLaunch {
         let branding: RuntimeBranding
         try {
           branding = await fetchRuntimeBranding(candidate, deps.fetchImpl)
-        } catch {
+        } catch (err) {
+          // THE STORED SERVER IS DOWN, NOT GONE. A signed-in phone launched
+          // offline (or while its server restarts) used to land on the first
+          // launch screen saying the workspace was not found, which read as a
+          // sign-out, and stayed over the app once the server came back. The
+          // address was good when it was stored, so it is kept: the app opens
+          // signed in and says it is offline (its own connection banner), and
+          // the branding follows once the server answers. Only an answer that
+          // says the address is wrong brings the prompt back.
+          if (candidate === stored && err instanceof BrandingUnreachableError) {
+            retryBrandingWhenOnline(candidate)
+            return candidate
+          }
           notice = mode === "cloud" ? copy.cloudNotFound : copy.addressUnreachable
           candidate = null
           continue

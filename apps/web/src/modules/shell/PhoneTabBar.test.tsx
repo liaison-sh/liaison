@@ -8,6 +8,7 @@ import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { registerActivityBarEntry, registerTabType, resetRegistry } from "~/framework/app-registry"
 import { bootstrapKernelApps, resetBootstrap } from "~/framework/bootstrap"
+import { pushedSection, pushSettingsSection } from "~/modules/settings/phone-settings-nav"
 import { attentionStore } from "~/modules/shell/attention-store"
 import { resetChatsRootStore, setChatsThreadId } from "~/modules/shell/chats-root-store"
 import { chatsOpen, resetDockStore } from "~/modules/shell/dock-store"
@@ -169,5 +170,17 @@ describe("PhoneTabBar", () => {
     const settings = tabStore.tabs.find((t) => t.type === "kernel:settings")
     expect(settings).toBeDefined()
     expect(settings?.routePath).toBe("/settings")
+  })
+
+  it("re-tapping You on a pushed section pops back to the You list", () => {
+    // iOS convention: the active tab's seat returns to that tab's root. It
+    // used to stay on Profile, with only "< You" getting out.
+    renderBar()
+    fireEvent.click(screen.getByTestId("phone-tab-you"))
+    pushSettingsSection("/settings")
+    expect(pushedSection()).toBe("/settings")
+    fireEvent.click(screen.getByTestId("phone-tab-you"))
+    expect(pushedSection()).toBeNull()
+    expect(tabStore.tabs.find((t) => t.type === "kernel:settings")?.routePath).toBe("/settings")
   })
 })

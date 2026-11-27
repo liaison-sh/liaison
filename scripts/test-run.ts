@@ -985,6 +985,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // Every manifest's gated tools, listing summary and routine templates have
             // their words in the shared catalog, so they read in the reader's language.
             "scripts/i18n-manifest-copy.test.ts",
+            // Every UI component a bundled app's manifest names is exported by its ui.tsx.
+            "scripts/bundled-app-ui-exports.test.ts",
             // The full-width-Button lint's own unit tests: a fullWidth (or w-full)
             // Button is flagged only when its nearest row parent would squeeze a
             // sibling, keeping the opt-in where it belongs.

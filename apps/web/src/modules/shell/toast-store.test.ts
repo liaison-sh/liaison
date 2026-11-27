@@ -70,3 +70,42 @@ describe("toast-store", () => {
     expect(toasts().map((t) => t.countdownMs)).toEqual([undefined, undefined, 5000])
   })
 })
+
+describe("toast-store: the same notice is not stacked", () => {
+  beforeEach(() => {
+    resetToastStore()
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("one burst of the same plain toast shows once and stays up a fresh while", () => {
+    const a = addToast({ message: "Too many requests", type: "error", once: true })
+    vi.advanceTimersByTime(4000)
+    const b = addToast({ message: "Too many requests", type: "error", once: true })
+    addToast({ message: "Too many requests", type: "error", once: true })
+    expect(b).toBe(a)
+    expect(toasts()).toHaveLength(1)
+    vi.advanceTimersByTime(4000)
+    expect(toasts()).toHaveLength(1)
+    vi.advanceTimersByTime(1000)
+    expect(toasts()).toHaveLength(0)
+  })
+
+  it("a different type, a toast with an action, or one not marked once is its own", () => {
+    addToast({ message: "Saved", type: "success", once: true })
+    addToast({
+      message: "Saved",
+      type: "success",
+      once: true,
+      action: { label: "Undo", onClick: () => {} },
+    })
+    addToast({ message: "Saved", type: "success" })
+    expect(toasts()).toHaveLength(3)
+    resetToastStore()
+    addToast({ message: "Saved", type: "success", once: true })
+    addToast({ message: "Saved", type: "info", once: true })
+    expect(toasts()).toHaveLength(2)
+  })
+})

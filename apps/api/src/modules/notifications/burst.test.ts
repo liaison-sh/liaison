@@ -136,6 +136,8 @@ describe("burst gate", () => {
       title: "Ops Agent",
       body: "23 new messages in 23 tasks",
       tag: burstCollapseId(ORG),
+      // A click opens Home, where the 23 items are (it used to carry no route: nothing opened).
+      route: "home",
     })
     // Nothing left: a second run sends nothing.
     expect(await runBurstFlush({ orgId: ORG, userId: USER }, h.deps)).toBe("none")
@@ -516,6 +518,20 @@ describe("burst summary text", () => {
     expect(
       burstSummaryText("en", 6, [e(null, "t1", { k: "notification" }), e(null, "t2")]).body,
     ).toBe("6 new notifications")
+  })
+
+  it("a click opens the one conversation (its newest item's route), else Home", () => {
+    const task = "attention/projects/task/t9?thread=t1&message=m2"
+    expect(burstSummaryText("en", 2, [e(null, "t1"), { ...e(null, "t1"), o: task }]).route).toBe(
+      task,
+    )
+    // An entry stored before routes were kept: a thread id, or the item's route.
+    expect(burstSummaryText("en", 2, [e(null, "t1")]).route).toBe("thread/t1")
+    expect(burstSummaryText("en", 2, [e(null, "attention/kernel/digest/daily")]).route).toBe(
+      "attention/kernel/digest/daily",
+    )
+    // Several conversations (the 23 task notes of one routine run): Home, never nothing.
+    expect(burstSummaryText("en", 4, [e(null, "t1"), e(null, "t2")]).route).toBe("home")
   })
 
   it("is in the recipient's language", () => {

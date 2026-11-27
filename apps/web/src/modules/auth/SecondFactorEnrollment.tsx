@@ -118,6 +118,7 @@ const SecondFactorEnrollment: Component = () => {
                 onInput={(e) => setStepUpCode((e.currentTarget as HTMLInputElement).value)}
                 autofocus
                 autocomplete="one-time-code"
+                inputmode="numeric"
                 data-testid="second-factor-step-up-code"
               />
               <Button fullWidth type="submit" loading={loading()}>
@@ -167,6 +168,7 @@ const SecondFactorEnrollment: Component = () => {
               onInput={(e) => setConfirmCode((e.currentTarget as HTMLInputElement).value)}
               autofocus
               autocomplete="one-time-code"
+              inputmode="numeric"
               data-testid="second-factor-confirm-code"
             />
             <Button fullWidth type="submit" loading={loading()}>

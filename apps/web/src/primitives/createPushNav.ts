@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
 import { useLocation, useNavigate } from "@solidjs/router"
-import { createSignal } from "solid-js"
+import { createEffect, createSignal } from "solid-js"
 import {
   getTabType,
   patternToUrl,
@@ -10,6 +10,7 @@ import {
   urlToTabInfo,
 } from "~/framework/app-registry"
 import { tNow } from "~/modules/i18n/i18n-context"
+import { tabStore } from "~/modules/shell/tab-store"
 
 const DYNAMIC_SEGMENT = /^:([A-Za-z_][A-Za-z0-9_]*)\+?$/
 
@@ -107,13 +108,49 @@ export function parentRouteForPath(pathname: string): string {
 const PUSHED_DETAIL = "pushNavDetail"
 
 /**
- * The screen the CURRENT detail was pushed from, for the back control's label.
- * A module signal rather than history state: the router nests (and, across a
- * tab-store URL sync, replaces) the entry's own state, so reading the label
- * back out of history is unreliable, while there is only ever one detail on
- * screen at a time.
+ * Where the CURRENT detail was opened from, for the back control: its label
+ * and, for a detail opened as a tab of its own (You > Agents), the screen
+ * Back returns to. A module signal rather than history state: the router
+ * nests (and, across a tab-store URL sync, replaces) the entry's own state,
+ * so reading it back out of history is unreliable, while there is only ever
+ * one detail on screen at a time.
+ *
+ * It names the detail it was recorded for, the pathname `pushDetail` pushed
+ * or the tab `openDetailFrom` opened, and holds only while that detail is on
+ * screen. A record that outlived its screen (a thread pushed from Chats, left
+ * through the tab bar) used to label the next detail opened from anywhere
+ * else: "< Chats" on an agent page reached from You.
  */
-const [pushedFromLabel, setPushedFromLabel] = createSignal<string | null>(null)
+interface DetailOpener {
+  label: string | null
+  /** The route Back goes to when there is no pushed history entry to pop. */
+  returnTo: string | null
+  /** The pathname the record is for (`pushDetail`), and the one it was pushed from. */
+  path?: string
+  from?: string
+  /** The tab the record is for (`openDetailFrom`), kept across a re-key of its url. */
+  tabId?: string
+}
+
+const [opener, setOpener] = createSignal<DetailOpener | null>(null)
+
+/**
+ * Open a detail that lives in a tab of its own from a root screen, so Back
+ * returns there: `open` opens the tab (openTab), and the tab it leaves active
+ * is the one the record is for. You > Agents opens the agent page this way;
+ * without it, Back went to the agent's parent route, which redirects straight
+ * back to the agent, and the button did nothing.
+ */
+export function openDetailFrom(from: { label: string; returnTo: string }, open: () => void): void {
+  open()
+  const tabId = tabStore.activeTabId
+  setOpener(tabId ? { label: from.label, returnTo: from.returnTo, tabId } : null)
+}
+
+/** Test hook: no detail was opened from anywhere. */
+export function resetPushNavOpener(): void {
+  setOpener(null)
+}
 
 function historyHasPushedDetail(): boolean {
   const raw: unknown = typeof history === "undefined" ? null : history.state
@@ -172,26 +209,48 @@ export function createPushNav(): PushNav {
     return tabDisplayLabel(tNow, { ...info, label: registration.defaultLabel })
   }
 
+  /** The opener record, when it is for the detail on screen now. */
+  const currentOpener = (): DetailOpener | null => {
+    const record = opener()
+    if (!record) return null
+    if (record.path !== undefined && record.path === location.pathname) return record
+    if (record.tabId !== undefined && record.tabId === tabStore.activeTabId) return record
+    return null
+  }
+
+  // A record is dropped once its detail is left any other way than Back (the
+  // tab bar, a link): it must not label whatever detail is opened next. The
+  // screen it was pushed FROM still counts while the push is under way.
+  createEffect(() => {
+    const record = opener()
+    if (!record) return
+    const path = location.pathname
+    if (record.path !== undefined && path !== record.path && path !== record.from) setOpener(null)
+    if (record.tabId !== undefined && tabStore.activeTabId !== record.tabId) setOpener(null)
+  })
+
   return {
     detailOpen,
     pushDetail: (path: string, opts?: { fromLabel?: string }) => {
-      setPushedFromLabel(opts?.fromLabel ?? null)
+      setOpener({ label: opts?.fromLabel ?? null, returnTo: null, path, from: location.pathname })
       navigate(path, { state: { [PUSHED_DETAIL]: true } })
     },
-    backLabel: () => (detailOpen() ? (pushedFromLabel() ?? masterLabel()) : null),
+    backLabel: () => (detailOpen() ? (currentOpener()?.label ?? masterLabel()) : null),
     // A deep link opened straight into a detail (a push notification tap, a
     // `liaison://` link, a cold start) has nothing of ours behind it: a
     // browser back there lands wherever the app happened to be, or leaves it.
     // Only the entry `pushDetail` marked is safe to pop; everything else goes
-    // UP to the parent screen, REPLACING the detail entry, so a later history
-    // back does not bounce the user into the detail they just left.
+    // UP to the screen it was opened from, else to its parent screen,
+    // REPLACING the detail entry, so a later history back does not bounce the
+    // user into the detail they just left.
     popDetail: () => {
-      setPushedFromLabel(null)
+      const returnTo = currentOpener()?.returnTo ?? null
+      setOpener(null)
       if (historyHasPushedDetail()) {
         navigate(-1)
         return
       }
-      navigate(parentRouteForPath(location.pathname), { replace: true })
+      navigate(returnTo ?? parentRouteForPath(location.pathname), { replace: true })
     },
   }
 }

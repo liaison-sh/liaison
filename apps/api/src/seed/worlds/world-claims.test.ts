@@ -6,7 +6,7 @@
 import { describe, expect, it } from "bun:test"
 import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
-import { SAAS_PLANS, SAAS_TEAM } from "./saas/fiction"
+import { SAAS_PLANS } from "./saas/fiction"
 import { saasMoneyPlan } from "./saas/plan"
 import { STUDIO_TEAM } from "./studio/fiction"
 import { DOOR_FRAME_KEYS, WORLD_CLAIMS, type WorldClaim } from "./world-claims"
@@ -16,6 +16,7 @@ const KERNEL_EN = path.join(
   "../../../../../packages/shared/src/i18n/locales/en/kernel.json",
 )
 const API_SRC = path.join(import.meta.dir, "../..")
+const REPO_ROOT = path.join(import.meta.dir, "../../../../..")
 const BOARD_DATE = new Date("2026-11-09T08:30:00Z")
 
 /** The door strings of a world, by key path under `kernel.demo.world.<world>.`. */
@@ -50,7 +51,10 @@ function unmapped(
     ...claims
       .flatMap((c) => c.provenBy)
       .filter(
-        (f) => !existsSync(path.join(import.meta.dir, f)) && !existsSync(path.join(API_SRC, f)),
+        (f) =>
+          !existsSync(path.join(import.meta.dir, f)) &&
+          !existsSync(path.join(API_SRC, f)) &&
+          !existsSync(path.join(REPO_ROOT, f)),
       )
       .map((f) => `proof file missing: ${f}`),
     ...claims
@@ -77,13 +81,6 @@ describe("the software world's door claims", () => {
     expect(unmapped(door, bare, frame)).toEqual(["claim with no proof: x"])
   })
 
-  it("the door names each of the pack's people, and only them", () => {
-    const roles = Object.keys(door)
-      .filter((k) => k.startsWith("teamRole."))
-      .map((k) => k.slice("teamRole.".length))
-    expect(roles.sort()).toEqual(SAAS_TEAM.map((p) => p.key).sort())
-  })
-
   it("the card customers and plan prices the door states are the plan's", () => {
     const money = saasMoneyPlan(BOARD_DATE)
     const counted = money.subscriptions.filter(
@@ -95,7 +92,6 @@ describe("the software world's door claims", () => {
     expect(about).toContain(
       `from ${euros(SAAS_PLANS.starter.monthlyMinor)} to ${euros(SAAS_PLANS.group.monthlyMinor)} a month`,
     )
-    expect(door["companyOps.payments.body"]).toContain(`${counted} customers pay by card`)
   })
 })
 
@@ -115,21 +111,11 @@ describe("the services world's door claims", () => {
     ])
   })
 
-  it("the door names people of the pack, and its head count is the pack's", () => {
-    const named = Object.keys(door)
-      .filter((k) => k.startsWith("teamRole."))
-      .map((k) => k.slice("teamRole.".length))
-    const keys = STUDIO_TEAM.map((p) => p.key)
-    expect(named.filter((k) => !keys.includes(k))).toEqual([])
-    // The visitor's own seat beside the pack's people.
-    const people = STUDIO_TEAM.length + 1
-    expect(door.companyFacts).toContain(`${people} people`)
-    expect(door["teamOthers.name"]).toBe(`${people - 1 - named.length} others`)
+  it("the door's head count is the pack's, the visitor's own seat included", () => {
+    expect(door.companyFacts).toContain(`${STUDIO_TEAM.length + 1} people`)
   })
 
-  it("the card that checks planned against done promises no proof link", () => {
-    const delivery = claims.find((c) => c.key === "companyOps.delivery.*")
-    expect(delivery?.mustBeTrue).toContain("without links")
+  it("the door promises no proof link", () => {
     expect(Object.values(door).join(" ")).not.toMatch(/proof|link to (the )?commit/i)
   })
 })

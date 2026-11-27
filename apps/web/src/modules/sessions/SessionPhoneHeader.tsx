@@ -139,6 +139,7 @@ export default function SessionPhoneHeader(props: { entityId: string }) {
       <button
         type="button"
         data-testid="session-phone-back"
+        data-phone-back
         aria-label={t("kernel.nodeSessions.phone.back")}
         class={cn(
           "flex shrink-0 items-center justify-center rounded-md text-text-secondary hover:bg-surface-hover",

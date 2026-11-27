@@ -1119,48 +1119,9 @@
       "details": "Your details"
     },
     "companyFacts": "Fictional company · Paris · 7 people",
-    "companyAbout": "Resonant Audio Labs designs portable field recorders for film and location sound: the Kestrel line, from €399 to €1,349, plus cases, cables and windshields. It sells direct through its web store and through six dealers in Europe, North America and Japan.",
-    "companyHow": "How it runs on Liaison",
-    "companyOps": {
-      "support": {
-        "title": "Support",
-        "body": "Customer mail lands in Tickets. The Support Desk agent drafts each reply; Amina or Lucas approves it."
-      },
-      "orders": {
-        "title": "Orders and shipping",
-        "body": "Web-store orders arrive from Shopify. The Operations Desk agent prepares the shipment with the carrier for Margot."
-      },
-      "invoicing": {
-        "title": "Invoicing",
-        "body": "Every order gets its invoice. The Finance Desk agent handles refunds and dealer accounts with Henrik."
-      },
-      "sales": {
-        "title": "Sales",
-        "body": "Giulia's dealer pipeline lives in the CRM. A routine researches each new prospect and drafts the reply."
-      },
-      "projects": {
-        "title": "Projects and chat",
-        "body": "The team plans product work in Projects and talks in Chat, with their agents in the conversation."
-      },
-      "knowledge": {
-        "title": "Company knowledge",
-        "body": "Manuals from GitLab, finance from Google Drive, playbooks written in Liaison. Each agent reads only what its person may open."
-      }
-    },
-    "companyYou": "You run it as the CEO, with your own agent. Ask it what you'd ask to run the company, and watch the desks work.",
+    "companyAbout": "Resonant Audio Labs designs portable field recorders for film and location sound, sold through its web store and six dealers in Europe, North America and Japan.",
+    "companyYou": "You run it as the CEO, with your own agent.",
     "companySimulated": "Only the outside world is simulated: no mail leaves, and the store and carrier accounts are stand-ins.",
-    "teamTitle": "The team",
-    "teamYou": "You",
-    "teamCeo": "CEO",
-    "teamRole": {
-      "tobias": "Head of Operations",
-      "amina": "Support Lead",
-      "lucas": "Support Specialist",
-      "margot": "Fulfillment",
-      "henrik": "Finance",
-      "giulia": "Sales and Partnerships"
-    },
-    "youllSee": "You'll see",
     "detailsBack": "Back",
     "next": {
       "eyebrowSpent": "Demo budget used",
@@ -1219,98 +1180,47 @@
       "saas": {
         "companyFacts": "Fictional company · Paris · 14 people",
         "companyExample": "This is an example company: Tideform, which makes rota software for hospitality groups. Your own workspace would hold your data.",
-        "companyAbout": "Tideform makes rota and shift planning software for hotels, restaurants and canteens, sold by subscription from €149 to €1,450 a month. 169 customers pay by card through Stripe, and a few larger groups pay by bank transfer.",
-        "companyOps": {
-          "payments": {
-            "title": "Subscriptions and payments",
-            "body": "169 customers pay by card through Stripe. The Finance Desk agent watches failed payments and drafts the note; Sara approves it."
-          },
-          "invoicing": {
-            "title": "Invoicing",
-            "body": "Liaison issues every invoice, with no gaps, including for the groups that pay by bank transfer."
-          },
-          "support": {
-            "title": "Support",
-            "body": "Customer mail lands in Tickets. The Support Desk agent drafts each reply."
-          },
-          "sales": {
-            "title": "Sales",
-            "body": "Tom's deals live on a board. A routine drafts the follow-ups."
-          },
-          "product": {
-            "title": "Product and chat",
-            "body": "The team plans product work in Projects and talks in Chat."
-          },
-          "knowledge": {
-            "title": "Company knowledge",
-            "body": "Each agent reads only what its person may open."
-          }
-        },
-        "companyYou": "You run it as the CEO, with your own agent. Ask it what you'd ask to run the company, and watch the desks work.",
+        "companyAbout": "Tideform sells rota and shift planning software to hotels, restaurants and canteens, from €149 to €1,450 a month: 169 customers pay by card through Stripe.",
+        "companyYou": "You run it as the CEO, with your own agent.",
         "companySimulated": "Only the outside world is simulated: no mail leaves, and the Stripe account and its payments are stand-ins.",
-        "teamRole": {
-          "tom": "Sales",
-          "elodie": "Account Manager",
-          "ines": "Support Lead",
-          "yann": "CTO",
-          "sara": "Finance",
-          "lucie": "Product Manager",
-          "baptiste": "Developer",
-          "amel": "Developer",
-          "jonas": "Developer",
-          "clemence": "Support",
-          "nolan": "Support",
-          "maxime": "Sales",
-          "rose": "Office Manager"
-        },
-        "limitConnectors": "The Stripe account and its payments are stand-ins. Connecting a real account is refused. Refunds and cancellations act on the stand-in only."
+        "limitConnectors": "The Stripe account and its payments are stand-ins. Connecting a real account is refused. Refunds and cancellations act on the stand-in only.",
+        "pickMoment": {
+          "support": "A customer writes in: approve the reply the support routine drafted.",
+          "projects": "Hand Baptiste's task to your agent and watch it break the work down.",
+          "chat": "Ask your agent to research Lucie's question, with the page it cites.",
+          "sales": "A hotel group emails: approve the company, the contact, a quote and the reply in one go.",
+          "money": "A card fails: your agent reads Stripe, invoices and tickets, then drafts the note for you to approve.",
+          "dev": "Turn a customer's bug into a pull request, then approve the reply that tells them.",
+          "knowledge": "Ask about the refund policy, then see Clémence get only what she may open."
+        }
       },
       "studio": {
         "companyFacts": "Fictional company · Lyon · 24 people",
         "companyExample": "This is an example company: Halden Studio, which builds software and data systems for its clients. Your own workspace would hold your data.",
-        "companyAbout": "Halden Studio builds software and data systems for mid-size companies. It bills by the hour or the day, at a fixed price with milestones, or on a monthly retainer. Clients follow their project on a portal of their own.",
-        "companyOps": {
-          "agreements": {
-            "title": "Agreements",
-            "body": "Proposals and contracts, signed in Liaison. Your agent checks them when a client asks for more."
-          },
-          "delivery": {
-            "title": "Delivery",
-            "body": "Each task has a planned time, and whoever did it can enter how long it took. Whoever bills asks an agent to check planned vs done."
-          },
-          "billing": {
-            "title": "Billing",
-            "body": "Invoices from milestones, retainers and checked work. Anaïs issues them."
-          },
-          "clients": {
-            "title": "Clients",
-            "body": "Each company holds its people, deals, money and work. Bastien's client reports are drafted on Fridays."
-          },
-          "portal": {
-            "title": "Client portal",
-            "body": "Clients sign in to see their progress, reports, invoices and requests. Only what was shared, nothing else."
-          },
-          "knowledge": {
-            "title": "Studio knowledge",
-            "body": "A wiki of past projects and playbooks. Each agent reads only what its person may open."
-          }
-        },
-        "companyYou": "You run it as a co-founder, with your own agent. Ask it what you'd ask to run the studio, and watch it check the agreement before anyone answers a client.",
+        "companyAbout": "Halden Studio builds software and data systems for mid-size companies, billed by the hour or the day, at a fixed price with milestones, or on a monthly retainer.",
+        "companyYou": "You run it as a co-founder, with your own agent.",
         "companySimulated": "Only the outside world is simulated: no mail leaves, and the clients and their replies are stand-ins.",
-        "teamYouRole": "Co-founder",
-        "teamOthers": {
-          "name": "18 others",
-          "role": "Delivery, sales"
-        },
-        "teamRole": {
-          "bastien": "Project lead",
-          "nadia": "Lead developer",
-          "mathis": "Developer",
-          "sofia": "Data engineer",
-          "anais": "Finance"
-        },
-        "limitConnectors": "Repositories and clients are stand-ins. Client sign-in and signing links do not work here, since no mail leaves. Agreements shown as signed were not really signed. See what a client sees in a company's Client portal, under What they see."
+        "limitConnectors": "Repositories and clients are stand-ins. Client sign-in and signing links do not work here, since no mail leaves. Agreements shown as signed were not really signed. See what a client sees in a company's Client portal, under What they see.",
+        "pickMoment": {
+          "support": "A client writes in: read the routine's note, then approve the reply it drafted.",
+          "projects": "Hand Bastien's task to your agent, then send a client their weekly report.",
+          "chat": "Ask your agent to research Sofia's question, with the page it cites.",
+          "sales": "A prospect sends a brief: approve the company, the deal, a proposal draft and the reply. You set the price.",
+          "client": "Ask your agent whether a client's extra request is in the agreement, then approve the change request.",
+          "dev": "Turn a client's bug into a pull request in their repository, then approve the reply that tells them.",
+          "knowledge": "Ask about a past project's costs, then see Mathis get only what he may open."
+        }
       }
+    },
+    "tryTitle": "What you'll try",
+    "pickMoment": {
+      "support": "A customer writes in: approve the reply the support routine drafted.",
+      "projects": "Hand Tobias's launch task to your agent and watch it break the work down.",
+      "chat": "Ask your agent to research Tobias's question on the web, with its sources.",
+      "sales": "A prospect emails: approve the CRM record, the quote and the reply in one go.",
+      "commerce": "An order arrives with its invoice: approve the shipment the Operations Desk prepared.",
+      "dev": "Send a bug fix to Claude Code on a computer and get a pull request back.",
+      "knowledge": "Ask across manuals and finance, then see Lucas get only what he may open."
     }
   },
   "deny": "Deny",
@@ -3308,6 +3218,10 @@
     "requestedOutboundDomains": "Hosts this app can reach (granted by installing)",
     "newOutboundDomains": "New hosts this version can reach (granted by upgrading)"
   },
+  "pluginMount": {
+    "rateLimited": "Too many requests just now. Wait a moment, then try again.",
+    "retry": "Try again"
+  },
   "settingsPage": {
     "appSecrets": {
       "webhookAddress": "Endpoint URL",
@@ -3337,6 +3251,8 @@
     "savedToast": "Saved",
     "notSaved": "Not saved",
     "retry": "Retry",
+    "loadFailed": "These settings could not be loaded. Try again.",
+    "loadRateLimited": "Too many requests just now. Wait a moment, then try again.",
     "waitingApproval": "Waiting for approval",
     "fieldUnavailable": "Couldn't read this value: {{message}}",
     "noSettings": "Nothing to set up here for you.",
@@ -3516,6 +3432,7 @@
     "allowPopups": "Allow pop-ups to open this item.",
     "couldNotOpen": "Couldn't open this item.",
     "openNotification": "Open",
+    "notificationItemUnavailable": "This item can't be opened in this app.",
     "kind": {
       "inbound": "From customer",
       "inboundVisibility": "Received from the customer",

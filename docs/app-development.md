@@ -1496,6 +1496,23 @@ Declare `knowledgeItems` in the manifest:
 - `timeoutMs`: one run's time limit, 5 s when absent, at most 10 s.
 
 
+## 19. Report your sales to invoicing (revenue streams)
+
+An app that takes payments (a shop, a checkout, a booking page) can have the invoicing app issue one legal invoice per sale. It implements the `revenue-stream@1` provider contract:
+
+```json
+"implements": [{ "contract": "revenue-stream", "version": 1,
+  "tools": { "sale_get": "rs_sale_get", "sales_list": "rs_sales_list" } }],
+"events": { "emits": ["sale:paid"] }
+```
+
+- `sale_get({ external_id })` answers `{ found: false }` or `{ found: true, sale }`, the sale as your source holds it now. `sales_list({ paid_from, paid_to, cursor })` answers `{ sales, next }`, the sales paid in that window.
+- Both tools are `trustBoundary: "internal"`, `agentVisible: false`, `contractOnly: true` and not gated, and declare those params. Registration refuses the app otherwise, and refuses a provider that does not emit `sale:paid`.
+- Emit `sale:paid` (and, if you have them, `sale:refunded` and `sale:cancelled`) with `{ external_id, occurred_at }` only. The consumer always reads the sale with `sale_get` before it acts, so a replayed or late event never acts on old data.
+- A `Sale` has the buyer (email, name, VAT number, billing and delivery addresses), the lines (net or gross unit prices in minor units, the kind `goods`, `software`, `service` or `shipping`, the tax rate and amount you charged), the totals, the payment status and the refunds. The type and a checker, `saleProblems`, are in `@liaison/app-sdk/contracts`.
+
+A consumer subscribes once for every provider of the organization: `"events": { "subscribes": { "contract:revenue-stream@1/sale:paid": "<handler>" } }`. The event reaches it from every app that implements the contract in the organization, with the source app's name in `event.app`, and needs no dependency on that app. It must declare `contract_calls` for the contract. Several providers serve one consumer at once, so each call names its provider (`ctx.contracts.call("revenue-stream@1", "sale_get", { external_id }, { provider })`), and the kernel answers only for a provider that has a row in the consumer's own binding table (`contract_calls[].bindingSetting`).
+
 ## See also
 
 - [`docs/app-package-format.md`](app-package-format.md) — the `.liaisonapp` spec

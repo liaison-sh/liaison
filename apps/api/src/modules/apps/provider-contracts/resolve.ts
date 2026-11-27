@@ -103,3 +103,72 @@ export function isDeclaredContractDispatch(
   const impl = appContractImplementationsRegistry.get([orgId, providerApp])?.[call.contract]
   return impl?.ops[call.op] === toolShortName
 }
+
+/** True when the caller's own binding table (`<table>.<column>`) holds a row naming `provider`. */
+export async function callerBindsProvider(
+  orgId: string,
+  callerApp: string,
+  bindingSetting: string,
+  provider: string,
+): Promise<boolean> {
+  const m = BINDING_SETTING_RE.exec(bindingSetting)
+  if (!m) return false
+  const schema = schemaRef(`app_${callerApp.replace(/-/g, "_")}`)
+  const rows = await withPrivilegedDb(orgId, "contract-binding-read", async (tx) =>
+    extractRows<{ one: number }>(
+      await tx.execute(
+        drizzleSql`SELECT 1 AS one
+          FROM ${drizzleSql.raw(`${quoteIdent(schema)}.${quoteIdent(m[1]!)}`)}
+          WHERE org_id = ${orgId} AND ${drizzleSql.raw(quoteIdent(m[2]!))}::text = ${provider}
+          LIMIT 1`,
+      ),
+    ),
+  )
+  return rows.length > 0
+}
+
+/**
+ * Resolution for a `multiProvider` contract (`revenue-stream@1`): the caller names the provider
+ * on each call. It must declare `contract_calls` for the contract, the provider must be registered
+ * and implement it, and the caller's own binding table must hold a row for that provider (a
+ * person's decision recorded by the caller, e.g. a bound revenue stream). No administrator binding
+ * is involved: the contract's ops are reads only (validated: no outbound op).
+ */
+export async function resolveNamedContractProvider(
+  orgId: string,
+  callerApp: string,
+  contract: string,
+  provider: string | null,
+): Promise<ContractResolution> {
+  const declared = appContractCallsRegistry.get([orgId, callerApp])?.[contract]
+  if (!declared) {
+    return {
+      ok: false,
+      code: "contract_undeclared",
+      message: `${callerApp} does not declare contract_calls for ${contract}`,
+    }
+  }
+  if (!provider) {
+    return {
+      ok: false,
+      code: "contract_provider_required",
+      message: `${contract} has several providers: name the provider of this call`,
+    }
+  }
+  const impl = appContractImplementationsRegistry.get([orgId, provider])?.[contract]
+  if (!impl) {
+    return {
+      ok: false,
+      code: "contract_provider_unavailable",
+      message: `"${provider}" is not installed or does not implement ${contract}`,
+    }
+  }
+  if (!(await callerBindsProvider(orgId, callerApp, declared.bindingSetting, provider))) {
+    return {
+      ok: false,
+      code: "contract_provider_not_configured",
+      message: `${callerApp} has no binding for "${provider}" (${declared.bindingSetting})`,
+    }
+  }
+  return { ok: true, provider, ops: impl.ops }
+}

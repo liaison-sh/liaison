@@ -77,6 +77,8 @@ Each pending reply is named by the words it would post, and a reply or direct me
 
 **Messages** lists direct messages across Facebook and Instagram. Click a conversation to read it, or **Open in** the native app.
 
+To answer, type in the box under the conversation and click **Approve & send**. The message is sent with `send_dm` and appears in the conversation. It needs `social:dm:write`; if your organization's approval policy holds it, the box says **Waiting for approval** instead. Between 24 hours and 7 days after the person's last message, the button reads **Approve & send (human agent)**: the message goes out with Meta's human agent tag. After the window closes, the box is replaced by **Open in** the native app.
+
 If an Instagram account's owner has not turned on **Allow access to messages** in the Instagram app, its messages cannot be read: **Messages** says so at the top with the path to the setting (see step 8 of [Connect Instagram with Unified login](#connect-instagram-with-unified-login)), and the notice goes away after the first sync that reads them.
 
 Platforms only allow a reply within 7 days of the person's last message. An Instagram account connected with the Unified login sends without Meta's human agent tag, so its window is 24 hours. After the window, `send_dm` fails with `dm_window_closed` and the reply has to go through the platform's own app or another channel. Ask an agent to reply: `send_dm` waits for approval.

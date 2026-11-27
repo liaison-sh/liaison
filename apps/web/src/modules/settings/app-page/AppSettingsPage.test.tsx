@@ -748,3 +748,33 @@ describe("AppSettingsPage when the app's manifest arrives after the page drew", 
     expect(api.toolCalls().filter((c) => c.toolName.endsWith("categories.list"))).toHaveLength(1)
   })
 })
+
+// A refused read (the request limit) is a calm notice with a retry, never a thrown
+// resource that the settings layout's boundary draws as "Plugin crashed".
+describe("AppSettingsPage when its values do not load", () => {
+  it("a 429 reads as a wait with Retry, draws no fields, and Retry loads the page", async () => {
+    let refuse = true
+    api.on("get", ORG, () => {
+      if (refuse) throw apiError(429, "rate_limited", "Too many requests")
+      return { values: { "f.text": "stored" } }
+    })
+    renderPage()
+    const notice = await screen.findByTestId("app-settings-load-error")
+    expect(notice.textContent).toContain("Too many requests just now")
+    expect(notice.textContent).not.toMatch(/crashed/i)
+    expect(screen.queryByTestId("settings-input-f.text")).toBeNull()
+    refuse = false
+    fireEvent.click(screen.getByTestId("app-settings-load-retry"))
+    expect(((await field("f.text")) as HTMLInputElement).value).toBe("stored")
+    expect(screen.queryByTestId("app-settings-load-error")).toBeNull()
+  })
+
+  it("another failure says the settings could not be loaded", async () => {
+    api.on("get", USER, () => {
+      throw apiError(500, "server_error")
+    })
+    renderPage()
+    const notice = await screen.findByTestId("app-settings-load-error")
+    expect(notice.textContent).toContain("could not be loaded")
+  })
+})

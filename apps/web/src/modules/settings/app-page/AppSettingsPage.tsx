@@ -28,6 +28,7 @@ import {
 } from "solid-js"
 import { onEntityChange } from "~/framework/entity-changes"
 import { isFeatureOff } from "~/framework/org-features"
+import { ApiError } from "~/lib/api-error"
 import { registerUnsavedWork } from "~/lib/unsaved-work"
 import { AppLogsPanel, showsAppLogs } from "~/modules/app-builder/AppLogsPanel"
 import { canAccessScope } from "~/modules/auth/auth-store"
@@ -59,6 +60,11 @@ const P = "kernel.settingsPage"
 export function settingsChangeEvents(exports: Record<string, unknown> | undefined): string[] {
   const named = exports?.settingsChangeEvents
   return Array.isArray(named) ? named.filter((k): k is string => typeof k === "string") : []
+}
+
+/** The notice for a page whose values did not load: the request limit reads as a wait. */
+export function settingsLoadErrorKey(err: unknown): string {
+  return err instanceof ApiError && err.status === 429 ? `${P}.loadRateLimited` : `${P}.loadFailed`
 }
 
 function hasFields(sections: SettingsSection[], scope: SettingsScope): boolean {
@@ -108,6 +114,19 @@ export const AppSettingsBody: Component<{
   const [orgValues, { refetch: refetchOrgValues }] = load("org")
   const [userValues, { refetch: refetchUserValues }] = load("user")
   const loaded = (scope: SettingsScope) => (scope === "org" ? orgValues : userValues)
+  // A read that failed (the request limit, a server fault, the network) must not
+  // throw out of the page: reading an errored resource throws, which the
+  // settings layout's boundary drew as "Plugin crashed". The page shows a calm
+  // notice with a retry instead (settingsLoadError below).
+  const values = (scope: SettingsScope) => {
+    const r = loaded(scope)
+    return r.error ? undefined : r()
+  }
+  const loadError = (): unknown => orgValues.error ?? userValues.error
+  const retryLoad = () => {
+    if (orgValues.error) void refetchOrgValues()
+    if (userValues.error) void refetchUserValues()
+  }
 
   // A setting changed elsewhere (the agent's approved change in a chat, a card,
   // another tab) shows without a reload: the app names the live frames that
@@ -168,7 +187,7 @@ export const AppSettingsBody: Component<{
   function fieldValue(scope: SettingsScope, key: string): unknown {
     const mine = saved()[scope]
     if (key in mine) return mine[key]
-    return loaded(scope)()?.values?.[key] ?? null
+    return values(scope)?.values?.[key] ?? null
   }
 
   // Leaving with unsaved list/tree edits asks first.
@@ -206,6 +225,19 @@ export const AppSettingsBody: Component<{
   return (
     <AppPageProvider value={state}>
       <div data-testid={`app-settings-body-${app()}`}>
+        <Show when={loadError()}>
+          {(err) => (
+            <div
+              class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-[13px] text-text-secondary"
+              data-testid="app-settings-load-error"
+            >
+              <span>{i18n.t(settingsLoadErrorKey(err()))}</span>
+              <Button variant="ghost" data-testid="app-settings-load-retry" onClick={retryLoad}>
+                {i18n.t(`${P}.retry`)}
+              </Button>
+            </div>
+          )}
+        </Show>
         <Show
           when={sections().length > 0}
           fallback={
@@ -217,7 +249,9 @@ export const AppSettingsBody: Component<{
             </div>
           }
         >
-          <For each={sections()}>
+          {/* No section over values that did not load: a field would read empty and a save
+              would write over the real value. The notice above offers the retry. */}
+          <For each={loadError() ? [] : sections()}>
             {(section) => {
               const scope = section.scope
               return (
@@ -228,7 +262,7 @@ export const AppSettingsBody: Component<{
                   exports={props.entry.exports}
                   openConnection={props.openConnection}
                   value={(key) => fieldValue(scope, key)}
-                  readError={(key) => loaded(scope)()?.errors?.[key]}
+                  readError={(key) => values(scope)?.errors?.[key]}
                   save={(path, value): Promise<SaveOutcome> =>
                     queueFor(section.id)(() => saveSetting(api, app(), scope, path, value))
                   }

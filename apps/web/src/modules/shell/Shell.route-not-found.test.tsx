@@ -143,6 +143,25 @@ describe("an address no page answers", () => {
     await waitFor(() => expect(screen.queryByTestId("route-not-found")).toBeNull())
   })
 
+  it("a phone tab tap clears the notice, even onto the tab already active", async () => {
+    // A push for an item the phone cannot open left "Nothing here" over Home,
+    // and over Chats after it, until Go to Home: the tab bar lands on a path
+    // already synced, and the sync returned before dropping the notice.
+    setTier("phone")
+    setManifestAppsSettled(true)
+    window.history.pushState({}, "", "/not-an-app/approval/a-1")
+    renderShell()
+    await waitFor(() => expect(screen.getByTestId("route-not-found")).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId("phone-tab-home"))
+    await waitFor(() => expect(window.location.pathname).toBe("/"))
+    expect(screen.queryByTestId("route-not-found")).toBeNull()
+
+    fireEvent.click(screen.getByTestId("phone-tab-chats"))
+    await waitFor(() => expect(window.location.pathname).toBe("/chats"))
+    expect(screen.queryByTestId("route-not-found")).toBeNull()
+  })
+
   it("a page that owns the address shows no notice", async () => {
     setManifestAppsSettled(true)
     await openTicketsTab()

@@ -83,6 +83,7 @@ const ComputerPage: Component = () => {
       <button
         type="button"
         data-testid="computer-back"
+        data-phone-back
         class="-ml-1 mb-4 flex min-h-11 items-center gap-1 px-1 text-[13px] text-text-secondary hover:text-text sm:min-h-0"
         onClick={() => navigate(COMPUTERS_ROUTE)}
       >

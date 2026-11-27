@@ -28,16 +28,18 @@ export interface ExpandedOccurrence {
   recurrenceComplex: boolean
   /** Google's per-event colour (1-11), when the event has its own; else the calendar's. */
   colorId?: string | null
-  /** The signed-in person declined this meeting: drawn faded and struck through. */
+  /** The signed-in account declined this invitation: drawn struck through and faded. */
   declined?: boolean
+}
+
+/** The account's own attendee entry (Google marks it `self`) answered "declined". */
+export function isDeclined(e: Pick<CalendarEventLike, "attendees">): boolean {
+  return (e.attendees ?? []).some((a) => a.self === true && a.responseStatus === "declined")
 }
 
 /** What an occurrence carries of its event's look: own colour, and whether you declined. */
 function lookOf(e: CalendarEventLike): Pick<ExpandedOccurrence, "colorId" | "declined"> {
-  const declined = (e.attendees ?? []).some(
-    (a) => a.self === true && a.responseStatus === "declined",
-  )
-  return { colorId: e.colorId ?? null, declined }
+  return { colorId: e.colorId ?? null, ...(isDeclined(e) ? { declined: true } : {}) }
 }
 
 function toDate(point: CalendarEventPoint | null | undefined): Date | null {

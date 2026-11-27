@@ -27,7 +27,7 @@ import {
 } from "./drag-math"
 import { occurrenceColor } from "./event-colors"
 import { isSpanning, layoutDayColumns, layoutWeekSegments, type WeekSegment } from "./layout"
-import type { ExpandedOccurrence } from "./rrule-expand"
+import type { CalendarEventPoint, ExpandedOccurrence } from "./rrule-expand"
 import { hourLabelIn, zoneShortName } from "./time-zones"
 import { createToday } from "./today"
 
@@ -38,14 +38,21 @@ export interface TimeGridViewProps {
   dayCount: 1 | 7
   occurrences: ExpandedOccurrence[]
   calendarColors: Record<string, string>
-  onSelectEvent?: (eventId: string) => void
+  /** `start`: the occurrence clicked (a recurring series opens at that occurrence). */
+  onSelectEvent?: (eventId: string, start?: CalendarEventPoint | null) => void
   /** A click on an empty slot (30-min snap); `anchor` is the viewport point for a popover. */
   onSelectSlot?: (start: Date, anchor: { x: number; y: number }) => void
   /** A drag over empty slots (15-min snap): the range it covered. */
   onCreateRange?: (start: Date, end: Date, anchor: { x: number; y: number }) => void
-  /** An event dragged to a new time (move) or a new end (resize). */
-  onMoveEvent?: (eventId: string, start: Date, end: Date) => void
-  /** Whether an event may be dragged (a recurring series may not, yet). */
+  /** An event dragged to a new time (move) or a new end (resize); `occurrence`: the occurrence
+   * of a recurring series that was dragged (its original start). */
+  onMoveEvent?: (
+    eventId: string,
+    start: Date,
+    end: Date,
+    occurrence?: CalendarEventPoint | null,
+  ) => void
+  /** Whether an event may be dragged. */
   canDrag?: (eventId: string) => boolean
   /** "+N" in the all-day band: show that day (the day view). */
   onShowDay?: (day: Date) => void
@@ -63,7 +70,9 @@ type Drag =
       end: Date
       deltaMin: number
       deltaDays: number
-      /** Not draggable (a recurring series): the pointer only opens it. */
+      /** The occurrence's own start (a series shows every occurrence under one id). */
+      occurrence?: CalendarEventPoint | null
+      /** Not draggable: the pointer only opens it. */
       fixed?: boolean
     }
 
@@ -167,12 +176,12 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
       return
     }
     if (!s.moved) {
-      props.onSelectEvent?.(d.eventId)
+      props.onSelectEvent?.(d.eventId, d.occurrence)
       return
     }
     const next = ghostRange(d)
     if (next.start.getTime() === d.start.getTime() && next.end.getTime() === d.end.getTime()) return
-    props.onMoveEvent?.(d.eventId, next.start, next.end)
+    props.onMoveEvent?.(d.eventId, next.start, next.end, d.occurrence)
   }
 
   function onKeyDown(e: KeyboardEvent): void {
@@ -385,9 +394,10 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                       "border-left": seg.continuesLeft ? "none" : `3px solid ${color}`,
                       color: `color-mix(in srgb, ${color} 70%, var(--color-text))`,
                     }}
-                    classList={{ "line-through opacity-60": seg.occ.declined === true }}
                     data-testid="calendar-span-band"
-                    onClick={() => props.onSelectEvent?.(seg.occ.eventId)}
+                    data-declined={seg.occ.declined ? "true" : undefined}
+                    classList={{ "opacity-60 line-through": seg.occ.declined === true }}
+                    onClick={() => props.onSelectEvent?.(seg.occ.eventId, seg.occ.start)}
                   >
                     {seg.occ.title ?? i18n.t("calendar.untitledEvent")}
                   </button>
@@ -530,13 +540,16 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                             "border-left": `3px solid ${color}`,
                           }}
                           classList={{
-                            "opacity-60": block.occ.declined === true,
                             "opacity-40": (() => {
                               const d = drag()
                               return (
-                                d !== null && d.kind !== "create" && d.eventId === block.occ.eventId
+                                d !== null &&
+                                d.kind !== "create" &&
+                                d.eventId === block.occ.eventId &&
+                                d.occurrence?.dateTime === block.occ.start?.dateTime
                               )
                             })(),
+                            "opacity-60 line-through": block.occ.declined === true,
                           }}
                           data-testid="calendar-timed-event"
                           data-event-id={block.occ.eventId}
@@ -563,6 +576,7 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                                 end: new Date(0),
                                 deltaMin: 0,
                                 deltaDays: 0,
+                                occurrence: block.occ.start,
                                 fixed: true,
                               })
                               return
@@ -575,12 +589,14 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                               end: new Date(end),
                               deltaMin: 0,
                               deltaDays: 0,
+                              occurrence: block.occ.start,
                             })
                           }}
                           onClick={(e) => {
                             e.stopPropagation()
                             // Keyboard activation only; a pointer click is handled on pointerup.
-                            if (e.detail === 0) props.onSelectEvent?.(block.occ.eventId)
+                            if (e.detail === 0)
+                              props.onSelectEvent?.(block.occ.eventId, block.occ.start)
                           }}
                         >
                           <span
@@ -615,6 +631,7 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                                   end: new Date(end),
                                   deltaMin: 0,
                                   deltaDays: 0,
+                                  occurrence: block.occ.start,
                                 })
                               }}
                             />

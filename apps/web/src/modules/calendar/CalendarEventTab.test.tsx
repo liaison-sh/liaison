@@ -71,6 +71,13 @@ function params(tool: string): Record<string, unknown> {
   return (call![1] as { params: Record<string, unknown> }).params
 }
 
+/** The `datetime-local` value an instant shows as in the test's zone. */
+function toLocal(iso: string): string {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 function openTab(entityId: string) {
   render(() => <CalendarEventTab entityId={entityId} />)
 }
@@ -158,19 +165,125 @@ describe("event tab: existing event", () => {
     expect("scope" in sent).toBe(false)
   })
 
-  it("an occurrence of a recurring meeting saves that occurrence only", async () => {
+  it("an edited occurrence asks which occurrences, then saves that one only", async () => {
     setCalendarStore("events", [{ ...timed, recurringEventId: "gevt-master" }])
     openTab("evt-1")
     fireEvent.click(screen.getByTestId("event-save"))
+    expect(state.api.post).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByTestId("event-scope-occurrence"))
     await waitFor(() => expect(state.api.post).toHaveBeenCalled())
-    expect(params("update_event").scope).toBe("occurrence")
+    expect(params("update_event")).toMatchObject({ eventId: "evt-1", scope: "occurrence" })
   })
 
-  it("a recurring master is read-only, with the note", () => {
+  it("a series opens at the occurrence clicked; this and following sends its original start", async () => {
     setCalendarStore("events", [{ ...timed, recurrence: ["RRULE:FREQ=WEEKLY"] }])
+    openTab("evt-1~20261020T090000Z")
+    expect((screen.getByTestId("event-start-input") as HTMLInputElement).value).toBe(
+      toLocal("2026-10-20T09:00:00.000Z"),
+    )
+    fireEvent.input(screen.getByTestId("event-title-input"), { target: { value: "Point v3" } })
+    fireEvent.click(screen.getByTestId("event-save"))
+    fireEvent.click(await screen.findByTestId("event-scope-following"))
+    await waitFor(() => expect(state.api.post).toHaveBeenCalled())
+    expect(params("update_event")).toMatchObject({
+      eventId: "evt-1",
+      scope: "following",
+      occurrenceStart: "2026-10-20T09:00:00.000Z",
+      title: "Point v3",
+      start: "2026-10-20T09:00:00.000Z",
+    })
+  })
+
+  it("all events from an occurrence moves the whole series only when the time moved", async () => {
+    setCalendarStore("events", [{ ...timed, recurrence: ["RRULE:FREQ=WEEKLY"] }])
+    openTab("evt-1~20261020T090000Z")
+    fireEvent.click(screen.getByTestId("event-save"))
+    fireEvent.click(await screen.findByTestId("event-scope-series"))
+    await waitFor(() => expect(state.api.post).toHaveBeenCalled())
+    const sent = params("update_event")
+    expect(sent).toMatchObject({ eventId: "evt-1", scope: "series" })
+    expect("start" in sent).toBe(false)
+    expect("occurrenceStart" in sent).toBe(false)
+  })
+
+  it("deleting one occurrence of a series asks, then cancels that occurrence", async () => {
+    setCalendarStore("events", [{ ...timed, recurrence: ["RRULE:FREQ=WEEKLY"] }])
+    openTab("evt-1~20261020T090000Z")
+    fireEvent.click(screen.getByTestId("event-delete"))
+    fireEvent.click(await screen.findByTestId("event-scope-occurrence"))
+    await waitFor(() => expect(state.api.post).toHaveBeenCalled())
+    expect(params("delete_event")).toMatchObject({
+      eventId: "evt-1",
+      scope: "occurrence",
+      occurrenceStart: "2026-10-20T09:00:00.000Z",
+    })
+    expect(state.toasts).toHaveLength(0)
+  })
+
+  it("a series' repeat rule is editable and a rule change cannot target one occurrence", async () => {
+    setCalendarStore("events", [{ ...timed, recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TU"] }])
+    openTab("evt-1~20261020T090000Z")
+    fireEvent.input(screen.getByTestId("event-repeat-interval"), { target: { value: "2" } })
+    fireEvent.click(screen.getByTestId("event-repeat-day-TH"))
+    fireEvent.click(screen.getByTestId("event-save"))
+    await screen.findByTestId("event-scope-following")
+    expect(screen.queryByTestId("event-scope-occurrence")).toBeNull()
+    fireEvent.click(screen.getByTestId("event-scope-series"))
+    await waitFor(() => expect(state.api.post).toHaveBeenCalled())
+    expect(params("update_event").recurrence).toEqual(["RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH"])
+  })
+
+  it("a rule the editor cannot show is kept, with the note", () => {
+    setCalendarStore("events", [
+      { ...timed, recurrence: ["RRULE:FREQ=MONTHLY;BYSETPOS=-1;BYDAY=FR"] },
+    ])
     openTab("evt-1")
-    expect((screen.getByTestId("event-save") as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.queryByTestId("event-recurrence-select")).toBeNull()
     expect(screen.getByTestId("event-recurring-note")).toBeTruthy()
+  })
+
+  it("added guests are invited by default; untick to save without emailing them", async () => {
+    openTab("evt-1")
+    fireEvent.input(screen.getByTestId("event-attendee-input"), {
+      target: { value: "noa@partner.example" },
+    })
+    fireEvent.click(screen.getByTestId("event-attendee-add"))
+    const box = screen.getByTestId("event-send-invitations") as HTMLInputElement
+    expect(box.checked).toBe(true)
+    fireEvent.click(screen.getByTestId("event-save"))
+    await waitFor(() => expect(state.api.post).toHaveBeenCalled())
+    expect(params("update_event").sendUpdates).toBe("all")
+  })
+
+  it("without new guests nobody is emailed unless the box is ticked", async () => {
+    openTab("evt-1")
+    expect((screen.getByTestId("event-send-invitations") as HTMLInputElement).checked).toBe(false)
+    fireEvent.click(screen.getByTestId("event-save"))
+    await waitFor(() => expect(state.api.post).toHaveBeenCalled())
+    expect("sendUpdates" in params("update_event")).toBe(false)
+  })
+
+  it("answers an invitation the account received", async () => {
+    const invited: CalendarEventDto = {
+      ...timed,
+      attendees: [
+        { email: "boss@partner.example", organizer: true, responseStatus: "accepted" },
+        { email: "me@acme.example", self: true, responseStatus: "needsAction" },
+      ],
+    }
+    setCalendarStore("events", [invited])
+    openTab("evt-1")
+    fireEvent.click(screen.getByTestId("event-rsvp-declined"))
+    await waitFor(() => expect(state.api.post).toHaveBeenCalled())
+    expect(params("respond_to_invitation")).toEqual({ eventId: "evt-1", response: "declined" })
+    await waitFor(() =>
+      expect(screen.getByTestId("event-rsvp-declined").getAttribute("aria-pressed")).toBe("true"),
+    )
+  })
+
+  it("an event the account organizes shows no answer buttons", () => {
+    openTab("evt-1")
+    expect(screen.queryByTestId("event-rsvp")).toBeNull()
   })
 
   it("delete asks first, then offers Undo, which puts the event back", async () => {

@@ -4,7 +4,7 @@
 // grid covers the one-line case. A new event's tab id is `new-<n>`, and the values the popover
 // or the grid already chose wait here until the tab reads them.
 import { activateTab, evictTabByEntity, openTab, tabStore } from "~/modules/shell/tab-store"
-import type { CalendarEventDto } from "./calendar-api"
+import type { CalendarEventDto, CalendarPoint } from "./calendar-api"
 import type { FormDefaults } from "./event-form"
 
 export const EVENT_TAB_TYPE = "calendar:event"
@@ -52,14 +52,61 @@ export function openNewEventTab(defaults: FormDefaults, label: string): string {
   return entityId
 }
 
-export function openEventTab(event: CalendarEventDto, untitled: string): void {
+/** An occurrence's start as a URL-safe key: `20261116T080000Z` (an instant), `20261116` (a date). */
+function pointKey(point: CalendarPoint): string | null {
+  if (point.date) return point.date.replace(/-/g, "")
+  if (point.dateTime) {
+    const at = new Date(point.dateTime)
+    if (Number.isNaN(at.getTime())) return null
+    return `${at.toISOString().slice(0, 19).replace(/[-:]/g, "")}Z`
+  }
+  return null
+}
+
+/**
+ * An event tab's id: the event id, or `<series id>~<occurrence start>` for one occurrence of a
+ * recurring series (the grid shows every occurrence under the series' id), so two occurrences
+ * open two tabs and the tab knows which one it edits.
+ */
+export function eventTabEntityId(
+  event: CalendarEventDto,
+  occurrence?: CalendarPoint | null,
+): string {
+  const recurring = !event.recurringEventId && (event.recurrence?.length ?? 0) > 0
+  const key = recurring && occurrence ? pointKey(occurrence) : null
+  return key ? `${event.eventId}~${key}` : event.eventId
+}
+
+/** The event id and, for one occurrence of a series, that occurrence's original start. */
+export function parseEventTabEntityId(entityId: string): {
+  eventId: string
+  occurrence: CalendarPoint | null
+} {
+  const at = entityId.indexOf("~")
+  if (at < 0) return { eventId: entityId, occurrence: null }
+  const key = entityId.slice(at + 1)
+  const eventId = entityId.slice(0, at)
+  const date = /^(\d{4})(\d{2})(\d{2})$/.exec(key)
+  if (date) return { eventId, occurrence: { date: `${date[1]}-${date[2]}-${date[3]}` } }
+  const instant = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(key)
+  if (!instant) return { eventId, occurrence: null }
+  const [, y, mo, d, h, mi, sec] = instant
+  return { eventId, occurrence: { dateTime: `${y}-${mo}-${d}T${h}:${mi}:${sec}.000Z` } }
+}
+
+export function openEventTab(
+  event: CalendarEventDto,
+  untitled: string,
+  occurrence?: CalendarPoint | null,
+): void {
+  const entityId = eventTabEntityId(event, occurrence)
   openedEvents.set(event.eventId, event)
-  rememberOpener(event.eventId)
+  rememberOpener(entityId)
   openTab({
     preview: false,
     type: EVENT_TAB_TYPE,
-    entityId: event.eventId,
+    entityId,
     label: event.title || untitled,
-    routePath: `/calendar/event/${event.eventId}`,
+    routePath: `/calendar/event/${entityId}`,
   })
 }

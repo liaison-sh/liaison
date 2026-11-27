@@ -185,7 +185,7 @@ describe("TimeGridView drag", () => {
 
     block.dispatchEvent(pointer("pointerdown", 360, 9 * 48 + 10))
     document.dispatchEvent(pointer("pointerup", 361, 9 * 48 + 11))
-    expect(onSelectEvent).toHaveBeenCalledWith("e1")
+    expect(onSelectEvent.mock.calls[0]?.[0]).toBe("e1")
   })
 
   it("an event that may not be dragged only opens", () => {
@@ -197,7 +197,7 @@ describe("TimeGridView drag", () => {
     document.dispatchEvent(pointer("pointermove", 360, 12 * 48))
     document.dispatchEvent(pointer("pointerup", 360, 12 * 48))
     expect(onMoveEvent).not.toHaveBeenCalled()
-    expect(onSelectEvent).toHaveBeenCalledWith("e1")
+    expect(onSelectEvent.mock.calls[0]?.[0]).toBe("e1")
     expect(screen.queryByTestId("calendar-event-resize")).toBeNull()
   })
 })

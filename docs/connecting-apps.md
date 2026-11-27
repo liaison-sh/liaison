@@ -315,9 +315,14 @@ One resolver picks every connection's client
 | Google Drive | `GOOGLE_DRIVE_OAUTH_CLIENT_ID` / `GOOGLE_DRIVE_OAUTH_CLIENT_SECRET` |
 | Google Ads, Merchant Center (Ads), YouTube (Social) | `GOOGLE_MARKETING_OAUTH_CLIENT_ID` / `GOOGLE_MARKETING_OAUTH_CLIENT_SECRET` |
 | Shopify | `SHOPIFY_APP_CLIENT_ID` / `SHOPIFY_APP_CLIENT_SECRET` |
-| Facebook, Instagram through Facebook login (Social), managed edition only | `META_APP_ID` / `META_APP_SECRET` |
+| Facebook, Instagram with Unified login (Social), managed edition only | `META_APP_ID` / `META_APP_SECRET`, plus `META_INSTAGRAM_CONFIG_ID` for Instagram |
 
 A workspace that brings its own client always overrides the instance's.
+Instagram with Unified login also needs the Configuration ID of a Facebook Login
+for Business configuration of the Meta app: with the instance's Meta app it is
+`META_INSTAGRAM_CONFIG_ID` (digits only), unless the workspace set its own
+`instagramLoginConfigurationId`. A workspace on its own Meta app always sets its
+own: the instance's configuration id belongs to the instance's app.
 On a managed server, while a workspace uses the server's Google client or Meta
 app, the server's Gmail push values (topic, audience, service account) and its
 Meta app secret and callback are the ones the apps use: a value the workspace

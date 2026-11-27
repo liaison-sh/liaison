@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { deriveProjectKey, formatTaskKey, parseTaskKey } from "~/apps/projects/service/task-key"
+import {
+  deriveProjectKey,
+  formatTaskKey,
+  parseTaskKey,
+  projectKeyCandidates,
+} from "~/apps/projects/service/task-key"
 
 describe("deriveProjectKey", () => {
   it.each([
@@ -84,5 +89,52 @@ describe("parseTaskKey", () => {
     const formatted = formatTaskKey("ERB", 42)
     expect(formatted).toBe("ERB-42")
     expect(parseTaskKey(formatted)).toEqual({ key: "ERB", number: 42 })
+  })
+})
+
+describe("projectKeyCandidates", () => {
+  const KEY_FORMAT = /^[A-Z][A-Z0-9]{1,9}$/
+
+  function firstFree(base: string, taken: Set<string>): string | undefined {
+    for (const candidate of projectKeyCandidates(base)) {
+      if (!taken.has(candidate)) return candidate
+    }
+    return undefined
+  }
+
+  it("starts with the base key, then swaps its last character", () => {
+    const [first, second, third] = projectKeyCandidates("ARS")
+    expect([first, second, third]).toEqual(["ARS", "AR2", "AR3"])
+  })
+
+  it("yields distinct keys that all match the stored key format", () => {
+    const seen = new Set<string>()
+    let count = 0
+    for (const candidate of projectKeyCandidates("AB")) {
+      expect(candidate).toMatch(KEY_FORMAT)
+      expect(seen.has(candidate)).toBe(false)
+      seen.add(candidate)
+      if (++count >= 500) break
+    }
+    expect(count).toBe(500)
+  })
+
+  it("finds a free key once every one-character swap is taken", () => {
+    const taken = new Set<string>(["ARS"])
+    for (const c of "23456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") taken.add(`AR${c}`)
+    const free = firstFree("ARS", taken)
+    expect(free).toBeDefined()
+    expect(taken.has(free!)).toBe(false)
+    expect(free).toMatch(KEY_FORMAT)
+    expect(free!.startsWith("ARS")).toBe(true)
+  })
+
+  it("still finds a free key after hundreds of projects share the base", () => {
+    const taken = new Set<string>()
+    for (const candidate of projectKeyCandidates("ARS")) {
+      taken.add(candidate)
+      if (taken.size >= 300) break
+    }
+    expect(firstFree("ARS", taken)).toMatch(KEY_FORMAT)
   })
 })

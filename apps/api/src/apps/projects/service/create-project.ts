@@ -12,12 +12,7 @@ import { PIPELINE_CLOSING_STAGES, PIPELINE_OPEN_STAGES } from "./deals"
 import { activeFields, parseStoredFields } from "./fields"
 import { orgUsesTimeBudgets } from "./planning"
 import { ProjectsServiceError } from "./statuses"
-import {
-  deriveProjectKey,
-  formatTaskKey,
-  nextKeyCollisionCandidate,
-  parseTaskKey,
-} from "./task-key"
+import { deriveProjectKey, formatTaskKey, parseTaskKey, projectKeyCandidates } from "./task-key"
 import { attachTaskLabels, type TaskLabel } from "./task-labels"
 
 /** True iff `err`'s postgres cause chain is a unique-violation (23505) on the
@@ -669,8 +664,9 @@ export function normalizeExplicitProjectKey(key: string): string {
   return upper
 }
 
-/** Insert a project row, retrying with a collision-safe suffix if the (org_id, key)
- *  unique index is violated (mirrors migration 0043's backfill collision handling). */
+/** Insert a project row under the first free key of `projectKeyCandidates`: a
+ *  derived key never fails for being taken, however many sibling projects share
+ *  its letters. An explicit key that is taken is refused instead. */
 async function insertProjectWithKey(
   tx: RlsClient,
   args: {
@@ -684,9 +680,20 @@ async function insertProjectWithKey(
   const baseKey = args.input.key
     ? normalizeExplicitProjectKey(args.input.key)
     : deriveProjectKey(args.input.name)
-  let candidate = baseKey
-  const maxAttempts = 29 // base attempt + the full 28-char suffix range
-  for (let attempt = 0; attempt <= maxAttempts; attempt++) {
+  // Keys already taken that this allocation could produce: skipping them up
+  // front saves a failed insert per sibling project. Rows the caller cannot see
+  // are simply missed here and caught by the unique index below.
+  const taken = new Set(
+    args.input.key
+      ? []
+      : extractRows<{ key: string }>(
+          await tx.execute(drizzleSql`
+            SELECT key FROM ${projectsRel("projects")}
+             WHERE org_id = ${args.orgId}::uuid AND key LIKE ${`${baseKey.slice(0, -1)}%`}`),
+        ).map((r) => r.key),
+  )
+  for (const candidate of projectKeyCandidates(baseKey)) {
+    if (!args.input.key && taken.has(candidate)) continue
     try {
       // Each attempt runs in its own SAVEPOINT (a nested tx.transaction()): a
       // unique-violation aborts only this savepoint, not the whole outer
@@ -721,9 +728,6 @@ async function insertProjectWithKey(
         // mutating the caller's requested key.
         throw new Error(`project_key_taken: key ${JSON.stringify(baseKey)} is already in use`)
       }
-      const next = nextKeyCollisionCandidate(baseKey, attempt)
-      if (!next) throw err
-      candidate = next
     }
   }
   throw new Error(`project_key_collision_exhausted: could not allocate a unique key for ${baseKey}`)

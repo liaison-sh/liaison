@@ -27,6 +27,7 @@ import {
   invoiceCreateAndIssueHandler,
   quoteCreateAndIssueHandler,
 } from "./handlers"
+import { overdueScanJob } from "./handlers/overdue-scan"
 import type { Counterparty, DraftLine, IssuerProfile } from "./issue"
 import { formatMoneyMinor } from "./money"
 import {
@@ -700,6 +701,97 @@ describe("drafts.create", () => {
         items: sampleDraftItems,
       }),
     ).rejects.toThrow(/60\.00 EUR of 120\.00 EUR still stands/)
+  })
+
+  test("a full credit note settles the invoice: credited, never overdue, never chased", async () => {
+    const { ctx, db } = makeCtx({ approval: PRE_APPROVED, issuerThresholdMinor: null })
+    const issued = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    if (issued.status !== "completed") throw new Error("unreachable")
+    const cn = await creditNoteCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      original_document_id: issued.document_id,
+      items: [
+        {
+          position: 1,
+          description: "Widget",
+          quantity: "2",
+          unit_price_minor: -5_000n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
+    })
+    expect(cn.status).toBe("completed")
+    const invoice = (await db.findOne("documents", issued.document_id)) as Record<string, unknown>
+    expect(invoice.payment_status).toBe("credited")
+    expect(
+      (invoice.lifecycle_log as Array<Record<string, unknown>>).some(
+        (e) => e.event === "settled_by_credit_note",
+      ),
+    ).toBe(true)
+    // Past its due date it is not overdue: nothing is owed.
+    await db.update("documents", issued.document_id, { due_at: "2026-01-01T00:00:00.000Z" })
+    const emitted: Array<{ data?: unknown }> = []
+    await overdueScanJob(
+      { db, emit: async (e) => void emitted.push(e) },
+      { now: new Date("2026-03-01T00:00:00.000Z") },
+    )
+    expect(
+      emitted.filter((e) => Number((e.data as { days_overdue?: number }).days_overdue) > 0),
+    ).toEqual([])
+  })
+
+  test("a partial credit note leaves the invoice unpaid and lowers what is due", async () => {
+    const { ctx, db } = makeCtx({ approval: PRE_APPROVED, issuerThresholdMinor: null })
+    const issued = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    if (issued.status !== "completed") throw new Error("unreachable")
+    const cn = await creditNoteCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      original_document_id: issued.document_id,
+      items: [
+        {
+          position: 1,
+          description: "Widget",
+          quantity: "1",
+          unit_price_minor: -5_000n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
+    })
+    expect(cn.status).toBe("completed")
+    const invoice = (await db.findOne("documents", issued.document_id)) as Record<string, unknown>
+    expect(invoice.payment_status ?? "unpaid").toBe("unpaid")
+    await db.update("documents", issued.document_id, { due_at: "2026-01-01T00:00:00.000Z" })
+    const emitted: Array<{ data?: unknown }> = []
+    await overdueScanJob(
+      { db, emit: async (e) => void emitted.push(e) },
+      { now: new Date("2026-03-01T00:00:00.000Z") },
+    )
+    expect(emitted).toHaveLength(1)
+    expect(emitted[0]?.data).toMatchObject({
+      grand_total_minor: "12000",
+      amount_due_minor: "6000",
+      amount_due_display: formatMoneyMinor(6000n, "EUR"),
+    })
   })
 
   test("a credit note carrying the order id does not block a new invoice", async () => {

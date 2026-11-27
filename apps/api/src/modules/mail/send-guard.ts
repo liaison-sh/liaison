@@ -757,6 +757,17 @@ export async function evaluateSendGuard(input: EvaluateSendGuardInput): Promise<
   return { ...verdict, classification: now.classification }
 }
 
+/**
+ * Why a follow-up counts as commercial when it names no record that makes it a service mail,
+ * said to the agent that staged it: the usual cause is a reminder about an invoice or an
+ * account that forgot to name it, and naming it is the fix, not recording a lawful basis.
+ */
+function unbackedFollowUpHint(orgId: string, guard: PinnedSendGuard): string {
+  if (guard.mode !== "followup") return ""
+  if (guard.refs.some((ref) => findProvider(orgId, ref.kind)?.serviceMessage === true)) return ""
+  return ` This follow-up names no record that makes it a service mail, so it counts as commercial. A reminder about an invoice, a payment or an account names that record: followUp {refs: [{kind, id}], classification: "service"}, for example {kind: "stripe:invoice", id: "in_..."}.`
+}
+
 async function evaluateAs(
   input: EvaluateSendGuardInput,
   guard: PinnedSendGuard,
@@ -785,7 +796,10 @@ async function evaluateAs(
           state: "ref_stop",
           final: true,
           code: problem.code,
-          label: problem.label,
+          label:
+            at === "stage"
+              ? `${problem.label}${unbackedFollowUpHint(orgId, guard)}`
+              : problem.label,
           who: problem.who,
         }
       }

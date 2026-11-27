@@ -24,7 +24,7 @@ import { type IssueDateParts, issueDateParts } from "../issue-date"
 import { formatMoneyMinor } from "../money"
 import type { ClassifyInput } from "../tax"
 import { advanceDeductedRefusal } from "./advance-guard"
-import { creditedTotalMinor, ISSUED_INVOICE_STATUSES } from "./credit-coverage"
+import { creditedTotalMinor, ISSUED_INVOICE_STATUSES, settleAfterCredit } from "./credit-coverage"
 import type { IssuerProfileRow } from "./db-helpers"
 import {
   dateOnly,
@@ -589,6 +589,8 @@ export async function prepareCreditNoteCreateAndIssue(
   }
   const after = async (result: IssueResult): Promise<void> => {
     if (!original || !originalDocumentUuid) return
+    // A credit that covers the invoice settles it: never overdue, never chased.
+    await settleAfterCredit(ctx.db, originalDocumentUuid, await ctx.getUserId())
     // Kernel audit trail — mirrors the credit_note_issued lifecycle_log entry committed with the note.
     await ctx.emit({
       entity: "document",
@@ -856,6 +858,8 @@ export async function creditNoteIssue(
 
   if (originalDocumentUuid) {
     if (original) {
+      // A credit that covers the invoice settles it: never overdue, never chased.
+      await settleAfterCredit(ctx.db, originalDocumentUuid, await ctx.getUserId())
       // Kernel audit trail — mirrors the credit_note_issued lifecycle_log entry committed with the note.
       await ctx.emit({
         entity: "document",

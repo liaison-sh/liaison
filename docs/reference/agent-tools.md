@@ -638,6 +638,8 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `revenue_stream_bind` | Bind a sales app (one implementing revenue-stream@1) so each of its sales gets its invoice, under an issuer profile; or change a bound stream (streamId: mode auto/review/off, mail, label, issuer). | yes | `invoicing:settings:write` |
 | `revenue_stream_sale_issue` | Issue the invoice of one sale of a bound revenue stream (the sale is read again from its app). | yes | `invoicing:documents:write` |
 | `revenue_streams_list` | List the revenue streams: the sales apps whose sales this organization invoices automatically (provider app, issuer profile, mode auto/review/off, issue_from, mail), and the installed apps that could be bound. |  | `invoicing:settings:read` |
+| `sales_catch_up` | Invoice the sales a bound revenue stream's app took between paidFrom and paidTo that have no invoice yet: oldest first, one number each, issued today, then a credit note for each refund. | yes | `invoicing:documents:write` |
+| `sales_catch_up_preview` | Read only: every sale a bound revenue stream's app took between paidFrom and paidTo, oldest first, as the catch-up would invoice it: buyer, country, tax treatment, lines, tax as computed against the tax the source charged, totals, refunds, blockers (address, VAT number to validate, FX rate, tax gap) and the document it already has. |  | `invoicing:documents:read`, `invoicing:settings:read` |
 | `settings_hs_code_list` | List the org's HS-code library entries. |  | `invoicing:settings:read` |
 | `settings_issuer_profile_create` | Create an issuer profile. | yes | `invoicing:settings:write` |
 | `settings_issuer_profile_delete` | Delete an issuer profile by id. | yes | `invoicing:settings:write` |
@@ -944,6 +946,7 @@ Watch Facebook, Instagram and YouTube activity and answer with approved replies.
 | `correct_triage` | Deliberately re-triage a finding after the fact (human correction). |  | `social:internal` |
 | `counts` | Sidebar badge counts: new findings, awaiting approval, open DMs. |  | `social:findings:read` |
 | `dismiss_finding` | Dismiss a finding (no reply needed). |  | `social:internal` |
+| `dm_delete_conversation` | Delete a direct-message conversation from Liaison's inbox. |  | `social:dm:write` |
 | `dm_get` | Get one conversation with its messages. |  | `social:dm:read` |
 | `dm_list` | List direct-message conversations, most recently active first. |  | `social:dm:read` |
 | `findings_get` | Get one social finding by id. |  | `social:findings:read` |
@@ -990,6 +993,8 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | `refund_document_link` | Record the credit note a Stripe refund became, or that none follows it. |  | `stripe:internal` |
 | `refunds_create` | Refund a Stripe charge, in full or in part (amountMinor in cents). | yes | `stripe:refunds:write` |
 | `refunds_for_charge` | Every refund of one Stripe charge, by id, read from Stripe, with the charge's invoice. |  | `stripe:internal` |
+| `rs_sale_get` | revenue-stream@1 sale_get: the sale of one one-off payment (a PaymentIntent paid through Checkout, with no Stripe invoice), read from its Checkout Session (contract op, not agent visible). |  | `stripe:internal` |
+| `rs_sales_list` | revenue-stream@1 sales_list: the one-off sales of the Checkout Sessions completed in [paid_from, paid_to) (contract op, not agent visible). |  | `stripe:internal` |
 | `settings_load` | The Stripe settings page's load: the connection state and the key's permissions from the last check. |  | `stripe:admin:connection` |
 | `subscription_cancel` | Cancel a Stripe subscription, at the end of its period unless atPeriodEnd is false. | yes | `stripe:subscriptions:write` |
 | `subscription_cancel_effect` | What cancelling a subscription changes: MRR, invoices and the company's open deals, for its approval card. |  | `stripe:subscriptions:read` |

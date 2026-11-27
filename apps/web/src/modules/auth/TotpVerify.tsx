@@ -138,6 +138,7 @@ const TotpVerify: Component = () => {
               maxLength={6}
               autofocus
               autocomplete="one-time-code"
+              inputmode="numeric"
             />
             <Show when={error()}>
               <p class="text-xs text-error">{error()}</p>

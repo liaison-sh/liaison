@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The buyer invoices API's server keys and download links (migration 0357,
+// The buyer invoices API's server keys and download links (migration 0358,
 // modules/buyer-invoices/store.ts). A key belongs to one org and one invoicing
 // issuer profile and is kept as its SHA-256 and 8-character prefix only; a link
 // keeps the SHA-256 of its token. Privileged pool only (RLS forced, no policy).

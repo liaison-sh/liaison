@@ -5,7 +5,7 @@
 // profile in SQL; which sales a buyer sees is decided by `saleMatches` (match.ts) on the
 // candidates read here, never by SQL alone.
 //
-// Keys and links are kernel tables on the privileged pool only (migration 0357): a request names
+// Keys and links are kernel tables on the privileged pool only (migration 0358): a request names
 // no org, so its key is looked up first, by its 8-character prefix, then compared by hash in
 // constant time.
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto"

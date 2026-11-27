@@ -1633,7 +1633,7 @@ export interface UpdateTargetParams {
   /** The edit sets a recurrence rule (only a series has one). */
   changesRecurrence?: boolean
   /** The tool asking, named in the messages (default update_event). */
-  tool?: "update_event" | "delete_event" | "respond_to_event"
+  tool?: "update_event" | "delete_event" | "respond_to_invitation"
 }
 
 function invalidParams(message: string): Error {
@@ -1752,7 +1752,7 @@ export async function resolveUpdateTarget(
   const title = row.title ? `"${row.title}"` : "This event"
   const tool = params.tool ?? "update_event"
   const verb =
-    tool === "delete_event" ? "delete" : tool === "respond_to_event" ? "answer" : "change"
+    tool === "delete_event" ? "delete" : tool === "respond_to_invitation" ? "answer" : "change"
   if (params.scope !== "occurrence" && params.scope !== "following" && params.scope !== "series") {
     const which = isException
       ? `${title} is one occurrence of a recurring meeting.`

@@ -163,7 +163,7 @@ describe("G12: RSVP", () => {
     await h.notify(OWNER)
     await h.drain()
     const row = await h.event(OWNER, invite.id)
-    const answered = (await h.tool("respond_to_event", {
+    const answered = (await h.tool("respond_to_invitation", {
       eventId: row?.id,
       response: "declined",
     })) as { response: string }
@@ -185,7 +185,7 @@ describe("G12: RSVP", () => {
       end: "2026-12-03T10:00:00.000Z",
     })) as { eventId: string }
     await expect(
-      h.tool("respond_to_event", { eventId: own.eventId, response: "accepted" }),
+      h.tool("respond_to_invitation", { eventId: own.eventId, response: "accepted" }),
     ).rejects.toThrow(/only a guest can reply/)
   })
 })

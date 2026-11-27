@@ -758,7 +758,7 @@ export function createCalendarMethods(
         calendarId: params.calendarId,
         scope: params.scope,
         occurrenceStart: params.occurrenceStart,
-        tool: "respond_to_event",
+        tool: "respond_to_invitation",
       })
       const row = await getEventById(txDb, orgId, target.eventId)
       if (!row) throw new Error(`calendar event ${params.eventId} not found`)

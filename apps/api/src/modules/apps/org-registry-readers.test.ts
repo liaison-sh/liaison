@@ -106,6 +106,7 @@ const READERS: Record<string, string> = {
   "modules/apps/sandbox/bridge/platform.ts": AGENT,
   "modules/audit/timeline-routes.ts": REQUEST,
   "modules/bug-reports/tool.ts": AGENT,
+  "modules/org/notifications-mail-tool.ts": SETUP,
   // Called by the CLI (ensureAppsForOrg first), agent tools and the secret-request routes.
   "modules/connection-guides/plan.ts":
     "CLI, agent turn or request: each caller sets the org up first",

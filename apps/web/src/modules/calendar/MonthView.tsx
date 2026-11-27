@@ -17,7 +17,13 @@ export interface MonthViewProps {
   /** A click on a day's empty space; `anchor` is the viewport point to anchor a popover at. */
   onSelectDay?: (day: Date, anchor: { x: number; y: number }) => void
   onFocusDay?: (day: Date) => void
+  /** A timed event dropped on another day: same time of day, that date. */
+  onMoveEventToDay?: (eventId: string, day: Date) => void
+  canDrag?: (eventId: string) => boolean
 }
+
+/** The drag payload type: an event id, nothing a drop outside the calendar could act on. */
+const DRAG_TYPE = "application/x-liaison-calendar-event"
 
 const MAX_LANES = 2
 const MAX_TIMED = 2
@@ -101,6 +107,15 @@ export const MonthView: Component<MonthViewProps> = (props) => {
                       <div
                         class={`group relative flex min-h-[6.5rem] cursor-pointer flex-col border-r border-border-subtle px-1 pb-1 last:border-r-0 transition-colors hover:bg-[color-mix(in_srgb,var(--color-accent)_4%,transparent)] ${inMonth ? "" : "bg-[color-mix(in_srgb,var(--color-border)_18%,transparent)]"}`}
                         data-testid="calendar-day-cell"
+                        onDragOver={(e) => {
+                          if (e.dataTransfer?.types.includes(DRAG_TYPE)) e.preventDefault()
+                        }}
+                        onDrop={(e) => {
+                          const id = e.dataTransfer?.getData(DRAG_TYPE)
+                          if (!id) return
+                          e.preventDefault()
+                          props.onMoveEventToDay?.(id, new Date(day))
+                        }}
                         data-date={`${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`}
                         onClick={(e) =>
                           props.onSelectDay?.(new Date(day), { x: e.clientX, y: e.clientY })
@@ -136,6 +151,11 @@ export const MonthView: Component<MonthViewProps> = (props) => {
                                 type="button"
                                 class="mt-px flex w-full min-w-0 items-center gap-1 rounded px-1 py-px text-left text-xs leading-4 transition-colors hover:bg-[color-mix(in_srgb,var(--color-border)_40%,transparent)]"
                                 data-testid="calendar-event-chip"
+                                draggable={props.canDrag?.(occ.eventId) ?? false}
+                                onDragStart={(e) => {
+                                  e.dataTransfer?.setData(DRAG_TYPE, occ.eventId)
+                                  if (e.dataTransfer) e.dataTransfer.effectAllowed = "move"
+                                }}
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   props.onSelectEvent?.(occ.eventId)

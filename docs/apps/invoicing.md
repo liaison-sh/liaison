@@ -53,6 +53,8 @@ Turn on **Thank-you mail for each sale** on the issuer profile to send each buye
 
 With it off, the profile keeps the plain invoice mail, sent only when `autoEmail` is on. With no mailbox chosen, no mail goes: the order waits under **Deferred** for one.
 
+**Send the thank-you from** chooses where it goes out from: **The mailbox above** (the default) or **The organization's notifications sender**, the address your organization's own notifications (invitations, survey mails) come from, set in the organization's email settings (`email.from`). The mail is the same, logo and invoices included, and it needs no mailbox. Replies go to the profile's **Reply-to address** when you fill it in, else to the organization's reply-to address. The plain invoice mail always goes from the mailbox.
+
 **Settings › Invoicing › Shopify shop mappings** lists each **Shop URL** with its **Issuer profile**. Without a mapping, paid orders are parked and no invoice issues.
 
 When an order cannot be invoiced automatically, it appears under **Deferred** in the Invoicing sidebar (the row shows only when something is waiting). An order whose tax needs a decision offers **Issue with Shopify's tax** and **Issue as computed**. Both file an approval.
@@ -120,7 +122,16 @@ For an issuer in the EU, a customer in another EU country is either a business o
 
 - When an invoice is issued on another day than the sale (an order paid yesterday, a sale invoiced later), its PDF prints **Date of sale** under **Issued**, and its Factur-X carries the same date as the delivery date. An invoice issued on the day of the sale prints none. Credit notes never print one.
 - From 28 November 2026, services sold to a customer outside the EU (software, a digital download, a service) print a mention that French VAT does not apply because the place of supply is outside France, instead of the export of goods mention. Goods keep the export mention, and a document mixing both prints the two. Documents issued before keep their mention.
+- From 28 November 2026, digital services sold to a consumer outside the EU print "TVA non applicable, art. 259 B du CGI" (in English, "VAT not applicable, art. 259 B of the French Tax Code"). A business outside the EU keeps the place of supply mention above. Documents issued before keep their mention.
 - A sale whose tax its source computed (a checkout's own tax engine) is checked before it is issued: a reverse charge needs a VAT number VIES confirmed, a digital service to a consumer needs two pieces of location evidence (billing address, IP address, card country) that name the same country, and the source's tax must match the rate of that country. Anything else waits for a person. The place of supply and its evidence are kept with the invoice.
+- A sale to a consumer outside the EU (the United Kingdom or Switzerland, say) on which the source collected no tax is issued with no VAT and the mention above. One on which the source did collect tax waits for a person, since that tax belongs to a registration abroad.
+
+### VAT settings for sales to consumers abroad
+
+Two settings on the issuer profile change how a sale to a consumer in another country is taxed. Both are off by default. Check with your accountant before you turn one on.
+
+- **Small seller (under EUR 100,000 cross-border digital B2C)**: your telecom, broadcasting and electronic services to consumers in other countries stayed under EUR 100,000 this calendar year and last. One piece of evidence of the buyer's country is then enough (EU Implementing Regulation 282/2011, art. 24b). Off, two that agree are needed.
+- **Under EUR 10,000 EU-wide, not registered for the OSS**: your digital services and distance sales of goods to consumers in other EU countries stayed under EUR 10,000 this calendar year and last, and you have not opted for the OSS (One-Stop Shop, the "guichet unique"). Those consumers are then charged French VAT (Directive 2006/112/EC art. 59c, CGI art. 259 D). Off, they are charged their own country's rate through the OSS. Leave it off once you are registered for the OSS.
 
 The approval card of a new document states its tax treatment and rate, whether the prices were typed with VAT included (**Prices include tax** on the issuer profile) or net, and the net, VAT and total that will be issued.
 

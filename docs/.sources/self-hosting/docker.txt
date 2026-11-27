@@ -15,7 +15,11 @@ redis maxmemory 384mb -> deploy/docker-compose.yml:113
 redis mem 512m -> deploy/docker-compose.yml:127
 Redis pub-sub, rate limiting, BullMQ queues -> README.md:139
 meilisearch v1.10 -> deploy/docker-compose.yml:138
-meili mem 1500m -> deploy/docker-compose.yml:159
+meili mem 1500m, MEILI_MEM_LIMIT -> deploy/docker-compose.yml:172
+MEILI_MAX_INDEXING_MEMORY 512Mb, a third of the limit -> deploy/docker-compose.yml:158-163
+MEILI_MEM_LIMIT / MEILI_MAX_INDEXING_MEMORY in .env -> deploy/.env.example (search service block)
+Heavy profile 73k documents, 13k vectors -> apps/api/src/seed/bulk/search-profile.ts:54-66
+--search-profile heavy -> apps/api/src/seed/tiers/lively/seed-lively.ts (runSeedLivelyCli)
 seaweedfs 4.48 -> deploy/docker-compose.yml:183
 objectstore mem 1g -> deploy/docker-compose.yml:240
 objectstore-init creates bucket -> deploy/docker-compose.yml:258

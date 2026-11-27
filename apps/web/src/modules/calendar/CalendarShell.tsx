@@ -21,6 +21,7 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { openTab } from "~/modules/shell/tab-store"
+import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
 import { AgendaView } from "./AgendaView"
 import {
@@ -38,9 +39,11 @@ import {
   loadCalendarsList,
   loadEventsForWindow,
   loadPreferredView,
+  patchEventLocally,
   persistPreferredView,
   reloadCurrentWindow,
   setFocusedDate,
+  updateCalendarEvent,
 } from "./calendar-store"
 import { startOfMonthGrid, startOfWeek, weekDays, weekStartsOn } from "./date-utils"
 import { nextHalfHour } from "./event-form"
@@ -293,6 +296,81 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
       ? new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1)
       : new Date(from.getTime() + 30 * 60_000)
     setQuick({ start: from, end, allDay, x: anchor.x, y: anchor.y })
+  }
+
+  /** A timed event the grid may drag: not a recurring series (its occurrences move in a later
+   * step), not an all-day one. */
+  function canDrag(eventId: string): boolean {
+    const e = calendarStore.events.find((x) => x.eventId === eventId)
+    if (!e || e.allDay || !e.start?.dateTime || !e.end?.dateTime) return false
+    return !(Array.isArray(e.recurrence) && e.recurrence.length > 0)
+  }
+
+  /** Move or resize: painted at once, saved behind it, put back with a note if refused, and
+   * undoable for a few seconds once saved. */
+  async function moveEvent(eventId: string, start: Date, end: Date): Promise<void> {
+    const event = calendarStore.events.find((e) => e.eventId === eventId)
+    if (!event) return
+    const point = (zone: string | undefined, d: Date) => ({
+      dateTime: d.toISOString(),
+      ...(zone ? { timeZone: zone } : {}),
+    })
+    const scope = event.recurringEventId ? { scope: "occurrence" as const } : {}
+    const before = patchEventLocally(eventId, {
+      start: point(event.start?.timeZone, start),
+      end: point(event.end?.timeZone, end),
+    })
+    if (!before) return
+    try {
+      await updateCalendarEvent(api, {
+        eventId,
+        start: start.toISOString(),
+        end: end.toISOString(),
+        ...scope,
+      })
+    } catch (err) {
+      patchEventLocally(eventId, before)
+      addToast({
+        message: i18n.t("calendar.moveFailed", {
+          message: err instanceof Error ? err.message : String(err),
+        }),
+        type: "error",
+      })
+      return
+    }
+    void reloadCurrentWindow(api)
+    addToast({
+      message: i18n.t("calendar.eventMoved"),
+      type: "info",
+      durationMs: 8000,
+      action: {
+        label: i18n.t("calendar.undo"),
+        onClick: () => {
+          const back = { start: before.start?.dateTime, end: before.end?.dateTime }
+          if (!back.start || !back.end) return
+          patchEventLocally(eventId, before)
+          void updateCalendarEvent(api, { eventId, start: back.start, end: back.end, ...scope })
+            .then(() => reloadCurrentWindow(api))
+            .catch(() => reloadCurrentWindow(api))
+        },
+      },
+    })
+  }
+
+  function moveEventToDay(eventId: string, day: Date): void {
+    const event = calendarStore.events.find((e) => e.eventId === eventId)
+    if (!event?.start?.dateTime || !event.end?.dateTime) return
+    const start = new Date(event.start.dateTime)
+    const end = new Date(event.end.dateTime)
+    const next = new Date(
+      day.getFullYear(),
+      day.getMonth(),
+      day.getDate(),
+      start.getHours(),
+      start.getMinutes(),
+    )
+    if (next.getTime() === start.getTime()) return
+    void moveEvent(eventId, next, new Date(next.getTime() + (end.getTime() - start.getTime())))
   }
 
   function selectEvent(eventId: string): void {
@@ -590,6 +668,8 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
               calendarColors={calendarColors()}
               onSelectEvent={selectEvent}
               onSelectDay={(day, anchor) => openCreate(day, anchor, true)}
+              canDrag={canDrag}
+              onMoveEventToDay={moveEventToDay}
               onFocusDay={(day) => {
                 setFocusedDate(new Date(day))
                 switchView("day")
@@ -606,6 +686,11 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
               calendarColors={calendarColors()}
               onSelectEvent={selectEvent}
               onSelectSlot={(start, anchor) => openCreate(start, anchor)}
+              onCreateRange={(start, end, anchor) =>
+                setQuick({ start, end, allDay: false, x: anchor.x, y: anchor.y })
+              }
+              onMoveEvent={(eventId, start, end) => void moveEvent(eventId, start, end)}
+              canDrag={canDrag}
             />
           </Match>
         </Switch>

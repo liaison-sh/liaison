@@ -11,7 +11,10 @@
 //  - B2C electronically supplied services (line kind `software`): taxed where the consumer is
 //    established (Directive art. 58; CGI art. 259 D), at that member state's rate through the OSS
 //    (Directive art. 369a-369k), backed by two non-contradictory pieces of location evidence
-//    (Implementing Regulation (EU) 282/2011 art. 24b(d) and 24f).
+//    (Implementing Regulation (EU) 282/2011 art. 24b(d) and 24f), or one for a seller under
+//    EUR 100 000 (art. 24b(d), second subparagraph; the profile's `vat_single_evidence`).
+//    Under the EUR 10 000 EU-wide threshold without the OSS (Directive art. 59c; CGI art. 259 D II,
+//    the profile's `vat_eu_b2c_below_threshold`), the seller's own rate instead.
 //  - B2C goods: destination VAT through the OSS (distance sales, Directive art. 33 and 369a).
 //  - B2C services that are not electronic (line kind `service`): the place of supply depends on the
 //    service (Directive art. 45 and the special rules after it), so a person decides: parked.
@@ -52,10 +55,30 @@ export interface SaleTaxInput {
     /** The tax the source charged on this line, minor units; null when it reports none. */
     source_tax_minor: bigint | null
   }>
-  /** Implementing Regulation 282/2011 art. 24b(d), second subparagraph: a seller whose
-   *  cross-border electronic services stayed under EUR 100 000 may rely on one piece of evidence.
-   *  Off unless the issuer says so (an accountant's call, never a default). */
+  /** Implementing Regulation (EU) 282/2011 art. 24b(d), second subparagraph: a seller whose
+   *  cross-border B2C telecommunications, broadcasting and electronic services stayed under
+   *  EUR 100 000 in the current and the previous calendar year may rely on ONE piece of location
+   *  evidence. Off unless the issuer profile says so (`vat_single_evidence`): two otherwise. */
   single_evidence_allowed?: boolean
+  /** Directive 2006/112/EC art. 59c (CGI art. 259 D II for the services, art. 258 A for goods):
+   *  a seller established in one member state only, whose B2C electronic services and intra-EU
+   *  distance sales of goods stayed under EUR 10 000 EU-wide in the current and the previous
+   *  calendar year, and who has NOT opted to tax them in the consumer's member state (the OSS),
+   *  charges its own country's VAT to consumers in other member states. Off unless the issuer
+   *  profile says so (`vat_eu_b2c_below_threshold`): an OSS-registered seller leaves it off and
+   *  always charges the consumer's member state rate. */
+  eu_b2c_below_threshold?: boolean
+}
+
+/** The issuer profile's VAT settings as `classifySaleTax` reads them; both off by default. */
+export function saleTaxSettings(issuer: {
+  vat_single_evidence?: boolean | null
+  vat_eu_b2c_below_threshold?: boolean | null
+}): Required<Pick<SaleTaxInput, "single_evidence_allowed" | "eu_b2c_below_threshold">> {
+  return {
+    single_evidence_allowed: issuer.vat_single_evidence === true,
+    eu_b2c_below_threshold: issuer.vat_eu_b2c_below_threshold === true,
+  }
 }
 
 export interface PlaceOfSupply {
@@ -264,7 +287,8 @@ export function classifySaleTax(input: SaleTaxInput): SaleTaxResult {
   const electronic = input.lines.some((l) => l.kind === "software")
   if (electronic) {
     // Electronic services to a consumer are taxed where the consumer is (Directive art. 58),
-    // which two non-contradictory pieces of evidence must support (Reg. 282/2011 art. 24b(d)).
+    // which two non-contradictory pieces of evidence must support (Reg. 282/2011 art. 24b(d));
+    // one is enough for a seller under EUR 100 000 (art. 24b(d), second subparagraph).
     const agreeing = evidenceFor(country, evidence)
     const needed = input.single_evidence_allowed ? 1 : 2
     if (agreeing.length < needed) {
@@ -280,6 +304,11 @@ export function classifySaleTax(input: SaleTaxInput): SaleTaxResult {
     return done("eu_domestic", all(domesticBp), { country, rule: "seller_establishment" })
   }
   const rule = electronic ? "consumer_residence" : "goods_arrival"
+  if (isEuCountry(country) && input.eu_b2c_below_threshold) {
+    // Under the EUR 10 000 EU-wide threshold and not opted for the OSS (Directive art. 59c;
+    // CGI art. 259 D II and 258 A): supplied where the seller is established, at its own rate.
+    return done("eu_domestic", all(domesticBp), { country: seller, rule: "seller_establishment" })
+  }
   if (isEuCountry(country)) {
     // OSS: the member state of consumption's standard rate, for goods and electronic services
     // alike. A reduced rate the source applied (an e-book, say) shows as a mismatch: a person

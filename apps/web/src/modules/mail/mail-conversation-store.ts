@@ -127,7 +127,15 @@ export function setView(view: ViewType): void {
 export function upsertConversation(conversation: Conversation): void {
   setConversationStore(
     produce((state) => {
-      state.byId[conversation.id] = conversation
+      const existing = state.byId[conversation.id]
+      // The sender is derived from the latest message by the list endpoint
+      // only; the conversation that comes with an opened thread lacks it, and
+      // writing it over the row turned the inbox row into "Unknown sender".
+      state.byId[conversation.id] = {
+        ...conversation,
+        senderName: conversation.senderName ?? existing?.senderName ?? null,
+        senderEmail: conversation.senderEmail ?? existing?.senderEmail ?? null,
+      }
       if (!state.ids.includes(conversation.id) && matchesCurrentView(conversation)) {
         state.ids.unshift(conversation.id)
       }

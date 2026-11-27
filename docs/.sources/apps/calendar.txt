@@ -69,6 +69,18 @@ Read-only calendars refuse new events and edits -> apps/api/src/modules/apps/san
 Unticking hides the events but keeps them -> apps/api/src/apps/calendar/sync.ts:1086
 Kept 30 days -> apps/api/src/apps/calendar/sync.ts:1093
 Ticking again lists into the same rows -> apps/api/src/apps/calendar/sync.ts:1075
+Teammates and contacts suggested as guests, any address accepted -> apps/web/src/modules/calendar/attendee-search.ts:22
+Send invitations ticked when guests are added -> apps/web/src/modules/calendar/CalendarEventTab.tsx:134
+Going? Yes Maybe No for an invitation you received -> apps/web/src/modules/calendar/CalendarEventTab.tsx:138
+Declined events struck through and faded -> apps/web/src/modules/calendar/rrule-expand.ts:34
+An occurrence opens at that occurrence -> apps/web/src/modules/calendar/event-tabs.ts:71
+This event / This and following / All events; a rule change not for one occurrence -> apps/web/src/modules/calendar/CalendarEventTab.tsx:353
+All events moves the series by what the occurrence moved -> apps/web/src/modules/calendar/series-edit.ts:87
+Repeat editor: every, weekdays, ends; unknown rules kept -> apps/web/src/modules/calendar/recurrence-rule.ts:31
+update_event and delete_event take this and the following occurrences -> apps/api/src/apps/calendar/app.manifest.json:465
+Series split: old series ends before the occurrence, a new one starts there -> apps/api/src/apps/calendar/sync.ts:1874
+Split keeps cancellations, edited occurrences take the change -> apps/api/src/apps/calendar/sync.ts:1912
+Split rule arithmetic (UNTIL or shared COUNT) -> packages/shared/src/calendar-recurrence.ts:508
 Agent writes email nobody unless sendUpdates asks -> apps/api/src/apps/calendar/app.manifest.json:409
 Notifying agent write waits for approval -> apps/api/src/apps/calendar/handlers.ts:1633
 Every agent delete waits for approval -> apps/api/src/apps/calendar/handlers.ts:1737

@@ -18,12 +18,19 @@ vi.mock("@solidjs/router", async (importOriginal) => {
   }
 })
 
-import { getTabTypes, registerTabType, resetRegistry } from "~/framework/app-registry"
+import {
+  getTabTypes,
+  patternToUrl,
+  registerTabType,
+  resetRegistry,
+  urlToTabInfo,
+} from "~/framework/app-registry"
 import { bootstrapKernelApps, resetBootstrap } from "~/framework/bootstrap"
 import {
   createPushNav,
   isDetailRoute,
   masterRouteFor,
+  parentRouteForPath,
   patternIsDetail,
 } from "~/primitives/createPushNav"
 
@@ -80,14 +87,57 @@ describe("createPushNav", () => {
     })
   })
 
-  it("popDetail on a deep link with no pushed history goes to the master route", () => {
+  it("popDetail on a deep link with no pushed history goes UP to the Chats list, replacing the entry", () => {
     createRoot((dispose) => {
       currentPathname = "/threads/thread-1"
       window.history.replaceState(null, "", "/threads/thread-1")
       const nav = createPushNav()
       nav.popDetail()
-      expect(navigateSpy).toHaveBeenCalledWith("/threads")
+      // Not `/threads`: no screen answers it, and the shell drew a dead page.
+      expect(navigateSpy).toHaveBeenCalledWith("/chats", { replace: true })
       expect(navigateSpy).not.toHaveBeenCalledWith(-1)
+      dispose()
+    })
+  })
+
+  it("a conversation opened from a push tap goes back to the Chats list, cold or warm", () => {
+    // The mobile shell routes a tap by pushing the route with no state of ours
+    // and firing popstate (apps/mobile/src/deep-link.ts, historyNavigator):
+    // cold, over the boot entry; warm, over whatever screen was open.
+    for (const before of ["/", "/work"]) {
+      navigateSpy.mockClear()
+      window.history.replaceState(null, "", before)
+      window.history.pushState({}, "", "/threads/thread-1")
+      currentPathname = "/threads/thread-1"
+      createRoot((dispose) => {
+        const nav = createPushNav()
+        expect(nav.detailOpen()).toBe(true)
+        expect(nav.backLabel()).toBe("Chats")
+        nav.popDetail()
+        expect(navigateSpy.mock.calls).toEqual([["/chats", { replace: true }]])
+        dispose()
+      })
+    }
+  })
+
+  it("a task opened from a notification goes back to Projects, not to a project named 'tasks'", () => {
+    const stub = (urlPattern: string, label: string) =>
+      ({
+        component: (() => null) as any,
+        urlPattern,
+        defaultLabel: label,
+        icon: undefined,
+        sidebar: null,
+      }) as any
+    registerTabType("projects:home", { ...stub("/projects", "Projects"), singleton: true })
+    registerTabType("projects:project", stub("/projects/:entityId", "Project"))
+    registerTabType("projects:task", stub("/projects/tasks/:entityId", "Task"))
+    window.history.replaceState(null, "", "/projects/tasks/task-9")
+    currentPathname = "/projects/tasks/task-9"
+    createRoot((dispose) => {
+      const nav = createPushNav()
+      nav.popDetail()
+      expect(navigateSpy).toHaveBeenCalledWith("/projects", { replace: true })
       dispose()
     })
   })
@@ -199,6 +249,37 @@ describe("isDetailRoute - only an entity tail is a detail route", () => {
         reg.urlPattern,
         true,
       ])
+    }
+  })
+})
+
+describe("parentRouteForPath - Back from a deep-linked detail lands on a real screen", () => {
+  beforeEach(() => {
+    resetRegistry()
+    resetBootstrap()
+    bootstrapKernelApps()
+  })
+  afterEach(() => {
+    resetRegistry()
+    resetBootstrap()
+  })
+
+  it("names the list each kernel detail belongs to", () => {
+    expect(parentRouteForPath("/threads/t-1")).toBe("/chats")
+    expect(parentRouteForPath("/sessions/s-1")).toBe("/sessions")
+    expect(parentRouteForPath("/dashboard/d-1")).toBe("/dashboards")
+    expect(parentRouteForPath("/dashboard-table/x-1")).toBe("/dashboards")
+    // A multi-segment entity tail with no list above it: Home.
+    expect(parentRouteForPath("/detail/tickets/ticket/42")).toBe("/")
+  })
+
+  it("every kernel detail's parent is a route the shell renders, never an unmatched one", () => {
+    for (const reg of Object.values(getTabTypes())) {
+      if (!patternIsDetail(reg.urlPattern)) continue
+      const sample = patternToUrl(reg.urlPattern, "sample-1")
+      const parent = parentRouteForPath(sample)
+      expect([sample, parent, urlToTabInfo(parent) !== null]).toEqual([sample, parent, true])
+      expect([sample, isDetailRoute(parent)]).toEqual([sample, false])
     }
   })
 })

@@ -44,6 +44,9 @@ describe("social manifest (B1)", () => {
     // 0.7.1: Instagram DMs switched off by the owner ("Allow access to messages") are an explicit
     // state (connections_status issues, dm_list notices, a Messages notice), not an empty sync.
     // 0.7.2: the Messages compose box sends: "Approve & send" calls send_dm and re-reads the thread.
+    // 0.7.3: an Instagram message its sender unsends shows "Message unsent" (text cleared); a team
+    // member can delete a conversation from the inbox (dm_delete_conversation, local only, back on a
+    // new inbound message); a connect also queues one DM sync.
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/)
     expect(manifest.packageFormat).toBe(1)
   })

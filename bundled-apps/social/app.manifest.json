@@ -1,6 +1,6 @@
 {
   "name": "social",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "secrets": {
     "webhookVerifyToken": {
       "hosts": ["graph.facebook.com"],
@@ -439,7 +439,7 @@
         "status": {
           "type": "string",
           "default": "open",
-          "enum": ["open", "awaiting_approval", "snoozed", "archived", "handled"]
+          "enum": ["open", "awaiting_approval", "snoozed", "archived", "handled", "deleted"]
         },
         "suggested_reply": "string?",
         "approval_request_id": "string?",
@@ -659,7 +659,7 @@
       "params": { "type": "object", "properties": { "finding_id": { "type": "string" } }, "required": ["finding_id"] }
     },
     "dm_list": {
-      "description": "List direct-message conversations, most recently active first. A conversation's `status` is `open` while the other person spoke last (waiting on us) and `handled` once our side sent the latest message; their next message reopens it (an `archived` one too), so `status: open` lists the threads that need an answer. Each conversation carries a `reply_window` { tag, canSend, daysSinceLastInbound, explanation } describing the current send-time messaging window (standard ≤24h · human-agent ≤7d · closed >7d) — read it to know whether and how a send_dm can be delivered.",
+      "description": "List direct-message conversations, most recently active first. A conversation's `status` is `open` while the other person spoke last (waiting on us) and `handled` once our side sent the latest message; their next message reopens it (an `archived` one too), so `status: open` lists the threads that need an answer. A conversation deleted from the inbox (dm_delete_conversation) has `status: deleted` and is left out unless that status is asked for. A message its sender unsent has no body and `metadata.unsent: true`: say it was unsent, never guess its text. Each conversation carries a `reply_window` { tag, canSend, daysSinceLastInbound, explanation } describing the current send-time messaging window (standard ≤24h · human-agent ≤7d · closed >7d) — read it to know whether and how a send_dm can be delivered.",
       "searchKeywords": ["message", "messages", "privés", "instagram", "facebook"],
       "readOnly": true,
       "requiredScopes": ["social:dm:read"],
@@ -673,6 +673,13 @@
       "requiredScopes": ["social:dm:read"],
       "handler": "dmGet",
       "taintSource": true,
+      "params": { "type": "object", "properties": { "conversation_id": { "type": "string" } }, "required": ["conversation_id"] }
+    },
+    "dm_delete_conversation": {
+      "description": "Delete a direct-message conversation from Liaison's inbox. LOCAL ONLY: nothing is deleted on Instagram or Facebook, where the conversation stays. Its stored messages are removed and it leaves the inbox; if the person writes again, it comes back with only the new messages. No approval: nothing leaves Liaison.",
+      "searchKeywords": ["supprimer", "conversation", "message", "messages", "delete", "instagram", "facebook"],
+      "requiredScopes": ["social:dm:write"],
+      "handler": "dmDeleteConversationHandler",
       "params": { "type": "object", "properties": { "conversation_id": { "type": "string" } }, "required": ["conversation_id"] }
     },
     "watched_list": {

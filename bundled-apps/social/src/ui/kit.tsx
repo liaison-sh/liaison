@@ -7,6 +7,7 @@ export {
   type BadgeTone,
   Button,
   Card,
+  ConfirmDialog,
   cx,
   EmptyState,
   inputClass,

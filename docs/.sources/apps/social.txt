@@ -28,8 +28,8 @@ Like button, like_item -> bundled-apps/social/src/ui/Findings.tsx:371
 like only own Page / own IG media, not YouTube -> bundled-apps/social/README.md:20
 reply submitted for approval note -> bundled-apps/social/src/ui/Findings.tsx:259
 edited-after-draft warning -> bundled-apps/social/src/ui/Findings.tsx:344
-Messages view across Facebook and Instagram -> bundled-apps/social/src/ui/Messages.tsx:325
-Open in native app -> bundled-apps/social/src/ui/Messages.tsx:240
+Messages view across Facebook and Instagram -> bundled-apps/social/src/ui/Messages.tsx:391
+Open in native app -> bundled-apps/social/src/ui/Messages.tsx:306
 dm_window_closed after 7 days -> bundled-apps/social/README.md:94
 Watched view; active threads promoted automatically -> bundled-apps/social/src/ui/Watched.tsx:67
 Resume on decayed watch -> bundled-apps/social/src/ui/Watched.tsx:83
@@ -86,17 +86,34 @@ a reply refused as gone or blocked closes its approval; a rate limit goes back t
 Account token added host-side; app token by client credentials grant; verify token placed host-side; Meta signature verified by config key -> bundled-apps/social/src/connection.ts (resolveAccountAuth) ; bundled-apps/social/src/webhooks-setup.ts (APP_AUTH, VERIFY_TOKEN_PLACEHOLDER) ; bundled-apps/social/src/handlers.ts (metaWebhookVerifier)
 Unified login step: turn on Allow access to messages (Settings and activity > Messages and story replies > Message requests > Connected tools), off by default -> bundled-apps/social/app.manifest.json:274
 Instagram 403 code 200 "disabled access to Instagram Direct Messaging" is DM_ACCESS_DISABLED -> bundled-apps/social/src/adapters/instagram.ts:443
-DM sync stamps dmAccessDisabledSince on the account's sync_state row, clears it on the next sync that lands -> bundled-apps/social/src/handlers.ts:456
-DM sync clears the stamp once a sync lands -> bundled-apps/social/src/handlers.ts:481
-Messages shows the notice with the path to the setting -> bundled-apps/social/src/ui/Messages.tsx:332
-dm_list returns notices -> bundled-apps/social/src/reads.ts:212
+DM sync stamps dmAccessDisabledSince on the account's sync_state row, clears it on the next sync that lands -> bundled-apps/social/src/handlers.ts:461
+DM sync clears the stamp once a sync lands -> bundled-apps/social/src/handlers.ts:486
+Messages shows the notice with the path to the setting -> bundled-apps/social/src/ui/Messages.tsx:398
+dm_list returns notices -> bundled-apps/social/src/reads.ts:216
 connections_status lists the dm_access_disabled issue on the connection -> bundled-apps/social/src/settings-status.ts:163
 notice text: messages arrive on the next sync -> bundled-apps/social/src/dm-access.ts:20
-Approve & send button in the Messages compose box -> bundled-apps/social/src/ui/Messages.tsx:275
-the button sends with send_dm -> bundled-apps/social/src/ui/Messages.tsx:161
+Approve & send button in the Messages compose box -> bundled-apps/social/src/ui/Messages.tsx:341
+the button sends with send_dm -> bundled-apps/social/src/ui/Messages.tsx:197
 send_dm requires social:dm:write -> bundled-apps/social/app.manifest.json:609
-a send held by approval says Waiting for approval -> bundled-apps/social/src/ui/Messages.tsx:163
-the sent message appears in the conversation (thread re-read) -> bundled-apps/social/src/ui/Messages.tsx:164
-human agent label between 24 hours and 7 days -> bundled-apps/social/src/ui/Messages.tsx:275
-human agent window is 24 h to 7 d -> bundled-apps/social/src/ui/Messages.tsx:91
-compose box replaced by Open in after the window closes -> bundled-apps/social/src/ui/Messages.tsx:228
+a send held by approval says Waiting for approval -> bundled-apps/social/src/ui/Messages.tsx:199
+the sent message appears in the conversation (thread re-read) -> bundled-apps/social/src/ui/Messages.tsx:200
+human agent label between 24 hours and 7 days -> bundled-apps/social/src/ui/Messages.tsx:341
+human agent window is 24 h to 7 d -> bundled-apps/social/src/ui/Messages.tsx:105
+compose box replaced by Open in after the window closes -> bundled-apps/social/src/ui/Messages.tsx:294
+Instagram unsend is messaging[].message.is_deleted (messages field), parsed as unsent -> bundled-apps/social/src/adapters/facebook.ts:942
+Instagram webhook subscribes the messages field -> bundled-apps/social/src/webhooks-setup.ts:60
+an unsent message keeps its row with text and attachments cleared -> bundled-apps/social/src/ingest.ts:401
+the thread shows Message unsent -> bundled-apps/social/src/ui/Messages.tsx:40
+the sync reads changed threads only (no unsend detection) -> bundled-apps/social/src/handlers.ts:448
+Messenger documents no unsend event (same parser reads the flag) -> bundled-apps/social/src/adapters/facebook.ts:939
+Delete button in the conversation header -> bundled-apps/social/src/ui/Messages.tsx:228
+confirm dialog title and Delete confirm -> bundled-apps/social/src/ui/Messages.tsx:243
+confirm text: removed from Liaison only, not deleted on the platform -> bundled-apps/social/src/ui/Messages.tsx:70
+the button calls dm_delete_conversation -> bundled-apps/social/src/ui/Messages.tsx:171
+dm_delete_conversation requires social:dm:write, not gated -> bundled-apps/social/app.manifest.json:681
+messages removed locally -> bundled-apps/social/src/internal.ts:330
+conversation marked deleted with a cut-off -> bundled-apps/social/src/internal.ts:345
+old messages never land again after the delete -> bundled-apps/social/src/ingest.ts:529
+a new inbound message reopens a deleted conversation -> bundled-apps/social/src/ingest.ts:609
+a connect queues one DM sync -> bundled-apps/social/src/connection.ts:249
+DM sync runs every 10 minutes -> bundled-apps/social/app.manifest.json:329

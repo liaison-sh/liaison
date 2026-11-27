@@ -79,6 +79,12 @@ Each pending reply is named by the words it would post, and a reply or direct me
 
 To answer, type in the box under the conversation and click **Approve & send**. The message is sent with `send_dm` and appears in the conversation. It needs `social:dm:write`; if your organization's approval policy holds it, the box says **Waiting for approval** instead. Between 24 hours and 7 days after the person's last message, the button reads **Approve & send (human agent)**: the message goes out with Meta's human agent tag. After the window closes, the box is replaced by **Open in** the native app.
 
+When someone unsends a message on Instagram, the conversation shows **Message unsent** in its place and the text is removed from Liaison. Instagram reports an unsend through the `messages` webhook, so it shows only when the Instagram webhook is set up; the periodic sync does not detect it. Facebook Messenger does not report unsent messages.
+
+To remove a conversation from the inbox, open it and click **Delete**, then **Delete** again to confirm. This needs `social:dm:write` and no approval. The conversation is removed from Liaison only: it is not deleted on Instagram or Facebook. Its messages are removed from Liaison. If the person writes again, the conversation comes back with the new messages only. An agent does the same with `dm_delete_conversation`.
+
+Right after you connect an account, its direct messages are read once, so they show within a minute instead of at the next sync (every 10 minutes).
+
 If an Instagram account's owner has not turned on **Allow access to messages** in the Instagram app, its messages cannot be read: **Messages** says so at the top with the path to the setting (see step 8 of [Connect Instagram with Unified login](#connect-instagram-with-unified-login)), and the notice goes away after the first sync that reads them.
 
 Platforms only allow a reply within 7 days of the person's last message. An Instagram account connected with the Unified login sends without Meta's human agent tag, so its window is 24 hours. After the window, `send_dm` fails with `dm_window_closed` and the reply has to go through the platform's own app or another channel. Ask an agent to reply: `send_dm` waits for approval.
@@ -104,7 +110,7 @@ Monitor terms are the brand keywords, handles and hashtags the app looks for. Th
 | `social:findings:read` | Read findings, counts, connection and quota status |
 | `social:findings:write` | Reply to and like findings |
 | `social:dm:read` | Read conversations |
-| `social:dm:write` | Send direct messages |
+| `social:dm:write` | Send direct messages and delete conversations from the inbox |
 | `social:watched:read` / `social:watched:write` | Read / change watched posts and videos |
 | `social:terms:read` / `social:terms:write` | Read / change monitor terms |
 | `social:admin:connection` | Connect accounts and set up Facebook and Instagram webhooks |
@@ -121,6 +127,7 @@ Monitor terms are the brand keywords, handles and hashtags the app looks for. Th
 | `like_item` | Like a finding's item (Facebook Page and Instagram media only) | Always |
 | `dm_list`, `dm_get` | Read conversations and their reply window | No |
 | `send_dm` | Send a direct message | Always |
+| `dm_delete_conversation` | Delete a conversation from Liaison's inbox (not on the platform) | No |
 | `watch_object`, `unwatch_object`, `watched_list` | Start, stop and list watched posts and videos | No |
 | `monitor_terms_add`, `monitor_terms_remove`, `monitor_terms_list` | Manage monitor terms | No |
 | `connections_status` | Status of each connection | No |

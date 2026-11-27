@@ -284,6 +284,7 @@ export const FR: Record<string, string> = {
   Received: "Reçu",
   Refs: "Réf.",
   Refunded: "Remboursé",
+  Credited: "Crédité",
   Rejected: "Refusé",
   Relationship: "Relation",
   Remove: "Retirer",

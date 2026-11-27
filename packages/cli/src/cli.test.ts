@@ -174,7 +174,9 @@ beforeAll(() => {
         return json(
           approvalPolls < 2
             ? { status: "pending", result: null }
-            : { status: "approved", result: { appVersion: "0.1.0" } },
+            : approvalPolls < 3
+              ? { status: "approving", result: null }
+              : { status: "approved", result: { appVersion: "0.1.0" } },
         )
       }
       if (p === "/api/apps/builder/drafts/d-1/status") {

@@ -419,6 +419,16 @@ export async function updatePayload(input: UpdatePayloadArgs): Promise<UpdatePay
         })) !== null
     }
   }
+  // A custom app's write that stays in the app (rule 8e): the union may now reach readers of the
+  // app who lack part of it, so its card's line is judged again over the union.
+  if (!disclosedToReaders && turnTaint.length > 0 && tool?.taintCardAppReaders !== undefined) {
+    disclosedToReaders =
+      (await readersTaintGap({
+        orgId: args.orgId,
+        readerScopes: tool.taintCardAppReaders,
+        taintScopes: unionTaint,
+      })) !== null
+  }
 
   // 5. Privileged lock + schema validation + diff + UPDATE.
   const validate = compileToolSchema(tool)

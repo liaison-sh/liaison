@@ -269,6 +269,13 @@ export const toolRegistry = createTypedRegistry<
      *  runtime.ts copies it only for an app the platform vouches for, inside the app's
      *  own scope namespace. */
     sinkReadScope?: string
+    /** Every scope of a custom app whose writes can land only in the app's own data (no
+     *  outside host, connection, cross-app call or capability that writes elsewhere), so
+     *  whoever can read what this tool writes holds one of them. The write still parks on a
+     *  tainted turn (its readers are not derived); this only decides whether its card says
+     *  that approving shares the data: not when every holder of these holds what the turn
+     *  read (scope-taint.ts, rule 8e). Set by runtime.ts, never by the manifest. */
+    taintCardAppReaders?: string[]
     /** The ONLY reader of what this tool writes is the acting user (notify_user: an
      *  attention item and a push for that user alone). On a tainted turn the write is
      *  judged by that one reader (scope-taint.ts, rule 6d): it runs when the user's own

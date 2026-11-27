@@ -17,6 +17,7 @@ import { createDraft, draftAppName } from "~/modules/app-builder/drafts"
 import {
   createRunLogSink,
   flushRunLogs,
+  hiddenAppLogs,
   LOG_FIELDS_MAX_BYTES,
   LOG_MESSAGE_MAX_BYTES,
   pruneAppLogs,
@@ -136,6 +137,41 @@ describe("app log readers", () => {
     ).toHaveLength(0)
   })
 
+  it("counts the lines a reader cannot see and names the scopes that show them, never their text", async () => {
+    await logRun("hidden-app", 2)
+    const runId = await logRun("hidden-app", 3, { tags: ["kernel:contacts:read"] })
+    await logRun("hidden-app", 1, { tags: ["hidden-app:items:read"] })
+    const hidden = (scopes: string[], runIdFilter?: string) =>
+      as(reader, scopes, (tx) =>
+        hiddenAppLogs(tx, orgId, {
+          app: "hidden-app",
+          ...(runIdFilter ? { runId: runIdFilter } : {}),
+        }),
+      )
+    expect(await hidden(LOGS)).toEqual({
+      lines: 4,
+      scopes: ["hidden-app:items:read", "kernel:contacts:read"],
+    })
+    expect(await hidden([...LOGS, "hidden-app:items:read"])).toEqual({
+      lines: 3,
+      scopes: ["kernel:contacts:read"],
+    })
+    expect(await hidden([...LOGS, "hidden-app:items:read", "kernel:contacts:read"])).toEqual({
+      lines: 0,
+      scopes: [],
+    })
+    expect(await hidden(LOGS, runId)).toEqual({ lines: 3, scopes: ["kernel:contacts:read"] })
+    // Another org's reader counts nothing of this org's lines.
+    expect(
+      await as(
+        otherAdmin,
+        LOGS,
+        (tx) => hiddenAppLogs(tx, otherOrgId, { app: "hidden-app" }),
+        otherOrgId,
+      ),
+    ).toEqual({ lines: 0, scopes: [] })
+  })
+
   it("a draft preview's lines are their run's person's alone", async () => {
     const { draft } = await as(reader, ["kernel:apps:build"], (tx) =>
       createDraft(
@@ -235,8 +271,12 @@ describe("GET /api/apps/:name/logs", () => {
       headers: { Authorization: `Bearer ${adminSession.bearer}` },
     })
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { data: Array<{ message: string }> }
+    const body = (await res.json()) as {
+      data: Array<{ message: string }>
+      meta: { hidden: { lines: number; scopes: string[] } }
+    }
     expect(body.data).toHaveLength(2)
+    expect(body.meta.hidden).toEqual({ lines: 0, scopes: [] })
 
     const member = await minimal.sessionOf({ id: reader, orgId })
     const denied = await app.request("/api/apps/rest-app/logs", {

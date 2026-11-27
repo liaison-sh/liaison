@@ -534,20 +534,6 @@ export async function link(args: ParsedArgs, io: Io): Promise<void> {
   io.out(`Linked ${dir} to ${read.appName} (version ${read.version.n}).`)
 }
 
-/** The app's own read scopes, from the folder's manifest. */
-function appReadScopes(dir: string): string[] {
-  try {
-    const m = JSON.parse(readFileSync(join(dir, "app.manifest.json"), "utf8")) as {
-      scopes?: unknown
-    }
-    return Array.isArray(m.scopes)
-      ? m.scopes.filter((x): x is string => typeof x === "string" && x.endsWith(":read"))
-      : []
-  } catch {
-    return []
-  }
-}
-
 export async function logs(args: ParsedArgs, io: Io): Promise<void> {
   const dir = dirOf(args)
   const link = readLink(dir)
@@ -567,22 +553,25 @@ export async function logs(args: ParsedArgs, io: Io): Promise<void> {
       if (at && (!since || at > since)) since = at
     }
   }
-  const read = () =>
-    client.request<Array<Record<string, unknown>>>(
+  // The server shows a line only to a reader whose scopes cover what its run
+  // read, and says how many it kept out and which scopes would show them.
+  let lastHidden = ""
+  const read = async () => {
+    const r = await client.requestWithStatus<Array<Record<string, unknown>>>(
       "GET",
       `/api/apps/${link.appName}/logs`,
       undefined,
-      {
-        query: { level, limit, since },
-      },
+      { query: { level, limit, since } },
     )
-  // The server shows a line only to a reader whose scopes cover what its run
-  // could read: say which of the app's read scopes this sign-in lacks.
-  const missing = appReadScopes(dir).filter((sc) => !client.scopes.includes(sc))
-  if (missing.length > 0) {
-    io.err(
-      `Lines of runs that read ${missing.join(", ")} are hidden from this sign-in. To see them: liaison login --host ${client.host}${missing.map((m) => ` --scope ${m}`).join("")}`,
-    )
+    const hidden = hiddenOf(r.meta)
+    const key = hidden ? `${hidden.lines}:${hidden.scopes.join(",")}` : ""
+    if (hidden && key !== lastHidden) {
+      io.err(
+        `${hidden.lines} line${hidden.lines === 1 ? " is" : "s are"} hidden from this sign-in: their runs read data that needs ${hidden.scopes.join(", ")}. To see them: liaison login --host ${client.host}${hidden.scopes.map((m) => ` --scope ${m}`).join("")}`,
+      )
+    }
+    lastHidden = key
+    return r.data
   }
   print(await read())
   if (!bool(args, "follow")) return
@@ -590,6 +579,15 @@ export async function logs(args: ParsedArgs, io: Io): Promise<void> {
     await new Promise((r) => setTimeout(r, 3000))
     print(await read())
   }
+}
+
+/** `meta.hidden` of a logs answer, when it hides any line. */
+function hiddenOf(
+  meta: Record<string, unknown> | undefined,
+): { lines: number; scopes: string[] } | null {
+  const h = meta?.hidden as { lines?: unknown; scopes?: unknown } | undefined
+  if (!h || typeof h.lines !== "number" || h.lines <= 0 || !Array.isArray(h.scopes)) return null
+  return { lines: h.lines, scopes: h.scopes.filter((x): x is string => typeof x === "string") }
 }
 
 export async function rollback(args: ParsedArgs, io: Io): Promise<number> {

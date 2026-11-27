@@ -26,4 +26,5 @@ login names asked scopes the token lacks; --no-browser -> packages/cli/src/auth.
 skills entries go to kernel:create_skill / update_skill (name, description, body, visibility, requiredScopes) -> packages/cli/src/config-apply.ts (byName), apps/api/src/modules/agent/tools/skills-routines-tools.ts (create_skill)
 Plain http only to loopback and *.localhost hosts -> packages/cli/src/http.ts (normalizeHost)
 publish --wait waits through "approving" until a final status -> packages/cli/src/apps.ts (waitForApproval)
+apps logs says how many lines are hidden and which scopes show them -> packages/cli/src/apps.ts (logs, hiddenOf) ; apps/api/src/modules/app-builder/logs.ts (hiddenAppLogs)
 Rollback restores files as a new version; stored data is kept as written -> apps/api/src/modules/app-builder/drafts.ts (restoreDraftVersion) ; packages/cli/src/apps.ts (rollback)

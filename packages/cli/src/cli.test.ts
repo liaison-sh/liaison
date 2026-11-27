@@ -202,6 +202,22 @@ beforeAll(() => {
       }
       if (p === "/api/apps/builder/drafts/d-1/restore") return json({ n: latestN + 1 })
       if (p === "/api/apps/notes-oabc/ui-approval") return json({ ok: true })
+      if (p === "/api/apps/notes-oabc/logs")
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: "l1",
+                level: "info",
+                message: "visible",
+                fields: {},
+                at: "2026-11-27T00:00:00Z",
+              },
+            ],
+            meta: { hidden: { lines: 3, scopes: ["kernel:contacts:read"] } },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        )
       if (p === "/api/approvals") return json([])
       return new Response(JSON.stringify({ error: { message: `no route ${p}` } }), { status: 404 })
     },
@@ -404,6 +420,21 @@ describe("apps", () => {
     await apps.rollback(args("--dir", appDir), io)
     expect(seen.find((s) => s.path.endsWith("/restore"))!.body).toEqual({ n: 2 })
     expect(seen.some((s) => s.path.endsWith("/publish"))).toBe(true)
+  })
+
+  it("logs says how many lines it hides and which scope shows them", async () => {
+    await signIn()
+    const appDir = join(dir, "notes")
+    const { io } = capture()
+    await apps.init(args("notes", "--dir", appDir), io)
+    const { out, io: io2 } = capture()
+    await apps.logs(args("--dir", appDir), io2)
+    const text = out.join("\n")
+    expect(text).toContain("INFO visible")
+    expect(text).toContain(
+      "ERR 3 lines are hidden from this sign-in: their runs read data that needs kernel:contacts:read.",
+    )
+    expect(text).toContain("--scope kernel:contacts:read")
   })
 
   it("ui-consent needs kernel:apps:admin, and never approves without a person (no terminal, no --yes)", async () => {

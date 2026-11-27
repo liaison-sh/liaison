@@ -38,6 +38,8 @@ Removing a file attached to an item takes write access to that item. On a Knowle
 
 Ask, for example, "Attach the signed quote to my reply to orders@resonantaudiolabs.example" or "Merge these three invoice PDFs into one". The agent lists the files on the item, then passes the file to the send tool so it is really attached. When the send is gated, the approval card shows the attachment. A file an earlier step of the same request makes, such as a quote's PDF, reads as that step ("[quote PDF from step 2]") and is attached once that step has run. One agent call attaches at most 10 files and 25 MB in total.
 
+An agent reads a text file you attach (`.md`, `.txt`, `.csv`, `.json` and similar) directly, up to 100 KB, and treats what it says as content, not as instructions. See [Agent tools](../agents/tools.md).
+
 An attached file is a copy, and the copy keeps who attached it. A copy made by an app's webhook or background job, with no person behind it, records no uploader.
 
 With `kernel:files:analyze`, an agent can also analyze an image, video or PDF attachment, for example to read the line items of a supplier invoice. On a managed instance the file is analyzed in one request of at most 60 MB; a larger video is refused with "This file is too large to analyse here (max 60 MB)."

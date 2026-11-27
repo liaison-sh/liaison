@@ -182,4 +182,31 @@ describe("phone parity with the desktop column", () => {
     expect(desktop.length).toBeGreaterThan(4)
     expect(phone).toEqual(desktop)
   })
+
+  it("at tablet width shows the section list beside the page, account deletion included", async () => {
+    // An iPad opened Settings on Profile with the list only behind the rail's
+    // unlabeled sidebar control: no visible path to Security or deletion.
+    setShellTier("tablet")
+    await renderSettings("/settings")
+    const list = await screen.findByTestId("settings-tablet-sections")
+    await waitFor(() =>
+      expect(list.querySelector('[data-testid="settings-link-kernel:security"]')).not.toBeNull(),
+    )
+    fireEvent.click(
+      list.querySelector('[data-testid="settings-link-kernel:security"]') as HTMLElement,
+    )
+    await waitFor(() => expect(window.location.pathname).toBe("/settings/security"))
+    // Still there beside the page, nothing to dismiss.
+    expect(screen.getByTestId("settings-tablet-sections")).toBeInTheDocument()
+  })
+
+  it("phone and desktop keep their layouts: no inline section column", async () => {
+    setShellTier("phone")
+    await renderSettings("/settings/security")
+    expect(screen.queryByTestId("settings-tablet-sections")).toBeNull()
+    cleanup()
+    setShellTier("desktop")
+    await renderSettings("/settings/security")
+    expect(screen.queryByTestId("settings-tablet-sections")).toBeNull()
+  })
 })

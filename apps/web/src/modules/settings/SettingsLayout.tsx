@@ -29,6 +29,7 @@ import { addToast } from "~/modules/shell/toast-store"
 import { ScrollFade } from "~/ui/ScrollFade"
 import { orgAppsStore } from "./app-management/org-apps-store"
 import { popSettingsSection, pushedSection } from "./phone-settings-nav"
+import { SettingsSidebar } from "./SettingsSidebar"
 import {
   aliasTargetPath,
   connectorSettingsPath,
@@ -275,78 +276,96 @@ const SettingsLayout: Component<SettingsLayoutProps> = (_props) => {
     return isAdminHref(sections(), href)
   }
 
+  // TABLET: master and detail side by side. The shell's sidebar is a drawer
+  // at this width, behind an unlabeled control in the rail, so Settings opened
+  // straight on Profile with the section list (Security, Delete my account...)
+  // out of sight, and a section picked from the drawer left it open over the
+  // page. The list is the page's own first column here instead.
+  const tablet = () => shellTier() === "tablet"
+
   return (
     <Show when={!atYouRoot()} fallback={<YouScreen />}>
-      <div class="flex min-h-0 flex-1 flex-col">
-        <Show when={phone()}>
-          <button
-            type="button"
-            data-testid="settings-phone-back"
-            aria-label={i18n.t("kernel.youTitle")}
-            onClick={backToYou}
-            class="flex min-h-11 shrink-0 items-center gap-1 px-2 text-[15px] text-text-secondary hover:bg-surface-hover"
+      <div class="flex min-h-0 flex-1 flex-row">
+        <Show when={tablet()}>
+          <aside
+            data-testid="settings-tablet-sections"
+            aria-label={i18n.t("kernel.nav.settings")}
+            class="flex min-h-0 w-60 shrink-0 flex-col border-r border-border bg-surface"
           >
-            <ChevronLeft size={20} />
-            {i18n.t("kernel.youTitle")}
-          </button>
+            <SettingsSidebar />
+          </aside>
         </Show>
-        <Show when={showAdminNotice()}>
-          <div
-            data-testid="settings-admin-notice"
-            class="flex shrink-0 items-center gap-3 border-b border-border bg-surface px-4 py-2.5 text-[13px] text-text-secondary"
-          >
-            <span class="min-w-0 flex-1">{i18n.t("kernel.youAdminBestOnLargerScreen")}</span>
+        <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+          <Show when={phone()}>
             <button
               type="button"
-              data-testid="settings-admin-continue"
-              onClick={() => setDismissedNotices((list) => [...list, activeHref() ?? ""])}
-              class="shrink-0 rounded-md border border-border px-2.5 py-1 text-[13px] text-text hover:bg-surface-hover"
+              data-testid="settings-phone-back"
+              aria-label={i18n.t("kernel.youTitle")}
+              onClick={backToYou}
+              class="flex min-h-11 shrink-0 items-center gap-1 px-2 text-[15px] text-text-secondary hover:bg-surface-hover"
             >
-              {i18n.t("kernel.youAdminContinueAnyway")}
+              <ChevronLeft size={20} />
+              {i18n.t("kernel.youTitle")}
             </button>
-          </div>
-        </Show>
-        <ScrollFade
-          class="min-h-0 flex-1"
-          scrollClass={phone() ? "px-4 py-4" : "px-8 pt-8 pb-dock-runway [--dock-pad-base:2rem]"}
-          fadeColor="var(--color-bg)"
-        >
-          <div data-testid="settings-content" class="mx-auto w-full max-w-xl">
-            <For each={visibleSections()}>
-              {(section) => {
-                const isActive = () => {
-                  const active = activeHref() === section.href
-                  if (active) getVisited().add(section.href)
-                  return active
-                }
-                const wasVisited = () => isActive() || getVisited().has(section.href)
+          </Show>
+          <Show when={showAdminNotice()}>
+            <div
+              data-testid="settings-admin-notice"
+              class="flex shrink-0 items-center gap-3 border-b border-border bg-surface px-4 py-2.5 text-[13px] text-text-secondary"
+            >
+              <span class="min-w-0 flex-1">{i18n.t("kernel.youAdminBestOnLargerScreen")}</span>
+              <button
+                type="button"
+                data-testid="settings-admin-continue"
+                onClick={() => setDismissedNotices((list) => [...list, activeHref() ?? ""])}
+                class="shrink-0 rounded-md border border-border px-2.5 py-1 text-[13px] text-text hover:bg-surface-hover"
+              >
+                {i18n.t("kernel.youAdminContinueAnyway")}
+              </button>
+            </div>
+          </Show>
+          <ScrollFade
+            class="min-h-0 flex-1"
+            scrollClass={phone() ? "px-4 py-4" : "px-8 pt-8 pb-dock-runway [--dock-pad-base:2rem]"}
+            fadeColor="var(--color-bg)"
+          >
+            <div data-testid="settings-content" class="mx-auto w-full max-w-xl">
+              <For each={visibleSections()}>
+                {(section) => {
+                  const isActive = () => {
+                    const active = activeHref() === section.href
+                    if (active) getVisited().add(section.href)
+                    return active
+                  }
+                  const wasVisited = () => isActive() || getVisited().has(section.href)
 
-                return (
-                  <Show when={wasVisited()}>
-                    <div style={{ display: isActive() ? "block" : "none" }}>
-                      <SettingsPageActiveContext.Provider value={isActive}>
-                        <Suspense>
-                          <PluginMountBoundary appName={section.appId ?? "kernel"}>
-                            <Dynamic
-                              component={
-                                (isActive() && resolvedSubComponent()) || section.component
-                              }
-                            />
-                          </PluginMountBoundary>
-                        </Suspense>
-                      </SettingsPageActiveContext.Provider>
-                    </div>
-                  </Show>
-                )
-              }}
-            </For>
-            <Show when={!activeHref() && !awaitingAppSection()}>
-              <div class="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-text-secondary">
-                {i18n.t("kernel.settingsUi.youDoNotHaveAccessTo")}
-              </div>
-            </Show>
-          </div>
-        </ScrollFade>
+                  return (
+                    <Show when={wasVisited()}>
+                      <div style={{ display: isActive() ? "block" : "none" }}>
+                        <SettingsPageActiveContext.Provider value={isActive}>
+                          <Suspense>
+                            <PluginMountBoundary appName={section.appId ?? "kernel"}>
+                              <Dynamic
+                                component={
+                                  (isActive() && resolvedSubComponent()) || section.component
+                                }
+                              />
+                            </PluginMountBoundary>
+                          </Suspense>
+                        </SettingsPageActiveContext.Provider>
+                      </div>
+                    </Show>
+                  )
+                }}
+              </For>
+              <Show when={!activeHref() && !awaitingAppSection()}>
+                <div class="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-text-secondary">
+                  {i18n.t("kernel.settingsUi.youDoNotHaveAccessTo")}
+                </div>
+              </Show>
+            </div>
+          </ScrollFade>
+        </div>
       </div>
     </Show>
   )

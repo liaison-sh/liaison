@@ -1033,7 +1033,11 @@ export const Shell: Component = () => {
               // which is what lifts every route above it at once. The bottom
               // safe area is then under the keyboard, so it is only padded
               // for as far as the keyboard leaves it uncovered.
-              class="grid w-full max-w-full overflow-hidden transition-[grid-template-columns,grid-template-rows] duration-200 ease-out pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
+              // A windowed iPad draws its window controls over the top leading
+              // corner, outside the safe area: the iOS shell publishes the
+              // room they need as `--window-controls-top` (0 elsewhere), so
+              // the header clears them (apps/mobile MainViewController.swift).
+              class="grid w-full max-w-full overflow-hidden transition-[grid-template-columns,grid-template-rows] duration-200 ease-out pt-[calc(env(safe-area-inset-top)+var(--window-controls-top,0px))] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
               style={shellLayoutStyle()}
             >
               {/* Phone is five FIXED seats of its own, not a squeezed rail:

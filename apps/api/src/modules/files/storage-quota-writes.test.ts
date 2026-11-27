@@ -310,7 +310,7 @@ describe("the 80 % storage notice to the admins", () => {
     expect((await render(system)).error).toBeUndefined()
     const first = await storageNotices()
     expect(first.map((n) => n.threshold)).toEqual([80])
-    expect(first[0]?.summary).toContain("Upgrade your plan or free space")
+    expect(first[0]?.summary).toContain("until space is freed")
     expect(first[0]?.summary).toContain("new files will be refused")
 
     // Still above 80 %: further writes say nothing more.

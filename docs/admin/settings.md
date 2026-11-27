@@ -69,7 +69,7 @@ See [Invite and manage users](users.md), [Set up roles](roles.md) and [Control d
 
 ### Pay for a managed workspace
 
-On a managed instance, **Settings › Billing** holds everything about paying for the workspace:
+On a managed instance, **Settings › Billing** holds everything about paying for the workspace. It is in the browser, the desktop app and the Android app, not in the iPhone app (see [Use Liaison on your phone](../getting-started/desktop-and-phone.md#use-liaison-on-your-phone)):
 
 - **Plan**: the current plan, when it renews and the next invoice. **Switch to** another plan: a larger plan applies once its prorated invoice is paid, a smaller one at the end of the period. A switch to a plan too small for what the workspace uses is refused, with the limits it would break.
 - **Payment card**: **Change card** opens a secure payment form inside the page. Card details and payment confirmations (such as a bank's 3-D Secure check) are only ever typed there.

@@ -8,12 +8,13 @@
 // the phone, which has none, shows them at the top of the tab.
 import { ExternalLink } from "lucide-solid"
 import { type Component, createEffect, createResource, on, Show } from "solid-js"
+import { purchaseSurfacesHidden } from "~/lib/native-bridge"
 import { openExternalUrl } from "~/modules/desktop/desktop-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { Button } from "~/ui/Button"
 import { createHelpIndex, HelpNav, HelpResults, HelpSearchBox } from "./HelpSidebar"
-import { helpSiteUrl, helpTargetOf, loadHelpPage } from "./help-docs"
+import { helpSiteUrl, helpTargetOf, isProductSiteUrl, loadHelpPage } from "./help-docs"
 import { helpNavSeq, helpQuery, helpTarget, showHelpPage } from "./help-store"
 import "./help-docs.css"
 
@@ -73,7 +74,10 @@ const HelpTab: Component = () => {
     }
     const inDocs = helpTargetOf(href)
     if (inDocs) showHelpPage(inDocs)
-    else if (/^https?:\/\//i.test(href)) void openOutside(href)
+    else if (/^https?:\/\//i.test(href)) {
+      if (purchaseSurfacesHidden() && isProductSiteUrl(href)) return
+      void openOutside(href)
+    }
   }
 
   const failed = () => Boolean(page.error || index.error)
@@ -132,15 +136,18 @@ const HelpTab: Component = () => {
                     <span class="min-w-0 flex-1 truncate text-[12px] text-text-tertiary">
                       {p().section}
                     </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      data-testid="help-open-in-browser"
-                      onClick={() => void openOutside(helpSiteUrl(helpTarget()))}
-                    >
-                      <ExternalLink size={14} />
-                      <span>{t("kernel.help.openInBrowser")}</span>
-                    </Button>
+                    {/* The published site sells workspaces: not linked from the iOS app (3.1.1). */}
+                    <Show when={!purchaseSurfacesHidden()}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid="help-open-in-browser"
+                        onClick={() => void openOutside(helpSiteUrl(helpTarget()))}
+                      >
+                        <ExternalLink size={14} />
+                        <span>{t("kernel.help.openInBrowser")}</span>
+                      </Button>
+                    </Show>
                   </div>
                   <h1 class="text-[24px] font-semibold leading-tight text-text">{p().title}</h1>
                   <Show when={p().showLede}>

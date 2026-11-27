@@ -3,7 +3,13 @@
 import type { ReasoningLevel } from "@liaison/shared"
 import { Check, Ellipsis, Pencil, Trash2 } from "lucide-solid"
 import { createSignal, For, Show } from "solid-js"
-import { autoEntryLabel, canChangeModel, modelAllowedByKey, modelGroups } from "~/lib/model-groups"
+import {
+  autoEntryLabel,
+  canChangeModel,
+  modelAllowedByKey,
+  modelGroups,
+  modelLockedReasonKey,
+} from "~/lib/model-groups"
 import ReasoningLevelRow from "~/modules/agent/ReasoningLevelRow"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { billingMode } from "~/modules/settings/BillingState"
@@ -64,7 +70,7 @@ export default function AgentMessageMenu(props: AgentMessageMenuProps) {
             when={modelSectionUnlocked()}
             fallback={
               <div class="px-3 py-2 text-[12px] text-text-tertiary">
-                {i18n.t("kernel.upgradeToChangeModel")}
+                {i18n.t(modelLockedReasonKey())}
               </div>
             }
           >

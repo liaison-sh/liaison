@@ -22,6 +22,7 @@ vi.mock("~/modules/demo/DemoScenarioRunner", () => {
 
 const {
   DemoNextSteps,
+  DemoNextStepsBannerEntry,
   DemoRegisterBannerEntry,
   demoContactUrl,
   demoRegisterUrl,
@@ -342,6 +343,35 @@ describe("with a register URL (the hosted edition's signup)", () => {
     const link = await screen.findByTestId("demo-banner-register")
     expect(link.textContent).toBe("Create your workspace")
     expect(link.getAttribute("href")).toBe("https://hosted.example/signup/?from=demo&goal=support")
+  })
+
+  it("the iOS app shows no signup chip, no company entry and no sales path (3.1.1)", async () => {
+    ;(globalThis as Record<string, unknown>).__LIAISON_NATIVE__ = {}
+    try {
+      setQueue([item("support", "completed")])
+      world({ notifyManaged: false }, WITH_REGISTER)
+      mount("en", true)
+      await new Promise((r) => setTimeout(r, 20))
+      expect(screen.queryByTestId("demo-banner-register")).toBeNull()
+      cleanup()
+      render(() => (
+        <I18nProvider initialLocale="en">
+          <DemoNextStepsBannerEntry />
+        </I18nProvider>
+      ))
+      expect(screen.queryByTestId("demo-next-open")).toBeNull()
+      expect(screen.queryByTestId("demo-next-steps-open")).toBeNull()
+      cleanup()
+      mount()
+      openDemoNextSteps("end")
+      await waitFor(() => expect(pathOrder()).toEqual(["demo-next-key"]))
+      expect(screen.queryByTestId("demo-next-notify")).toBeNull()
+      expect(screen.getByTestId("demo-next-steps").textContent).not.toMatch(
+        /Create my workspace|Write to us|See the guide|company/i,
+      )
+    } finally {
+      delete (globalThis as Record<string, unknown>).__LIAISON_NATIVE__
+    }
   })
 
   it("without a register URL, the banner shows nothing", async () => {

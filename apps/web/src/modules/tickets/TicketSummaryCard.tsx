@@ -3,6 +3,7 @@
 
 import type { Component } from "solid-js"
 import { createEffect, createMemo, Show } from "solid-js"
+import { purchaseSurfacesHidden } from "~/lib/native-bridge"
 import { runTool } from "~/lib/run-tool"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
@@ -152,7 +153,11 @@ export const TicketSummaryCard: Component<Props> = (props) => {
                   >
                     {i18n.t("kernel.common.retry2")}
                   </button>
-                  <Show when={summaryError().toLowerCase().includes("credit")}>
+                  <Show
+                    when={
+                      !purchaseSurfacesHidden() && summaryError().toLowerCase().includes("credit")
+                    }
+                  >
                     <button type="button" class="rounded border border-border px-2 py-0.5 text-xs">
                       {i18n.t("tickets.topUpCredits")}
                     </button>

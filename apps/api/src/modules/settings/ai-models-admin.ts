@@ -471,11 +471,7 @@ export async function addOpenRouterModel(orgId: string, upstreamId: string, user
       checkBalance(tx, orgId),
     )
     if (!balance.allowed) {
-      return refusal(
-        402,
-        "No credits left for the test call. Add credits first.",
-        "insufficient_credits",
-      )
+      return refusal(402, "No credits are left for the test call.", "insufficient_credits")
     }
   }
   let catalogue: Awaited<ReturnType<typeof getOpenRouterCatalogue>>

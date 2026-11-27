@@ -9,6 +9,7 @@
 // invoice paid. A member, or anyone once the workspace is closed, gets the
 // sentence and the contact only.
 import { type Component, createSignal, lazy, Match, Show, Suspense, Switch } from "solid-js"
+import { purchaseSurfacesHidden } from "~/lib/native-bridge"
 import { orgSuspension } from "~/lib/org-suspended"
 import { hasScope } from "~/modules/auth/auth-store"
 import { authManager } from "~/modules/auth/createAuthManager"
@@ -60,7 +61,13 @@ const OrgSuspendedPage: Component<{ leave?: (path: string) => void }> = (props) 
         <Show when={adminAccess() && until()}>
           {(at) => (
             <p class="mb-3 text-sm text-text-secondary" data-testid="org-suspended-until">
-              {t("cloud-limits.suspended.adminUntil", { date: formatDate(at()) })}
+              {t(
+                // The iOS app shows no Billing and says nothing about paying (3.1.1).
+                purchaseSurfacesHidden()
+                  ? "cloud-limits.native.adminUntil"
+                  : "cloud-limits.suspended.adminUntil",
+                { date: formatDate(at()) },
+              )}
             </p>
           )}
         </Show>
@@ -84,14 +91,16 @@ const OrgSuspendedPage: Component<{ leave?: (path: string) => void }> = (props) 
             >
               {t("cloud-limits.suspended.export")}
             </Button>
-            <Button
-              size="sm"
-              variant={view() === "billing" ? "primary" : "outline"}
-              data-testid="org-suspended-billing"
-              onClick={() => setView("billing")}
-            >
-              {t("cloud-limits.suspended.billing")}
-            </Button>
+            <Show when={!purchaseSurfacesHidden()}>
+              <Button
+                size="sm"
+                variant={view() === "billing" ? "primary" : "outline"}
+                data-testid="org-suspended-billing"
+                onClick={() => setView("billing")}
+              >
+                {t("cloud-limits.suspended.billing")}
+              </Button>
+            </Show>
             <Button
               size="sm"
               variant="ghost"
@@ -114,7 +123,7 @@ const OrgSuspendedPage: Component<{ leave?: (path: string) => void }> = (props) 
           <ApiProvider>
             <Suspense fallback={<Skeleton class="h-32 w-full" />}>
               <Switch>
-                <Match when={view() === "billing"}>
+                <Match when={view() === "billing" && !purchaseSurfacesHidden()}>
                   <BillingSettings />
                 </Match>
                 <Match when={view() === "export"}>

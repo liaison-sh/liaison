@@ -80,3 +80,7 @@ Find a time label, Allow -> packages/shared/src/i18n/locales/en/calendar.json:10
 Next week, event length, working hours -> apps/web/src/modules/calendar/FindATime.tsx:26
 Allow reconnects with the free/busy scope only -> apps/web/src/modules/calendar/FindATime.tsx:77
 Picked slot sets Start and End -> apps/web/src/modules/calendar/FindATime.tsx:128
+update_event and delete_event take this and the following occurrences -> apps/api/src/apps/calendar/app.manifest.json:465
+Series split: old series ends before the occurrence, a new one starts there -> apps/api/src/apps/calendar/sync.ts:1874
+Split keeps cancellations, edited occurrences take the change -> apps/api/src/apps/calendar/sync.ts:1912
+Split rule arithmetic (UNTIL or shared COUNT) -> packages/shared/src/calendar-recurrence.ts:508

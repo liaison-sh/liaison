@@ -261,11 +261,7 @@ export const buyerInvoicesRoutes = new Hono<AppEnv>()
   })
   .get("/pdf/:token", async (c) => {
     try {
-      const retry = await overBudget(
-        c,
-        `buyer-invoices:pdf:${getClientIp(c)}`,
-        PER_ADDRESS_PER_MINUTE,
-      )
+      const retry = await overBudget(`buyer-invoices:pdf:${getClientIp(c)}`, PER_ADDRESS_PER_MINUTE)
       if (retry !== null) {
         c.header("Retry-After", String(retry))
         return fail(c, 429, "RATE_LIMITED", "Too many requests.")

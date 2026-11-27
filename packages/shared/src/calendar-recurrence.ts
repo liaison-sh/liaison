@@ -464,3 +464,105 @@ export function expandRecurrence(
 export function utcDateString(at: Date): string {
   return at.toISOString().slice(0, 10)
 }
+
+// --- "This and following": splitting a series in two --------------------------------------------
+
+export interface RecurrenceSplit {
+  /** The old series' lines, ending just before the split occurrence (UNTIL, or a smaller COUNT).
+   * Null when the split occurrence is the series' first: the whole series is the "following" part. */
+  before: string[] | null
+  /** The new series' lines from the split occurrence on (a COUNT reduced by the occurrences before
+   * it, EXDATEs from the split on, shifted with the new start). Null when nothing is left (a COUNT
+   * used up). */
+  after: string[] | null
+  /** The rule is outside the supported subset: the split cannot be computed here. */
+  complex: boolean
+}
+
+function icalUtc(at: Date): string {
+  return `${at.toISOString().slice(0, 19).replace(/[-:]/g, "")}Z`
+}
+
+function icalDate(at: Date): string {
+  return at.toISOString().slice(0, 10).replace(/-/g, "")
+}
+
+/** An RRULE line with some parts removed and others set, keeping the rest in order. */
+function withRuleParts(rrule: string, drop: string[], set: Record<string, string>): string {
+  const parts = rrule
+    .replace(/^RRULE:/i, "")
+    .split(";")
+    .filter((p) => p.trim().length > 0)
+    .filter((p) => !drop.includes(p.split("=")[0]!.trim().toUpperCase()))
+  for (const [key, value] of Object.entries(set)) parts.push(`${key}=${value}`)
+  return `RRULE:${parts.join(";")}`
+}
+
+/**
+ * Splits a series at one of its occurrences (`at`, its original start), the way Google Calendar's
+ * "this and following events" does: the old series ends just before `at` and a new series starts
+ * there. `cancelled` are the instants of cancelled occurrences (exception rows) the new series
+ * keeps as EXDATEs; `shiftMs` moves the new series (and those EXDATEs) when the edit changes the
+ * occurrence's start. A weekly rule on one weekday follows the new start's weekday.
+ */
+export function splitRecurrence(
+  series: { start: unknown; end: unknown; recurrence: string[] | null | undefined },
+  at: Date,
+  opts: { cancelled?: Date[]; shiftMs?: number } = {},
+): RecurrenceSplit {
+  const recurrence = (series.recurrence ?? []).filter((l) => typeof l === "string")
+  const rruleLine = recurrence.find((l) => /^RRULE:/i.test(l))
+  const startDate = calendarPointToDate(series.start)
+  if (!rruleLine || !startDate) return { before: null, after: null, complex: true }
+  const startPoint = series.start as CalendarPointLike
+  const allDay = !startPoint.dateTime && !!startPoint.date
+  const zone = allDay ? undefined : validTimeZone(startPoint.timeZone)
+  const rule = parseRule(rruleLine, zone)
+  if (!rule) return { before: null, after: null, complex: true }
+  const shiftMs = opts.shiftMs ?? 0
+  const atMs = at.getTime()
+
+  // Occurrences before the split, EXDATEs included (they count towards COUNT, RFC 5545).
+  const rruleOnly = { start: series.start, end: series.end, recurrence: [rruleLine] }
+  const before = atMs > startDate.getTime() ? expandRecurrence(rruleOnly, startDate, at) : null
+  const countBefore = before ? before.occurrences.filter((o) => o.start.getTime() < atMs).length : 0
+
+  let beforeLines: string[] | null = null
+  if (countBefore > 0) {
+    const ending: Record<string, string> =
+      rule.count !== undefined
+        ? { COUNT: String(countBefore) }
+        : allDay
+          ? { UNTIL: icalDate(new Date(atMs - DAY_MS)) }
+          : { UNTIL: icalUtc(new Date(atMs - 1000)) }
+    beforeLines = recurrence.map((line) =>
+      line === rruleLine ? withRuleParts(rruleLine, ["COUNT", "UNTIL"], ending) : line,
+    )
+  }
+
+  const remaining = rule.count !== undefined ? rule.count - countBefore : undefined
+  if (remaining !== undefined && remaining <= 0) {
+    return { before: beforeLines, after: null, complex: false }
+  }
+  const set: Record<string, string> = {}
+  if (remaining !== undefined) set.COUNT = String(remaining)
+  if (rule.freq === "WEEKLY" && rule.byDay?.length === 1 && shiftMs !== 0) {
+    const oldDay = wallAt(atMs, zone)
+    const newDay = wallAt(atMs + shiftMs, zone)
+    const oldDow = weekdayOf(oldDay.y, oldDay.mo, oldDay.d)
+    const newDow = weekdayOf(newDay.y, newDay.mo, newDay.d)
+    if (rule.byDay[0] === oldDow && oldDow !== newDow) {
+      set.BYDAY = Object.keys(WEEKDAYS).find((k) => WEEKDAYS[k] === newDow) as string
+    }
+  }
+  const afterRule = withRuleParts(rruleLine, Object.keys(set), set)
+  const exdates = new Set<number>()
+  for (const ms of exdateInstants(recurrence, zone)) if (ms >= atMs) exdates.add(ms)
+  for (const c of opts.cancelled ?? []) if (c.getTime() >= atMs) exdates.add(c.getTime())
+  const exLines = [...exdates]
+    .sort((a, b) => a - b)
+    .map((ms) => new Date(ms + shiftMs))
+    .map((d) => (allDay ? `EXDATE;VALUE=DATE:${icalDate(d)}` : `EXDATE:${icalUtc(d)}`))
+  // Lines other than RRULE/EXDATE (RDATE...) stay with the old series only.
+  return { before: beforeLines, after: [afterRule, ...exLines], complex: false }
+}

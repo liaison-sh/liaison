@@ -80,3 +80,7 @@ Shortcut keys -> apps/web/src/modules/calendar/shortcuts.ts:16
 Shortcuts ignored while typing -> apps/web/src/modules/calendar/shortcuts.ts:41
 Del asks to delete the open event -> apps/web/src/modules/calendar/CalendarEventTab.tsx:110
 Shortcut sheet labels -> packages/shared/src/i18n/locales/en/calendar.json:108
+update_event and delete_event take this and the following occurrences -> apps/api/src/apps/calendar/app.manifest.json:465
+Series split: old series ends before the occurrence, a new one starts there -> apps/api/src/apps/calendar/sync.ts:1874
+Split keeps cancellations, edited occurrences take the change -> apps/api/src/apps/calendar/sync.ts:1912
+Split rule arithmetic (UNTIL or shared COUNT) -> packages/shared/src/calendar-recurrence.ts:508

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { expandRecurrence, parseIcalDateTime } from "./calendar-recurrence"
+import { expandRecurrence, parseIcalDateTime, splitRecurrence } from "./calendar-recurrence"
 
 const PARIS = "Europe/Paris"
 
@@ -193,5 +193,80 @@ describe("expandRecurrence", () => {
       )
       expect(result).toEqual({ complex: true, occurrences: [] })
     }
+  })
+})
+
+describe("splitRecurrence (this and following)", () => {
+  const weekly = timed("2026-10-19T09:00:00+02:00", 30, ["RRULE:FREQ=WEEKLY;BYDAY=MO"])
+
+  it("ends the old series just before the split and starts the new one there", () => {
+    const at = new Date("2026-11-09T08:00:00Z") // Monday 09:00 Paris (winter time)
+    const split = splitRecurrence(weekly, at)
+    expect(split.complex).toBe(false)
+    expect(split.before).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20261109T075959Z"])
+    expect(split.after).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=MO"])
+    // The old series keeps its three occurrences before the split, none after.
+    expect(
+      starts(
+        { ...weekly, recurrence: split.before! },
+        "2026-10-01T00:00:00Z",
+        "2027-01-01T00:00:00Z",
+      ),
+    ).toEqual(["2026-10-19T07:00:00.000Z", "2026-10-26T08:00:00.000Z", "2026-11-02T08:00:00.000Z"])
+  })
+
+  it("at the first occurrence the whole series is the following part", () => {
+    const split = splitRecurrence(weekly, new Date("2026-10-19T07:00:00Z"))
+    expect(split.before).toBeNull()
+    expect(split.after).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=MO"])
+  })
+
+  it("shares a COUNT between the two series", () => {
+    const counted = timed("2026-10-19T09:00:00+02:00", 30, ["RRULE:FREQ=WEEKLY;COUNT=5"])
+    const split = splitRecurrence(counted, new Date("2026-11-02T08:00:00Z"))
+    expect(split.before).toEqual(["RRULE:FREQ=WEEKLY;COUNT=2"])
+    expect(split.after).toEqual(["RRULE:FREQ=WEEKLY;COUNT=3"])
+    const last = splitRecurrence(
+      timed("2026-10-19T09:00:00+02:00", 30, ["RRULE:FREQ=WEEKLY;COUNT=2"]),
+      new Date("2026-10-26T08:00:00Z"),
+    )
+    expect(last.before).toEqual(["RRULE:FREQ=WEEKLY;COUNT=1"])
+    expect(last.after).toEqual(["RRULE:FREQ=WEEKLY;COUNT=1"])
+  })
+
+  it("keeps cancelled occurrences from the split on, shifted with a moved start", () => {
+    const series = {
+      ...weekly,
+      recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=MO", "EXDATE:20261123T080000Z"],
+    }
+    const split = splitRecurrence(series, new Date("2026-11-09T08:00:00Z"), {
+      cancelled: [new Date("2026-10-26T08:00:00Z"), new Date("2026-11-16T08:00:00Z")],
+      shiftMs: 24 * 3_600_000, // moved to Tuesday
+    })
+    expect(split.before).toEqual([
+      "RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20261109T075959Z",
+      "EXDATE:20261123T080000Z",
+    ])
+    expect(split.after).toEqual([
+      "RRULE:FREQ=WEEKLY;BYDAY=TU",
+      "EXDATE:20261117T080000Z",
+      "EXDATE:20261124T080000Z",
+    ])
+  })
+
+  it("splits an all-day series on dates", () => {
+    const daily = {
+      start: { date: "2026-12-01" },
+      end: { date: "2026-12-02" },
+      recurrence: ["RRULE:FREQ=DAILY;INTERVAL=2"],
+    }
+    const split = splitRecurrence(daily, new Date("2026-12-05T00:00:00Z"))
+    expect(split.before).toEqual(["RRULE:FREQ=DAILY;INTERVAL=2;UNTIL=20261204"])
+    expect(split.after).toEqual(["RRULE:FREQ=DAILY;INTERVAL=2"])
+  })
+
+  it("refuses a rule outside the supported subset", () => {
+    const odd = timed("2026-10-19T09:00:00+02:00", 30, ["RRULE:FREQ=WEEKLY;BYSETPOS=1"])
+    expect(splitRecurrence(odd, new Date("2026-11-09T08:00:00Z")).complex).toBe(true)
   })
 })

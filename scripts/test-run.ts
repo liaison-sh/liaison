@@ -1418,6 +1418,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/issue-date.test.ts",
             "src/state.test.ts",
             "src/tax.test.ts",
+            // The sale's mail: the branded thank-you or the plain invoice mail (pure).
+            "src/sale-thanks.test.ts",
             // What the order-created auto-flow would park, asked before a draft order is staged (pure).
             "src/order-invoiceability.test.ts",
             // E-invoicing pure core (territory, identity, regime classifier, operation type).

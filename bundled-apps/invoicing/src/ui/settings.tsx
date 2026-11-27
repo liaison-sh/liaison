@@ -54,6 +54,7 @@ export interface IssuerProfileDraft {
   po_approval_threshold_minor?: string | null
   require_two_eyes?: boolean
   auto_email_enabled?: boolean
+  sale_thanks_enabled?: boolean
   /** The mailbox documents are emailed from (a mail account id); null when none is chosen. */
   mail_account_id?: string | null
   /** Typed unit prices are gross (tax included). Mirrors the Shopify shop's
@@ -128,6 +129,7 @@ const ISSUER_SAVE_FIELDS = [
   "po_approval_threshold_minor",
   "require_two_eyes",
   "auto_email_enabled",
+  "sale_thanks_enabled",
   "prices_include_tax",
   "mail_account_id",
   "timezone",
@@ -644,6 +646,27 @@ export const InvoicingIssuerProfiles: Component = () => {
                     <span class="text-text-tertiary">
                       {tr(
                         "Match your Shopify tax setting. On: prices you type are tax inclusive and the document shows the net amount plus VAT. Off: prices are net and VAT is added.",
+                      )}
+                    </span>
+                  </span>
+                </label>
+
+                {/* The branded thank-you mail of each sale, sent from the mailbox above. */}
+                <label class="flex items-start gap-2 border-t border-border-subtle pt-2">
+                  <input
+                    type="checkbox"
+                    data-testid="issuer-sale-thanks"
+                    checked={!!d().sale_thanks_enabled}
+                    onChange={(e) =>
+                      setEditing({ ...d(), sale_thanks_enabled: e.currentTarget.checked })
+                    }
+                    class="mt-0.5"
+                  />
+                  <span class="flex flex-col gap-0.5">
+                    <span class="text-text">{tr("Thank-you mail for each sale")}</span>
+                    <span class="text-text-tertiary">
+                      {tr(
+                        "One mail per sale with your logo, what was bought, the total and the invoice attached, sent from the mailbox above. Off: the plain invoice mail, when automatic emails are on.",
                       )}
                     </span>
                   </span>

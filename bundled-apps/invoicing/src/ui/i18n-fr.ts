@@ -983,4 +983,7 @@ export const FR: Record<string, string> = {
   "Not an advance": "Ce n'est pas un acompte",
   "Then invoice or link the payment as any other payment, from its line on Home. Nothing was drafted.":
     "Facturez ou rattachez alors ce paiement comme tout autre, depuis sa ligne sur l'Accueil. Rien n'a été préparé.",
+  "Thank-you mail for each sale": "Mail de remerciement pour chaque vente",
+  "One mail per sale with your logo, what was bought, the total and the invoice attached, sent from the mailbox above. Off: the plain invoice mail, when automatic emails are on.":
+    "Un mail par vente avec votre logo, les articles achetés, le total et la facture jointe, envoyé depuis la boîte ci-dessus. Désactivé : le mail de facture simple, si les envois automatiques sont activés.",
 }

@@ -226,3 +226,8 @@ project unreadable refused before anything is drafted -> bundled-apps/invoicing/
 issued invoice company: contact's, else the project's -> bundled-apps/invoicing/src/issue.ts:1416
 A late run whose remaining rows all need a fix has no card; its page lists each with why and Fix; fixing one stages the Late card; the run closes once every row is issued or taken out -> bundled-apps/invoicing/src/recurring/run-card.ts:399 ; bundled-apps/invoicing/src/ui/RunDetail.tsx:179 ; bundled-apps/invoicing/src/ui/RunDetail.tsx:379 ; bundled-apps/invoicing/src/recurring/run-card.ts:254
 billing draft issue approval decided by invoicing:approve -> bundled-apps/invoicing/src/mutations/billing-plan.ts:778
+Thank-you mail for each sale toggle -> bundled-apps/invoicing/src/ui/settings.tsx:666
+thank-you mail only when opted in, else plain mail only with auto-email -> bundled-apps/invoicing/src/sale-thanks.ts:275
+no mailbox, no mail -> bundled-apps/invoicing/src/sale-thanks.ts:277
+French for a French buyer, else the issuer's language -> bundled-apps/invoicing/src/sale-thanks.ts:115
+template placeholders -> bundled-apps/invoicing/src/sale-thanks.ts:135

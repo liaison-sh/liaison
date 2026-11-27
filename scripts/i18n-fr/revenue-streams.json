@@ -1,6 +1,7 @@
 {
   "text": {
     "bind a revenue stream": "lier un flux de ventes",
-    "issue a sale invoice": "émettre la facture d'une vente"
+    "issue a sale invoice": "émettre la facture d'une vente",
+    "invoice earlier sales": "facturer les ventes antérieures"
   }
 }

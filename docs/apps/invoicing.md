@@ -228,6 +228,7 @@ Invoices, credit notes and proformas issued in another tool can be imported with
 - A document imported before is skipped. A document whose number the issuer already used, or that an earlier document of the same import uses (in any batch of it, in a preview too), fails with `numberTaken`, and so does one whose number and number_int disagree or whose status contradicts its payment.
 - An imported document keeps its PDF as its original: marking it paid or editing it never renders a new one.
 - The import does not record legal originals. Once you have checked the imported documents, run `einvoicing_backfill_legacy_originals` to record them from the PDFs.
+- A document that names its Shopify order only by number (imported, or made by hand) is not linked to the order, so the order's own reads, such as your website's purchases page, do not find it. `documents_link_shopify_orders` links it. It links a document only when its issuer profile's shop holds exactly one order with that name and the order's email is the document's buyer email (or its contact's email). It reports every other document with the reason, and changes nothing else on it. Run it with `dry_run` first.
 - Until then, the run can be undone under **Settings › Organization › Imports**. A document that changed since, for example once its legal original is recorded, is kept.
 
 ## Recurring invoice schedules
@@ -412,6 +413,7 @@ Your own website can list a signed-in buyer's invoices and credit notes and let 
 | `counterparty_identity_get`, `counterparty_identity_lookup`, `counterparty_identity_set` | Read, look up and record a customer's SIREN/SIRET identity | No |
 | `counterparty_territory_set` | Decide whether a Monaco or overseas buyer is treated as French | Always |
 | `einvoicing_backfill_identities`, `einvoicing_backfill_legacy_originals` | Backfill identities and legal originals | Always |
+| `documents_link_shopify_orders` | Link documents named by a Shopify order number to that order, when the order's email is the buyer's | Always |
 | `einvoice_send_request` | Ask for approval to send one e-invoice | Files an approval |
 | `einvoice_status_refresh`, `einvoice_transmission_get` | Read an e-invoice's platform status | No |
 | `legal_originals_verify` | Check stored legal originals are intact | No |

@@ -274,3 +274,6 @@ A refund the app reports gives one credit note keyed by the refund -> bundled-ap
 Catch-up preview lists every sale oldest first with blockers and writes nothing -> bundled-apps/invoicing/src/sales/catch-up.ts (revenueStreamCatchUpPreview)
 Catch-up run is gated never automatic, issues oldest first then credit notes, stops at the first refusal -> bundled-apps/invoicing/src/sales/catch-up.ts (revenueStreamCatchUp) ; bundled-apps/invoicing/app.manifest.json (sales_catch_up)
 Stripe one-off payments are read from their Checkout Session -> bundled-apps/stripe/src/sales.ts:1-18
+documents_link_shopify_orders links a document named by order number to its order, gated -> bundled-apps/invoicing/app.manifest.json:6982
+Link only on one exact order name in the issuer's shop and the buyer's email, everything else reported -> bundled-apps/invoicing/src/handlers/link-shopify-orders.ts:287-329
+Writes only shopify_order_id and a lifecycle entry; dry_run is the default -> bundled-apps/invoicing/src/handlers/link-shopify-orders.ts:1-30

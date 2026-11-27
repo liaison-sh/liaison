@@ -670,6 +670,7 @@ import {
 } from "./einvoicing/identity-tools"
 import { einvoicingReadiness } from "./einvoicing/readiness"
 import { einvoicingSettingsSet } from "./einvoicing/settings-tool"
+import { linkShopifyOrders } from "./handlers/link-shopify-orders"
 import { legalOriginalsVerify } from "./legal-originals/verify"
 
 export const einvoicingClassifyHandler = (
@@ -709,6 +710,10 @@ export const einvoicingBackfillIdentitiesHandler = (
   params: Parameters<typeof backfillIdentities>[1],
   ctx: Parameters<typeof backfillIdentities>[0],
 ) => backfillIdentities(ctx, params)
+export const documentsLinkShopifyOrdersHandler = (
+  params: Parameters<typeof linkShopifyOrders>[1],
+  ctx: Parameters<typeof linkShopifyOrders>[0],
+) => linkShopifyOrders(ctx, params)
 export const einvoicingBackfillLegacyOriginalsHandler = (
   params: Parameters<typeof backfillLegacyOriginals>[1],
   ctx: Parameters<typeof backfillLegacyOriginals>[0],

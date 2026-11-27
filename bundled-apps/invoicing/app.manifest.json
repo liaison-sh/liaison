@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.44.0",
+  "version": "0.44.1",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -6975,6 +6975,48 @@
               "null"
             ],
             "description": "true: also take the documents set aside after a failed read (default false)."
+          }
+        }
+      }
+    },
+    "documents_link_shopify_orders": {
+      "description": "Link issued invoices and credit notes that name their Shopify order only by its number (shopify_order_number set, shopify_order_id empty: made by hand or imported) to that order, so the order's reads find them (the buyer invoices API, the order's credit notes and refunds, the duplicate check of the order webhook). A link is written only when it is proven: the document's issuer profile is mapped to a shop and the orders are read from that shop, exactly one order carries the document's order name, the order's email equals the document's buyer email (or its linked contact's email), a Shopify customer id on both the order and the contact is the same, and no other document already carries that order. Anything else is reported with its reason (issuer_has_no_shop, lookup_failed, shop_unverified, shop_mismatch, order_not_found, order_ambiguous, order_already_linked, document_email_missing, order_email_missing, email_mismatch, contact_unreadable, customer_mismatch) and left unchanged. Writes only shopify_order_id and a lifecycle entry: never the number, buyer, lines, totals or PDF. dry_run (default true) reads Shopify and reports, writing nothing. At most `limit` documents per call (default 20, at most 40, one Shopify read per order name): continue with next_cursor until it is null. Idempotent: a linked document is not selected again, a reported one is retried by a later run. Gated: a person approves each call.",
+      "requiredScopes": [
+        "invoicing:documents:write"
+      ],
+      "handler": "documentsLinkShopifyOrdersHandler",
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "timeoutMs": 60000,
+      "writesToTable": "app_invoicing.documents",
+      "summarizer": "summarizeLinkShopifyOrders",
+      "approvalCard": {
+        "summary": "Link documents to their Shopify order (dry run: {{params.dry_run}})"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "true (default): report only, write nothing."
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Documents in this call, default 20, at most 40."
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "next_cursor of the previous call."
           }
         }
       }

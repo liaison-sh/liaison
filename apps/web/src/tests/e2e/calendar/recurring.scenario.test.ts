@@ -79,18 +79,21 @@ test.describe("Calendar — recurring events", () => {
     await expect(events.filter({ hasText: newTitle })).toHaveCount(1, { timeout: 15000 })
 
     // Dragging an occurrence of a series asks which occurrences move; "All events" moves the
-    // series an hour later.
+    // whole series by an hour.
     const block = events.filter({ hasText: newTitle })
+    await block.scrollIntoViewIfNeeded()
     const box = (await block.boundingBox())!
+    // An hour later, or earlier late in the day (48 px per hour).
+    const shift = new Date().getHours() >= 12 ? -48 : 48
     await page.mouse.move(box.x + box.width / 2, box.y + 4)
     await page.mouse.down()
-    await page.mouse.move(box.x + box.width / 2, box.y + 28, { steps: 4 })
-    await page.mouse.move(box.x + box.width / 2, box.y + 52, { steps: 4 })
+    await page.mouse.move(box.x + box.width / 2, box.y + 4 + shift / 2, { steps: 4 })
+    await page.mouse.move(box.x + box.width / 2, box.y + 4 + shift, { steps: 4 })
     await page.mouse.up()
     await expect(page.getByTestId("move-scope-dialog")).toBeVisible()
     await page.getByTestId("move-scope-series").click()
     await expect
       .poll(async () => Math.round((await block.boundingBox())!.y - box.y), { timeout: 15000 })
-      .toBe(48)
+      .toBe(shift)
   })
 })

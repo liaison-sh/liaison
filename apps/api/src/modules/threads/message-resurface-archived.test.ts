@@ -16,6 +16,7 @@ import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { sendMessage } from "~/modules/threads/message"
+import { seedMessageRow } from "~/seed/factories/threads/rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -80,9 +81,7 @@ async function stateFrames(
 }
 
 async function archivedThread(opts: { muted?: boolean } = {}): Promise<string> {
-  const threadId = await minimal.thread(orgId, authorId)
-  await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id)
-    VALUES (${threadId}, ${memberId}, ${orgId})`
+  const threadId = await minimal.thread(orgId, authorId, { participantIds: [memberId] })
   await setState(memberToken, threadId, {
     isArchived: true,
     ...(opts.muted ? { isMuted: true } : {}),
@@ -168,10 +167,14 @@ describe("a new message resurfaces a thread its member archived", () => {
   it("a reply the channel does not show resurfaces nothing", async () => {
     const threadId = await archivedThread()
     // The root predates the archive: written straight into the table.
-    const [root] = await sql<{ id: string }[]>`
-      INSERT INTO kernel.messages (thread_id, org_id, author_id, author_type, content, required_scopes)
-      VALUES (${threadId}, ${orgId}, ${authorId}, 'user', 'root', '{}')
-      RETURNING id`
+    const rootId = await seedMessageRow({
+      threadId,
+      orgId,
+      authorId,
+      authorType: "user",
+      content: "root",
+      requiredScopes: [],
+    })
     await withRlsContext(
       {
         actorType: "user",
@@ -186,7 +189,7 @@ describe("a new message resurfaces a thread its member archived", () => {
           userId: authorId,
           threadId,
           content: "a side reply",
-          replyRootId: root.id,
+          replyRootId: rootId,
           requiredScopes: [],
         }),
     )

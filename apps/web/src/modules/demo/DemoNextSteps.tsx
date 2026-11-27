@@ -26,6 +26,10 @@
 // When the box names a register page, it leads for every address at both
 // moments, the one filled button, and the other options become text links.
 // Each link option is absent when the box names no link.
+//
+// THE iOS APP KEEPS ONLY THE KEY. Register, setup and self-hosting lead to a
+// paid workspace or its sales, and the news opt-in announces it, so none of
+// them shows there (guideline 3.1.1); the recap and the key form stay.
 import type { DemoNeed } from "@liaison/shared"
 import {
   type Component,
@@ -38,6 +42,7 @@ import {
   Show,
 } from "solid-js"
 import { cn } from "~/lib/cn"
+import { purchaseSurfacesHidden } from "~/lib/native-bridge"
 import { DemoByokPrompt } from "~/modules/demo/DemoByokPrompt"
 import { demoScenarioQueue, demoScenarioQueueLoaded } from "~/modules/demo/DemoScenarioRunner"
 import { DemoVerifyPrompt } from "~/modules/demo/DemoVerifyPrompt"
@@ -190,6 +195,8 @@ export const DemoNextSteps: Component = () => {
   const [recap, setRecap] = createSignal<DemoRecap | null>(null)
   const [keyOpen, setKeyOpen] = createSignal(false)
   const [notifyState, setNotifyState] = createSignal<"idle" | "sending" | "verify" | "done">("idle")
+  // The iOS app shows no way to a paid workspace (see the header).
+  const hideSales = purchaseSurfacesHidden()
 
   // Fresh numbers each time it opens.
   createEffect(
@@ -253,7 +260,8 @@ export const DemoNextSteps: Component = () => {
     }
   }
   const lead = () => {
-    if (moment() === "end") return i18n.t("kernel.demo.next.endLead")
+    if (moment() === "end")
+      return i18n.t(hideSales ? "kernel.demo.next.endLeadNative" : "kernel.demo.next.endLead")
     switch (headline()) {
       case "spent":
         return i18n.t("kernel.demo.next.spentLead", {
@@ -280,10 +288,10 @@ export const DemoNextSteps: Component = () => {
   const paths = () =>
     orderedPaths(
       [
-        ...(demoDoorSettings()?.registerUrl ? (["register"] as const) : []),
-        ...(demoDoorSettings()?.bookingUrl ? (["setup"] as const) : []),
+        ...(!hideSales && demoDoorSettings()?.registerUrl ? (["register"] as const) : []),
+        ...(!hideSales && demoDoorSettings()?.bookingUrl ? (["setup"] as const) : []),
         ...(ownKey() ? [] : (["key"] as const)),
-        ...(demoDoorSettings()?.selfHostUrl ? (["self"] as const) : []),
+        ...(!hideSales && demoDoorSettings()?.selfHostUrl ? (["self"] as const) : []),
       ],
       personal(),
     )
@@ -554,7 +562,7 @@ export const DemoNextSteps: Component = () => {
 
           <Show when={paths().length > 0}>
             <h2 class="mx-6 mb-2 mt-4 text-[13px] font-semibold text-text">
-              {moment() === "end"
+              {moment() === "end" && !hideSales
                 ? i18n.t("kernel.demo.next.pathsEnd")
                 : i18n.t("kernel.demo.next.pathsBudget")}
             </h2>
@@ -626,27 +634,29 @@ export const DemoNextSteps: Component = () => {
 
           <footer class="mt-3.5 flex flex-wrap items-center justify-between gap-3 border-t border-border px-6 py-3 text-[13px]">
             <div class="min-w-0">
-              <Show
-                when={!notified()}
-                fallback={
-                  <p data-testid="demo-next-notify-done" role="status" class="text-text">
-                    {i18n.t("kernel.demo.next.notifyDone")}
-                  </p>
-                }
-              >
+              <Show when={!hideSales}>
                 <Show
-                  when={notifyState() !== "verify"}
-                  fallback={<DemoVerifyPrompt variant="gate" />}
+                  when={!notified()}
+                  fallback={
+                    <p data-testid="demo-next-notify-done" role="status" class="text-text">
+                      {i18n.t("kernel.demo.next.notifyDone")}
+                    </p>
+                  }
                 >
-                  <button
-                    type="button"
-                    data-testid="demo-next-notify"
-                    disabled={notifyState() === "sending"}
-                    onClick={() => void notify()}
-                    class="text-text-secondary underline underline-offset-2 hover:text-text"
+                  <Show
+                    when={notifyState() !== "verify"}
+                    fallback={<DemoVerifyPrompt variant="gate" />}
                   >
-                    {i18n.t("kernel.demo.next.notify")}
-                  </button>
+                    <button
+                      type="button"
+                      data-testid="demo-next-notify"
+                      disabled={notifyState() === "sending"}
+                      onClick={() => void notify()}
+                      class="text-text-secondary underline underline-offset-2 hover:text-text"
+                    >
+                      {i18n.t("kernel.demo.next.notify")}
+                    </button>
+                  </Show>
                 </Show>
               </Show>
             </div>
@@ -666,9 +676,10 @@ export const DemoNextSteps: Component = () => {
   )
 }
 
-/** "Want this for your company?" in the demo banner: opens the dialog. */
+/** "Want this for your company?" in the demo banner: opens the dialog. Not in the iOS app. */
 export const DemoNextStepsBannerEntry: Component = () => {
   const i18n = useI18n()
+  if (purchaseSurfacesHidden()) return null
   return (
     <button
       type="button"
@@ -683,10 +694,12 @@ export const DemoNextStepsBannerEntry: Component = () => {
 
 /**
  * "Create your workspace" in the demo banner, once a scenario is finished and
- * only when the box names a register page. A plain link, no dialog.
+ * only when the box names a register page. A plain link, no dialog. Never in
+ * the iOS app: it opens a paid signup (guideline 3.1.1).
  */
 export const DemoRegisterBannerEntry: Component = () => {
   const i18n = useI18n()
+  if (purchaseSurfacesHidden()) return null
   onMount(() => void ensureDemoDoorSettings())
   const href = () => {
     const base = demoDoorSettings()?.registerUrl

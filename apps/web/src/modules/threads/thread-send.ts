@@ -15,6 +15,7 @@
 import { PAYMENT_REQUIRED_CODE } from "@liaison/shared"
 import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
+import { purchaseSurfacesHidden } from "~/lib/native-bridge"
 import { beginMailboxAgentTurn, endMailboxAgentTurn } from "~/modules/mailbox/mailbox-agent-runtime"
 import { openRecordOf } from "~/modules/shell/open-record"
 import { tabStore } from "~/modules/shell/tab-store"
@@ -111,7 +112,11 @@ export function sendFailureToast(
   const code = err instanceof ApiError ? err.code : undefined
   const message =
     code === PAYMENT_REQUIRED_CODE
-      ? t("cloud-limits.billing.paymentRequired")
+      ? t(
+          purchaseSurfacesHidden()
+            ? "cloud-limits.native.paymentRequired"
+            : "cloud-limits.billing.paymentRequired",
+        )
       : code === "reply_root_deleted"
         ? t("kernel.replyThreads.rootDeleted")
         : code === "quote_not_found" || code === "quote_excerpt_mismatch"

@@ -35,8 +35,8 @@ export async function computeCloudBillingAttentionItems(
   if (!failure) return []
   const summary =
     failure.code === "authentication_required"
-      ? "Automatic top-up needs your card to be confirmed. It is off until you confirm the card in Settings > Billing."
-      : "Automatic top-up failed and is now off. Check the card in Settings > Billing."
+      ? "Automatic top-up is off until the card is confirmed."
+      : "Automatic top-up failed and is now off."
   return [
     {
       id: `kernel:cloud_billing:auto_top_up_failed:${failure.at}`,

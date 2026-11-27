@@ -933,7 +933,7 @@
     "empty": "No speech was recognised in the recording.",
     "insufficientCredits": "Dictation is paused: this workspace has reached its usage limit.",
     "billingUnavailable": "Dictation is unavailable for a moment: this workspace's billing setup is incomplete. Try again shortly.",
-    "paymentRequired": "Dictation is paused until the open invoice is paid. An admin can pay it in Billing.",
+    "paymentRequired": "Dictation is paused until the open invoice is paid.",
     "noModel": "Dictation needs an OpenRouter or Google API key. An admin can add one in Settings, AI models.",
     "rateLimited": "Too many dictations in a short time. Wait a few minutes and try again.",
     "tooLarge": "Recordings are limited to 10 MB.",
@@ -1212,7 +1212,8 @@
       "notifyDone": "Done. We will send you occasional news about Liaison.",
       "continue": "Keep exploring",
       "close": "Close",
-      "bannerLink": "Want this for your company?"
+      "bannerLink": "Want this for your company?",
+      "endLeadNative": "Keep trying your agents on your own requests."
     },
     "world": {
       "saas": {
@@ -4277,7 +4278,7 @@
     "providerSpendCap": "The AI service is temporarily unavailable (spending cap reached). Let an administrator know.",
     "providerRateLimited": "The AI service is busy right now. Please try again in a moment.",
     "providerUnavailable": "The AI service stopped responding before I finished. Say \"continue\" and I will pick up where I stopped.",
-    "creditsRanOut": "Credits ran out before I could finish this response. Add credits and ask me to continue.",
+    "creditsRanOut": "Credits ran out before I could finish this response. Ask me to continue once more credits are added.",
     "stoppedEarly": "I stopped before writing a final answer. Ask me to continue and I will pick up from what I already gathered.",
     "actionNotRun": "Nothing was run for this yet: no check or change was made."
   },
@@ -6619,7 +6620,7 @@
     "storageEstimateMeasured": "Measured {{date}}",
     "storageEstimatePartial": "Measured {{date}}, some parts could not be read",
     "storageEstimateOver": "Over the plan",
-    "noticeStorageEstimateOver": "Your organization's data is estimated at about {{used}} GB, over your plan's {{limit}} GB of storage. Nothing is blocked. To stay within your plan, move to a plan with more storage in Billing or remove data you no longer need.",
+    "noticeStorageEstimateOver": "Your organization's data is estimated at about {{used}} GB, over your plan's {{limit}} GB of storage. Nothing is blocked. Removing data you no longer need brings it back within the plan.",
     "storageHelp": "Stored files",
     "jobs": "Background jobs this hour",
     "jobsHelp": "Work past the limit waits for the next hour",
@@ -6642,13 +6643,14 @@
     "noticeNear": "{{label}}: {{shown}} used, 80 % of the limit.",
     "noticeTailJobs": "Background work past the limit waits for the next hour.",
     "noticeTailAppDay": "Past the limit, new app runs wait until midnight UTC: tools answer that the limit is reached, and webhooks, events and background work run after midnight.",
-    "noticeTailStorageFull": "New files from people and agents are refused until you upgrade your plan or free space (ask whoever runs the server to raise the limit).",
-    "noticeTailStorageNear": "Upgrade your plan or free space (ask whoever runs the server to raise the limit), otherwise new files will be refused once storage is full.",
+    "noticeTailStorageFull": "New files from people and agents are refused until space is freed or whoever runs the server raises the limit.",
+    "noticeTailStorageNear": "Once storage is full, new files will be refused until space is freed or whoever runs the server raises the limit.",
     "noticeTailOther": "Limits are set by whoever runs the server.",
-    "noticeTailStorageFullManaged": "New files from people and agents are refused until you move to a plan with more storage in Billing or free space.",
-    "noticeTailStorageNearManaged": "Move to a plan with more storage in Billing or free space, otherwise new files will be refused once storage is full.",
-    "noticeTailOtherManaged": "Your plan sets this limit. A larger plan in Billing raises it.",
-    "mailboxLimitReached": "This organization uses all of its mailboxes. Whoever runs the server can raise the limit, or an admin can disconnect a mailbox first."
+    "noticeTailStorageFullManaged": "New files from people and agents are refused until space is freed or the plan includes more storage.",
+    "noticeTailStorageNearManaged": "Once storage is full, new files will be refused until space is freed or the plan includes more storage.",
+    "noticeTailOtherManaged": "Your plan sets this limit.",
+    "mailboxLimitReached": "This organization uses all of its mailboxes. Whoever runs the server can raise the limit, or an admin can disconnect a mailbox first.",
+    "helpManagedNative": "Your plan sets these limits."
   },
   "appStore": {
     "title": "App store",
@@ -7987,5 +7989,6 @@
         "description": "Deal follow-ups: every weekday, a follow-up draft for each open deal gone quiet, for the deal's owner to approve."
       }
     }
-  }
+  },
+  "modelSetByPlan": "Your plan sets the model"
 }

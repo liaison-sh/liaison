@@ -69,7 +69,7 @@ See [Invite and manage users](users.md), [Set up roles](roles.md) and [Control d
 
 ### Pay for a managed workspace
 
-On a managed instance, **Settings › Billing** holds everything about paying for the workspace:
+On a managed instance, **Settings › Billing** holds everything about paying for the workspace. It is in the browser, the desktop app and the Android app, not in the iPhone app (see [Use Liaison on your phone](../getting-started/desktop-and-phone.md#use-liaison-on-your-phone)):
 
 - **Plan**: the current plan, when it renews and the next invoice. **Switch to** another plan: a larger plan applies once its prorated invoice is paid, a smaller one at the end of the period. A switch to a plan too small for what the workspace uses is refused, with the limits it would break.
 - **Payment card**: **Change card** opens a secure payment form inside the page. Card details and payment confirmations (such as a bank's 3-D Secure check) are only ever typed there.
@@ -82,7 +82,7 @@ On a managed instance, **Settings › Billing** holds everything about paying fo
 
 On a managed instance, the workspace follows the state of its subscription:
 
-- **Payment failed**: AI use (chat, titles, side calls), web search and dictation stop with a message to pay the open invoice in **Settings › Billing**; a conversation shows it with an **Open Billing** link. Everything else keeps working. Once the invoice is paid they work again.
+- **Payment failed**: AI use (chat, titles, side calls), web search and dictation stop with a message to pay the open invoice in **Settings › Billing**; a conversation shows it with an **Open Billing** link (in the iPhone app, the sentence alone, without the link). Everything else keeps working. Once the invoice is paid they work again.
 - **Suspended** (the invoice stayed unpaid, or the subscription ended): only admins can sign in, and only to use **Settings › Billing** and to export the organization, until the date the refusal names. Everyone else is refused, and so are apps connected through MCP or the API and live updates. The workspace's background jobs and incoming webhooks pause; exports and deletion still run. Paying the open invoice restores everything, and paused routines run again at their next time.
 - **Closed**: nobody can sign in, admins included. The workspace and its data are deleted afterwards, never sooner than 25 days after it was closed.
 

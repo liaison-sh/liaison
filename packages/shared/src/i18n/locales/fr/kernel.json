@@ -933,7 +933,7 @@
     "empty": "Aucune parole n'a été reconnue dans l'enregistrement.",
     "insufficientCredits": "La dictée est en pause : cet espace de travail a atteint sa limite d'utilisation.",
     "billingUnavailable": "La dictée est momentanément indisponible : la configuration de facturation de cet espace de travail est incomplète. Réessayez dans un instant.",
-    "paymentRequired": "La dictée est suspendue jusqu'au paiement de la facture en attente. Un administrateur peut la régler dans Facturation.",
+    "paymentRequired": "La dictée est suspendue jusqu'au paiement de la facture en attente.",
     "noModel": "La dictée nécessite une clé d'API OpenRouter ou Google. Un administrateur peut en ajouter une dans Paramètres, Modèles d'IA.",
     "rateLimited": "Trop de dictées en peu de temps. Patientez quelques minutes puis réessayez.",
     "tooLarge": "Les enregistrements sont limités à 10 Mo.",
@@ -1212,7 +1212,8 @@
       "notifyDone": "C'est noté. Nous vous enverrons de temps en temps des nouvelles de Liaison.",
       "continue": "Continuer à explorer",
       "close": "Fermer",
-      "bannerLink": "Envie de Liaison pour votre entreprise ?"
+      "bannerLink": "Envie de Liaison pour votre entreprise ?",
+      "endLeadNative": "Continuez à essayer vos agents sur vos propres demandes."
     },
     "world": {
       "saas": {
@@ -4274,7 +4275,7 @@
     "providerSpendCap": "Le service d'IA est momentanément indisponible (plafond de dépenses atteint). Prévenez un administrateur.",
     "providerRateLimited": "Le service d'IA est saturé pour le moment. Réessayez dans un instant.",
     "providerUnavailable": "Le service d'IA a cessé de répondre avant que je termine. Dites « continue » et je reprendrai là où je me suis arrêté.",
-    "creditsRanOut": "Les crédits se sont épuisés avant la fin de cette réponse. Ajoutez des crédits puis demandez-moi de continuer.",
+    "creditsRanOut": "Les crédits se sont épuisés avant la fin de cette réponse. Demandez-moi de continuer une fois des crédits ajoutés.",
     "stoppedEarly": "Je me suis arrêté avant d'écrire une réponse finale. Demandez-moi de continuer et je reprendrai à partir de ce que j'ai déjà rassemblé.",
     "actionNotRun": "Rien n'a encore été lancé pour cela : aucune vérification ni modification n'a été faite."
   },
@@ -6616,7 +6617,7 @@
     "storageEstimateMeasured": "Mesuré le {{date}}",
     "storageEstimatePartial": "Mesuré le {{date}}, certaines parties n'ont pas pu être lues",
     "storageEstimateOver": "Au-delà de l'offre",
-    "noticeStorageEstimateOver": "Les données de votre organisation sont estimées à environ {{used}} Go, au-delà des {{limit}} Go de stockage de votre offre. Rien n'est bloqué. Pour rester dans votre offre, passez à une offre avec plus de stockage dans Facturation ou supprimez les données dont vous n'avez plus besoin.",
+    "noticeStorageEstimateOver": "Les données de votre organisation sont estimées à environ {{used}} Go, au-delà des {{limit}} Go de stockage de votre offre. Rien n'est bloqué. Supprimer les données dont vous n'avez plus besoin les ramène dans l'offre.",
     "storageHelp": "Fichiers stockés",
     "jobs": "Tâches de fond cette heure-ci",
     "jobsHelp": "Au-delà de la limite, le travail attend l'heure suivante",
@@ -6639,13 +6640,14 @@
     "noticeNear": "{{label}} : {{shown}} utilisés, 80 % de la limite.",
     "noticeTailJobs": "Les tâches de fond au-delà de la limite attendent l'heure suivante.",
     "noticeTailAppDay": "Au-delà de la limite, les nouvelles exécutions d'applications attendent minuit UTC : les outils répondent que la limite est atteinte, et les webhooks, événements et tâches de fond s'exécutent après minuit.",
-    "noticeTailStorageFull": "Les nouveaux fichiers des personnes et des agents sont refusés jusqu'à ce que vous passiez à une offre supérieure ou libériez de l'espace (demandez à la personne qui gère le serveur de relever la limite).",
-    "noticeTailStorageNear": "Passez à une offre supérieure ou libérez de l'espace (demandez à la personne qui gère le serveur de relever la limite), sinon les nouveaux fichiers seront refusés une fois le stockage plein.",
+    "noticeTailStorageFull": "Les nouveaux fichiers des personnes et des agents sont refusés jusqu'à ce que de l'espace soit libéré ou que la personne qui gère le serveur relève la limite.",
+    "noticeTailStorageNear": "Une fois le stockage plein, les nouveaux fichiers seront refusés jusqu'à ce que de l'espace soit libéré ou que la personne qui gère le serveur relève la limite.",
     "noticeTailOther": "Les limites sont fixées par la personne qui gère le serveur.",
-    "noticeTailStorageFullManaged": "Les nouveaux fichiers des personnes et des agents sont refusés jusqu'à ce que vous passiez à une offre avec plus de stockage dans Facturation ou libériez de l'espace.",
-    "noticeTailStorageNearManaged": "Passez à une offre avec plus de stockage dans Facturation ou libérez de l'espace, sinon les nouveaux fichiers seront refusés une fois le stockage plein.",
-    "noticeTailOtherManaged": "Votre offre fixe cette limite. Une offre supérieure dans Facturation la relève.",
-    "mailboxLimitReached": "Cette organisation utilise toutes ses boîtes mail. La personne qui gère le serveur peut relever la limite, ou un admin peut d'abord déconnecter une boîte mail."
+    "noticeTailStorageFullManaged": "Les nouveaux fichiers des personnes et des agents sont refusés jusqu'à ce que de l'espace soit libéré ou que l'offre inclue plus de stockage.",
+    "noticeTailStorageNearManaged": "Une fois le stockage plein, les nouveaux fichiers seront refusés jusqu'à ce que de l'espace soit libéré ou que l'offre inclue plus de stockage.",
+    "noticeTailOtherManaged": "Votre offre fixe cette limite.",
+    "mailboxLimitReached": "Cette organisation utilise toutes ses boîtes mail. La personne qui gère le serveur peut relever la limite, ou un admin peut d'abord déconnecter une boîte mail.",
+    "helpManagedNative": "Votre offre fixe ces limites."
   },
   "appStore": {
     "title": "Boutique d'applications",
@@ -7984,5 +7986,6 @@
         "description": "Relances d'affaires : chaque jour de semaine, un brouillon de relance pour chaque affaire ouverte restée sans nouvelles, à faire approuver par son responsable."
       }
     }
-  }
+  },
+  "modelSetByPlan": "Votre offre fixe le modèle"
 }

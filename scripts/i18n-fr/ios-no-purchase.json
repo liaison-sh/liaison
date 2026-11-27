@@ -1,0 +1,15 @@
+{
+  "key": {
+    "kernel.modelSetByPlan": "Votre offre fixe le modèle",
+    "kernel.orgUsage.helpManagedNative": "Votre offre fixe ces limites.",
+    "kernel.demo.next.endLeadNative": "Continuez à essayer vos agents sur vos propres demandes.",
+    "kernel.agentNotice.creditsRanOut": "Les crédits se sont épuisés avant la fin de cette réponse. Demandez-moi de continuer une fois des crédits ajoutés.",
+    "kernel.orgUsage.noticeTailStorageFull": "Les nouveaux fichiers des personnes et des agents sont refusés jusqu'à ce que de l'espace soit libéré ou que la personne qui gère le serveur relève la limite.",
+    "kernel.orgUsage.noticeTailStorageNear": "Une fois le stockage plein, les nouveaux fichiers seront refusés jusqu'à ce que de l'espace soit libéré ou que la personne qui gère le serveur relève la limite.",
+    "kernel.orgUsage.noticeTailStorageFullManaged": "Les nouveaux fichiers des personnes et des agents sont refusés jusqu'à ce que de l'espace soit libéré ou que l'offre inclue plus de stockage.",
+    "kernel.orgUsage.noticeTailStorageNearManaged": "Une fois le stockage plein, les nouveaux fichiers seront refusés jusqu'à ce que de l'espace soit libéré ou que l'offre inclue plus de stockage.",
+    "kernel.orgUsage.noticeTailOtherManaged": "Votre offre fixe cette limite.",
+    "kernel.orgUsage.noticeStorageEstimateOver": "Les données de votre organisation sont estimées à environ {{used}} Go, au-delà des {{limit}} Go de stockage de votre offre. Rien n'est bloqué. Supprimer les données dont vous n'avez plus besoin les ramène dans l'offre.",
+    "kernel.dictationErrors.paymentRequired": "La dictée est suspendue jusqu'au paiement de la facture en attente."
+  }
+}

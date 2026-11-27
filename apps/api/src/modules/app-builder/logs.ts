@@ -27,6 +27,7 @@ import { extractRows, type RlsClient } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
 import { type AppLogLevel, type AppLogRow, appLogs } from "~/db/schema/kernel"
+import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
 import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
@@ -375,9 +376,10 @@ export async function hiddenAppLogs(
   )
   const tags = [...new Set(groups.flatMap((g) => g.tags))].sort()
   if (tags.length === 0) return { lines: 0, scopes: [] }
+  const K = sql.raw(schemaRef("kernel"))
   const held = extractRows<{ tag: string; held: boolean }>(
     await tx.execute(
-      sql`SELECT t.tag, kernel.stamp_scope_held(t.tag) AS held FROM unnest(ARRAY[${sql.join(
+      sql`SELECT t.tag, ${K}.stamp_scope_held(t.tag) AS held FROM unnest(ARRAY[${sql.join(
         tags.map((t) => sql`${t}`),
         sql`, `,
       )}]::text[]) AS t(tag)`,

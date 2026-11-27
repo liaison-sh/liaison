@@ -115,17 +115,18 @@ export function isAppDayCapKind(kind: string): kind is AppDayCapKind {
 
 function capLimitMessage(kind: keyof typeof CAP_LIMIT_CODES, limit: number): string {
   switch (kind) {
-    // In the managed edition the plan sets the limit, so the way out is a larger
-    // plan in Billing, never "whoever runs the server" (the customer does not).
+    // In the managed edition the plan sets the limit, never "whoever runs the
+    // server" (the customer does not). The text names no plan to buy: it also
+    // reaches the iOS app, which shows no way to pay (App Store guideline 3.1.1).
     case "seats":
       return isManagedEdition()
-        ? `This organization uses all of its ${limit} seats. Move to a plan with more in Billing, or an admin can deactivate someone first.`
+        ? `This organization uses all of the ${limit} seats its plan includes. An admin can deactivate someone first.`
         : `This organization uses all of its ${limit} seats. Whoever runs the server can raise the limit, or an admin can deactivate someone first.`
     case "mailboxes":
       return `This organization uses all of its ${limit} mailboxes. Whoever runs the server can raise the limit, or an admin can disconnect a mailbox first.`
     case "customApps":
       return isManagedEdition()
-        ? `This organization uses all of its ${limit} custom apps. Remove one first, or move to a plan with more.`
+        ? `This organization uses all of the ${limit} custom apps its plan includes. Remove one first.`
         : `This organization uses all of its ${limit} custom apps. Remove one first, or whoever runs the server can raise the limit.`
     case "auditDays":
       return `This organization's plan keeps the audit log for up to ${limit} days. Choose ${limit} days or fewer.`
@@ -139,7 +140,7 @@ function capLimitMessage(kind: keyof typeof CAP_LIMIT_CODES, limit: number): str
             ? `${limit} app calls`
             : `${limit} ms of app CPU time`
       return isManagedEdition()
-        ? `This organization used its ${what} for today (UTC). Apps run again after midnight UTC, or move to a plan with more in Billing.`
+        ? `This organization used the ${what} its plan includes for today (UTC). Apps run again after midnight UTC.`
         : `This organization used its ${what} for today (UTC). Apps run again after midnight UTC, or whoever runs the server can raise the limit.`
     }
   }
@@ -634,7 +635,7 @@ export function noticeSummary(
       ? t("kernel.orgUsage.storageUsedOfLimit", { used, limit })
       : t("kernel.orgUsage.usedOfLimit", { used, limit })
   const label = t(CAP_LABEL_KEY[kind])
-  // The managed edition's customer runs no server: the way out is the plan, in Billing.
+  // The managed edition's customer runs no server: the plan sets the limit.
   const managed = isManagedEdition()
   const head =
     level >= 100

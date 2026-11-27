@@ -63,6 +63,8 @@ The phone app is a shell around the same web app, for iPhone and Android.
 
 The phone app does not create accounts. An admin invites you first (see [Invite and manage users](../admin/users.md)).
 
+The iPhone app shows nothing to buy: no **Plan** or **Billing** page, no way to add credits, change the plan or create a workspace, and no link to the Liaison website. When credits or storage run out, it says so in a plain sentence, for example **Your workspace has run out of credits, so the assistant has stopped. Everything else keeps working. An admin can add more from Liaison on the web.** The Android app shows the same pages as the browser.
+
 The phone app asks for the microphone only while you dictate a message, and for permission to send notifications.
 
 A notification about a comment on a task is titled with the task. Tapping it opens the task with the comment brought into view.

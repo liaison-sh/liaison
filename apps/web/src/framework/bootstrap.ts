@@ -42,6 +42,7 @@ import { isAppUnavailable, onAppsChanged, setUnavailableApps } from "~/framework
 import { onApiReady } from "~/lib/api-ready"
 import { registerAppDisplayName } from "~/lib/capability-copy"
 import { apiUrl, serverAddressOverride } from "~/lib/env"
+import { purchaseSurfacesHidden } from "~/lib/native-bridge"
 import { onSessionStart, onSessionTeardown } from "~/lib/session-lifecycle"
 import { scopeRequestsStore } from "~/modules/admin-scope-requests/scope-requests-store"
 import { registerAgentApp } from "~/modules/agent/agent-app"
@@ -763,30 +764,37 @@ export function bootstrapKernelApps(): void {
         adminScope: "kernel:billing:read",
         order: 102,
       },
-      {
-        id: "plan",
-        label: "Plan",
-        labelKey: "kernel.nav.section.plan",
-        href: "/settings/plan",
-        component: lazy(() => import("~/modules/settings/PlanSettings")),
-        group: "ai",
-        adminScope: "kernel:org:admin",
-        order: 103,
-        visibleWhen: () => billingMode() === "managed",
-      },
-      {
-        // Workspace > Billing (managed edition, S17): plan, card, invoices,
-        // credits, top-ups; payments run in the payment frame.
-        id: "billing",
-        label: "Billing",
-        labelKey: "kernel.nav.section.billing",
-        href: "/settings/billing",
-        component: lazy(() => import("~/modules/settings/BillingSettings")),
-        group: "admin",
-        adminScope: "kernel:org:admin",
-        order: 19.5,
-        visibleWhen: () => billingMode() === "managed",
-      },
+      // Neither page exists in the iOS app (App Store guideline 3.1.1): not
+      // registered at all, so a deep link or an attention row lands on the
+      // fallback page instead of a purchase screen.
+      ...(purchaseSurfacesHidden()
+        ? []
+        : [
+            {
+              id: "plan",
+              label: "Plan",
+              labelKey: "kernel.nav.section.plan",
+              href: "/settings/plan",
+              component: lazy(() => import("~/modules/settings/PlanSettings")),
+              group: "ai" as const,
+              adminScope: "kernel:org:admin",
+              order: 103,
+              visibleWhen: () => billingMode() === "managed",
+            },
+            {
+              // Workspace > Billing (managed edition, S17): plan, card, invoices,
+              // credits, top-ups; payments run in the payment frame.
+              id: "billing",
+              label: "Billing",
+              labelKey: "kernel.nav.section.billing",
+              href: "/settings/billing",
+              component: lazy(() => import("~/modules/settings/BillingSettings")),
+              group: "admin" as const,
+              adminScope: "kernel:org:admin",
+              order: 19.5,
+              visibleWhen: () => billingMode() === "managed",
+            },
+          ]),
       {
         // Workspace > Organization: details, then the data export.
         id: "org",
@@ -1400,6 +1408,11 @@ export function bootstrapKernelApps(): void {
   // Entity openers — replace ad-hoc tab-type aliasing in ApprovalCard / MessageList.
   registerEntityOpener("kernel", "thread", (_api, id) => ({
     tabType: "thread",
+    entityId: id,
+  }))
+  // A computer session's notice (needs you / done / failed) opens the session.
+  registerEntityOpener("kernel", "node_session", (_api, id) => ({
+    tabType: "kernel:session",
     entityId: id,
   }))
   registerEntityOpener("kernel", "approval_request", async (api, id) => {

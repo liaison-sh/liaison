@@ -933,7 +933,7 @@
     "empty": "No speech was recognised in the recording.",
     "insufficientCredits": "Dictation is paused: this workspace has reached its usage limit.",
     "billingUnavailable": "Dictation is unavailable for a moment: this workspace's billing setup is incomplete. Try again shortly.",
-    "paymentRequired": "Dictation is paused until the open invoice is paid. An admin can pay it in Billing.",
+    "paymentRequired": "Dictation is paused until the open invoice is paid.",
     "noModel": "Dictation needs an OpenRouter or Google API key. An admin can add one in Settings, AI models.",
     "rateLimited": "Too many dictations in a short time. Wait a few minutes and try again.",
     "tooLarge": "Recordings are limited to 10 MB.",
@@ -1119,48 +1119,9 @@
       "details": "Your details"
     },
     "companyFacts": "Fictional company · Paris · 7 people",
-    "companyAbout": "Resonant Audio Labs designs portable field recorders for film and location sound: the Kestrel line, from €399 to €1,349, plus cases, cables and windshields. It sells direct through its web store and through six dealers in Europe, North America and Japan.",
-    "companyHow": "How it runs on Liaison",
-    "companyOps": {
-      "support": {
-        "title": "Support",
-        "body": "Customer mail lands in Tickets. The Support Desk agent drafts each reply; Amina or Lucas approves it."
-      },
-      "orders": {
-        "title": "Orders and shipping",
-        "body": "Web-store orders arrive from Shopify. The Operations Desk agent prepares the shipment with the carrier for Margot."
-      },
-      "invoicing": {
-        "title": "Invoicing",
-        "body": "Every order gets its invoice. The Finance Desk agent handles refunds and dealer accounts with Henrik."
-      },
-      "sales": {
-        "title": "Sales",
-        "body": "Giulia's dealer pipeline lives in the CRM. A routine researches each new prospect and drafts the reply."
-      },
-      "projects": {
-        "title": "Projects and chat",
-        "body": "The team plans product work in Projects and talks in Chat, with their agents in the conversation."
-      },
-      "knowledge": {
-        "title": "Company knowledge",
-        "body": "Manuals from GitLab, finance from Google Drive, playbooks written in Liaison. Each agent reads only what its person may open."
-      }
-    },
-    "companyYou": "You run it as the CEO, with your own agent. Ask it what you'd ask to run the company, and watch the desks work.",
+    "companyAbout": "Resonant Audio Labs designs portable field recorders for film and location sound, sold through its web store and six dealers in Europe, North America and Japan.",
+    "companyYou": "You run it as the CEO, with your own agent.",
     "companySimulated": "Only the outside world is simulated: no mail leaves, and the store and carrier accounts are stand-ins.",
-    "teamTitle": "The team",
-    "teamYou": "You",
-    "teamCeo": "CEO",
-    "teamRole": {
-      "tobias": "Head of Operations",
-      "amina": "Support Lead",
-      "lucas": "Support Specialist",
-      "margot": "Fulfillment",
-      "henrik": "Finance",
-      "giulia": "Sales and Partnerships"
-    },
-    "youllSee": "You'll see",
     "detailsBack": "Back",
     "next": {
       "eyebrowSpent": "Demo budget used",
@@ -1212,104 +1173,54 @@
       "notifyDone": "Done. We will send you occasional news about Liaison.",
       "continue": "Keep exploring",
       "close": "Close",
-      "bannerLink": "Want this for your company?"
+      "bannerLink": "Want this for your company?",
+      "endLeadNative": "Keep trying your agents on your own requests."
     },
     "world": {
       "saas": {
         "companyFacts": "Fictional company · Paris · 14 people",
         "companyExample": "This is an example company: Tideform, which makes rota software for hospitality groups. Your own workspace would hold your data.",
-        "companyAbout": "Tideform makes rota and shift planning software for hotels, restaurants and canteens, sold by subscription from €149 to €1,450 a month. 169 customers pay by card through Stripe, and a few larger groups pay by bank transfer.",
-        "companyOps": {
-          "payments": {
-            "title": "Subscriptions and payments",
-            "body": "169 customers pay by card through Stripe. The Finance Desk agent watches failed payments and drafts the note; Sara approves it."
-          },
-          "invoicing": {
-            "title": "Invoicing",
-            "body": "Liaison issues every invoice, with no gaps, including for the groups that pay by bank transfer."
-          },
-          "support": {
-            "title": "Support",
-            "body": "Customer mail lands in Tickets. The Support Desk agent drafts each reply."
-          },
-          "sales": {
-            "title": "Sales",
-            "body": "Tom's deals live on a board. A routine drafts the follow-ups."
-          },
-          "product": {
-            "title": "Product and chat",
-            "body": "The team plans product work in Projects and talks in Chat."
-          },
-          "knowledge": {
-            "title": "Company knowledge",
-            "body": "Each agent reads only what its person may open."
-          }
-        },
-        "companyYou": "You run it as the CEO, with your own agent. Ask it what you'd ask to run the company, and watch the desks work.",
+        "companyAbout": "Tideform sells rota and shift planning software to hotels, restaurants and canteens, from €149 to €1,450 a month: 169 customers pay by card through Stripe.",
+        "companyYou": "You run it as the CEO, with your own agent.",
         "companySimulated": "Only the outside world is simulated: no mail leaves, and the Stripe account and its payments are stand-ins.",
-        "teamRole": {
-          "tom": "Sales",
-          "elodie": "Account Manager",
-          "ines": "Support Lead",
-          "yann": "CTO",
-          "sara": "Finance",
-          "lucie": "Product Manager",
-          "baptiste": "Developer",
-          "amel": "Developer",
-          "jonas": "Developer",
-          "clemence": "Support",
-          "nolan": "Support",
-          "maxime": "Sales",
-          "rose": "Office Manager"
-        },
-        "limitConnectors": "The Stripe account and its payments are stand-ins. Connecting a real account is refused. Refunds and cancellations act on the stand-in only."
+        "limitConnectors": "The Stripe account and its payments are stand-ins. Connecting a real account is refused. Refunds and cancellations act on the stand-in only.",
+        "pickMoment": {
+          "support": "A customer writes in: approve the reply the support routine drafted.",
+          "projects": "Hand Baptiste's task to your agent and watch it break the work down.",
+          "chat": "Ask your agent to research Lucie's question, with the page it cites.",
+          "sales": "A hotel group emails: approve the company, the contact, a quote and the reply in one go.",
+          "money": "A card fails: your agent reads Stripe, invoices and tickets, then drafts the note for you to approve.",
+          "dev": "Turn a customer's bug into a pull request, then approve the reply that tells them.",
+          "knowledge": "Ask about the refund policy, then see Clémence get only what she may open."
+        }
       },
       "studio": {
         "companyFacts": "Fictional company · Lyon · 24 people",
         "companyExample": "This is an example company: Halden Studio, which builds software and data systems for its clients. Your own workspace would hold your data.",
-        "companyAbout": "Halden Studio builds software and data systems for mid-size companies. It bills by the hour or the day, at a fixed price with milestones, or on a monthly retainer. Clients follow their project on a portal of their own.",
-        "companyOps": {
-          "agreements": {
-            "title": "Agreements",
-            "body": "Proposals and contracts, signed in Liaison. Your agent checks them when a client asks for more."
-          },
-          "delivery": {
-            "title": "Delivery",
-            "body": "Each task has a planned time, and whoever did it can enter how long it took. Whoever bills asks an agent to check planned vs done."
-          },
-          "billing": {
-            "title": "Billing",
-            "body": "Invoices from milestones, retainers and checked work. Anaïs issues them."
-          },
-          "clients": {
-            "title": "Clients",
-            "body": "Each company holds its people, deals, money and work. Bastien's client reports are drafted on Fridays."
-          },
-          "portal": {
-            "title": "Client portal",
-            "body": "Clients sign in to see their progress, reports, invoices and requests. Only what was shared, nothing else."
-          },
-          "knowledge": {
-            "title": "Studio knowledge",
-            "body": "A wiki of past projects and playbooks. Each agent reads only what its person may open."
-          }
-        },
-        "companyYou": "You run it as a co-founder, with your own agent. Ask it what you'd ask to run the studio, and watch it check the agreement before anyone answers a client.",
+        "companyAbout": "Halden Studio builds software and data systems for mid-size companies, billed by the hour or the day, at a fixed price with milestones, or on a monthly retainer.",
+        "companyYou": "You run it as a co-founder, with your own agent.",
         "companySimulated": "Only the outside world is simulated: no mail leaves, and the clients and their replies are stand-ins.",
-        "teamYouRole": "Co-founder",
-        "teamOthers": {
-          "name": "18 others",
-          "role": "Delivery, sales"
-        },
-        "teamRole": {
-          "bastien": "Project lead",
-          "nadia": "Lead developer",
-          "mathis": "Developer",
-          "sofia": "Data engineer",
-          "anais": "Finance"
-        },
-        "limitConnectors": "Repositories and clients are stand-ins. Client sign-in and signing links do not work here, since no mail leaves. Agreements shown as signed were not really signed. See what a client sees in a company's Client portal, under What they see."
+        "limitConnectors": "Repositories and clients are stand-ins. Client sign-in and signing links do not work here, since no mail leaves. Agreements shown as signed were not really signed. See what a client sees in a company's Client portal, under What they see.",
+        "pickMoment": {
+          "support": "A client writes in: read the routine's note, then approve the reply it drafted.",
+          "projects": "Hand Bastien's task to your agent, then send a client their weekly report.",
+          "chat": "Ask your agent to research Sofia's question, with the page it cites.",
+          "sales": "A prospect sends a brief: approve the company, the deal, a proposal draft and the reply. You set the price.",
+          "client": "Ask your agent whether a client's extra request is in the agreement, then approve the change request.",
+          "dev": "Turn a client's bug into a pull request in their repository, then approve the reply that tells them.",
+          "knowledge": "Ask about a past project's costs, then see Mathis get only what he may open."
+        }
       }
+    },
+    "tryTitle": "What you'll try",
+    "pickMoment": {
+      "support": "A customer writes in: approve the reply the support routine drafted.",
+      "projects": "Hand Tobias's launch task to your agent and watch it break the work down.",
+      "chat": "Ask your agent to research Tobias's question on the web, with its sources.",
+      "sales": "A prospect emails: approve the CRM record, the quote and the reply in one go.",
+      "commerce": "An order arrives with its invoice: approve the shipment the Operations Desk prepared.",
+      "dev": "Send a bug fix to Claude Code on a computer and get a pull request back.",
+      "knowledge": "Ask across manuals and finance, then see Lucas get only what he may open."
     }
   },
   "deny": "Deny",
@@ -1819,6 +1730,10 @@
     "masked": {
       "one": "card number hidden",
       "other": "card numbers hidden"
+    },
+    "needs_response": {
+      "one": "chargeback to answer",
+      "other": "chargebacks to answer"
     },
     "problem": {
       "one": "connection problem",
@@ -4273,7 +4188,7 @@
     "providerSpendCap": "The AI service is temporarily unavailable (spending cap reached). Let an administrator know.",
     "providerRateLimited": "The AI service is busy right now. Please try again in a moment.",
     "providerUnavailable": "The AI service stopped responding before I finished. Say \"continue\" and I will pick up where I stopped.",
-    "creditsRanOut": "Credits ran out before I could finish this response. Add credits and ask me to continue.",
+    "creditsRanOut": "Credits ran out before I could finish this response. Ask me to continue once more credits are added.",
     "stoppedEarly": "I stopped before writing a final answer. Ask me to continue and I will pick up from what I already gathered.",
     "actionNotRun": "Nothing was run for this yet: no check or change was made."
   },
@@ -6615,7 +6530,7 @@
     "storageEstimateMeasured": "Measured {{date}}",
     "storageEstimatePartial": "Measured {{date}}, some parts could not be read",
     "storageEstimateOver": "Over the plan",
-    "noticeStorageEstimateOver": "Your organization's data is estimated at about {{used}} GB, over your plan's {{limit}} GB of storage. Nothing is blocked. To stay within your plan, move to a plan with more storage in Billing or remove data you no longer need.",
+    "noticeStorageEstimateOver": "Your organization's data is estimated at about {{used}} GB, over your plan's {{limit}} GB of storage. Nothing is blocked. Removing data you no longer need brings it back within the plan.",
     "storageHelp": "Stored files",
     "jobs": "Background jobs this hour",
     "jobsHelp": "Work past the limit waits for the next hour",
@@ -6638,13 +6553,14 @@
     "noticeNear": "{{label}}: {{shown}} used, 80 % of the limit.",
     "noticeTailJobs": "Background work past the limit waits for the next hour.",
     "noticeTailAppDay": "Past the limit, new app runs wait until midnight UTC: tools answer that the limit is reached, and webhooks, events and background work run after midnight.",
-    "noticeTailStorageFull": "New files from people and agents are refused until you upgrade your plan or free space (ask whoever runs the server to raise the limit).",
-    "noticeTailStorageNear": "Upgrade your plan or free space (ask whoever runs the server to raise the limit), otherwise new files will be refused once storage is full.",
+    "noticeTailStorageFull": "New files from people and agents are refused until space is freed or whoever runs the server raises the limit.",
+    "noticeTailStorageNear": "Once storage is full, new files will be refused until space is freed or whoever runs the server raises the limit.",
     "noticeTailOther": "Limits are set by whoever runs the server.",
-    "noticeTailStorageFullManaged": "New files from people and agents are refused until you move to a plan with more storage in Billing or free space.",
-    "noticeTailStorageNearManaged": "Move to a plan with more storage in Billing or free space, otherwise new files will be refused once storage is full.",
-    "noticeTailOtherManaged": "Your plan sets this limit. A larger plan in Billing raises it.",
-    "mailboxLimitReached": "This organization uses all of its mailboxes. Whoever runs the server can raise the limit, or an admin can disconnect a mailbox first."
+    "noticeTailStorageFullManaged": "New files from people and agents are refused until space is freed or the plan includes more storage.",
+    "noticeTailStorageNearManaged": "Once storage is full, new files will be refused until space is freed or the plan includes more storage.",
+    "noticeTailOtherManaged": "Your plan sets this limit.",
+    "mailboxLimitReached": "This organization uses all of its mailboxes. Whoever runs the server can raise the limit, or an admin can disconnect a mailbox first.",
+    "helpManagedNative": "Your plan sets these limits."
   },
   "appStore": {
     "title": "App store",
@@ -7983,5 +7899,6 @@
         "description": "Deal follow-ups: every weekday, a follow-up draft for each open deal gone quiet, for the deal's owner to approve."
       }
     }
-  }
+  },
+  "modelSetByPlan": "Your plan sets the model"
 }

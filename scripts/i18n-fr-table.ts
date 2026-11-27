@@ -64,8 +64,6 @@ export const FR: Record<string, string> = {
   "Background work past the limit waits for the next hour.":
     "Les tâches de fond au-delà de la limite attendent l'heure suivante.",
   "The cheapest model": "Le modèle le moins cher",
-  "New files from people and agents are refused until you move to a plan with more storage in Billing or free space.":
-    "Les nouveaux fichiers des personnes et des agents sont refusés jusqu'à ce que vous passiez à une offre avec plus de stockage dans Facturation ou libériez de l'espace.",
   "Everything stored (estimate)": "Tout ce qui est stocké (estimation)",
   "Files plus mail, tickets, conversations, knowledge and the search index. Measured each night. Going over warns you and never blocks anything.":
     "Les fichiers, plus les e-mails, tickets, conversations, connaissances et l'index de recherche. Mesuré chaque nuit. Un dépassement vous avertit et ne bloque jamais rien.",
@@ -75,16 +73,6 @@ export const FR: Record<string, string> = {
   "Measured {{date}}, some parts could not be read":
     "Mesuré le {{date}}, certaines parties n'ont pas pu être lues",
   "Over the plan": "Au-delà de l'offre",
-  "Your organization's data is estimated at about {{used}} GB, over your plan's {{limit}} GB of storage. Nothing is blocked. To stay within your plan, move to a plan with more storage in Billing or remove data you no longer need.":
-    "Les données de votre organisation sont estimées à environ {{used}} Go, au-delà des {{limit}} Go de stockage de votre offre. Rien n'est bloqué. Pour rester dans votre offre, passez à une offre avec plus de stockage dans Facturation ou supprimez les données dont vous n'avez plus besoin.",
-  "Move to a plan with more storage in Billing or free space, otherwise new files will be refused once storage is full.":
-    "Passez à une offre avec plus de stockage dans Facturation ou libérez de l'espace, sinon les nouveaux fichiers seront refusés une fois le stockage plein.",
-  "Your plan sets this limit. A larger plan in Billing raises it.":
-    "Votre offre fixe cette limite. Une offre supérieure dans Facturation la relève.",
-  "New files from people and agents are refused until you upgrade your plan or free space (ask whoever runs the server to raise the limit).":
-    "Les nouveaux fichiers des personnes et des agents sont refusés jusqu'à ce que vous passiez à une offre supérieure ou libériez de l'espace (demandez à la personne qui gère le serveur de relever la limite).",
-  "Upgrade your plan or free space (ask whoever runs the server to raise the limit), otherwise new files will be refused once storage is full.":
-    "Passez à une offre supérieure ou libérez de l'espace (demandez à la personne qui gère le serveur de relever la limite), sinon les nouveaux fichiers seront refusés une fois le stockage plein.",
   "Limits are set by whoever runs the server.":
     "Les limites sont fixées par la personne qui gère le serveur.",
   // Byte sizes (formatBytes): French units are octets.
@@ -2954,8 +2942,6 @@ export const FR: Record<string, string> = {
     "Le service d'IA est saturé pour le moment. Réessayez dans un instant.",
   'The AI service stopped responding before I finished. Say "continue" and I will pick up where I stopped.':
     "Le service d'IA a cessé de répondre avant que je termine. Dites « continue » et je reprendrai là où je me suis arrêté.",
-  "Credits ran out before I could finish this response. Add credits and ask me to continue.":
-    "Les crédits se sont épuisés avant la fin de cette réponse. Ajoutez des crédits puis demandez-moi de continuer.",
   "I stopped before writing a final answer. Ask me to continue and I will pick up from what I already gathered.":
     "Je me suis arrêté avant d'écrire une réponse finale. Demandez-moi de continuer et je reprendrai à partir de ce que j'ai déjà rassemblé.",
   "Full access: administer users, roles, org settings, and every app":
@@ -6705,41 +6691,8 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.demo.step.company": "L'entreprise",
   "kernel.demo.step.details": "Vos coordonnées",
   "kernel.demo.companyFacts": "Entreprise fictive · Paris · 7 personnes",
-  "kernel.demo.companyAbout":
-    "Resonant Audio Labs conçoit des enregistreurs de terrain portables pour le cinéma et la prise de son en extérieur : la gamme Kestrel, de 399 € à 1 349 €, ainsi que des étuis, des câbles et des bonnettes. Elle vend en direct sur sa boutique en ligne et par six revendeurs en Europe, en Amérique du Nord et au Japon.",
-  "kernel.demo.companyHow": "Comment elle fonctionne avec Liaison",
-  "kernel.demo.companyOps.support.title": "Support",
-  "kernel.demo.companyOps.support.body":
-    "Les mails des clients arrivent dans Tickets. L'agent Support Desk rédige chaque réponse ; Amina ou Lucas l'approuve.",
-  "kernel.demo.companyOps.orders.title": "Commandes et expéditions",
-  "kernel.demo.companyOps.orders.body":
-    "Les commandes de la boutique en ligne arrivent de Shopify. L'agent Operations Desk prépare l'expédition avec le transporteur pour Margot.",
-  "kernel.demo.companyOps.invoicing.title": "Facturation",
-  "kernel.demo.companyOps.invoicing.body":
-    "Chaque commande reçoit sa facture. L'agent Finance Desk gère les remboursements et les comptes revendeurs avec Henrik.",
-  "kernel.demo.companyOps.sales.title": "Ventes",
-  "kernel.demo.companyOps.sales.body":
-    "Le pipeline revendeurs de Giulia se trouve dans le CRM. Une routine se renseigne sur chaque nouveau prospect et rédige la réponse.",
-  "kernel.demo.companyOps.projects.title": "Projets et messagerie",
-  "kernel.demo.companyOps.projects.body":
-    "L'équipe planifie le travail produit dans Projets et échange dans la messagerie, avec ses agents dans la discussion.",
-  "kernel.demo.companyOps.knowledge.title": "Connaissances de l'entreprise",
-  "kernel.demo.companyOps.knowledge.body":
-    "Les manuels depuis GitLab, les finances depuis Google Drive, les procédures écrites dans Liaison. Chaque agent ne lit que ce que la personne qu'il sert peut ouvrir.",
-  "kernel.demo.companyYou":
-    "Vous la dirigez en tant que PDG, avec votre propre agent. Demandez-lui ce que vous demanderiez pour diriger l'entreprise, et regardez les équipes travailler.",
   "kernel.demo.companySimulated":
     "Seul le monde extérieur est simulé : aucun mail ne part, et les comptes de la boutique et du transporteur sont fictifs.",
-  "kernel.demo.teamTitle": "L'équipe",
-  "kernel.demo.teamYou": "Vous",
-  "kernel.demo.teamCeo": "PDG",
-  "kernel.demo.teamRole.tobias": "Responsable des opérations",
-  "kernel.demo.teamRole.amina": "Responsable du support",
-  "kernel.demo.teamRole.lucas": "Spécialiste du support",
-  "kernel.demo.teamRole.margot": "Logistique",
-  "kernel.demo.teamRole.henrik": "Finance",
-  "kernel.demo.teamRole.giulia": "Ventes et partenariats",
-  "kernel.demo.youllSee": "Vous verrez",
   "kernel.demo.detailsBack": "Retour",
   "kernel.demo.needDesc.support":
     "Un client écrit : une routine prépare la réponse, vous l'approuvez.",
@@ -7645,8 +7598,6 @@ export const FR_BY_KEY: Record<string, string> = {
     "Saisissez l'ID client et le secret depuis la console développeur du fournisseur. Ils remplacent le client utilisé actuellement par cette application.",
   "kernel.dictationErrors.billingUnavailable":
     "La dictée est momentanément indisponible : la configuration de facturation de cet espace de travail est incomplète. Réessayez dans un instant.",
-  "kernel.dictationErrors.paymentRequired":
-    "La dictée est suspendue jusqu'au paiement de la facture en attente. Un administrateur peut la régler dans Facturation.",
   "kernel.usage.creditsLeft": "Crédits restants",
   "kernel.usage.creditsAmount": "{{amount}} crédits",
   "kernel.usage.creditsBreakdown": "{{included}} inclus · {{purchased}} achetés",

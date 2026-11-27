@@ -45,6 +45,7 @@ import {
   type ShippedLocale,
   threadAnchorMessageRoute,
   threadAnchorTitle,
+  threadNotificationRoute,
 } from "@liaison/shared"
 import { and, eq, inArray, lt } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -917,6 +918,13 @@ async function handleMessageCreate(
     // A direct message, a mention or an urgent item keeps its own banner and
     // is never folded into someone else's burst.
     const directAsk = isDirectAsk(decision, mentioned.has(recipient))
+    const anchor = anchors?.get(recipient) ?? null
+    // What a click opens: the entity with this message in its discussion (a
+    // task comment), else the conversation (+ its reply panel).
+    const route =
+      anchor && messageId
+        ? threadAnchorMessageRoute(anchor, data.threadId, messageId)
+        : threadNotificationRoute(data.threadId, replyRootId)
     const held = await admitBurst(
       decision,
       {
@@ -926,6 +934,7 @@ async function handleMessageCreate(
           authorType === "agent" ? (authorName ?? PERSONAL_AGENT_DISPLAY_NAME) : authorName,
         conversation: data.threadId,
         conversationKind,
+        route,
         kind: "message",
         important: directAsk,
         redacted,
@@ -938,7 +947,6 @@ async function handleMessageCreate(
       for (let i = 0; i < Math.max(1, mine.length); i++) await recipientDone(recipient)
       continue
     }
-    const anchor = anchors?.get(recipient) ?? null
     const t =
       isAgentNotice || anchorRef
         ? translatorFor(locales.get(recipient) ?? resolveLocale(null, null))
@@ -975,12 +983,7 @@ async function handleMessageCreate(
       notifyId,
       title: payload.title ?? "Liaison",
       body: payload.body ?? GENERIC_MESSAGE_BODY,
-      route:
-        anchor && messageId
-          ? threadAnchorMessageRoute(anchor, data.threadId, messageId)
-          : replyRootId
-            ? `thread/${data.threadId}?replyRoot=${replyRootId}`
-            : `thread/${data.threadId}`,
+      route,
       ...(ownBanner ? { tag: ownBanner } : {}),
     })
     for (const token of mine) {

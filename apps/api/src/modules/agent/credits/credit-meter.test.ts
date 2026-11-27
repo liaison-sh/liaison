@@ -287,8 +287,10 @@ describe("credit-meter", () => {
         if (!result.allowed) {
           expect(result.status).toBe(400)
           expect(result.persistSystemMessage).toBe(false)
-          // Reason explains the tier gate and how to unlock
-          expect(result.reason).toContain("purchased usage")
+          // Reason states the tier gate, and names nothing to buy (it also
+          // reaches the iOS app, App Store guideline 3.1.1)
+          expect(result.reason).toContain("tier or higher")
+          expect(result.reason).not.toMatch(/upgrade|purchase/i)
         }
       } finally {
         if (origKey !== undefined) process.env.LIAISON_ANTHROPIC_API_KEY = origKey

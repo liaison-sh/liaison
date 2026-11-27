@@ -91,6 +91,22 @@ describe("openers for attention-only entity types", () => {
     expect(target).toMatchObject({ tabType: "kernel:settings", routePath: "/settings/billing" })
   })
 
+  it("the iOS app registers no Plan or Billing page (App Store 3.1.1); a browser does", () => {
+    const g = globalThis as Record<string, unknown>
+    const ids = () => getSettingsSections().map((sec) => sec.id)
+    boot()
+    expect(ids()).toEqual(expect.arrayContaining(["kernel:plan", "kernel:billing", "kernel:usage"]))
+    g.__LIAISON_NATIVE__ = {}
+    try {
+      boot()
+      expect(ids()).not.toContain("kernel:plan")
+      expect(ids()).not.toContain("kernel:billing")
+      expect(ids()).toContain("kernel:usage")
+    } finally {
+      delete g.__LIAISON_NATIVE__
+    }
+  })
+
   it("a company hand-over item's link (kernel:company) opens the company page", async () => {
     boot()
     const opener = getEntityOpener("kernel", "company")

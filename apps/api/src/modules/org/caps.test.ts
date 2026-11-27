@@ -822,13 +822,13 @@ describe("notices", () => {
     await redis.del(`orgcap:level:${orgId}:storageGb`)
     await evaluateCapLevel(orgId, "storageGb", 8.5, 10)
     expect(await summaryAt(8.5)).toBe(
-      "Stockage : 8.5 Go sur 10 Go utilisés, 80 % de la limite. Passez à une offre supérieure ou libérez de l'espace (demandez à la personne qui gère le serveur de relever la limite), sinon les nouveaux fichiers seront refusés une fois le stockage plein.",
+      "Stockage : 8.5 Go sur 10 Go utilisés, 80 % de la limite. Une fois le stockage plein, les nouveaux fichiers seront refusés jusqu'à ce que de l'espace soit libéré ou que la personne qui gère le serveur relève la limite.",
     )
     await sql`UPDATE kernel.organizations SET default_locale = 'en-US' WHERE id = ${orgId}`
     await redis.del(`orgcap:level:${orgId}:storageGb`)
     await evaluateCapLevel(orgId, "storageGb", 8.25, 10)
     expect(await summaryAt(8.25)).toBe(
-      "Storage: 8.25 GB of 10 GB used, 80 % of the limit. Upgrade your plan or free space (ask whoever runs the server to raise the limit), otherwise new files will be refused once storage is full.",
+      "Storage: 8.25 GB of 10 GB used, 80 % of the limit. Once storage is full, new files will be refused until space is freed or whoever runs the server raises the limit.",
     )
   })
 })

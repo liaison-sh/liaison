@@ -37,6 +37,35 @@ describe("Factur-X conformance matrix", () => {
   }
 })
 
+describe("a sale date (BT-72) validates", () => {
+  const cases = {
+    "without a ship-to party": fxDocument({ supply_date: "2026-10-21" }),
+    "after a ship-to party": fxDocument({
+      supply_date: "2026-10-21",
+      delivery: {
+        name: "Atelier Nord",
+        line1: "4 quai des Brumes",
+        line2: null,
+        postcode: "59000",
+        city: "Lille",
+        country_code: "FR",
+      },
+    }),
+  }
+  for (const [name, input] of Object.entries(cases)) {
+    test(
+      name,
+      () => {
+        const r = validateFacturxXml(buildCii(input))
+        expect(r.xsd.errors).toEqual([])
+        expect(firing(r.blocking)).toEqual({})
+        expect(r.ok).toBe(true)
+      },
+      T,
+    )
+  }
+})
+
 const invoice = () => buildCii(fxDocument())
 const creditNote = () =>
   buildCii(

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import crypto from "node:crypto"
-import { eq } from "drizzle-orm"
+import { sql as drizzleSqlTag, eq } from "drizzle-orm"
 import { sql as sqlRaw } from "~/db/connection"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
@@ -133,6 +133,12 @@ async function withAdminToolTest(
       }),
   }
   await run(t)
+}
+
+/** A direct grant of the refund deciding scope, for the request's decider. */
+function sqlRawGrant(orgId: string, userId: string) {
+  return drizzleSqlTag`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
+    VALUES (${userId}, ${orgId}, 'stripe:approve') ON CONFLICT DO NOTHING`
 }
 
 function actor(orgId: string, userId: string, scopes: string[]): UserContext {
@@ -422,6 +428,89 @@ describe("kernel-admin reads — audit_search / approvals_list", () => {
       expect(r.entries[0].action).toBe("shopify:refund_create")
       expect(r.entries[0].approverUserId).toBe(approverId)
     })
+  })
+
+  it("approvals_list names a request someone else decides when the caller could make that call, and nothing of the rest", async () => {
+    // A finance person who requests refunds but does not decide them: a refund another person's
+    // agent staged, decided by an admin, is neither in their queue nor theirs. They may still be
+    // told it exists and who decides it; never its payload, and never a request whose tool or
+    // whose read data they may not touch.
+    await withAdminToolTest(
+      { scopes: ["kernel:approvals:read", "stripe:refunds:write", "stripe:payments:read"] },
+      async (t) => {
+        const { toolRegistry } = await import("~/modules/apps/app-registries")
+        const tool = (name: string, requiredScopes: string[]) =>
+          toolRegistry.set([t.orgId, "stripe", name], {
+            appName: "stripe",
+            name,
+            description: name,
+            requiredScopes,
+            handler: async () => ({}),
+          } as never)
+        tool("refunds_create", ["stripe:refunds:write"])
+        tool("subscription_cancel", ["stripe:subscriptions:write"])
+        const deciderId = await t.seedUser(`decider-${crypto.randomUUID()}@t.co`)
+        await withPrivilegedDb(t.orgId, "decider-grant", (db) =>
+          db.execute(sqlRawGrant(t.orgId, deciderId)),
+        )
+        const requesterId = await t.seedUser(`requester-${crypto.randomUUID()}@t.co`)
+        const now = Date.now()
+        const { sql: drizzleSql } = await import("drizzle-orm")
+        const threadId = crypto.randomUUID()
+        const row = (
+          handle: string,
+          toolName: string,
+          title: string,
+          taint: string[],
+        ) => drizzleSql`
+          INSERT INTO kernel.approval_requests
+            (org_id, handle, status, tool_name, approve_scope, tool_params, current_payload, summary, metadata,
+             thread_id, originating_thread_id, requested_by, notify_user_ids, created_at, expires_at)
+          VALUES
+            (${t.orgId}, ${handle}, 'pending', ${toolName}, 'stripe:approve', '{}'::jsonb,
+             '{"chargeId":"ch_1","amountMinor":100}'::jsonb,
+             ${JSON.stringify({ kind: "refunds_create", title })}::jsonb,
+             ${JSON.stringify({ taintAudienceMustHold: taint })}::jsonb,
+             ${threadId}, ${threadId}, ${requesterId}, ARRAY[${deciderId}]::uuid[],
+             ${new Date(now - 3 * 86400000).toISOString()}, ${new Date(now + 86400000).toISOString()})
+        `
+        await withPrivilegedDb(t.orgId, "approvals-others-seed", async (db) => {
+          await db.execute(drizzleSql`
+            INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
+            VALUES (${threadId}, ${t.orgId}, ${`appr-${crypto.randomUUID()}`}, 'thread', ${requesterId})
+          `)
+          await db.execute(
+            row("request-9101", "stripe:refunds_create", "Refund 1.00 EUR on ch_1", [
+              "stripe:payments:read",
+            ]),
+          )
+          // A tool the caller cannot call: not named.
+          await db.execute(row("request-9102", "stripe:subscription_cancel", "Cancel sub_1", []))
+          // Read data the caller may not see went into it: not named.
+          await db.execute(
+            row("request-9103", "stripe:refunds_create", "Refund 2.00 EUR on ch_2", [
+              "mail:messages:read",
+            ]),
+          )
+        })
+        const r = await t.callHandler("approvals_list", {})
+        expect(r.total).toBe(0)
+        expect(r.approvals).toEqual([])
+        expect(r.waitingOnOthers).toEqual([
+          {
+            handle: "request-9101",
+            app: "stripe",
+            toolName: "stripe:refunds_create",
+            title: "Refund 1.00 EUR on ch_1",
+            ageDays: 3,
+            expiresAt: expect.any(String),
+            decidedBy: "stripe:approve",
+            deciders: [expect.stringContaining("decider-")],
+          },
+        ])
+        expect(JSON.stringify(r.waitingOnOthers)).not.toContain("amountMinor")
+      },
+    )
   })
 
   it("approvals_list returns oldest-first with origin app + ageDays", async () => {

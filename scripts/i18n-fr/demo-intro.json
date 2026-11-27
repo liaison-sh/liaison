@@ -1,0 +1,32 @@
+{
+  "key": {
+    "kernel.demo.companyAbout": "Resonant Audio Labs conçoit des enregistreurs de terrain portables pour le cinéma et la prise de son en extérieur, vendus sur sa boutique en ligne et par six revendeurs en Europe, en Amérique du Nord et au Japon.",
+    "kernel.demo.companyYou": "Vous la dirigez en tant que PDG, avec votre propre agent.",
+    "kernel.demo.tryTitle": "Ce que vous allez essayer",
+    "kernel.demo.pickMoment.support": "Un client écrit : approuvez la réponse que la routine de support a rédigée.",
+    "kernel.demo.pickMoment.projects": "Confiez la tâche de lancement de Tobias à votre agent et regardez-le découper le travail.",
+    "kernel.demo.pickMoment.chat": "Demandez à votre agent de chercher sur le web la réponse à la question de Tobias, avec ses sources.",
+    "kernel.demo.pickMoment.sales": "Un prospect écrit : approuvez la fiche CRM, le devis et la réponse en une fois.",
+    "kernel.demo.pickMoment.commerce": "Une commande arrive avec sa facture : approuvez l'expédition préparée par l'Operations Desk.",
+    "kernel.demo.pickMoment.dev": "Envoyez un correctif à Claude Code sur un ordinateur et recevez une pull request.",
+    "kernel.demo.pickMoment.knowledge": "Interrogez manuels et finances, puis voyez Lucas n'obtenir que ce qu'il peut ouvrir.",
+    "kernel.demo.world.saas.companyAbout": "Tideform vend un logiciel de planning et de gestion des équipes aux hôtels, restaurants et cantines, de 149 € à 1 450 € par mois : 169 clients paient par carte via Stripe.",
+    "kernel.demo.world.saas.companyYou": "Vous la dirigez en tant que PDG, avec votre propre agent.",
+    "kernel.demo.world.saas.pickMoment.support": "Un client écrit : approuvez la réponse que la routine de support a rédigée.",
+    "kernel.demo.world.saas.pickMoment.projects": "Confiez la tâche de Baptiste à votre agent et regardez-le découper le travail.",
+    "kernel.demo.world.saas.pickMoment.chat": "Demandez à votre agent de chercher la réponse à la question de Lucie, avec la page qu'il cite.",
+    "kernel.demo.world.saas.pickMoment.sales": "Un groupe hôtelier écrit : approuvez l'entreprise, le contact, un devis et la réponse en une fois.",
+    "kernel.demo.world.saas.pickMoment.money": "Une carte est refusée : votre agent lit Stripe, les factures et les tickets, puis rédige le message que vous approuvez.",
+    "kernel.demo.world.saas.pickMoment.dev": "Transformez le bug d'un client en pull request, puis approuvez la réponse qui le prévient.",
+    "kernel.demo.world.saas.pickMoment.knowledge": "Interrogez la politique de remboursement, puis voyez Clémence n'obtenir que ce qu'elle peut ouvrir.",
+    "kernel.demo.world.studio.companyAbout": "Halden Studio conçoit des logiciels et des systèmes de données pour des entreprises de taille moyenne, facturés à l'heure ou à la journée, au forfait avec des jalons, ou par un abonnement mensuel.",
+    "kernel.demo.world.studio.companyYou": "Vous le dirigez en tant que cofondateur, avec votre propre agent.",
+    "kernel.demo.world.studio.pickMoment.support": "Un client écrit : lisez la note de la routine, puis approuvez la réponse qu'elle a rédigée.",
+    "kernel.demo.world.studio.pickMoment.projects": "Confiez la tâche de Bastien à votre agent, puis envoyez à un client son rapport de la semaine.",
+    "kernel.demo.world.studio.pickMoment.chat": "Demandez à votre agent de chercher la réponse à la question de Sofia, avec la page qu'il cite.",
+    "kernel.demo.world.studio.pickMoment.sales": "Un prospect envoie un brief : approuvez l'entreprise, l'affaire, un projet de proposition et la réponse. Le prix, c'est vous qui le fixez.",
+    "kernel.demo.world.studio.pickMoment.client": "Demandez à votre agent si ce qu'un client demande en plus figure dans l'accord, puis approuvez la demande de modification.",
+    "kernel.demo.world.studio.pickMoment.dev": "Transformez le bug d'un client en pull request dans son dépôt, puis approuvez la réponse qui le prévient.",
+    "kernel.demo.world.studio.pickMoment.knowledge": "Interrogez les coûts d'un projet passé, puis voyez Mathis n'obtenir que ce qu'il peut ouvrir."
+  }
+}

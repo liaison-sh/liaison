@@ -10,7 +10,11 @@
  * (push/fanout-consumer.ts); their attention rows never do. Every other group
  * goes live from its attention-row insert, here.
  */
-import { NOTIFICATION_GROUPS, type NotificationGroupId } from "@liaison/shared"
+import {
+  attentionNotificationRoute,
+  NOTIFICATION_GROUPS,
+  type NotificationGroupId,
+} from "@liaison/shared"
 import { rootLogger } from "~/lib/logger"
 import { type PushFanoutDeps, pushRouted } from "~/modules/push/fanout-consumer"
 import { attentionSettleKey } from "~/modules/push/redact"
@@ -86,17 +90,8 @@ export interface AttentionLiveItem {
   collapseId?: string
 }
 
-/** Where the client opens the item. */
-export function attentionRoute(item: {
-  app: string
-  entityType: string
-  entityId: string
-  threadId?: string | null
-}): string {
-  if (item.entityType === "thread") return `thread/${item.entityId}`
-  if (item.threadId) return `thread/${item.threadId}`
-  return `attention/${item.app}/${item.entityType}/${item.entityId}`
-}
+/** Where the client opens the item (`attentionNotificationRoute`, shared with the web tests). */
+export const attentionRoute = attentionNotificationRoute
 
 export interface DispatchDeps {
   push?: (
@@ -143,6 +138,7 @@ export async function dispatchAttentionLive(
         actorName: null,
         conversation: threadId ?? attentionRoute(item),
         conversationKind: item.entityType === "task" ? "task" : "conversation",
+        route: attentionRoute(item),
         kind: "notification",
         important: directAsk,
         redacted,

@@ -32,3 +32,4 @@ Accents ignored -> apps/web/src/modules/help/help-docs.ts:93
 Page links stay in the tab, other links open in the browser -> apps/web/src/modules/help/HelpTab.tsx:70
 Open in browser opens the page on liaison.sh -> packages/shared/src/help-docs.ts:19
 Demo: Help opens a menu with Documentation and Show me how -> apps/web/src/modules/help/HelpButton.tsx:30
+iPhone app: no Open in browser, no liaison.sh links -> apps/web/src/modules/help/HelpTab.tsx:78

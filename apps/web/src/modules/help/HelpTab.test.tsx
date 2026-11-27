@@ -20,7 +20,7 @@ const PAGES: Record<string, HelpDocsPage> = {
     description: "",
     showLede: false,
     section: "",
-    html: '<p><a href="/help/apps/mail#connect-gmail">Mail</a> <a href="https://example.com/x">out</a></p>',
+    html: '<p><a href="/help/apps/mail#connect-gmail">Mail</a> <a href="https://example.com/x">out</a> <a href="https://demo.liaison.sh">site</a></p>',
     headings: [],
   },
   "/help-docs/pages/apps/mail.json": {
@@ -70,6 +70,27 @@ describe("HelpTab", () => {
     await waitFor(() =>
       expect(open).toHaveBeenCalledWith("https://example.com/x", "_blank", "noopener,noreferrer"),
     )
+  })
+
+  it("in the iOS app: no Open in browser and no link to the product's site (3.1.1)", async () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null)
+    const g = globalThis as Record<string, unknown>
+    render(() => <HelpTab />)
+    await screen.findByTestId("help-page")
+    expect(screen.getByTestId("help-open-in-browser")).toBeTruthy()
+    cleanup()
+    g.__LIAISON_NATIVE__ = {}
+    try {
+      render(() => <HelpTab />)
+      await screen.findByTestId("help-page")
+      expect(screen.queryByTestId("help-open-in-browser")).toBeNull()
+      fireEvent.click(screen.getByText("site"))
+      fireEvent.click(screen.getByText("out"))
+      await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
+      expect(open).toHaveBeenCalledWith("https://example.com/x", "_blank", "noopener,noreferrer")
+    } finally {
+      delete g.__LIAISON_NATIVE__
+    }
   })
 
   it("says so when the docs cannot be read, with a way to try again", async () => {

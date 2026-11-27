@@ -47,3 +47,12 @@ The line names the card's first lines -> apps/api/src/modules/attention/event-pr
 Expired without a decision, not done label -> packages/shared/src/i18n/locales/en/kernel.json:4144
 It stays in the alerts -> apps/web/src/modules/shell/attention-groups.ts:127
 Ask agent to draft on a feed line -> apps/web/src/modules/shell/AttentionRowExtras.tsx:63
+A summary of several conversations opens Home -> packages/shared/src/notifications/routes.ts:56
+A summary of one conversation opens it (its newest item's route) -> apps/api/src/modules/notifications/burst.ts:708
+A desktop click opens Home for a home route -> apps/web/src/modules/notifications/open-route.ts:170
+A desktop click on a reply opens the conversation with the reply thread -> apps/web/src/modules/notifications/open-route.ts:173
+A desktop click on an approval opens Home with it in view -> apps/web/src/modules/notifications/open-route.ts:187
+A desktop click on a task or ticket comment brings the comment into view -> apps/web/src/modules/notifications/open-route.ts:203
+A computer session notice opens the session -> apps/web/src/framework/bootstrap.ts:1406
+Windows and Linux report no click: the page offers Open -> apps/desktop/src-tauri/src/desktop_notifications.rs:468
+The Open label -> packages/shared/src/i18n/locales/en/kernel.json:3513

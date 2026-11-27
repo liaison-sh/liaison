@@ -362,8 +362,8 @@ liaison erase-user <userId>
   documents with the message windows. `typical` is a quarter of it, and a
   number from 0 to 4 scales every count. A third of the messages and windows
   and every brief row get a vector: a made-up one, so no embedding provider is
-  called, at the width the search index declares (else the default embedding
-  model's; `--vector-dims` sets it). The seed checks that every row was
+  called, at the width the search index declares (else the instance's
+  configured embedding width; `--vector-dims` sets it). The seed checks that every row was
   written and that the search index holds them, and a second run adds nothing.
 - **`seed --tier load --orgs <n>`**: busy workspaces for a load run, named
   `<prefix><i>` (`--prefix`, default `load-`), each holding the demo company.

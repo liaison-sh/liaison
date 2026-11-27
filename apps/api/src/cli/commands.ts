@@ -1125,7 +1125,7 @@ export const COMMANDS = [
         name: "--vector-dims",
         arg: "<n>",
         summary:
-          "`lively --search-profile`: the width of the fake vectors (default: the index's declared embedder, else the default embedding model's).",
+          "`lively --search-profile`: the width of the fake vectors (default: the index's declared embedder, else the instance's configured embedding width).",
       },
       { name: "--orgs", arg: "<n>", summary: "`load`: how many load orgs to seed (1 to 1000)." },
       {

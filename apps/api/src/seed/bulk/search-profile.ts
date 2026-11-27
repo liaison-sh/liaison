@@ -24,7 +24,7 @@
 // (one per MESSAGE_WINDOW_EVERY messages). Vectors are FAKE and deterministic
 // (no provider is called): a fixed share of the message and window documents
 // and every brief row carry one, at the index's declared width, else the
-// width of the default embedding model.
+// width the instance is configured to embed at.
 //
 // The invariant check fails the seed when a kind's rows or its documents in
 // the index fall short of what was asked, naming the kind.
@@ -402,12 +402,11 @@ export function profileShortfalls(
   return out
 }
 
-/** The vector width: the index's declared memory embedder, else the default model's. */
+/** The vector width: the index's declared memory embedder, else the instance's configured width. */
 async function vectorWidth(): Promise<number> {
   const { effectiveIndexName, getMeili } = await import("~/infra/search/client")
-  const { DEFAULT_EMBEDDING_MODEL_ID, embeddingDimensionsFor, MEMORY_EMBEDDER_NAME } = await import(
-    "~/modules/search/message-indexer"
-  )
+  const { MEMORY_EMBEDDER_NAME } = await import("~/modules/search/message-indexer")
+  const { configuredEmbeddingDimensions } = await import("~/modules/search/embedding-dimensions")
   try {
     const settings = (await getMeili().index(effectiveIndexName()).getSettings()) as {
       embedders?: Record<string, { dimensions?: number }> | null
@@ -415,9 +414,9 @@ async function vectorWidth(): Promise<number> {
     const declared = settings.embedders?.[MEMORY_EMBEDDER_NAME]?.dimensions
     if (declared) return declared
   } catch {
-    // No index yet: the default model's width.
+    // No index yet: the width this instance embeds at.
   }
-  return embeddingDimensionsFor(DEFAULT_EMBEDDING_MODEL_ID)
+  return configuredEmbeddingDimensions()
 }
 
 /**

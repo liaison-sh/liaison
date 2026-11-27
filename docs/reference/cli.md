@@ -785,7 +785,7 @@ liaison seed --tier demo|lively|load|standard [--admin <email>] [--now <instant>
 | `--people <file>` | no | `lively`: a JSON array of your own people in the world's seats (`seat`, `name`, `email`, optional `jobTitle` and `bio`); everything the world writes for that seat is written for them. |
 | `--warehouse` | no | `lively`: also seed the analytics warehouse part (off unless given). |
 | `--search-profile heavy\|typical\|<fraction>` | no | `lively`: add the realistic search volume of a busy team to the org (`heavy` = 1, `typical` = 0.25, or a fraction up to 4): messages, contacts, tickets, mail conversations, approvals, social findings, knowledge pages, briefs, episodes and tasks, indexed with fake deterministic vectors. |
-| `--vector-dims <n>` | no | `lively --search-profile`: the width of the fake vectors (default: the index's declared embedder, else the default embedding model's). |
+| `--vector-dims <n>` | no | `lively --search-profile`: the width of the fake vectors (default: the index's declared embedder, else the instance's configured embedding width). |
 | `--orgs <n>` | no | `load`: how many load orgs to seed (1 to 1000). |
 | `--prefix <prefix>` | no | `load`: org `i` gets the slug `<prefix><i>` (default `load-`). |
 | `--shape demo` | no | `load`: the world each load org holds. |

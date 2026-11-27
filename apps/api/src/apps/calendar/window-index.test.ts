@@ -3,7 +3,7 @@
 // start_at / end_at / original_start_at from the jsonb points, and list_events' window bounds
 // are index range scans on them, not a cast over the whole history.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { type SQL, sql as drizzleSql } from "drizzle-orm"
+import { sql as drizzleSql, type SQL } from "drizzle-orm"
 import { onAccountConnected, runCalendarImport } from "~/apps/calendar/sync"
 import { listEventsForCaller } from "~/apps/calendar/tools"
 import { withSystemDb } from "~/db/privileged"
@@ -124,7 +124,11 @@ describe("calendar events: indexed time columns", () => {
         )[0]
       return { timed: await q(timed), allDay: await q(allDay), broken: await q(broken) }
     })
-    expect(read.timed).toEqual({ s: "2026-10-14T12:00", e: "2026-10-14T09:30", o: "2026-10-13T09:00" })
+    expect(read.timed).toEqual({
+      s: "2026-10-14T12:00",
+      e: "2026-10-14T09:30",
+      o: "2026-10-13T09:00",
+    })
     expect(read.allDay).toEqual({ s: "2026-10-15T00:00", e: "2026-10-16T00:00", o: null })
     expect(read.broken).toEqual({ s: null, e: null, o: null })
   })

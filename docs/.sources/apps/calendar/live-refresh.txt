@@ -1,0 +1,3 @@
+The view keeps itself up to date: apps/web/src/modules/calendar/CalendarShell.tsx (onEntityChange), apps/api/src/modules/apps/sandbox/bridge/calendar.ts (announceEventsChanged)
+Weeks you already looked at show at once: apps/web/src/modules/calendar/calendar-store.ts (loadEventsForWindow)
+a note under the header says so, with Retry: apps/web/src/modules/calendar/CalendarShell.tsx (calendar-events-error), packages/shared/src/i18n/locales/en/calendar.json (eventsLoadFailed, retry)

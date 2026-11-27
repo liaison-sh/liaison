@@ -321,8 +321,22 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
     >
       {/* Header */}
       <div
-        class={`flex items-center border-b border-border px-3 py-2 ${phone() ? "gap-2" : "gap-3"}`}
+        class={`relative flex items-center border-b border-border px-3 py-2 ${phone() ? "gap-2" : "gap-3"}`}
       >
+        {/* Loading: a thin bar over the header's bottom edge, only while a window with nothing
+            cached is on its way (a cached window paints at once and refreshes silently). It
+            overlays the border, so nothing below moves. */}
+        <Show when={calendarStore.loading}>
+          <div
+            class="pointer-events-none absolute inset-x-0 -bottom-px h-0.5 overflow-hidden"
+            aria-hidden="true"
+          >
+            <div
+              class="calendar-loading-bar absolute inset-y-0 w-1/3 bg-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]"
+              data-testid="calendar-loading"
+            />
+          </div>
+        </Show>
         <Button variant="ghost" size="sm" onClick={() => setFocusedDate(new Date())}>
           {i18n.t("calendar.today")}
         </Button>
@@ -400,16 +414,6 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
         </Show>
       </div>
 
-      {/* Loading: a thin bar under the header, only while a window with nothing cached to show
-          is on its way (a cached window paints at once and refreshes silently). */}
-      <div class="relative h-0.5 shrink-0 overflow-hidden" aria-hidden="true">
-        <Show when={calendarStore.loading}>
-          <div
-            class="calendar-loading-bar absolute inset-y-0 w-1/3 bg-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]"
-            data-testid="calendar-loading"
-          />
-        </Show>
-      </div>
       <Show when={calendarStore.error}>
         {(message) => (
           <div

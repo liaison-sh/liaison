@@ -3211,7 +3211,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "approvals_list",
     readOnly: true,
     description:
-      "List the approvals waiting on this user to decide, oldest first, with origin app, requester, summary and age, plus recentlyDecided (last 24 hours) to check whether a requested action happened, and waitingOnOthers: requests someone else decides that this user could have made (handle, title, age, deadline, who decides). Before saying nothing is waiting, read waitingOnOthers. Read-only.",
+      "List the approvals waiting on this user to decide, oldest first, with origin app, requester, summary and age, plus recentlyDecided (last 24 hours) to check whether a requested action happened. Read-only.",
     searchKeywords: [
       "attente",
       "approbation",

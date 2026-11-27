@@ -108,5 +108,7 @@
   "findTimeAllow": "Allow",
   "findTimeUnknown": "Google does not show when {{emails}} is busy.",
   "findTimeNoAccount": "Connect your own Google Calendar to include your guests' availability.",
-  "findTimeError": "Could not find free times: {{message}}"
+  "findTimeError": "Could not find free times: {{message}}",
+  "eventMoved": "Event moved",
+  "moveFailed": "The event could not be moved: {{message}}"
 }

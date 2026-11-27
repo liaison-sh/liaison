@@ -108,5 +108,7 @@
   "findTimeAllow": "Autoriser",
   "findTimeUnknown": "Google n’indique pas quand {{emails}} est occupé.",
   "findTimeNoAccount": "Connectez votre propre Google Agenda pour inclure les disponibilités de vos invités.",
-  "findTimeError": "Impossible de trouver des créneaux : {{message}}"
+  "findTimeError": "Impossible de trouver des créneaux : {{message}}",
+  "eventMoved": "Événement déplacé",
+  "moveFailed": "L'événement n'a pas pu être déplacé : {{message}}"
 }

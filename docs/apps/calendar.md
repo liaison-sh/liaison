@@ -63,6 +63,15 @@ Liaison sends only what you changed. If someone edited the event in Google meanw
 
 Times are sent with the calendar's time zone, so a weekly meeting at 09:00 stays at 09:00 when the clocks change. Calendars you can only read (a holidays calendar, a calendar shared with you to view) cannot take new events or edits: Liaison refuses the change instead of keeping an event Google would reject.
 
+## Drag events
+
+- **Create:** in the **Day** or **Week** view, drag over empty time. The card opens with that range.
+- **Move:** drag an event to another time or another day. In **Month**, drag it onto another day; it keeps its time.
+- **Resize:** drag the bottom edge of an event.
+- Press Esc while dragging to cancel. After a move, **Undo** in the note puts the event back.
+
+Drags snap to a quarter hour. A recurring event and an all-day event cannot be dragged yet: open them to edit.
+
 ## Away days from your calendar
 
 This is off until you turn it on: open **Settings › Apps › Calendar** and switch on **Read my away days from my calendar** under **Away days** (the per-person setting `awayFromCalendar`). Off, your calendar marks no away day and asks nothing. Once on, your own primary calendar, connected as your personal account, tells Liaison when you are away. Calendars shared with you, a colleague's included, and organization accounts never do.

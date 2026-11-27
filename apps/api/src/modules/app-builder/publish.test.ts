@@ -41,6 +41,27 @@ describe("manifestDelta", () => {
     expect(first).toContain("New tables: returns, notes.")
   })
 
+  test("a declared role is an access change: who gets the app", () => {
+    const named = { ...v1, name: "a-o1234abcd" }
+    const withRole = {
+      ...named,
+      roles: { member: { scopes: ["a-o1234abcd:x:read", "a-o1234abcd:x:write"] } },
+    }
+    expect(manifestDelta(named, withRole, "0.1.0")).toEqual([
+      "New role a-o1234abcd.member: a-o1234abcd:x:read, a-o1234abcd:x:write (Full Member gets it too).",
+    ])
+    const more = {
+      ...named,
+      roles: {
+        member: { scopes: ["a-o1234abcd:x:read"] },
+        lead: { scopes: ["a-o1234abcd:x:write"] },
+      },
+    }
+    expect(manifestDelta(withRole, more, "0.1.1")).toEqual([
+      "New role a-o1234abcd.lead: a-o1234abcd:x:write.",
+    ])
+  })
+
   test("grants and pins", () => {
     expect(grantsOf(v1)).toEqual({
       scopes: ["a-o1234abcd:x:read"],

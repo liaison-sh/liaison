@@ -230,7 +230,8 @@ interface Fixture {
   name: string
   params: Record<string, unknown>
   expect?: unknown
-  expectError?: boolean
+  /** true: any refusal passes; a string: only a refusal with that error code. */
+  expectError?: boolean | string
 }
 
 function readFixtures(dir: string): Fixture[] {
@@ -252,7 +253,9 @@ function readFixtures(dir: string): Fixture[] {
         name,
         params: (f.params as Record<string, unknown>) ?? {},
         ...(f.expect !== undefined ? { expect: f.expect } : {}),
-        ...(f.expectError === true ? { expectError: true } : {}),
+        ...(f.expectError === true || (typeof f.expectError === "string" && f.expectError !== "")
+          ? { expectError: f.expectError as true | string }
+          : {}),
       })
     }
   }
@@ -312,6 +315,8 @@ export async function test(args: ParsedArgs, io: Io): Promise<number> {
       ...(fresh ? { freshStore: true } : {}),
     })
     let pass = tc.expectError ? !r.ok : r.ok
+    // A refusal test names its code, so it cannot pass on another refusal by accident.
+    if (pass && typeof tc.expectError === "string") pass = r.error?.code === tc.expectError
     if (pass && tc.expect !== undefined) pass = matches(r.result, tc.expect)
     if (!pass) failed++
     io.out(`${pass ? "PASS" : "FAIL"} ${tc.file} ${tc.kind} ${tc.name}`)
@@ -629,9 +634,7 @@ export async function uiConsent(args: ParsedArgs, io: Io): Promise<number> {
   io.out(
     `You are about to let the interface (ui.tsx) of ${link.appName} ${s.installed.version} run inside Liaison's own page.`,
   )
-  io.out(
-    "Until now it runs in an isolated frame with no access to anyone's session. Once approved, for every person who opens it:",
-  )
+  io.out("Until then the page shows to no one. Once approved, for every person who opens it:")
   io.out(
     "  - it runs with that person's signed-in session, on your organization's Liaison address;",
   )

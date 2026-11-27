@@ -429,6 +429,15 @@ function secretsOf(manifest: Record<string, unknown> | null): Map<string, string
   return out
 }
 
+/** The roles a manifest declares, by name, with their scopes (each becomes `<app>.<role>`). */
+function rolesOf(manifest: Record<string, unknown> | null): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  for (const [role, def] of Object.entries(record(manifest?.roles))) {
+    out.set(role, strings(record(def).scopes).sort())
+  }
+  return out
+}
+
 function diff(before: string[], after: string[]): { added: string[]; removed: string[] } {
   const b = new Set(before)
   const a = new Set(after)
@@ -482,6 +491,18 @@ export function manifestDelta(
   if (kept.length) {
     lines.push(
       `Tables kept: ${list(kept)} (this version no longer declares them; their data stays).`,
+    )
+  }
+  // A declared role is who gets the app: each becomes the org role `<app>.<role>`, and the
+  // member tier also reaches everyone holding Full Member. Granted scopes are never revoked.
+  const name = typeof next.name === "string" ? next.name : "app"
+  const rBefore = rolesOf(active)
+  for (const [role, scopes] of rolesOf(next)) {
+    const was = rBefore.get(role)
+    const added = was ? diff(was, scopes).added : scopes
+    if (added.length === 0) continue
+    lines.push(
+      `${was ? "Role" : "New role"} ${name}.${role}${was ? " gains" : ":"} ${list(added)}${role === "member" ? " (Full Member gets it too)" : ""}.`,
     )
   }
   const sBefore = secretsOf(active)
@@ -554,7 +575,7 @@ export async function summarizePin(
     typecheckLine(pin.typecheck),
     taintLine(version.taintScopes),
     ...shown,
-    "Its interface, if any, runs framed: never with your session.",
+    "Its interface, if any, shows to no one until an admin approves it on its own (liaison apps ui-consent).",
   ]
   return {
     title: `Publish the app "${draft.title}"`.slice(0, 200),

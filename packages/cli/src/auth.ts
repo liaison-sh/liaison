@@ -145,6 +145,14 @@ export async function login(args: ParsedArgs, io: Io): Promise<void> {
         writeProfiles(file)
       }
       io.out(`Signed in to ${host}${me?.email ? ` as ${me.email}` : ""} (profile ${name}).`)
+      // The server never grants more than the person holds: say at once what was left out,
+      // rather than at the first command that needs it.
+      const granted = new Set(client.scopes)
+      const missing = [...scopes].filter((s) => !granted.has(s))
+      if (missing.length > 0)
+        io.err(
+          `Not granted (your account does not hold it): ${missing.join(", ")}. Ask an admin of the organization for it, then sign in again.`,
+        )
       if (!refreshCookie)
         io.out("This server gave no refresh token: sign in again when the token ends.")
       return

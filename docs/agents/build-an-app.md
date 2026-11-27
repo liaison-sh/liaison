@@ -47,7 +47,7 @@ An admin can also publish from the app builder directly, without an approval.
 
 The first publish is version 0.1.0 and counts against the organisation's custom apps limit, when one is set. Each later publish is the next patch version (0.1.1, 0.1.2) of the same app. An app installed another way, or published by another draft, cannot be overwritten.
 
-An app's page always runs in a sealed frame, never with your session.
+An installed app's page shows to no one until an admin approves its interface, in **Settings › App store** (the app's page) or with `liaison apps ui-consent`; each new version needs it again. On a server without an address per organization (`LIAISON_ORG_HOST_TEMPLATE`), an organization's own app has no page at all, only its tools.
 
 ## Open a draft in the app builder
 
@@ -62,6 +62,6 @@ Each older version has **Restore**, which makes it the next version.
 
 ## After publishing
 
-The app is On. Members get its member scopes automatically. Ask the agent to use it: it finds the app's tools with its tool search. The app's log lines are kept 7 days. An admin reads them in the app's settings page, under **Logs**, filtered by level or by one run.
+The app is On. Who gets it: the roles the manifest declares (`roles.member` and others) become roles of the organization (`<app>.member`), and the member tier also reaches everyone holding **Full Member**. An app that declares no role reaches admins only, and a person with a custom role (support, sales...) gets it once an admin gives them the app's role in **Settings › Users**. Ask the agent to use it: it finds the app's tools with its tool search. The app's log lines are kept 7 days. An admin reads them in the app's settings page, under **Logs**, filtered by level or by one run.
 
 To go back to an earlier version, ask the agent to restore it and publish again. Tables the restored version no longer declares are kept with their data.

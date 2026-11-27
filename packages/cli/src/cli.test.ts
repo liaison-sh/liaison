@@ -53,6 +53,8 @@ let accessN = 0
 let files: Record<string, string> = {}
 let latestN = 1
 let lastScopes: string[] = []
+/** The scopes the person holds: the approved token carries only these of the ones asked. */
+let heldScopes: string[] | null = null
 const dirs: string[] = []
 
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -87,7 +89,13 @@ beforeAll(() => {
       if (p === "/api/auth/device-flow/poll/dc") {
         if (pollsBeforeApproval-- > 0) return json({ status: "authorization_pending" })
         return json(
-          { status: "approved", accessToken: token({ orgId: "org-1", scopes: lastScopes }) },
+          {
+            status: "approved",
+            accessToken: token({
+              orgId: "org-1",
+              scopes: heldScopes ? lastScopes.filter((x) => heldScopes!.includes(x)) : lastScopes,
+            }),
+          },
           200,
           {
             "set-cookie": "liaison_rt=rt-1; HttpOnly; SameSite=Strict; Path=/api/auth",
@@ -144,6 +152,8 @@ beforeAll(() => {
         })
       }
       if (p === "/api/apps/builder/drafts/d-1/preview") {
+        if (body.params?.title === "taken")
+          return json({ ok: false, error: { code: "duplicate", message: "taken" }, logs: [] })
         return json({
           ok: true,
           result: { items: [{ title: body.params?.title ?? "x" }] },
@@ -212,6 +222,7 @@ beforeEach(() => {
   pollsBeforeApproval = 1
   approvalPolls = 0
   accessN = 0
+  heldScopes = null
 })
 
 function capture() {
@@ -235,6 +246,15 @@ describe("login", () => {
     expect(out.join("\n")).toContain("ABCD-EFGH")
     expect(out.join("\n")).toContain("Signed in to")
     expect(out.join("\n")).toContain("ada@example.com")
+  })
+
+  it("says at once which asked scopes the account does not hold", async () => {
+    heldScopes = ["kernel:apps:logs"]
+    const { out, io } = capture()
+    await auth.login(args("--host", host, "--no-browser"), io)
+    expect(out.join("\n")).toContain(
+      "ERR Not granted (your account does not hold it): kernel:apps:build.",
+    )
   })
 
   it("--admin and --config add their scopes, explicitly", async () => {
@@ -337,6 +357,29 @@ describe("apps", () => {
     expect(await apps.test(args("--dir", appDir), io)).toBe(1)
     expect(out).toContain("PASS add.json tool add_item")
     expect(out).toContain("FAIL bad.json tool add_item")
+  })
+
+  it("a refusal test may name its error code, and fails on another refusal", async () => {
+    await signIn()
+    const appDir = join(dir, "notes")
+    const { out, io } = capture()
+    await apps.init(args("notes", "--dir", appDir), io)
+    writeFileSync(
+      join(appDir, "tests", "1-right.json"),
+      JSON.stringify({ tool: "add_item", params: { title: "taken" }, expectError: "duplicate" }),
+    )
+    writeFileSync(
+      join(appDir, "tests", "2-wrong.json"),
+      JSON.stringify({ tool: "add_item", params: { title: "taken" }, expectError: "too_long" }),
+    )
+    writeFileSync(
+      join(appDir, "tests", "3-any.json"),
+      JSON.stringify({ tool: "add_item", params: { title: "taken" }, expectError: true }),
+    )
+    expect(await apps.test(args("--dir", appDir), io)).toBe(1)
+    expect(out).toContain("PASS 1-right.json tool add_item")
+    expect(out).toContain("FAIL 2-wrong.json tool add_item")
+    expect(out).toContain("PASS 3-any.json tool add_item")
   })
 
   it("publish --wait asks for approval and follows the card until it is approved", async () => {

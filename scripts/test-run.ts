@@ -1539,6 +1539,10 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // survives the same round trip, and a genuinely changed rate takes hold.
             "src/editor-round-trip.test.ts",
             "src/handlers/shopify-order-paid.test.ts",
+            // Revenue streams: every provider's sale through one issuing flow, and the golden
+            // proof that the shop's sale maps to exactly the order payload it replaced.
+            "src/sales/issue-sale.test.ts",
+            "src/sales/shopify-sale.golden.test.ts",
             // Quotes ARE Shopify draft orders: the four draft_order:* handlers, mock-driven
             // (createMockDb + stubbed executeTool). Pins the one-quote-per-draft-order
             // idempotency across BOTH event producers (the fat webhook payload and the thin

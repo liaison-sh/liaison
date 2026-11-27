@@ -106,11 +106,19 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
     },
   }
 
-  function bridgeFor(
+  const rlsContext = (actor: { scopes: string[] }) => ({
+    actorType: "user" as const,
+    userId,
+    orgId,
+    scopes: actor.scopes,
+    dimensionGrants: { "*": ["*"] },
+  })
+
+  function methodsOn(
     txDb: Parameters<typeof createCalendarMethods>[0]["txDb"],
     actor: { userId: string; scopes: string[] },
   ) {
-    const methods = createCalendarMethods(
+    return createCalendarMethods(
       {
         appName: "calendar",
         callerScopes: actor.scopes,
@@ -121,6 +129,35 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
       },
       { enqueue },
     )
+  }
+
+  /**
+   * The bridge of one run. `txDb` given: every call runs on that transaction (a tool call, which
+   * holds one). `txDb` null: each call opens and commits its own transaction, as a job's or a
+   * webhook's bridge does in production, so a change another run commits meanwhile is seen.
+   */
+  async function bridgeFor(
+    txDb: Parameters<typeof createCalendarMethods>[0]["txDb"] | null,
+    actor: { userId: string; scopes: string[] },
+  ) {
+    let methods: ReturnType<typeof createCalendarMethods>
+    if (txDb) {
+      methods = methodsOn(txDb, actor)
+    } else {
+      const names = await withRlsContext(rlsContext(actor), async (tx) =>
+        Object.keys(methodsOn(tx, actor)),
+      )
+      methods = Object.fromEntries(
+        names.map((name) => [
+          name,
+          (...args: unknown[]) =>
+            withRlsContext(rlsContext(actor), (tx) => {
+              const fn = methodsOn(tx, actor)[name] as (...a: unknown[]) => Promise<unknown>
+              return fn(...args)
+            }),
+        ]),
+      )
+    }
     const log =
       (level: HarnessLog["level"]) =>
       (msg: string, dataJson?: string): void => {
@@ -157,32 +194,26 @@ export function createCalendarSyncHarness(opts: CalendarSyncHarnessOptions) {
   }
 
   /** Runs one handler export with the bridge of an actor: the system for jobs and webhooks,
-   * the harness user for tools. */
+   * the harness user for tools. Runs like production: see bridgeFor. */
   async function run(
     exportName: string,
     params: unknown,
     actor: { userId: string; scopes: string[] },
     extraArgs?: unknown[],
   ): Promise<unknown> {
-    return withRlsContext(
-      {
-        actorType: "user",
-        userId,
-        orgId,
-        scopes: actor.scopes,
-        dimensionGrants: { "*": ["*"] },
-      },
-      (tx) =>
-        runCoreHandler({
-          module: CORE_APP_MODULES.calendar!,
-          appName: "calendar",
-          exportName,
-          params,
-          extraArgs,
-          bridge: bridgeFor(tx, actor),
-          holdsTx: true,
-        }),
-    )
+    const invoke = async (txDb: Parameters<typeof bridgeFor>[0]) =>
+      runCoreHandler({
+        module: CORE_APP_MODULES.calendar!,
+        appName: "calendar",
+        exportName,
+        params,
+        extraArgs,
+        bridge: await bridgeFor(txDb, actor),
+        holdsTx: txDb !== null,
+      })
+    // A tool call holds one transaction; a job or a webhook commits per bridge call.
+    if (actor === person) return withRlsContext(rlsContext(actor), (tx) => invoke(tx))
+    return invoke(null)
   }
 
   const system = { userId: "system:calendar:job", scopes: ["*"] }

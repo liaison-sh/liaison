@@ -199,12 +199,13 @@ describe("G10: a notification during a running sync", () => {
       google.updateEvent(TEAM, "teamlunch01", { summary: "Second change" })
       await h.notify(TEAM)
     })
+    const dedupedBefore = h.deduped.length
     await h.notify(TEAM)
     const ran = await h.drain()
     h.afterFetch(null)
 
     expect(ran.map((j) => j.name)).toEqual(["calendar-incremental-sync"])
-    expect(h.deduped.map((j) => j.name)).toEqual(["calendar-incremental-sync"])
+    expect(h.deduped.slice(dedupedBefore).map((j) => j.name)).toEqual(["calendar-incremental-sync"])
     const lists = google
       .requestsFor("events.list")
       .filter((r) => r.calendarId === TEAM && r.query.syncToken)

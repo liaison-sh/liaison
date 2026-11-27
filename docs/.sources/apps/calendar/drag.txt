@@ -5,3 +5,4 @@ Esc cancels; Undo puts it back: apps/web/src/modules/calendar/TimeGridView.tsx (
 Quarter-hour snap: apps/web/src/modules/calendar/drag-math.ts (SNAP_MIN)
 All-day events move to another day in Month and keep their length: apps/web/src/modules/calendar/CalendarShell.tsx (moveEventToDay)
 Dropping an occurrence of a recurring event asks which occurrences move: apps/web/src/modules/calendar/CalendarShell.tsx (moveSeries, move-scope-dialog)
+Recurring and all-day events cannot be dragged: apps/web/src/modules/calendar/CalendarShell.tsx (canDrag)

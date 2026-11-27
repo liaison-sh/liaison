@@ -42,6 +42,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Liaison uses Face ID only if you turn on the app lock, to unlock the app.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Liaison uses the camera only when you choose to take a photo, for example for your profile picture or an attachment.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

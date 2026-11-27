@@ -542,7 +542,10 @@ describe("calendar inbound sync", () => {
       const before = await getEventByGoogleId(tx as any, orgId, calendarId, "evt-still-there")
       await recoverFromSyncTokenGone(tx as any, orgId, calendarId, async () => {})
       await applyInitialSyncPages(tx as any, orgId, calendarId, accountId, [
-        { items: [{ ...stillListed, summary: "Still there (renamed)" }], nextSyncToken: "tok-1" },
+        {
+          items: [{ ...stillListed, etag: '"st2"', summary: "Still there (renamed)" }],
+          nextSyncToken: "tok-1",
+        },
       ])
       const googleBorn = await getEventByGoogleId(tx as any, orgId, calendarId, "evt-google-born")
       expect(googleBorn).toBeUndefined()
@@ -660,8 +663,8 @@ describe("account active transition + streamed pages", () => {
       await applyInitialSyncPages(counting, orgId, calendarId, accountId, [
         { items: page(120, "a", "2026-07-01T00:00:00.000Z"), nextSyncToken: "tok-batch" },
       ])
-      // One upsert, the token, the account roll-up. Was 120 upserts + 2.
-      expect(statements.length).toBeLessThanOrEqual(4)
+      // The calendar's resync mark, one upsert, the token, the account roll-up. Was 120 upserts + 2.
+      expect(statements.length).toBeLessThanOrEqual(5)
 
       statements.length = 0
       const incremental = [

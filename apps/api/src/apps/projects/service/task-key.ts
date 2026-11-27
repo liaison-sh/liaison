@@ -25,7 +25,7 @@ const NAMED_KEYS: Record<string, string> = {
  *     empty name)
  *
  * This does NOT handle org-scoped collisions (that is a stateful concern —
- * see the migration's suffix-replacement loop and `createProject`'s retry).
+ * see the migration's suffix-replacement loop and `projectKeyCandidates`).
  */
 export function deriveProjectKey(name: string): string {
   const trimmed = name.trim()
@@ -56,14 +56,30 @@ export function deriveProjectKey(name: string): string {
   return candidate
 }
 
-/** Next collision-avoidance candidate: replace the last character with the
- *  next symbol in 2..9, A..Z. Returns null once the whole suffix range (28
- *  candidates) is exhausted — callers should treat that as "give up". */
 const SUFFIX_CHARS = "23456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const MAX_KEY_LENGTH = 10
 
-export function nextKeyCollisionCandidate(key: string, attempt: number): string | null {
-  if (attempt >= SUFFIX_CHARS.length) return null
-  return key.slice(0, -1) + SUFFIX_CHARS[attempt]
+/**
+ * Every key to try, in order, for a derived project key that may already be
+ * taken in the org. The sequence never runs dry, so a free key always exists:
+ *   1. the base key itself ("ARS")
+ *   2. the base with its last character swapped for 2..9, A..Z ("AR2".."ARZ")
+ *   3. the base plus one character ("ARS2".."ARSZ")
+ *   4. the base plus a growing number ("ARS10", "ARS11", ...), up to the
+ *      10-character key limit
+ * Every candidate matches the stored key format `^[A-Z][A-Z0-9]{1,9}$` when the
+ * base does, and no candidate repeats.
+ */
+export function* projectKeyCandidates(baseKey: string): Generator<string> {
+  yield baseKey
+  const stem = baseKey.slice(0, -1)
+  const last = baseKey.slice(-1)
+  for (const c of SUFFIX_CHARS) {
+    if (c !== last) yield stem + c
+  }
+  if (baseKey.length >= MAX_KEY_LENGTH) return
+  for (const c of SUFFIX_CHARS) yield baseKey + c
+  for (let n = 10; `${baseKey}${n}`.length <= MAX_KEY_LENGTH; n++) yield `${baseKey}${n}`
 }
 
 const TASK_KEY_RE = /^([A-Z][A-Z0-9]{1,9})-(\d+)$/

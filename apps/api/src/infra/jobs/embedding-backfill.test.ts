@@ -2,7 +2,7 @@
 // P4c-T48: the backfill is killed by a deploy like anything else, so the thing
 // that matters about it is what a rerun does.
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { sql } from "~/db"
 import {
   clearBackfillCursor,
@@ -23,7 +23,7 @@ const tag = ORG_ID.slice(0, 8)
 const INDEX_NAME = `test_p4ct48bf_${crypto.randomUUID().slice(0, 8)}`
 const THREADS_READ = "kernel:threads:read"
 
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

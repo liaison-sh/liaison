@@ -6,7 +6,7 @@
 // claims come back.
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import * as jobsModule from "~/infra/jobs/jobs"
 import * as searchClientModule from "~/infra/search/client"
 import { redis } from "~/lib/redis"
@@ -23,7 +23,7 @@ import {
 } from "./live-index-queue"
 
 const INDEX_NAME = `test_live_idx_${crypto.randomUUID().slice(0, 8)}`
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

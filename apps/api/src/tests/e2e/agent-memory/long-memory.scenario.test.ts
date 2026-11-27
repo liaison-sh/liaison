@@ -25,7 +25,7 @@
 // what makes the counter meaningful. See helpers/long-memory.ts.
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { sql } from "~/db"
 import * as searchClientModule from "~/infra/search/client"
 import { CheckpointTestAccess } from "~/modules/agent/context/checkpoint"
@@ -60,7 +60,7 @@ const FILLER_MESSAGES = 50
 const INDEX_NAME = `test_p4mt33_${crypto.randomUUID().slice(0, 8)}`
 const THREADS_READ = "kernel:threads:read"
 
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

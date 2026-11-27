@@ -75,7 +75,7 @@
         "jose": "^6.2.12",
         "luxon": "^3",
         "mailparser": "^3.14.1",
-        "meilisearch": "^0.50.0",
+        "meilisearch": "^0.63.0",
         "nodemailer": "^10.3.1",
         "pdf-lib": "1.17.1",
         "pdfjs-dist": "6.3.289",
@@ -1783,7 +1783,7 @@
 
     "media-typer": ["media-typer@1.1.1", "", {}, "sha512-yz3xRaG20c6/BOzvYoDaGtPmGscs7YivItZEEqe6GbwNfHuxu9YNmvnEkMzKldAGY4/80pRcQRZSEnhquk9XuQ=="],
 
-    "meilisearch": ["meilisearch@0.50.0", "", {}, "sha512-9IzIkobvnuS18Eg4dq/eJB9W+eXqeLZjNRgq/kKMswSmVYYSQsXqGgSuCA0JkF+o5RwJlwIsieQee6rh313VhA=="],
+    "meilisearch": ["meilisearch@0.63.0", "", {}, "sha512-gpVdo4dpoma7MMVN4vbfZrWZWp1vIyKWRDKNJsHvB+z6+ykc3E210yb2lvbsTrRTNSM1hfq3vmXu4DRO00IDkA=="],
 
     "merge-anything": ["merge-anything@5.1.7", "", { "dependencies": { "is-what": "^4.1.8" } }, "sha512-eRtbOb1N5iyH0tkQDAoQ4Ipsp/5qSR79Dzrz8hEPxRX10RWWR/iQXdoKmBSRCThY1Fh5EhISDtpSc93fpxUniQ=="],
 

@@ -1094,6 +1094,8 @@ export interface GoogleEventItem {
   eventType?: string
   /** The event's own colour ("1".."11"), absent when it uses its calendar's. */
   colorId?: string
+  /** Busy (opaque, Google's default) or free (transparent). */
+  transparency?: string
   guestsCanModify?: boolean
   recurringEventId?: string
   originalStartTime?: { date?: string; dateTime?: string; timeZone?: string }
@@ -1196,6 +1198,7 @@ function mapGoogleItemToRow(item: GoogleEventItem): {
   guestsCanModify: boolean | null
   eventType: string | null
   colorId: string | null
+  transparency: string | null
 } {
   const allDay = Boolean(item.start?.date && !item.start?.dateTime)
   return {
@@ -1219,6 +1222,7 @@ function mapGoogleItemToRow(item: GoogleEventItem): {
     guestsCanModify: item.guestsCanModify === true,
     eventType: typeof item.eventType === "string" ? item.eventType : null,
     colorId: typeof item.colorId === "string" ? item.colorId : null,
+    transparency: typeof item.transparency === "string" ? item.transparency : null,
   }
 }
 
@@ -1263,14 +1267,14 @@ async function upsertEventsFromGoogle(
        ${mapped.hangoutLink}, ${mapped.googleUpdatedAt}::timestamptz,
        COALESCE(${mapped.googleUpdatedAt}::timestamptz, now()), ${calaccess},
        ${mapped.organizerSelf}::boolean, ${mapped.guestsCanModify}::boolean, ${mapped.eventType},
-       ${mapped.colorId})`
+       ${mapped.colorId}, ${mapped.transparency})`
     })
     await db.execute(sql`
       INSERT INTO ${sql.raw(schema)}.events
         (id, org_id, calendar_id, google_event_id, etag, title, description, location, start, "end",
          all_day, status, attendees, recurrence, recurring_event_id, original_start_time,
          extended_props, hangout_link, google_updated_at, updated_at, calaccess,
-         organizer_self, guests_can_modify, event_type, color_id)
+         organizer_self, guests_can_modify, event_type, color_id, transparency)
       VALUES ${sql.join(tuples, sql.raw(", "))}
       ON CONFLICT (org_id, calendar_id, google_event_id) WHERE google_event_id IS NOT NULL DO UPDATE SET
         etag = EXCLUDED.etag, title = EXCLUDED.title, description = EXCLUDED.description,
@@ -1283,6 +1287,7 @@ async function upsertEventsFromGoogle(
         updated_at = COALESCE(EXCLUDED.google_updated_at, now()), pending_push = 'none',
         organizer_self = EXCLUDED.organizer_self, guests_can_modify = EXCLUDED.guests_can_modify,
         event_type = EXCLUDED.event_type, color_id = EXCLUDED.color_id,
+        transparency = EXCLUDED.transparency,
         attendees_base = NULL, push_base = NULL, push_error = NULL, push_notice = NULL,
         conference_request = NULL
       -- A local delete waiting to reach Google is not undone by the import.

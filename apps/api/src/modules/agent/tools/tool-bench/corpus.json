@@ -4083,6 +4083,22 @@
     "any": ["social__dm_delete_conversation"]
   },
   {
+    "id": "C162",
+    "set": "seed",
+    "lang": "en",
+    "say": "find 30 minutes next week with amina and lucas",
+    "typed": ["find a time", "free slot with amina and lucas"],
+    "any": ["calendar__find_free_slots"]
+  },
+  {
+    "id": "C163",
+    "set": "seed",
+    "lang": "fr",
+    "say": "trouve un créneau de 30 min avec Amina et Lucas la semaine prochaine",
+    "typed": ["trouver un créneau", "créneau libre"],
+    "any": ["calendar__find_free_slots"]
+  },
+  {
     "id": "C190",
     "set": "seed",
     "lang": "en",

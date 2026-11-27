@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { env } from "~/lib/env"
 
 const CANONICAL_INDEX = "liaison_search"
@@ -18,7 +18,7 @@ const CANONICAL_INDEX = "liaison_search"
  */
 const MEILI_REQUEST_TIMEOUT_MS = 10_000
 
-let client: MeiliSearch | null = null
+let client: Meilisearch | null = null
 
 /**
  * Returns the singleton MeiliSearch client.
@@ -26,41 +26,15 @@ let client: MeiliSearch | null = null
  * In dev MEILISEARCH_API_KEY may be empty — Meili allows anonymous access in
  * development mode. The production env superRefine guards against missing keys.
  */
-export function getMeili(): MeiliSearch {
+export function getMeili(): Meilisearch {
   if (!client) {
-    client = new MeiliSearch({
+    client = new Meilisearch({
       host: env.MEILISEARCH_HOST,
       apiKey: env.MEILISEARCH_API_KEY || undefined,
       timeout: MEILI_REQUEST_TIMEOUT_MS,
     })
   }
   return client
-}
-
-let vectorStoreOn: Promise<void> | null = null
-
-/**
- * Switch on Meilisearch's `vectorStore` experimental feature, once per process.
- *
- * Every search or document read that passes `retrieveVectors` needs it, and
- * Meili rejects such a request outright while it is off. It used to be switched
- * on only where the memory embedder is declared, the first time a message was
- * indexed with an embedding, so a Meilisearch that had never indexed one (a
- * fresh container, an instance with no embedding provider) failed every memory
- * transcript search, which then came back empty. The PATCH is idempotent; a
- * failure is not remembered, so the next caller tries again.
- */
-export function ensureMeiliVectorStore(): Promise<void> {
-  if (!vectorStoreOn) {
-    vectorStoreOn = getMeili()
-      .httpRequest.patch({ path: "experimental-features", body: { vectorStore: true } })
-      .then(() => undefined)
-      .catch((err: unknown) => {
-        vectorStoreOn = null
-        throw err
-      })
-  }
-  return vectorStoreOn
 }
 
 /**
@@ -79,6 +53,5 @@ export const MeiliClientTestAccess = {
   /** Test-only reset to drop the singleton between mocked-env runs. */
   reset(): void {
     client = null
-    vectorStoreOn = null
   },
 }

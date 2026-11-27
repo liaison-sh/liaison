@@ -22,7 +22,7 @@
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import path from "node:path"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { sql } from "~/db"
 import { withRlsContext } from "~/db/rls"
 import * as jobsModule from "~/infra/jobs/jobs"
@@ -441,7 +441,7 @@ const CR_FILLER_AFTER = 18
 const CR_INDEX_NAME = `test_p4ct27_${crypto.randomUUID().slice(0, 8)}`
 const CR_THREADS_READ = "kernel:threads:read"
 
-const crMeili = new MeiliSearch({
+const crMeili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

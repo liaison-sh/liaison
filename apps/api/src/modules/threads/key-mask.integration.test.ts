@@ -7,7 +7,7 @@
 // masked text and none holds the original.
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import pino from "pino"
 import { app } from "~/app"
 import { sql } from "~/db"
@@ -31,7 +31,7 @@ const PAN = "4917484589897107"
 const PAN_SPACED = "4917 4845 8989 7107"
 
 const INDEX_NAME = `test_paymask_${crypto.randomUUID().slice(0, 8)}`
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

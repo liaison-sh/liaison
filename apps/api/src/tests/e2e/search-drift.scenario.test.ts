@@ -33,7 +33,7 @@ import type { TestWorld, WorkerEnv } from "@liaison/test-helpers"
 import { api } from "@liaison/test-helpers"
 import { Queue } from "bullmq"
 import IORedis from "ioredis"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { setupScenario, teardownScenario } from "./setup"
 
 const USB_TITLE = "USB detection report"
@@ -43,8 +43,8 @@ const REBUILD_JOB = "search-reindex-full"
 const POLL_BUDGET_MS = 60_000
 const POLL_TICK_MS = 250
 
-function meiliClient(): MeiliSearch {
-  return new MeiliSearch({
+function meiliClient(): Meilisearch {
+  return new Meilisearch({
     host: process.env.MEILISEARCH_HOST ?? "http://localhost:7700",
     apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
   })

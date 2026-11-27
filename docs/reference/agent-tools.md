@@ -437,6 +437,7 @@ Month and week calendar that syncs both ways with Google Calendar.
 | `create_event` | Create a new event or meeting on a writable calendar. |  | `calendar:events:write` |
 | `delete_event` | Delete an event or meeting. |  | `calendar:events:write` |
 | `get_event` | Read the details of one meeting by the eventId list_events or search_events gave: times, description, location, guests and their answers, Meet link, recurrence. |  | `calendar:events:read` |
+| `find_free_slots` | Find free times of a given length when the user and their guests are all free, inside working hours. |  | `calendar:events:read` |
 | `list_accounts` | List connected Google Calendar accounts visible to the caller (their own personal connections plus every org-wide connection) — the generic kernel connections list deliberately excludes org-owned non-kernel connections, so Settings uses this app-specific tool instead (mirrors mail's listAccounts). |  | `calendar:events:read` |
 | `list_calendars` | List the connected Google calendars visible to the caller (personal calendars they own, plus org-wide calendars), each with `selected`: only selected calendars are synced and have events. |  | `calendar:events:read` |
 | `list_events` | List events in a time window, optionally scoped to one calendar. |  | `calendar:events:read` |

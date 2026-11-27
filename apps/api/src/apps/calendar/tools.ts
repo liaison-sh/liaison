@@ -147,6 +147,10 @@ export interface CalendarEventDto {
   pushNotice: string | null
   /** Google's per-event colour id ("1".."11"); null when the event uses its calendar's. */
   colorId: string | null
+  /** Google's busy/free: "transparent" (free), "opaque" (busy), null when not synced yet. */
+  transparency: string | null
+  /** Google's eventType (default, outOfOffice, focusTime, workingLocation, ...), else null. */
+  eventType: string | null
 }
 
 export interface CalendarAttendeeDto {
@@ -203,6 +207,8 @@ export interface RawEventRow {
   push_error?: string | null
   push_notice?: string | null
   color_id?: string | null
+  transparency?: string | null
+  event_type?: string | null
 }
 
 function toDate(point: unknown): Date | null {
@@ -322,6 +328,8 @@ function rowToDto(row: RawEventRow): CalendarEventDto {
     pushError: row.push_error ?? null,
     pushNotice: row.push_notice ?? null,
     colorId: row.color_id ?? null,
+    transparency: row.transparency ?? null,
+    eventType: row.event_type ?? null,
   }
 }
 
@@ -335,7 +343,7 @@ const UNTIL_DATE_PATTERN = "UNTIL=([0-9]{8})"
 
 const EVENT_COLUMNS = `id, calendar_id, google_event_id, title, description, location, start, "end", all_day,
   recurrence, recurring_event_id, original_start_time, status, hangout_link, attendees,
-  organizer_self, guests_can_modify, push_error, push_notice, color_id`
+  organizer_self, guests_can_modify, push_error, push_notice, color_id, transparency, event_type`
 
 /**
  * listEventsForCaller — the RAW rows the window needs, with their full field set: plain events
@@ -604,4 +612,81 @@ export async function getEventForCaller(
   `)) as unknown as { rows?: RawEventRow[] } | RawEventRow[]
   const rows = Array.isArray(result) ? result : (result.rows ?? [])
   return rows[0] ? rowToDto(rows[0]) : null
+}
+
+/** What `find_free_slots` reads of the caller's own calendars. */
+export interface OwnBusyEvents {
+  /** The caller's synced events over the window that may block them (see below). */
+  events: CalendarEventDto[]
+  /** The caller's personal Google accounts (oldest first): the free/busy query runs as one. */
+  personalAccounts: { identifier: string; connectedAccountId: string }[]
+  /** The zone of the caller's primary calendar, when known. */
+  primaryTimeZone: string | null
+}
+
+/**
+ * ownBusyEventsForCaller — the events that may make the caller busy over a window: every event
+ * of a selected calendar of the caller's own (personal) accounts, and on any other calendar the
+ * caller sees (an org calendar), only the events they attend or organize (`selfEmails`). Busy or
+ * free per event (transparency, declined) is `free-slots.ts`'s rule. RLS scopes what is read.
+ */
+export async function ownBusyEventsForCaller(
+  db: RlsClient,
+  orgId: string,
+  window: { timeMin: string; timeMax: string },
+  selfEmails: ReadonlySet<string>,
+): Promise<OwnBusyEvents> {
+  const { sql } = await import("drizzle-orm")
+  const schema = CALENDAR_SCHEMA()
+  const rowsOf = <T>(result: unknown): T[] =>
+    Array.isArray(result) ? (result as T[]) : (((result as { rows?: T[] }).rows ?? []) as T[])
+  const calendars = rowsOf<{
+    id: string
+    owner_type: string
+    google_calendar_id: string
+    time_zone: string | null
+    email_address: string
+    connected_account_id: string
+    account_created: Date | string
+  }>(
+    await db.execute(sql`
+      SELECT c.id, a.owner_type, c.google_calendar_id, c.time_zone, a.email_address,
+             a.connected_account_id, a.created_at AS account_created
+      FROM ${sql.raw(schema)}.calendars c
+      JOIN ${sql.raw(schema)}.accounts a ON a.id = c.account_id
+      WHERE c.org_id = ${orgId}::uuid AND a.disconnected_at IS NULL
+    `),
+  )
+  const personalCalendars = new Set(
+    calendars.filter((c) => c.owner_type === "user").map((c) => c.id),
+  )
+  const personalAccounts: OwnBusyEvents["personalAccounts"] = []
+  const seen = new Set<string>()
+  for (const c of [...calendars]
+    .filter((c) => c.owner_type === "user")
+    .sort((a, b) => String(a.account_created).localeCompare(String(b.account_created)))) {
+    if (seen.has(c.email_address)) continue
+    seen.add(c.email_address)
+    personalAccounts.push({
+      identifier: c.email_address,
+      connectedAccountId: c.connected_account_id,
+    })
+  }
+  const primary =
+    calendars.find(
+      (c) => c.owner_type === "user" && c.google_calendar_id === c.email_address && c.time_zone,
+    ) ?? calendars.find((c) => c.owner_type === "user" && c.time_zone)
+  const all = await listEventsForCaller(db, orgId, window)
+  const mine = (e: CalendarEventDto) =>
+    personalCalendars.has(e.calendarId) ||
+    e.attendees.some((a) => a.self === true || selfEmails.has(a.email.trim().toLowerCase()))
+  // An exception row goes with its series: a cancelled occurrence carries no guest list, and
+  // dropping it would bring that occurrence back when the series expands.
+  const keptSeries = new Set(
+    all.filter((e) => !e.recurringEventId && mine(e)).map((e) => e.eventId),
+  )
+  const events = all.filter((e) =>
+    e.recurringEventId ? keptSeries.has(e.recurringEventId) || mine(e) : mine(e),
+  )
+  return { events, personalAccounts, primaryTimeZone: primary?.time_zone ?? null }
 }

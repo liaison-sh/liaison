@@ -6,6 +6,18 @@
 // host-side sync logic lives in the sibling modules (sync.ts, tools.ts) behind
 // the `calendar_*` methods.
 
+import { isValidTimeZone } from "@liaison/shared"
+import {
+  type BusyEventLike,
+  busyFromEvents,
+  busyFromGoogle,
+  DEFAULT_WORKING_HOURS,
+  FREE_BUSY_SCOPE,
+  findFreeSlots,
+  type Interval,
+  parseClock,
+  type WorkingHours,
+} from "~/apps/calendar/free-slots"
 import type { CoreCtx } from "~/modules/apps/core/ctx"
 
 export interface CalendarMethods {
@@ -36,6 +48,7 @@ export interface CalendarMethods {
   calendar_listEvents: (paramsJson: string) => Promise<string>
   calendar_searchEvents: (paramsJson: string) => Promise<string>
   calendar_getEventForCaller: (eventId: string) => Promise<string>
+  calendar_freeBusyContext: (paramsJson: string) => Promise<string>
   calendar_createEvent: (paramsJson: string) => Promise<string>
   calendar_updateEvent: (paramsJson: string) => Promise<string>
   calendar_deleteEvent: (paramsJson: string) => Promise<string>
@@ -1624,6 +1637,176 @@ export async function calendarGetEvent(params: unknown, ctx: CalendarCtx): Promi
     throw new Error("eventId is required")
   }
   return JSON.parse(await ctx.calendar_getEventForCaller(eventId.trim()))
+}
+
+const DAY_MS = 86_400_000
+/** Google answers freebusy.query for at most 50 calendars, over a bounded span. */
+const FREE_BUSY_MAX_ATTENDEES = 50
+const FREE_BUSY_MAX_DAYS = 62
+
+interface FreeBusyContext {
+  events: BusyEventLike[]
+  selfEmails: string[]
+  timeZone: string | null
+  account: { identifier: string; hasFreeBusyScope: boolean | null } | null
+}
+
+/** One attendee's availability as `find_free_slots` reports it. */
+interface AttendeeAvailability {
+  email: string
+  /** checked: Google's busy times were used; unknown: Google could not say (another
+   * organization's calendar, not shared); needs_consent: the free/busy permission is missing;
+   * no_account: the caller has no Google account connected to ask with. */
+  status: "checked" | "unknown" | "needs_consent" | "no_account"
+  reason?: string
+}
+
+function toWorkingHours(value: unknown): WorkingHours {
+  if (!value || typeof value !== "object") return DEFAULT_WORKING_HOURS
+  const v = value as Record<string, unknown>
+  const start = parseClock(v.start) !== null ? (v.start as string) : DEFAULT_WORKING_HOURS.start
+  const end = parseClock(v.end) !== null ? (v.end as string) : DEFAULT_WORKING_HOURS.end
+  const days = Array.isArray(v.days)
+    ? v.days.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6)
+    : DEFAULT_WORKING_HOURS.days
+  return { start, end, days: days.length > 0 ? days : DEFAULT_WORKING_HOURS.days }
+}
+
+/**
+ * find_free_slots — free times of a given length in a window, inside working hours, that the
+ * caller's own synced calendars leave free and, for each attendee, Google's free/busy answer
+ * (freebusy.query, run as the caller's own Google account). The free/busy permission is asked
+ * for only the first time someone needs it (incremental consent): without it the slots are
+ * computed from the caller's calendars alone and every attendee reads `needs_consent`.
+ */
+export async function calendarFindFreeSlots(params: unknown, ctx: CalendarCtx): Promise<unknown> {
+  const p = (params ?? {}) as Record<string, unknown>
+  const duration = Number(p.durationMinutes ?? 30)
+  if (!Number.isFinite(duration) || duration < 5 || duration > 12 * 60) {
+    throw new Error("durationMinutes must be between 5 and 720")
+  }
+  const now = Date.now()
+  const windowStart = typeof p.timeMin === "string" ? new Date(p.timeMin) : new Date(now)
+  const windowEnd =
+    typeof p.timeMax === "string"
+      ? new Date(p.timeMax)
+      : new Date(windowStart.getTime() + 7 * DAY_MS)
+  if (Number.isNaN(windowStart.getTime()) || Number.isNaN(windowEnd.getTime())) {
+    throw new Error("timeMin and timeMax must be ISO 8601 date-times")
+  }
+  if (windowEnd <= windowStart) throw new Error("timeMax must be after timeMin")
+  if (windowEnd.getTime() - windowStart.getTime() > FREE_BUSY_MAX_DAYS * DAY_MS) {
+    throw new Error(`The window may span at most ${FREE_BUSY_MAX_DAYS} days`)
+  }
+  const attendees = [
+    ...new Set(
+      (Array.isArray(p.attendees) ? p.attendees : [])
+        .filter((a): a is string => typeof a === "string" && a.includes("@"))
+        .map((a) => a.trim().toLowerCase()),
+    ),
+  ].slice(0, FREE_BUSY_MAX_ATTENDEES)
+  const window = { timeMin: windowStart.toISOString(), timeMax: windowEnd.toISOString() }
+  const context = JSON.parse(
+    await ctx.calendar_freeBusyContext(JSON.stringify(window)),
+  ) as FreeBusyContext
+  const requestedZone = typeof p.timeZone === "string" ? p.timeZone : null
+  const timeZone = isValidTimeZone(requestedZone)
+    ? requestedZone
+    : isValidTimeZone(context.timeZone)
+      ? context.timeZone
+      : "UTC"
+  const selfEmails = new Set(context.selfEmails.map((e) => e.toLowerCase()))
+  const busy: Interval[] = busyFromEvents(
+    context.events,
+    windowStart,
+    windowEnd,
+    timeZone,
+    selfEmails,
+  )
+
+  const others = attendees.filter((a) => !selfEmails.has(a))
+  const availability: AttendeeAvailability[] = []
+  let consentNeeded = false
+  if (others.length > 0 && !context.account) {
+    for (const email of others) availability.push({ email, status: "no_account" })
+  } else if (others.length > 0 && context.account) {
+    if (context.account.hasFreeBusyScope === false) {
+      consentNeeded = true
+    } else {
+      const token = await ctx.connections_getToken("google-calendar", context.account.identifier)
+      const raw = await ctx.fetch(
+        `${GOOGLE_CALENDAR_API_BASE}/freeBusy`,
+        JSON.stringify({
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ ...window, timeZone, items: others.map((id) => ({ id })) }),
+        }),
+      )
+      const res = JSON.parse(raw) as FetchResult
+      if (res.status === 403 && /insufficient|scope/i.test(res.body ?? "")) {
+        consentNeeded = true
+      } else if (res.status < 200 || res.status >= 300) {
+        ctx.log_warn(
+          "calendar find_free_slots: freebusy.query failed",
+          JSON.stringify({ status: res.status, body: (res.body ?? "").slice(0, 500) }),
+        )
+        throw new Error(
+          `Google refused the free/busy query (HTTP ${res.status}): ${(res.body ?? "").slice(0, 300)}`,
+        )
+      } else {
+        const body = JSON.parse(res.body || "{}") as {
+          calendars?: Record<string, Parameters<typeof busyFromGoogle>[0]>
+        }
+        const byLower = new Map(
+          Object.entries(body.calendars ?? {}).map(([k, v]) => [k.toLowerCase(), v] as const),
+        )
+        for (const email of others) {
+          const entry = busyFromGoogle(byLower.get(email))
+          if (entry.error) {
+            availability.push({ email, status: "unknown", reason: entry.error })
+          } else {
+            busy.push(...entry.busy)
+            availability.push({ email, status: "checked" })
+          }
+        }
+      }
+    }
+    if (consentNeeded) {
+      for (const email of others) availability.push({ email, status: "needs_consent" })
+    }
+  }
+
+  const maxResults = Math.min(Math.max(Number(p.maxResults ?? 10) || 10, 1), 50)
+  const slots = findFreeSlots({
+    windowStart,
+    windowEnd,
+    durationMinutes: duration,
+    timeZone,
+    workingHours: toWorkingHours(p.workingHours),
+    busy,
+    notBefore: new Date(now),
+    stepMinutes: duration <= 15 ? 15 : 30,
+    maxResults,
+    maxPerDay: Math.min(Math.max(Number(p.maxPerDay ?? 3) || 3, 1), 20),
+  })
+  const result: Record<string, unknown> = {
+    timeZone,
+    durationMinutes: duration,
+    slots,
+    attendees: availability,
+  }
+  if (consentNeeded) {
+    result.consent = {
+      needed: true,
+      scope: FREE_BUSY_SCOPE,
+      message:
+        "These slots only account for your own calendar. To see when the guests are busy, allow Liaison to read free/busy once: open a new event in Calendar, choose Find a time, then Allow.",
+    }
+  } else if (availability.some((a) => a.status === "no_account")) {
+    result.message =
+      "No Google account of yours is connected to Calendar, so the guests' availability could not be checked. Connect one in Calendar to include it."
+  }
+  return result
 }
 
 // --- Who may email guests or delete: people directly, agents after a human approval ---

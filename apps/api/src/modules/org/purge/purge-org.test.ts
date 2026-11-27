@@ -16,7 +16,7 @@
 //     leftover it cannot remove fails the purge with the org row kept (A4);
 //   - BullMQ's own keys carrying the org id are left alone (A31).
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { sql } from "~/db"
 import { closeAllQueues, registerJobWorker, upsertJobScheduler } from "~/infra/jobs/jobs"
 import * as searchClientModule from "~/infra/search/client"
@@ -44,7 +44,7 @@ const tag = crypto.randomUUID().slice(0, 8)
 const INDEX = `test_org_purge_${tag}`
 const APP_SCHEMA = `app_purgetest_${tag}`
 
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

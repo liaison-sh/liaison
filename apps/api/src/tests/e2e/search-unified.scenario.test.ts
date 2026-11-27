@@ -35,8 +35,8 @@
 // without re-deriving Gmail/IMAP wire fixtures.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import type { TestWorld, WorkerEnv } from "@liaison/test-helpers"
-import { api, createUserWithScopes, login } from "@liaison/test-helpers"
-import { MeiliSearch } from "meilisearch"
+import { api, createUserWithScopes } from "@liaison/test-helpers"
+import { Meilisearch } from "meilisearch"
 import { ks, seedInbox, seedTicket, seedTicketMessages, ts } from "./helpers/tickets-seed"
 import { setupScenario, teardownScenario } from "./setup"
 
@@ -44,8 +44,8 @@ const POLL_TICK_MS = 200
 const INDEX_POLL_BUDGET_MS = 30_000
 const FRESHNESS_BUDGET_MS = 5_000
 
-function meiliClient(host?: string): MeiliSearch {
-  return new MeiliSearch({
+function meiliClient(host?: string): Meilisearch {
+  return new Meilisearch({
     host: host ?? process.env.MEILISEARCH_HOST ?? "http://localhost:7700",
     apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
   })

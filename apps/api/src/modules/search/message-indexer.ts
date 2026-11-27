@@ -84,7 +84,7 @@ import { schemaRef } from "~/db/schema-ref"
 import type { DurableEventContext } from "~/infra/events/durable-consumers"
 import { registerDurableEventConsumer } from "~/infra/events/durable-consumers"
 import { registerJobWorker } from "~/infra/jobs/jobs"
-import { effectiveIndexName, ensureMeiliVectorStore, getMeili } from "~/infra/search/client"
+import { effectiveIndexName, getMeili } from "~/infra/search/client"
 import { isManagedEdition } from "~/lib/edition"
 import { offlineSideCalls } from "~/lib/env"
 import { searchLogger as log } from "~/lib/logger"
@@ -1328,11 +1328,6 @@ function embedderMatches(settings: EmbedderSettings, dimensions: number): boolea
  * Declare the `userProvided` embedder on the index, once per process per
  * (index, width).
  *
- * Meilisearch 1.11 keeps the vector store behind an EXPERIMENTAL FEATURE flag,
- * so the flag is turned on first; on a build where the flag does not exist the
- * PATCH is a no-op and the `updateEmbedders` call below is what actually fails,
- * loudly, rather than documents being written with vectors nothing can query.
- *
  * THE TASK'S OUTCOME IS READ, NOT ASSUMED. Meili accepts the settings call and
  * then FAILS the task when any document already in the index carries no
  * `_vectors.memory` (a document written before every writer opted out). A
@@ -1379,15 +1374,6 @@ async function declareMemoryEmbedder(dimensions: number): Promise<void> {
   }
 
   const meili = getMeili()
-  try {
-    // Through the Meili client's own HTTP layer, so the host, the API key and
-    // the per-request timeout come from infra/search/client.ts rather than
-    // being re-derived here.
-    await ensureMeiliVectorStore()
-  } catch (err) {
-    log.warn({ err }, "Could not enable the Meili vector store experimental feature")
-  }
-
   const index = meili.index(indexName)
   const settings = (await index.getSettings()) as EmbedderSettings
   if (embedderMatches(settings, dimensions)) {

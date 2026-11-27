@@ -67,7 +67,7 @@ The publish waits for a person holding `kernel:apps:admin`. The approval card sh
 
 - **Change:** ask the assistant. It updates, checks, tries and publishes again; each publish is the next patch version and needs a new approval.
 - **Roll back:** the assistant restores the earlier version with `kernel__apps_build_restore` and publishes it as the next version. Tables the old version no longer declares are kept with their data. A rollback brings back code, not data: what the newer version stored stays, and records in a shape the older code does not know (a new status, a new field) can be missing from its lists until a version that knows them is published. Keep changes additive, and fix forward once data in a new shape exists (see [A rollback brings back code, not data](cli.md#a-rollback-brings-back-code-not-data)).
-- **Logs:** `kernel__apps_build_logs` reads the app's log lines (kept 7 days) for a holder of `kernel:apps:logs`, or your own tries' lines.
+- **Logs:** `kernel__apps_build_logs` reads the app's log lines (kept 7 days) for a holder of `kernel:apps:logs`, or your own tries' lines. A line whose run read data you cannot see (an agent turn that read contacts, say) stays hidden; the answer says how many are hidden and which scopes would show them.
 
 ## What an organization's app may not do
 

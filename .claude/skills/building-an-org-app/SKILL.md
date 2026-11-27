@@ -41,7 +41,7 @@ refusals, rules) apply to both.
    | Check | `liaison apps push --message "<what changed>"` | exit 1 and `file:line: message` per error: fix and push again |
    | Try | `liaison apps test` | runs `tests/*.json` cases (`{"tool": "...", "params": {...}, "expect": {...}}`, or `"expectError": "<code>"` for a refusal: name the code, or a case passes on the wrong refusal) in name order on one shared scratch store (`01-`, `02-`...); `--tool <t> --params '<json>' --verbose` for one; `--fresh` empties the scratch store |
    | Publish | `liaison apps publish --wait` | creates the approval card and waits. Tell the person a holder of `kernel:apps:admin` must approve it in Liaison; it is NOT installed until then. Exit 2 = still waiting (`liaison approvals wait <id>`), 1 = denied |
-   | Look | `liaison apps status`, `liaison apps logs [--follow] [--level warn]` | a log line shows only to a sign-in holding what its run read: if `logs` names missing scopes, sign in again with `--scope <appName>:<resource>:read` |
+   | Look | `liaison apps status`, `liaison apps logs [--follow] [--level warn]` | a log line shows only to a sign-in holding what its run read (a run whose agent turn read contacts needs `kernel:contacts:read` too): `logs` says how many lines it hides and which scopes show them; sign in again with `--scope <scope>` for each |
    | Roll back | `liaison apps rollback --wait` | restores the previously published version and publishes it again (a new approval). Code only: data the newer version wrote stays, and the older code may not show records in a shape it does not know (step 8 of section 2) |
 
 4. **The app's page with the person's session** (only if the person asks for it, never by
@@ -92,7 +92,7 @@ when it refuses (section 6 says what to do about each code).
 | List | `kernel__apps_build_list` | `includeDiscarded`? | the org's drafts |
 | History | `kernel__apps_build_versions` | `draftId` | the kept versions, newest first |
 | Publish | `kernel__apps_build_publish` | `draftId`, `n`? (never pass `pin`: the server sets it) | a pending approval with its `approvalHandle` |
-| Logs | `kernel__apps_build_logs` | `draftId` (your own preview runs) **or** `app` (the published app; needs `kernel:apps:logs`), `since`?, `level`?, `runId`?, `limit`? (1-200) | `lines[]`, newest first |
+| Logs | `kernel__apps_build_logs` | `draftId` (your own preview runs) **or** `app` (the published app; needs `kernel:apps:logs`), `since`?, `level`?, `runId`?, `limit`? (1-200) | `lines[]`, newest first; for an app, `hidden` (`lines`, `scopes`): lines your scopes keep out and the scopes that show them |
 | Go back | `kernel__apps_build_restore` | `draftId`, `n` | the old files as version n+1 |
 | Drop | `kernel__apps_build_discard` | `draftId` | the draft is gone; a published app stays installed |
 

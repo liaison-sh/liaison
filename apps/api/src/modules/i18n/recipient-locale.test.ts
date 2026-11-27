@@ -6,10 +6,10 @@ import { pickRecipientLocale } from "./recipient-locale"
 
 describe("pickRecipientLocale", () => {
   it("prefers the recipient's choice, then their locale, the org's, the inviter's, then English", () => {
-    expect(pickRecipientLocale({ userLanguage: "en", userLocale: "fr-FR", orgDefault: "fr" })).toBe(
-      "en",
-    )
-    expect(pickRecipientLocale({ userLocale: "fr-FR", orgDefault: "en-US" })).toBe("fr")
+    expect(
+      pickRecipientLocale({ chosenLanguage: "en", accountLocale: "fr-FR", orgDefault: "fr" }),
+    ).toBe("en")
+    expect(pickRecipientLocale({ accountLocale: "fr-FR", orgDefault: "en-US" })).toBe("fr")
     expect(pickRecipientLocale({ orgDefault: "fr-FR", inviterLanguage: "en" })).toBe("fr")
     expect(pickRecipientLocale({ orgDefault: "xx", inviterLanguage: "fr" })).toBe("fr")
     expect(pickRecipientLocale({ orgDefault: "xx", inviterLocale: "fr_CA" })).toBe("fr")

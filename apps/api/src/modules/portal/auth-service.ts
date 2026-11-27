@@ -33,7 +33,7 @@ import {
   TOTP_PERIOD,
   verifyTotpCode,
 } from "~/modules/auth/totp"
-import { recipientLocale } from "~/modules/i18n/recipient-locale"
+import { systemMailLocale } from "~/modules/i18n/recipient-locale"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { getOrgEmailConfig } from "~/modules/org/email-from"
 import { recordPortalAccess } from "~/modules/portal/access"
@@ -158,7 +158,7 @@ export async function requestPortalSignIn(orgSlug: string, email: string): Promi
   // The org's slug (not a secret) in the query, so the page names the org.
   const link = `${base}/portal/sign-in?org=${encodeURIComponent(orgSlug)}#c=${encodeURIComponent(minted.challengeId)}&t=${encodeURIComponent(minted.linkToken)}`
   // The person's language, else the org's (recipient-locale.ts).
-  const locale = await recipientLocale(org.id, { userId: person.id })
+  const locale = await systemMailLocale(org.id, { userId: person.id })
   const t = (key: string) => serverT(locale, `portal-auth.mail.${key}`, { org: org.name })
   const subject = t("subject")
   const { html, text } = renderBrandedEmail({
@@ -207,7 +207,7 @@ export async function sendPortalReplyNotice(input: {
   )
   if (!org) return
   const base = await orgAppBaseUrl(input.orgId)
-  const locale = await recipientLocale(input.orgId, { userId: person.id })
+  const locale = await systemMailLocale(input.orgId, { userId: person.id })
   const t = (key: string) =>
     serverT(locale, `portal-auth.reply.${key}`, { org: org.name, subject: input.subject })
   const subject = t("subject")

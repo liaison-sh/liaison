@@ -35,7 +35,7 @@ import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import { connectionAdminScope } from "~/modules/apps/connections/admin-scope"
 import { getFrontendRedirectUrl } from "~/modules/apps/connections/service"
 import { writeAuditLog } from "~/modules/audit/service"
-import { recipientLocale } from "~/modules/i18n/recipient-locale"
+import { systemMailLocale } from "~/modules/i18n/recipient-locale"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { getOrgEmailConfig, getOrgSenderTransport } from "~/modules/org/email-from"
 import { hasScope } from "~/modules/permissions/permissions"
@@ -432,7 +432,7 @@ export async function emailConnectLink(input: {
   const { link } = input
   const what = connectionLabel(input.appName, input.connectionName)
   const minutes = Math.max(1, Math.round((link.expiresAt.getTime() - Date.now()) / 60_000))
-  const locale = await recipientLocale(input.orgId, { userId: link.user.id })
+  const locale = await systemMailLocale(input.orgId, { userId: link.user.id })
   const t = (key: string, params: Record<string, string | number> = {}) =>
     serverT(locale, `system-mail.connectLink.${key}`, params)
   const subject = t("subject", { what })

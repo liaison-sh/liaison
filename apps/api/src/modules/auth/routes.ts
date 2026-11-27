@@ -115,7 +115,7 @@ import {
   verifyTotpCode,
 } from "~/modules/auth/totp"
 import { isReservedDemoOrg } from "~/modules/demo/demo-spend"
-import { recipientLocale } from "~/modules/i18n/recipient-locale"
+import { systemMailLocale } from "~/modules/i18n/recipient-locale"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { revokeAllMcpConnectionsForUser } from "~/modules/mcp/end-user-connections"
 import { getOrgEmailConfig } from "~/modules/org/email-from"
@@ -711,7 +711,7 @@ auth.post("/totp/step-up", async (c) => {
   }
 
   const emailConfig = await getOrgEmailConfig(orgId)
-  const locale = await recipientLocale(orgId, { userId })
+  const locale = await systemMailLocale(orgId, { userId })
   const copy = stepUpEmailCopy(code, purpose, locale)
   const subject = copy.subject
   const { html, text } = renderBrandedEmail({
@@ -1224,7 +1224,7 @@ auth.post("/password-reset/request", zValidator("json", passwordResetRequestSche
 
     const resetUrl = `${await orgPublicBaseUrl(user.orgId)}/reset-password/confirm?token=${token}`
     const emailConfig = await getOrgEmailConfig(user.orgId)
-    const locale = await recipientLocale(user.orgId, { userId: user.id })
+    const locale = await systemMailLocale(user.orgId, { userId: user.id })
     const t = (key: string) => serverT(locale, `system-mail.passwordReset.${key}`)
     const subject = t("subject")
     const { html, text } = renderBrandedEmail({

@@ -14,7 +14,7 @@ import { redis } from "~/lib/redis"
 import { issueToken as issueRedisToken } from "~/lib/token-store"
 import { AuthServiceError, createSession } from "~/modules/auth/auth"
 import { demoMagicLinkAllowed } from "~/modules/demo/demo-login"
-import { recipientLocale } from "~/modules/i18n/recipient-locale"
+import { systemMailLocale } from "~/modules/i18n/recipient-locale"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { getOrgEmailConfig } from "~/modules/org/email-from"
 import { emitSecurityEvent } from "~/modules/security/security-events"
@@ -273,7 +273,7 @@ export async function requestMagicLink(
   const magicUrl = `${base}/login/magic?challengeId=${encodeURIComponent(minted.challengeId)}&token=${encodeURIComponent(minted.linkToken)}`
   const emailConfig = await getOrgEmailConfig(user.orgId)
   // The recipient's language: their choice, else their org's (recipient-locale.ts).
-  const locale = await recipientLocale(user.orgId, { userId: user.id })
+  const locale = await systemMailLocale(user.orgId, { userId: user.id })
   const t = (key: string) => serverT(locale, `system-mail.signIn.${key}`, { code })
   const subject = t("subject")
   const { html, text } = renderBrandedEmail({

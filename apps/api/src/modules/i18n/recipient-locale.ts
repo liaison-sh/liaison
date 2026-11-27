@@ -21,8 +21,8 @@ import { rootLogger } from "~/lib/logger"
 const log = rootLogger.child({ service: "recipient-locale" })
 
 export interface RecipientLocaleFacts {
-  userLanguage?: string | null
-  userLocale?: string | null
+  chosenLanguage?: string | null
+  accountLocale?: string | null
   orgDefault?: string | null
   inviterLanguage?: string | null
   inviterLocale?: string | null
@@ -31,8 +31,8 @@ export interface RecipientLocaleFacts {
 /** The precedence above, over facts already read. */
 export function pickRecipientLocale(f: RecipientLocaleFacts): ShippedLocale {
   return resolveLocale(
-    f.userLanguage,
-    f.userLocale,
+    f.chosenLanguage,
+    f.accountLocale,
     f.orgDefault,
     f.inviterLanguage,
     f.inviterLocale,
@@ -60,7 +60,7 @@ async function personFacts(
  * must not depend on what a caller can see. A failed read falls back to
  * English and is logged: a language lookup never stops a sign-in mail.
  */
-export async function recipientLocale(
+export async function systemMailLocale(
   orgId: string,
   who: { userId?: string | null; inviterId?: string | null } = {},
 ): Promise<ShippedLocale> {
@@ -74,8 +74,8 @@ export async function recipientLocale(
       const user = who.userId ? await personFacts(tx, orgId, who.userId) : undefined
       const inviter = who.inviterId ? await personFacts(tx, orgId, who.inviterId) : undefined
       return pickRecipientLocale({
-        userLanguage: user?.language,
-        userLocale: user?.locale,
+        chosenLanguage: user?.language,
+        accountLocale: user?.locale,
         orgDefault: org?.defaultLocale,
         inviterLanguage: inviter?.language,
         inviterLocale: inviter?.locale,

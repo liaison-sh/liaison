@@ -7,7 +7,7 @@ import { renderBrandedEmail } from "~/infra/email-layout"
 import { generateToken, hashToken } from "~/lib/crypto"
 import { authLogger as log } from "~/lib/logger"
 import { orgPublicBaseUrl } from "~/lib/org-public-url"
-import { recipientLocale } from "~/modules/i18n/recipient-locale"
+import { systemMailLocale } from "~/modules/i18n/recipient-locale"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { assertSeatRoomSoft } from "~/modules/org/caps"
 import {
@@ -156,7 +156,7 @@ export async function createInvitation(
   // (S29). Null elsewhere: the self-hosted send is unchanged.
   const orgSender = await getOrgSenderTransport(orgId)
   // The invitee has no account yet: the org's language, else the inviter's.
-  const locale = await recipientLocale(orgId, { inviterId: invitedBy })
+  const locale = await systemMailLocale(orgId, { inviterId: invitedBy })
   const t = (key: string) => serverT(locale, `system-mail.invite.${key}`, { org: orgName })
   const subject = t("subject")
   const { html, text } = renderBrandedEmail({

@@ -89,7 +89,7 @@ Ask "Open the quarter review" and the agent opens the calendar on that event's d
 | `create_event` | Create an event, optionally with a Google Meet link | `calendar:events:write` |
 | `update_event` | Change time, title, description, location, guests or the Meet link, for one occurrence or the series | `calendar:events:write` |
 | `delete_event` | Delete an event, one occurrence or the series. Waits for your approval | `calendar:events:write` |
-| `respond_to_event` | Answer an invitation you received: yes, no or maybe | `calendar:events:write` |
+| `respond_to_invitation` | Answer an invitation you received: yes, no or maybe | `calendar:events:write` |
 | `set_selected` | Turn sync on or off for a calendar | `calendar:events:write` |
 | `retry_import` | Re-run a failed account import | `calendar:events:write` |
 

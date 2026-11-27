@@ -549,12 +549,12 @@
       "schema": 16
     },
     "calendar__create_event": {
-      "desc": 632,
-      "schema": 147
+      "desc": 698,
+      "schema": 195
     },
     "calendar__delete_event": {
-      "desc": 376,
-      "schema": 166
+      "desc": 436,
+      "schema": 203
     },
     "calendar__list_accounts": {
       "desc": 298,
@@ -581,8 +581,8 @@
       "schema": 33
     },
     "calendar__update_event": {
-      "desc": 1227,
-      "schema": 282
+      "desc": 1213,
+      "schema": 330
     },
     "calls__calls_list": {
       "desc": 272,
@@ -1477,7 +1477,7 @@
       "schema": 28
     },
     "kernel__files_read": {
-      "desc": 221,
+      "desc": 217,
       "schema": 29
     },
     "kernel__files_upload_confirm": {
@@ -3143,6 +3143,12 @@
     "C19|card update link": "15tl",
     "C19|payment method link": "",
     "C19|update card": "15tl",
+    "C190|accept invite": "15tl",
+    "C190|decline invitation": "15tl",
+    "C190|rsvp no": "15tl",
+    "C191|accepter l'invitation": "15tl",
+    "C191|refuser l'invitation": "15tl",
+    "C191|répondre à l'invitation": "15tl",
     "C20|affaire": "",
     "C20|create deal": "5t",
     "C20|new deal": "",
@@ -3415,7 +3421,7 @@
     "H026|exporter les données d'une personne": "15tl",
     "H027|créer un sous-agent": "15tl",
     "H028|supprimer un sous-agent": "5t",
-    "H029|répondre": "15tl",
+    "H029|répondre": "5tl",
     "H030|relancer": "5tl",
     "H031|clôturer": "15tl",
     "H032|modifier une note interne": "5t",
@@ -3661,7 +3667,7 @@
     "L055|Rechercher des tickets": "15tl",
     "L056|Nouveau ticket": "15tl",
     "L057|Nouveau mail": "15tl",
-    "L058|Répondre à tous": "15tl",
+    "L058|Répondre à tous": "5tl",
     "L059|Archiver": "15tl",
     "L060|Connecter Gmail": "15tl",
     "L061|Nouvel événement": "15tl",

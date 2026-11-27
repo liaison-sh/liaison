@@ -1,0 +1,27 @@
+[
+  [
+    "apps/api/src/modules/apps/sandbox/bridge/calendar.ts",
+    "scope: params.scope,",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/api/src/modules/apps/sandbox/bridge/calendar.ts",
+    "...(target.scope ? { scope: target.scope } : {}),",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/api/src/modules/apps/sandbox/bridge/calendar.ts",
+    "...(target.scope ? { scope: target.scope } : {}),",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/api/src/apps/calendar/handlers.ts",
+    "const scope = typeof p.scope === \"string\" ? p.scope : null",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/api/src/apps/calendar/handlers.ts",
+    "const scope = typeof p.scope === \"string\" ? p.scope : null",
+    "a calendar edit's scope: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ]
+]

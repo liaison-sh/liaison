@@ -1214,7 +1214,8 @@ describe("calendar push handlers (core module, ctx.fetch seam)", () => {
     const body = put.body as Record<string, unknown>
     expect(body.recurringEventId).toBe("gmaster")
     expect(body.originalStartTime).toEqual({ dateTime: "2026-07-13T09:00:00Z" })
-    expect(body.start).toEqual({ dateTime: "2026-07-13T11:00:00Z" })
+    // Every timed point names a zone: the calendar's, UTC when it has none.
+    expect(body.start).toEqual({ dateTime: "2026-07-13T11:00:00Z", timeZone: "UTC" })
     expect(body.recurrence).toBeUndefined()
   })
 
@@ -1396,8 +1397,8 @@ describe("calendar push handlers (core module, ctx.fetch seam)", () => {
         end?: unknown
         attendees?: Array<{ email: string }>
       }
-      expect(body.start).toEqual({ dateTime: "2026-07-06T11:00:00Z" })
-      expect(body.end).toEqual({ dateTime: "2026-07-06T11:30:00Z" })
+      expect(body.start).toEqual({ dateTime: "2026-07-06T11:00:00Z", timeZone: "UTC" })
+      expect(body.end).toEqual({ dateTime: "2026-07-06T11:30:00Z", timeZone: "UTC" })
       expect(body.attendees?.map((a) => a.email).sort()).toEqual([
         "a@acme.example",
         "b@acme.example",

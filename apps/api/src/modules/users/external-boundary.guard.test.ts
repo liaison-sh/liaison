@@ -246,6 +246,7 @@ const TREATED: Record<string, [Treatment, string]> = {
   ],
   "modules/files/media-analysis-job.ts": ["member-filter", "any one row as a fallback actor"],
   "modules/files/origin.ts": ["stored-ids", "who uploaded a file"],
+  "modules/i18n/recipient-locale.ts": ["one-row", "a system mail's recipient, by id"],
   "modules/imports/authority.ts": ["by-address", "an import's named people"],
   "modules/imports/kernel-kinds/agents.ts": ["by-address", "an imported agent's named owner"],
   "modules/imports/kernel-kinds/chat.ts": ["stored-ids", "the rows a run records for its undo"],

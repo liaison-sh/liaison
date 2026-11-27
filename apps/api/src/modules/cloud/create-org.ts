@@ -146,6 +146,8 @@ export async function createCloudOrg(
     name: req.ownerName,
     role: "admin",
     allowPasswordless: true,
+    // The signup's language: the owner's first mails (sign-in code) follow it.
+    locale: req.locale,
   })
   await withSystemDb("cloud-create-org-plan", (db) =>
     db

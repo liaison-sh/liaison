@@ -17,7 +17,9 @@
 // never deleted by Stripe, only moved to a final status, which a read returns.
 //
 // WRITES. Through the mirror's one conditional write (mirror.ts), so a row a
-// webhook wrote after this run's read is left alone. No typed event, no document.
+// webhook wrote after this run's read is left alone. No typed event, no document; a
+// dispute row says whether it still needs a response (disputes-due.ts).
+import { emitDisputeResponseState } from "../disputes-due"
 import { StripeApiError, stripeFetch } from "../http"
 import { newTally, writeMirror } from "../mirror"
 import { SUBSCRIPTION_EXPAND } from "../mrr"
@@ -184,6 +186,9 @@ async function reconcileList(
       const row = res.row(obj, tally)
       const outcome = await writeMirror(ctx.db, res.entity, row, started, healed(ctx, res, row))
       if (outcome !== "stale") result.written++
+      // A dispute answered or closed while its event was lost clears its Home line (disputes-due.ts).
+      if (res.entity === "stripe_disputes" && outcome !== "stale")
+        await emitDisputeResponseState(ctx, row, new Date())
     }
     const last = page.data[page.data.length - 1]
     if (!page.has_more || typeof last?.id !== "string") return seen
@@ -230,8 +235,10 @@ async function readBackAbsent(
         const row = res.row(obj, tally)
         if (
           (await writeMirror(ctx.db, res.entity, row, started, healed(ctx, res, row))) !== "stale"
-        )
+        ) {
           result.written++
+          if (res.entity === "stripe_disputes") await emitDisputeResponseState(ctx, row, new Date())
+        }
       }
     } catch (err) {
       if (!(err instanceof StripeApiError)) throw err

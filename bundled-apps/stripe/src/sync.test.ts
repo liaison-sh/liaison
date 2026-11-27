@@ -6,6 +6,7 @@
 // and events.
 import { beforeEach, describe, expect, it } from "bun:test"
 import { handleStripeEvent } from "./dispatch"
+import { runDisputesDue } from "./disputes-due"
 import { eventsHandler } from "./handlers"
 import { HELD, moneyActionHold, syncProgress } from "./states"
 import { runBackfill } from "./sync/backfill"
@@ -745,5 +746,136 @@ describe("catch-up and disconnect", () => {
     const res = await onDisconnect({ data: { appName: "stripe" } }, ctx())
     expect(res).toMatchObject({ done: true, removed: 5 })
     for (const [, rows] of db.tables) expect(rows).toEqual([])
+  })
+})
+
+describe("disputes that need a response", () => {
+  const dispute = (id: string, status: string, extra: Obj = {}): Obj => ({
+    id,
+    object: "dispute",
+    charge: "ch_D",
+    amount: 58800,
+    currency: "eur",
+    reason: "subscription_canceled",
+    status,
+    evidence_details: { due_by: Date.parse("2026-11-12T08:00:00Z") / 1000 },
+    created: 1762300000,
+    ...extra,
+  })
+  const states = () =>
+    emitted.filter((e) => e.entity === "dispute" && e.action === "response_state")
+  function knownCustomer() {
+    mirrorRow("stripe_payments", { stripe_id: "ch_D", customer_id: "cus_D", amount_minor: 58800 })
+    mirrorRow("stripe_customers", { stripe_id: "cus_D", name: "Example Hotel" })
+  }
+
+  it("a chargeback event says it needs a response, with amount, customer and due date", async () => {
+    install("connected")
+    knownCustomer()
+    api.objects.set("/v1/disputes/dp_1", { livemode: false, ...dispute("dp_1", "needs_response") })
+    const evt = {
+      id: "evt_D1",
+      object: "event",
+      type: "charge.dispute.created",
+      created: 1762900001,
+      livemode: false,
+      data: { object: { id: "dp_1" } },
+    }
+    await handleStripeEvent(evt, ctx() as never, { now })
+    expect(states()).toEqual([
+      {
+        entity: "dispute",
+        action: "response_state",
+        entityId: "dp_1",
+        data: expect.objectContaining({
+          needs_response: true,
+          overdue: false,
+          amount: "588.00 EUR",
+          customer: "Example Hotel",
+          due: "2026-11-12",
+        }),
+      },
+    ])
+  })
+
+  it("an update that answers it says it no longer does", async () => {
+    install("connected")
+    knownCustomer()
+    api.objects.set("/v1/disputes/dp_1", { livemode: false, ...dispute("dp_1", "under_review") })
+    const evt = {
+      id: "evt_D2",
+      object: "event",
+      type: "charge.dispute.updated",
+      created: 1762900002,
+      livemode: false,
+      data: { object: { id: "dp_1" } },
+    }
+    await handleStripeEvent(evt, ctx() as never, { now })
+    expect(states().map((e) => (e.data as Obj).needs_response)).toEqual([false])
+  })
+
+  it("the first import says the open disputes and nothing of the closed ones", async () => {
+    install("waiting_first_event")
+    api.list("/v1/disputes", [dispute("dp_open", "needs_response"), dispute("dp_won", "won")])
+    emptyLists()
+    await runBackfill(ctx(), { now })
+    expect(states().map((e) => [e.entityId, (e.data as Obj).needs_response])).toEqual([
+      ["dp_open", true],
+    ])
+  })
+
+  it("the nightly reconcile clears a dispute closed while its event was lost", async () => {
+    install("connected")
+    for (const r of ["customers", "subscriptions", "invoices", "charges", "refunds", "disputes"]) {
+      db.rows("sync_state").push({
+        id: `s-${r}`,
+        resource: r,
+        status: "done",
+        cursor: null,
+        done_count: 0,
+        catchup_due: false,
+      })
+    }
+    mirrorRow("stripe_disputes", {
+      stripe_id: "dp_1",
+      payment_id: "ch_D",
+      status: "needs_response",
+      amount_minor: 58800,
+      currency: "eur",
+    })
+    api.list("/v1/disputes", [dispute("dp_1", "lost")])
+    emptyLists()
+    await runReconcile(ctx(), { now })
+    expect(states().map((e) => [e.entityId, (e.data as Obj).needs_response])).toEqual([
+      ["dp_1", false],
+    ])
+  })
+
+  it("the daily job says every dispute still waiting again, overdue once its date has passed", async () => {
+    knownCustomer()
+    mirrorRow("stripe_disputes", {
+      stripe_id: "dp_late",
+      payment_id: "ch_D",
+      status: "needs_response",
+      amount_minor: 58800,
+      currency: "eur",
+      evidence_due_by: "2026-11-05T08:00:00.000Z",
+    })
+    mirrorRow("stripe_disputes", {
+      stripe_id: "dp_soon",
+      payment_id: "ch_D",
+      status: "warning_needs_response",
+      amount_minor: 1000,
+      currency: "eur",
+      evidence_due_by: "2026-11-20T08:00:00.000Z",
+    })
+    mirrorRow("stripe_disputes", { stripe_id: "dp_done", status: "won", amount_minor: 5 })
+    const res = await runDisputesDue(ctx(), { now })
+    expect(res).toEqual({ open: 2 })
+    expect(states().map((e) => [e.entityId, (e.data as Obj).overdue])).toEqual([
+      ["dp_late", true],
+      ["dp_soon", false],
+    ])
+    expect(states()[0]?.data).toMatchObject({ customer: "Example Hotel" })
   })
 })

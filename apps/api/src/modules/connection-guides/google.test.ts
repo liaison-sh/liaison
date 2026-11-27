@@ -29,6 +29,7 @@ interface ManifestConnection {
   type?: string
   authorizationUrl?: string
   scopes?: string[]
+  optionalScopes?: string[]
 }
 
 /** Every app manifest, kernel apps and bundled apps alike. */
@@ -465,6 +466,8 @@ describe("computeGoogleSetupValues", () => {
       const expected = new Set([
         ...(manifestConnection("mail", "gmail").scopes ?? []),
         ...(manifestConnection("calendar", "google-calendar").scopes ?? []),
+        // Scopes asked for later belong on the consent screen too (Calendar's free/busy).
+        ...(manifestConnection("calendar", "google-calendar").optionalScopes ?? []),
       ])
       expect(new Set(v.scopes)).toEqual(expected)
       expect(v.apis.map((a) => a.name)).toEqual(["Google Calendar API", "Gmail API"])

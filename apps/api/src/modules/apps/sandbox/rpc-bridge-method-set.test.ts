@@ -53,6 +53,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["calendar_findCalendarsForPollFallback", "async"],
   ["calendar_findCalendarsForWatchRenewal", "async"],
   ["calendar_findStalePendingPushes", "async"],
+  ["calendar_freeBusyContext", "async"],
   ["calendar_getAccount", "async"],
   ["calendar_getCalendar", "async"],
   ["calendar_getEvent", "async"],

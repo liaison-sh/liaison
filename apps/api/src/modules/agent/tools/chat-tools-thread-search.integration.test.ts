@@ -12,7 +12,7 @@
 // read through the new path, including when the index is stale or down.
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { sql } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import * as searchClientModule from "~/infra/search/client"
@@ -38,7 +38,7 @@ const INDEX = `test_thrsearch_${tag}`
 const THREADS_READ = "kernel:threads:read"
 const SCOPE = "crm:deals:read"
 
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

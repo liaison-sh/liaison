@@ -64,7 +64,7 @@ import { sql } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
-import { effectiveIndexName, ensureMeiliVectorStore, getMeili } from "~/infra/search/client"
+import { effectiveIndexName, getMeili } from "~/infra/search/client"
 import { searchLogger as log } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import { quoteIdent } from "~/lib/sql-utils"
@@ -562,7 +562,6 @@ async function carryVectors(
     : `app = "kernel" AND entity_type IN [${TRANSCRIPT_TYPES.map((t) => `"${t}"`).join(", ")}]`
   const pipeline = new TaskPipeline()
   let copied = 0
-  await ensureMeiliVectorStore()
   for (let offset = 0; ; offset += VECTOR_COPY_PAGE) {
     const page = (await live.getDocuments({
       filter,
@@ -669,9 +668,6 @@ export async function runReindex(): Promise<RebuildResult & { pruned: number }> 
     await deleteIndexIfExists(meili, shadowName)
     const created = await meili.createIndex(shadowName, { primaryKey: "id" })
     await waitForMeiliTask(meili, (created as { taskUid?: number }).taskUid)
-    if (Object.keys(embedders).length > 0) {
-      await ensureMeiliVectorStore().catch(() => undefined)
-    }
     const settingsTask = await shadow.updateSettings({
       ...expectedSettings(union),
       ...(Object.keys(embedders).length > 0 ? { embedders } : {}),
@@ -729,9 +725,7 @@ export async function runReindex(): Promise<RebuildResult & { pruned: number }> 
     }
     await pipeline.drain()
 
-    // Only an index with the memory embedder can hold vectors, and on Meili
-    // 1.10 reading them from one without it is refused (the vector store is an
-    // experimental feature a keyword-only deployment never turned on).
+    // Only an index with the memory embedder can hold vectors.
     // A vector is carried only into an embedder of its own width: Meili fails
     // the whole task for a vector of another length. Across a width change the
     // vectored documents are noted for re-embedding instead.
@@ -760,7 +754,7 @@ export async function runReindex(): Promise<RebuildResult & { pruned: number }> 
       const t = await meili.createIndex(liveName, { primaryKey: "id" })
       await waitForMeiliTask(meili, (t as { taskUid?: number }).taskUid)
     }
-    const swap = await meili.swapIndexes([{ indexes: [liveName, shadowName] }])
+    const swap = await meili.swapIndexes([{ indexes: [liveName, shadowName], rename: false }])
     await waitForMeiliTask(meili, (swap as { taskUid?: number }).taskUid)
     // Whatever was written to the old live index between the first replay and
     // the swap is now missing from the new live index: replay it there. From

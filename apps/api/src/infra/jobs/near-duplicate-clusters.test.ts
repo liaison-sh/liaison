@@ -2,7 +2,7 @@
 // P4c-T48: a hybrid search finds every wording of one fact, so a top five is
 // one fact five times unless the near duplicates are collapsed.
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { sql } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import {
@@ -25,7 +25,7 @@ const tag = ORG_ID.slice(0, 8)
 const INDEX_NAME = `test_p4ct48nd_${crypto.randomUUID().slice(0, 8)}`
 const THREADS_READ = "kernel:threads:read"
 
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

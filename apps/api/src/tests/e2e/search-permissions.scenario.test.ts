@@ -14,12 +14,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import type { TestWorld, WorkerEnv } from "@liaison/test-helpers"
 import { api, createUserWithScopes, login } from "@liaison/test-helpers"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { ks, seedTicket, ts } from "./helpers/tickets-seed"
 import { setupScenario, teardownScenario } from "./setup"
 
-function meiliClient(): MeiliSearch {
-  return new MeiliSearch({
+function meiliClient(): Meilisearch {
+  return new Meilisearch({
     host: process.env.MEILISEARCH_HOST ?? "http://localhost:7700",
     apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
   })

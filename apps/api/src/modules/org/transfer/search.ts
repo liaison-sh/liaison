@@ -11,7 +11,7 @@
 // replay entry. An aborted import's documents go with the org's purge (delete
 // by the org filter).
 import { createHash } from "node:crypto"
-import { effectiveIndexName, ensureMeiliVectorStore, getMeili } from "~/infra/search/client"
+import { effectiveIndexName, getMeili } from "~/infra/search/client"
 import { orgSearchFilter } from "~/modules/org/purge/external"
 import { writeIndexAndWait } from "~/modules/search/index-writer"
 import { waitForMeiliTask } from "~/modules/search/meili-task"
@@ -66,7 +66,6 @@ export async function adoptEmbedder(signature: string): Promise<void> {
       `org transfer: the index declares ${before} now; ${signature} is not adopted over it`,
     )
   }
-  await ensureMeiliVectorStore().catch(() => {})
   const meili = getMeili()
   const index = meili.index(effectiveIndexName())
   const settings = (await index.getSettings()) as { embedders?: Record<string, unknown> | null }

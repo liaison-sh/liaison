@@ -19,7 +19,7 @@ import { sql } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { registerJobWorker } from "~/infra/jobs/jobs"
-import { effectiveIndexName, ensureMeiliVectorStore, getMeili } from "~/infra/search/client"
+import { effectiveIndexName, getMeili } from "~/infra/search/client"
 import { searchLogger as log } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { cosine } from "~/modules/agent/memory/rrf"
@@ -112,7 +112,6 @@ async function resolveThreshold(orgId: string): Promise<number> {
 
 /** Every document of this org that has a vector, oldest first. */
 async function readVectoredDocuments(orgId: string): Promise<ClusterableDoc[]> {
-  await ensureMeiliVectorStore()
   const result = await getMeili()
     .index(effectiveIndexName())
     .search("", {

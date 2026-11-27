@@ -481,6 +481,69 @@ export function createCalendarMethods(
       return JSON.stringify(rows)
     },
 
+    /**
+     * What `find_free_slots` needs from the host: the caller's own events over the window, their
+     * addresses (to read "declined" and "attends"), their zone (profile, else primary calendar),
+     * and the personal Google account the free/busy query runs as, with whether its recorded
+     * grant holds the free/busy scope (null: the grant was never recorded, so only Google knows).
+     */
+    calendar_freeBusyContext: async (paramsJson: string): Promise<string> => {
+      requireApp("calendar", "calendar_freeBusyContext")
+      if (!hasScope("calendar:events:read", callerScopes ?? [])) {
+        throw new Error("forbidden: missing scope calendar:events:read")
+      }
+      const params = JSON.parse(paramsJson) as { timeMin: string; timeMax: string }
+      const caller = personId(userId)
+      const { withPrivilegedDb } = await import("~/db/privileged")
+      const { sql } = await import("drizzle-orm")
+      const { schemaRef } = await import("~/db/schema-ref")
+      const profile = caller
+        ? await withPrivilegedDb(orgId, "calendar-free-busy-profile", async (tx) => {
+            const result = (await tx.execute(
+              sql`SELECT email, timezone FROM ${sql.raw(schemaRef("kernel"))}.users WHERE id = ${caller}::uuid`,
+            )) as unknown as { rows?: unknown[] } | unknown[]
+            const rows = (Array.isArray(result) ? result : (result.rows ?? [])) as Array<{
+              email: string | null
+              timezone: string | null
+            }>
+            return rows[0] ?? null
+          })
+        : null
+      const { ownBusyEventsForCaller } = await import("~/apps/calendar/tools")
+      const selfEmails = new Set<string>()
+      if (profile?.email) selfEmails.add(profile.email.toLowerCase())
+      // The account addresses are known only after the read; read once, then add them.
+      const first = await ownBusyEventsForCaller(txDb, orgId, params, selfEmails)
+      for (const a of first.personalAccounts) selfEmails.add(a.identifier.toLowerCase())
+      const own =
+        first.personalAccounts.length > 0
+          ? await ownBusyEventsForCaller(txDb, orgId, params, selfEmails)
+          : first
+      const account = own.personalAccounts[0] ?? null
+      let hasFreeBusyScope: boolean | null = null
+      if (account) {
+        const { recordedGrant } = await import("~/modules/apps/connections/protected-scopes")
+        const grant = await withPrivilegedDb(orgId, "calendar-free-busy-grant", async (tx) => {
+          const result = (await tx.execute(
+            sql`SELECT metadata FROM ${sql.raw(schemaRef("kernel"))}.connected_accounts
+                WHERE id = ${account.connectedAccountId}::uuid AND org_id = ${orgId}::uuid`,
+          )) as unknown as { rows?: unknown[] } | unknown[]
+          const rows = (Array.isArray(result) ? result : (result.rows ?? [])) as Array<{
+            metadata: unknown
+          }>
+          return rows[0] ? recordedGrant(rows[0].metadata) : "unknown"
+        })
+        const { FREE_BUSY_SCOPE } = await import("~/apps/calendar/free-slots")
+        hasFreeBusyScope = grant === "unknown" ? null : grant.includes(FREE_BUSY_SCOPE)
+      }
+      return JSON.stringify({
+        events: own.events,
+        selfEmails: [...selfEmails],
+        timeZone: profile?.timezone ?? own.primaryTimeZone ?? null,
+        account: account ? { identifier: account.identifier, hasFreeBusyScope } : null,
+      })
+    },
+
     calendar_searchEvents: async (paramsJson: string): Promise<string> => {
       requireApp("calendar", "calendar_searchEvents")
       const { searchEventsForCaller } = await import("~/apps/calendar/tools")

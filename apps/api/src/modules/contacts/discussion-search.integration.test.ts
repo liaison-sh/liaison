@@ -16,7 +16,7 @@
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { readFileSync } from "node:fs"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import postgres from "postgres"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -56,7 +56,7 @@ const INDEX_NAME = `test_contact_discussion_${tag}`
 const SCOPES = ["kernel:contacts:read", "kernel:threads:read"]
 const NOTE_TEXT = "Prefers the quokka edition, ships to Lisbon"
 
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

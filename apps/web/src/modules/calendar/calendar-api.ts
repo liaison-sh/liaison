@@ -226,3 +226,33 @@ export async function setCalendarSelected(
 ): Promise<void> {
   await api.post("/apps/calendar/tools/set_selected", { params: { calendarId, selected } })
 }
+
+/** One attendee's availability, as `find_free_slots` reports it. */
+export interface FreeSlotsAttendee {
+  email: string
+  status: "checked" | "unknown" | "needs_consent" | "no_account"
+  reason?: string
+}
+
+export interface FreeSlotsResult {
+  timeZone: string
+  durationMinutes: number
+  slots: { start: string; end: string }[]
+  attendees: FreeSlotsAttendee[]
+  consent?: { needed: boolean; scope: string; message: string }
+}
+
+export async function findFreeSlots(
+  api: ApiClient,
+  params: {
+    durationMinutes: number
+    attendees: string[]
+    timeMin: string
+    timeMax: string
+    timeZone: string
+    maxResults?: number
+    maxPerDay?: number
+  },
+): Promise<FreeSlotsResult> {
+  return invokeTool(api, "find_free_slots", params)
+}

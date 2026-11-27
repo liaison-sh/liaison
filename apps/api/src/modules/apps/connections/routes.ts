@@ -381,6 +381,12 @@ export const connectionRoutes = new Hono<AppEnv>()
       shop,
       // The address being connected (e.g. reconnecting a listed account).
       ...(typeof body?.accountHint === "string" ? { accountHint: body.accountHint } : {}),
+      // Optional scopes a feature asks for the first time it needs them (incremental consent).
+      ...(Array.isArray(body?.scopes)
+        ? {
+            addScopes: (body.scopes as unknown[]).filter((v): v is string => typeof v === "string"),
+          }
+        : {}),
       browserBound: bind,
       shellFlow,
       // The callback is unauthenticated, so the browser that started the flow

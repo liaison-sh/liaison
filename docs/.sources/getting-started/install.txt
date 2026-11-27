@@ -62,3 +62,4 @@ Sign in with a password label -> packages/shared/src/i18n/locales/en/kernel.json
 Shopify CLI file uses Shopify-managed installation, store gets exactly its scopes -> apps/api/src/modules/connection-guides/shopify-app-toml.ts:9
 coding agent turns full order history on first so the file lists read_all_orders; deploy refused: off, deploy, request -> .claude/skills/setup-liaison/SKILL.md:524
 the printed file carries the org's opted-in protected scopes -> apps/api/src/modules/connection-guides/plan.ts:258
+External consent screen lists optional scopes too (calendar.freebusy) -> apps/api/src/modules/connection-guides/google.ts:291

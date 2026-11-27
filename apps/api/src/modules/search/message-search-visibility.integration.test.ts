@@ -16,7 +16,7 @@
 // indexer, over REAL rows in Postgres.
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { sql } from "~/db"
 import * as privilegedModule from "~/db/privileged"
 import * as searchClientModule from "~/infra/search/client"
@@ -41,7 +41,7 @@ const OPEN_CONTENT = "the pennylane payout ledger is open to the whole room"
 const GHOST_CONTENT = "the pennylane payout ledger row vanished after indexing"
 
 const INDEX_NAME = `test_p2bt26_${crypto.randomUUID().slice(0, 8)}`
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

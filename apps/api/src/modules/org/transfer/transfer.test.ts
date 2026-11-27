@@ -32,7 +32,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { drizzle } from "drizzle-orm/postgres-js"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import postgres from "postgres"
 import { COLUMNS, JSON_COLUMNS, JSON_CONTEXTS, looksEncrypted } from "~/cli/keys-rotate"
 import { createPool } from "~/db/connection"
@@ -90,7 +90,7 @@ const BUNDLED_APPS_DIR = join(import.meta.dir, "..", "..", "..", "..", "..", "..
 const LEFTOVER_SCHEMA = "app_xfer_leftover"
 
 const INDEX = `test_org_transfer_${randomUUID().slice(0, 8)}`
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

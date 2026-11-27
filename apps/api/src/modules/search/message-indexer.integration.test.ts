@@ -22,7 +22,7 @@ import {
   mock,
   spyOn,
 } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import { sql } from "~/db"
 import * as privilegedModule from "~/db/privileged"
 import {
@@ -318,7 +318,7 @@ const R_ORG = crypto.randomUUID()
 const R_USER = crypto.randomUUID()
 const R_THREAD = crypto.randomUUID()
 const R_INDEX = `test_msgidx_${R_ORG.slice(0, 8)}`
-const realMeili = new MeiliSearch({
+const realMeili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

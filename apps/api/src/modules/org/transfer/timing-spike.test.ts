@@ -19,7 +19,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createInterface } from "node:readline"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import postgres from "postgres"
 import { createPool } from "~/db/connection"
 import { PrivilegedDbTestAccess } from "~/db/privileged"
@@ -66,7 +66,7 @@ const PREFIX_B = `${process.env.REDIS_PREFIX ?? ""}spikeb:`
 const INDEX_A = `test_spike_a_${randomUUID().slice(0, 8)}`
 const INDEX_B_PREFIX = `test_spike_b_${randomUUID().slice(0, 6)}_`
 const INDEX_B = `${INDEX_B_PREFIX}${searchClientModule.effectiveIndexName().slice((env.MEILI_INDEX_PREFIX ?? "").length)}`
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

@@ -10,7 +10,7 @@
 // purge's filter delete removes them all.
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { MeiliSearch } from "meilisearch"
+import { Meilisearch } from "meilisearch"
 import type { RlsClient } from "~/db"
 import { withRlsContext } from "~/db/rls"
 import * as jobsModule from "~/infra/jobs/jobs"
@@ -33,7 +33,7 @@ const APP = "storesearch"
 const ORDERS_SCOPE = `${APP}:orders:read`
 const WORD = `zephyrquill${Date.now().toString(36)}`
 
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
   apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
 })

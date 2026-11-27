@@ -41,7 +41,6 @@ describe("embedder fit on a move", () => {
 
   it("adoption refuses when the settings show an embedder declared after the first read", async () => {
     spies.push(spyOn(search, "embedderSignature").mockResolvedValue("none"))
-    spies.push(spyOn(client, "ensureMeiliVectorStore").mockResolvedValue())
     let updated = false
     const index = {
       getSettings: async () => ({

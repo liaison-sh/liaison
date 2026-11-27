@@ -1210,6 +1210,18 @@ export const envSchema = z
     // Instagram through Facebook login) when the workspace has no Meta app of
     // its own. Unset: each workspace brings its own.
     META_APP_ID: z.preprocess(unsetIfEmpty, z.string().optional()),
+    // Managed edition: the Configuration ID (digits) of the Facebook Login for
+    // Business configuration of that same Meta app, the `config_id` of the
+    // Instagram (Unified login) sign-in. Used while a workspace connects Instagram
+    // with the instance's Meta app and set no instagramLoginConfigurationId of its
+    // own (the workspace's setting wins). Unset: each workspace sets its own.
+    META_INSTAGRAM_CONFIG_ID: z.preprocess(
+      unsetIfEmpty,
+      z
+        .string()
+        .regex(/^[0-9]{1,30}$/, "META_INSTAGRAM_CONFIG_ID must be digits only")
+        .optional(),
+    ),
     // This server's own public IPv4/IPv6 addresses, comma-separated. An
     // organization's custom app (managed edition) can never fetch them: traffic
     // from the host to its own public address can reach any port published on

@@ -13,7 +13,8 @@ import type { IssueBatchOp } from "../issue"
 import type { MutationsCtx } from "../mutations/shared"
 
 type Row = Record<string, unknown>
-type Db = Pick<MutationsCtx, "db">
+/** Reads and the claim batch only (the issuing flows hold narrower db handles than mutations). */
+type Db = { db: Pick<MutationsCtx["db"], "findMany" | "batch"> }
 
 export const STRIPE_SALES = "stripe_sales"
 

@@ -71,6 +71,7 @@ import {
   shellConnectFlowOf,
 } from "~/modules/apps/connections/shell-connect"
 import { closeSqlPools } from "~/modules/apps/connections/sql/pool"
+import { instanceClientConfigDefault } from "~/modules/apps/instance-config-defaults"
 import { isAppActiveForOrgAsync } from "~/modules/apps/org-apps"
 import { appSettingsPath } from "~/modules/apps/settings-paths"
 import { detectMailAccountType } from "~/modules/connection-guides/account-type"
@@ -2242,6 +2243,10 @@ export async function startOAuthFlow(
         return resolveAuthorizeConfigParams(
           connConfig.authorizeConfigParams,
           config && typeof config === "object" ? (config as Record<string, unknown>) : {},
+          // The instance's client carries its own provider settings (its Meta
+          // app's configuration id); a workspace's own client never gets them.
+          (key) =>
+            provider.source === "deployment" ? instanceClientConfigDefault(appName, key) : null,
         )
       })
     : ({ ok: true, params: {} } as const)

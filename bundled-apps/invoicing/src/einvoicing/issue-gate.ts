@@ -59,7 +59,7 @@ export interface EinvoiceSiteInput {
   payment_state?: PaymentState | null
   original?: EinvoiceOriginal | null
   /** A checkout (Shopify) buyer without company or VAT id is a consumer; a manual one is unknown. */
-  origin?: "manual" | "shopify"
+  origin?: "manual" | "shopify" | "checkout"
   /** The buyer's company as the call carries it (a checkout's billing company); the linked
    *  kernel contact's company is read when absent. */
   company?: string | null

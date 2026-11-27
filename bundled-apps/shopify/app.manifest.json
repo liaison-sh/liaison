@@ -282,7 +282,7 @@
       }
     ]
   },
-  "version": "0.4.32",
+  "version": "0.4.33",
   "network": {
     "imageHosts": ["cdn.shopify.com"],
     "linkHosts": ["admin.shopify.com"]
@@ -481,6 +481,18 @@
     }
   },
   "schema": {
+    "sale_snapshots": {
+      "rlsScope": "internal",
+      "fields": {
+        "orderId": "string",
+        "shopDomain": "string",
+        "customerId": "string?",
+        "order": "json",
+        "receivedAt": "date"
+      },
+      "constraints": { "unique": [["orderId"]] },
+      "indexes": [["receivedAt"], ["customerId"]]
+    },
     "webhook_deliveries": {
       "rlsScope": "internal",
       "fields": {
@@ -759,6 +771,13 @@
       }
     ]
   },
+  "implements": [
+    {
+      "contract": "revenue-stream",
+      "version": 1,
+      "tools": { "sale_get": "rs_sale_get", "sales_list": "rs_sales_list" }
+    }
+  ],
   "events": {
     "emits": [
       "order:created",
@@ -815,7 +834,8 @@
       "metafield:deleted",
       "app:uninstalled",
       "connection:updated",
-      "order:invoice_changed"
+      "order:invoice_changed",
+      "sale:paid"
     ],
     "subscribes": {
       "kernel/connected_account:create": "onConnectionEstablished",
@@ -1182,6 +1202,38 @@
   },
   "outsideTextFields": ["customer", "email", "note", "shipping_address", "billing_address", "po_number", "reason", "value"],
   "tools": {
+    "rs_sale_get": {
+      "description": "revenue-stream@1 sale_get: the sale of one order, as the order's webhook delivered it (contract op, not agent visible).",
+      "requiredScopes": ["shopify:internal"],
+      "handler": "rs_sale_get",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": { "external_id": { "type": "string" } },
+        "required": ["external_id"]
+      }
+    },
+    "rs_sales_list": {
+      "description": "revenue-stream@1 sales_list: the sales of the orders received in [paid_from, paid_to) (contract op, not agent visible).",
+      "requiredScopes": ["shopify:internal"],
+      "handler": "rs_sales_list",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "paid_from": { "type": "string" },
+          "paid_to": { "type": "string" },
+          "cursor": { "type": ["string", "null"] }
+        },
+        "required": ["paid_from", "paid_to"]
+      }
+    },
     "home_load": {
       "taintSource": true,
       "description": "Load the Shopify Home tab dashboard: connection, attention items (low-stock product variants, unfulfilled-past-SLA count, pending returns), and a recent-orders preview. This is a STORE DASHBOARD overview, not the order query — to ENUMERATE which orders need shipping use orders_search with query='fulfillment_status:unfulfilled' (it returns each order's line-item SKUs), and never read attention.lowInventory (a low-stock PRODUCT list) as if it were the order list.",

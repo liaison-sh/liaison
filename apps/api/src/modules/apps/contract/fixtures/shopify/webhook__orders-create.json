@@ -581,7 +581,7 @@
       "x-shopify-api-version": "2026-04"
     }
   ],
-  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts; the sale snapshot read and write and the sale:paid emit (revenue-stream@1) added by hand from the recorded order",
   "calls": [
     {
       "method": "connections_getAccounts",
@@ -607,6 +607,25 @@
         "{\"email\":\"marie@example.com\",\"name\":\"Marie Dupont\",\"externalId\":\"24929659846822\"}"
       ],
       "reply": "{\"id\":\"daae5c10-a387-44fc-8ebf-c2e405c0aaee\",\"orgId\":\"00000000-0000-4000-8000-00000000c0de\",\"handle\":\"@contact-7\",\"name\":\"Marie Dupont\",\"email\":\"marie@example.com\",\"phone\":null,\"company\":null,\"externalIds\":{\"shopify\":\"24929659846822\"},\"metadata\":null,\"tags\":[],\"createdBy\":\"00000000-0000-4000-8000-00000000c0df\",\"createdAt\":\"2026-11-12T08:18:33.019Z\",\"updatedAt\":\"2026-11-12T08:18:33.019Z\",\"ownerUserId\":\"00000000-0000-4000-8000-00000000c0df\",\"orgAccess\":\"editor\",\"aclUserIds\":[],\"aclRoleIds\":[],\"audienceKey\":null,\"orgWide\":true}"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["sale_snapshots", "{\"where\":{\"orderId\":\"19010984706214\"},\"limit\":1}"],
+      "reply": "[]"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "sale_snapshots",
+        "{\"orderId\":\"19010984706214\",\"receivedAt\":\"2026-01-01T00:00:00.000Z\",\"shopDomain\":\"contract-shop.myshopify.com\",\"customerId\":\"24929659846822\",\"order\":{\"orderId\":\"19010984706214\",\"name\":\"#2802\",\"customer\":{\"id\":\"24929659846822\",\"email\":\"marie@example.com\",\"first_name\":\"Marie\",\"last_name\":\"Dupont\",\"country\":\"FR\",\"external_ids\":{\"shopify\":\"24929659846822\"}},\"customerId\":\"24929659846822\",\"poNumber\":null,\"buyerTaxId\":null,\"note\":\"Recorded order\",\"totalPrice\":{\"amount\":\"1771.90\",\"currencyCode\":\"USD\"},\"taxesIncluded\":false,\"billingAddress\":null,\"shippingAddress\":{\"name\":\"Marie Dupont\",\"company\":null,\"address1\":\"1 Contract Street\",\"address2\":null,\"zip\":\"69002\",\"city\":\"Lyon\",\"province\":null,\"country_code\":\"FR\",\"phone\":null},\"lineItems\":[{\"id\":\"50929465917606\",\"title\":\"The Minimal Snowboard\",\"quantity\":2,\"priceSet\":{\"amount\":\"885.95\",\"currencyCode\":\"USD\"},\"requiresShipping\":true,\"taxLines\":[],\"discountAllocations\":[],\"variant\":{\"id\":\"56534760784038\",\"title\":null,\"sku\":null}}],\"shippingLines\":[],\"fulfillmentStatus\":\"partial\",\"financialStatus\":\"partially_refunded\",\"marketId\":null,\"shopDomain\":\"contract-shop.myshopify.com\"}}"
+      ],
+      "reply": "{\"id\": \"00000000-0000-4000-8000-0000000005b1\"}"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"sale\",\"action\":\"paid\",\"entityId\":\"19010984706214\",\"data\":{\"external_id\":\"19010984706214\",\"occurred_at\":\"2026-01-01T00:00:00.000Z\"},\"metadata\":{\"shopify_webhook_id\":\"contract-orders-create-1\"}}"
+      ]
     },
     {
       "method": "emit",

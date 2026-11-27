@@ -57,6 +57,8 @@ Current Meta apps offer **API setup with Unified login** for Instagram: the conn
 7. Click **Connect** on **Instagram account**. If the sign-in covers several Instagram accounts, Liaison connects none and names them: ask the agent to connect the one you mean.
 8. Turn on access to direct messages, before or right after connecting: in the Instagram app, open **Settings and activity > Messages and story replies > Message requests > Connected tools** and turn on **Allow access to messages** (older app versions: **Message controls > Connected tools**). It is off by default on new professional accounts. While it is off, Instagram refuses Liaison's direct message reads: **Messages** shows a notice saying how to turn it on, and `connections_status` lists the issue `dm_access_disabled` on the connection. Messages arrive on the next sync after you turn it on.
 
+On a managed server that provides a Meta app for every workspace (`META_APP_ID`, `META_APP_SECRET` and `META_INSTAGRAM_CONFIG_ID`, see [Connecting apps](../connecting-apps.md)), a workspace with no Meta app of its own skips steps 2 to 5: click **Connect** on **Facebook Page** or **Instagram account**. The server's app secret then also checks the Meta webhook signatures and is the one `webhooks_setup` uses; it is never shown to the agent.
+
 `liaison guide social/instagram_unified` prints every step. Meta has no call to revoke this token: after you disconnect it in Liaison, remove the app from the business portfolio in Business settings to revoke it at Meta. Meta accepts a direct message reply from an account connected this way within 24 hours of the person's last message only, and liking is not available for it.
 
 ## Review findings and approve replies

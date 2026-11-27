@@ -1,0 +1,7 @@
+[
+  [
+    "bundled-apps/invoicing/src/handlers/shopify-order-paid.ts",
+    "? (scope: \"goods\" | \"software\") => (scope === splits[0]?.scope ? claimOpsOf() : [])",
+    "a document's goods or software split, choosing which of a sale's documents claims its other names"
+  ]
+]

@@ -167,7 +167,7 @@ async function blockersFor(args: {
   contactId: string | null
   snapshot: BuyerSnapshot
   company: string | null
-  origin: "shopify" | "manual"
+  origin: "shopify" | "manual" | "checkout"
   operationCategory: string | null
 }): Promise<Array<{ code: GateCode; item: MissingItem }>> {
   const idDb: ReadDb = {

@@ -43,11 +43,13 @@ import { bootstrapKernelApps, resetBootstrap } from "~/framework/bootstrap"
 import { registerAppPhoneHeader, registerAppPhoneTopBarHidden } from "~/framework/define-app"
 import { ApiProvider } from "~/modules/shell/ApiContext"
 import { MainPanel } from "~/modules/shell/MainPanel"
+import { openFromWork } from "~/modules/shell/open-from-work"
 import { PanelProvider } from "~/modules/shell/PanelContext"
 import { openTab, resetTabStore } from "~/modules/shell/tab-store"
 import { addThread, handleTypingEvent, resetThreadStore } from "~/modules/threads/thread-store"
+import { resetPushNavOpener } from "~/primitives/createPushNav"
 
-function renderPanel() {
+function renderPanel(tier: "phone" | "desktop" = "phone") {
   return render(() => (
     <Router>
       <Route
@@ -55,7 +57,7 @@ function renderPanel() {
         component={() => (
           <ApiProvider>
             <PanelProvider>
-              <MainPanel tier="phone" />
+              <MainPanel tier={tier} />
             </PanelProvider>
           </ApiProvider>
         )}
@@ -231,5 +233,93 @@ describe("the phone top bar", () => {
     )
     expect(screen.queryByTestId("phone-top-bar-title")).toBeNull()
     expect(screen.queryByTestId("phone-top-bar-org")).toBeNull()
+  })
+
+  // iOS re-walk N2 (Mail, Tickets): the screens that hide this bar because
+  // they own a large title (the Mail and Tickets inboxes, Approvals) had no
+  // way back once opened from the Work list, and the edge swipe, which
+  // presses the visible `data-phone-back` control, did nothing. The shell now
+  // draws its back control on a row of its own above such a screen.
+  describe("a screen that hides the bar, opened from Work", () => {
+    const t = (key: string) => (key === "kernel.phoneTabWork" ? "Work" : key)
+
+    function registerInbox(appId: "mail" | "tickets"): void {
+      registerTabType(`${appId}:inbox`, {
+        component: () => <div data-testid={`${appId}-inbox-body`} />,
+        sidebar: null,
+        icon: () => null,
+        urlPattern: `/${appId}`,
+        defaultLabel: appId === "mail" ? "Mail" : "Tickets",
+        appId,
+        localType: "inbox",
+      })
+      // The same call the app's own `registerAppHooks` makes (mail/exports.ts, tickets/exports.ts).
+      registerAppPhoneTopBarHidden(appId, "inbox")
+    }
+
+    const screens = [
+      {
+        name: "Mail",
+        open: () => {
+          registerInbox("mail")
+          openTab({ type: "mail:inbox", entityId: "inbox", label: "Mail", preview: false })
+        },
+        body: "mail-inbox-body",
+      },
+      {
+        name: "Tickets",
+        open: () => {
+          registerInbox("tickets")
+          openTab({ type: "tickets:inbox", entityId: "inbox", label: "Tickets", preview: false })
+        },
+        body: "tickets-inbox-body",
+      },
+      {
+        name: "Approvals",
+        open: () =>
+          openTab({ type: "approvals", entityId: "approvals", label: "Approvals", preview: false }),
+        body: "approvals-screen",
+      },
+    ]
+
+    afterEach(() => {
+      resetPushNavOpener()
+      window.history.pushState({}, "", "/")
+    })
+
+    for (const s of screens) {
+      it(`${s.name}: shows "< Work" with the edge swipe's marker, and Back returns to Work`, async () => {
+        openFromWork(t, s.open)
+        renderPanel()
+
+        const back = await screen.findByTestId("main-panel-back")
+        expect(back.hasAttribute("data-phone-back")).toBe(true)
+        expect(screen.getByTestId("main-panel-back-label").textContent).toBe("Work")
+        // The bar itself stays hidden: only the back row is drawn.
+        expect(screen.getByTestId("phone-back-row")).toBeTruthy()
+        expect(screen.queryByTestId("phone-top-bar-title")).toBeNull()
+        // One back control on screen, so the swipe and the tap agree.
+        expect(document.querySelectorAll("[data-phone-back]").length).toBe(1)
+
+        back.click()
+        await waitFor(() => expect(window.location.pathname).toBe("/work"))
+      })
+
+      it(`${s.name}: shows no back control when not opened from Work`, async () => {
+        s.open()
+        renderPanel()
+        await waitFor(() => expect(screen.getByTestId(s.body)).toBeTruthy(), { timeout: 15000 })
+        expect(screen.queryByTestId("main-panel-back")).toBeNull()
+        expect(document.querySelector("[data-phone-back]")).toBeNull()
+      })
+
+      it(`${s.name}: shows no back control on the desktop`, async () => {
+        openFromWork(t, s.open)
+        renderPanel("desktop")
+        await waitFor(() => expect(screen.getByTestId(s.body)).toBeTruthy(), { timeout: 15000 })
+        expect(screen.queryByTestId("main-panel-back")).toBeNull()
+        expect(document.querySelector("[data-phone-back]")).toBeNull()
+      })
+    }
   })
 })

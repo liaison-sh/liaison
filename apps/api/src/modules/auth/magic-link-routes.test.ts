@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { app } from "~/app"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { users } from "~/db/schema/kernel"
+import { userPreferences, users } from "~/db/schema/kernel"
 import type { EmailMessage, EmailProvider } from "~/infra/email"
 import {
   ConsoleEmailProvider,
@@ -107,9 +107,12 @@ describe("passwordless magic-link login", () => {
       expect(fr.sent?.text).toContain("Se connecter à Liaison")
 
       // The person's own UI language wins over the org's.
-      await sql`INSERT INTO kernel.user_preferences (user_id, language)
-                VALUES (${userId}, 'en')
-                ON CONFLICT (user_id) DO UPDATE SET language = 'en'`
+      await withPrivilegedDb(orgId, "test-magic-link-language", (tx) =>
+        tx
+          .insert(userPreferences)
+          .values({ userId, language: "en" })
+          .onConflictDoUpdate({ target: userPreferences.userId, set: { language: "en" } }),
+      )
       await clearRedisPatterns(["magic:*", "magic-rate:*", "bruteforce:*"])
       const en = await requestChallenge()
       expect(en.sent?.subject).toBe(`${en.code} is your Liaison sign-in code`)

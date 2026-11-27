@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { type PrivilegedDb, type RlsClient, sql } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
+import { withPrivilegedDb } from "~/db/privileged"
 import * as emailInfra from "~/infra/email"
 import { env } from "~/lib/env"
 import { deactivateUser } from "~/modules/users/service"
@@ -21,7 +22,7 @@ const originalTransaction = (rlsDb as any).transaction.bind(rlsDb)
   })
 }
 
-import { organizations } from "~/db/schema/kernel"
+import { organizations, userPreferences } from "~/db/schema/kernel"
 import { createInvitation } from "~/modules/users/invites"
 
 const ORG_A = "00000000-0000-0000-0000-c10000000001"
@@ -192,9 +193,12 @@ describe("invites service", () => {
 
       // An org language that does not ship: the inviter's own choice decides.
       await sql`UPDATE kernel.organizations SET default_locale = 'xx' WHERE id = ${ORG_A}`
-      await sql`INSERT INTO kernel.user_preferences (user_id, language)
-                VALUES (${INVITER}, 'fr')
-                ON CONFLICT (user_id) DO UPDATE SET language = 'fr'`
+      await withPrivilegedDb(ORG_A, "test-invite-inviter-language", (tx) =>
+        tx
+          .insert(userPreferences)
+          .values({ userId: INVITER, language: "fr" })
+          .onConflictDoUpdate({ target: userPreferences.userId, set: { language: "fr" } }),
+      )
       await createInvitation(rlsDb, {
         orgId: ORG_A,
         email: "fr-invitee-2@example.com",

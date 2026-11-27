@@ -236,6 +236,21 @@ describe("the lively tier", () => {
     expect(Number(row?.future_reads)).toBe(0)
   })
 
+  it("opens with the founder's Sales and support dashboard, shared with the org", async () => {
+    const activity = first.activity as LivelyActivity
+    expect(activity.dashboards.length).toBe(1)
+    const rows = typedRows<{ title: string; org_access: string; owner: string }>(
+      await withSystemDb("lively-test-dashboards", (tx) =>
+        tx.execute(
+          sql`SELECT d.title, d.org_access, u.email AS owner FROM kernel.dashboards d
+              JOIN kernel.users u ON u.id = d.owner_user_id
+              WHERE d.org_id = ${first.world.orgId}::uuid`,
+        ),
+      ),
+    )
+    expect(rows.map((r) => [r.title, r.org_access])).toEqual([["Sales and support", "viewer"]])
+  })
+
   it("labels demo tasks, so the board's Labels filter has groups and narrows the list", async () => {
     const orgId = first.world.orgId
     const activity = first.activity as LivelyActivity

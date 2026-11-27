@@ -43,6 +43,12 @@ You can bring events from another calendar tool as an `.ics` file. Upload the fi
 3. Add **Attendees** as comma-separated email addresses.
 4. Click **Save**, or **Delete** to remove the event.
 
+### When the event also changed in Google
+
+Liaison sends only what you changed. If someone edited the event in Google meanwhile (a new description while you moved the time here), both changes are kept. If the same field changed on both sides, the newer change wins: the event then shows a notice naming the field and the value that was replaced, and you get a quiet item on Home.
+
+Times are sent with the calendar's time zone, so a weekly meeting at 09:00 stays at 09:00 when the clocks change. Calendars you can only read (a holidays calendar, a calendar shared with you to view) cannot take new events or edits: Liaison refuses the change instead of keeping an event Google would reject.
+
 Attendees are not emailed: changes in Liaison do not send Google invitations. Only the organizer can change an event's guest list. A recurring event cannot be edited here yet, because a change would affect the whole series. An event with a Meet link shows **Join with Google Meet**.
 
 ## Away days from your calendar

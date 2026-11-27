@@ -95,6 +95,10 @@ export interface FacturxInput {
   tax_total_eur_minor?: bigint | null
   /** The invoicing period (BG-14: BT-73, BT-74), the service month a document bills. */
   service_period?: { start: string; end: string } | null
+  /** The date of the sale (BT-72, actual delivery date), YYYY-MM-DD, when it differs from the
+   *  issue date: a French mandatory mention (CGI ann. II art. 242 nonies A, I; Directive
+   *  2006/112/EC art. 226 point 7). Invoices only. */
+  supply_date?: string | null
   lines: FacturxLine[]
   subtotal_minor: bigint
   tax_total_minor: bigint
@@ -488,6 +492,13 @@ export function buildCii(raw: FacturxInput): string {
         address(input.delivery) +
         "</ram:ShipToTradeParty>"
       : ""
+  // BT-72 sits after the ship-to party in the CII delivery block (EN 16931 syntax binding).
+  const deliveryEvent =
+    input.type === "invoice" && input.supply_date && !blank(input.supply_date)
+      ? "<ram:ActualDeliverySupplyChainEvent><ram:OccurrenceDateTime>" +
+        `<udt:DateTimeString format="102">${date102(input.supply_date)}</udt:DateTimeString>` +
+        "</ram:OccurrenceDateTime></ram:ActualDeliverySupplyChainEvent>"
+      : ""
 
   const paymentMeans =
     input.iban && input.iban.trim()
@@ -573,7 +584,7 @@ export function buildCii(raw: FacturxInput): string {
     "<rsm:SupplyChainTradeTransaction>" +
     lines +
     agreement +
-    `<ram:ApplicableHeaderTradeDelivery>${delivery}</ram:ApplicableHeaderTradeDelivery>` +
+    `<ram:ApplicableHeaderTradeDelivery>${delivery}${deliveryEvent}</ram:ApplicableHeaderTradeDelivery>` +
     settlement +
     "</rsm:SupplyChainTradeTransaction>" +
     "</rsm:CrossIndustryInvoice>"

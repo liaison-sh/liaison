@@ -30,6 +30,7 @@ import {
   onMount,
   Show,
 } from "solid-js"
+import { purchaseSurfacesHidden } from "~/lib/native-bridge"
 import {
   readSetupState,
   SetupChecklistCard,
@@ -229,7 +230,8 @@ export const SetupKickoffRow: Component<{
           </>
         )}
       </Show>
-      <Show when={props.view.demoUrl}>
+      {/* The demo leads to a paid signup: never linked from the iOS app (3.1.1). */}
+      <Show when={!purchaseSurfacesHidden() && props.view.demoUrl}>
         {(url) => (
           <div data-testid="setup-demo-offer" class="mt-1 max-w-md text-text-secondary">
             <span class="font-medium text-text-primary">

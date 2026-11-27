@@ -23,7 +23,7 @@
 
 import { Sparkles } from "lucide-solid"
 import { type Accessor, createSignal, type JSX, Show } from "solid-js"
-import { modelShortLabel } from "~/lib/model-groups"
+import { modelLockedReasonKey, modelShortLabel } from "~/lib/model-groups"
 import { modelMenuReachable } from "~/modules/agent/ModelSelector"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import ThreadModelChip, { type ThreadModelChipProps } from "~/modules/threads/ThreadModelChip"
@@ -111,9 +111,7 @@ export function createInvokedModelMenu(opts: InvokedModelMenuOptions) {
           data-testid="thread-invoked-model"
           class={`${props.class} disabled:cursor-default disabled:opacity-60`}
           disabled={!modelMenuReachable(c().balance)}
-          title={
-            modelMenuReachable(c().balance) ? undefined : i18n.t("kernel.upgradeToChangeModel")
-          }
+          title={modelMenuReachable(c().balance) ? undefined : i18n.t(modelLockedReasonKey())}
           onClick={choose}
         >
           <Sparkles size={props.iconSize} class="shrink-0" />

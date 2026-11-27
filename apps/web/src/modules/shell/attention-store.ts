@@ -4,6 +4,7 @@ import type { AttentionFeedResponse, AttentionItem, AttentionProviderError } fro
 import { createStore, reconcile } from "solid-js/store"
 import type { ApiClient } from "~/lib/api-client"
 import { announceApiReady } from "~/lib/api-ready"
+import { purchaseSurfacesHidden } from "~/lib/native-bridge"
 
 type AttentionState = {
   items: AttentionItem[]
@@ -57,6 +58,11 @@ function resolveLocally(id: string): void {
   setState("items", (items) => items.filter((i) => i.id !== id))
 }
 
+/** A row whose way out is Settings > Billing (apps/api modules/cloud/attention.ts). */
+export function isBillingRow(item: Pick<AttentionItem, "app" | "entity">): boolean {
+  return item.app === "kernel" && item.entity === "billing"
+}
+
 async function load(api: ApiClient): Promise<void> {
   setState("loading", true)
   const seq = ++loadSeq
@@ -68,6 +74,9 @@ async function load(api: ApiClient): Promise<void> {
       else resolvedLocally.delete(id)
     }
     if (hide.size > 0) res.data.items = res.data.items.filter((i) => !hide.has(i.id))
+    // The iOS app has no Billing page (lib/native-bridge.ts, guideline 3.1.1):
+    // a row about the card or a top-up would open nothing there.
+    if (purchaseSurfacesHidden()) res.data.items = res.data.items.filter((i) => !isBillingRow(i))
     // RECONCILE by id, never a wholesale replace. `<For>` keys rows by object
     // REFERENCE, so handing it a fresh array unmounts and remounts every row —
     // and this feed reloads on a 5 min poll, on tab focus, and on every WS echo.

@@ -231,3 +231,11 @@ thank-you mail only when opted in, else plain mail only with auto-email -> bundl
 no mailbox, no mail -> bundled-apps/invoicing/src/sale-thanks.ts:277
 French for a French buyer, else the issuer's language -> bundled-apps/invoicing/src/sale-thanks.ts:115
 template placeholders -> bundled-apps/invoicing/src/sale-thanks.ts:135
+Date of sale printed when it differs from the issue date, invoices only -> bundled-apps/invoicing/templates/shared.ts:963
+sale date stored only when it differs, never on other types -> bundled-apps/invoicing/src/issue.ts:869
+Factur-X delivery date (BT-72) from the sale date -> bundled-apps/invoicing/src/facturx/cii.ts:498
+services outside the EU mention from 2026-11-28, goods keep export, mixed prints both -> bundled-apps/invoicing/src/tax.ts:685
+reverse charge needs a VIES-valid VAT number -> bundled-apps/invoicing/src/sale-tax.ts:182
+two pieces of location evidence for a consumer's electronic services -> bundled-apps/invoicing/src/sale-tax.ts:269
+source tax checked against the rate, a difference parks -> bundled-apps/invoicing/src/sale-tax.ts:128
+place of supply and evidence kept on the document -> bundled-apps/invoicing/src/issue.ts:1423

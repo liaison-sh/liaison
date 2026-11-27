@@ -78,6 +78,7 @@ const READERS: Record<string, string> = {
   "modules/approvals/required-step.ts": REQUEST,
   "modules/approvals/routed-reminders.ts": ENSURES,
   "modules/approvals/result-notice.ts": JOB,
+  "modules/approvals/waiting-on-others.ts": AGENT,
   "modules/apps/activation.ts": SETUP,
   "modules/apps/app-registries.ts": SETUP,
   // Reads the tool registry of the app whose run just settled in this process

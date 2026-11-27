@@ -83,5 +83,13 @@
       "nextUnlimited": "{{plan}} n'a pas de limite sur ce point. Choisissez une durée plus courte, ou passez-y dans Facturation.",
       "largest": "C'est la plus grande offre : choisissez une durée plus courte."
     }
+  },
+  "native": {
+    "paymentRequired": "Les fonctions d'IA sont suspendues jusqu'au paiement de la facture en attente. Un administrateur peut la régler depuis Liaison sur le web.",
+    "outOfCredits": "Votre espace de travail n'a plus de crédits, l'assistant s'est donc arrêté. Tout le reste fonctionne. Un administrateur peut en ajouter depuis Liaison sur le web.",
+    "adminUntil": "En tant qu'administrateur, vous pouvez exporter les données jusqu'au {{date}}.",
+    "seatLimitReached": "Cette organisation utilise toutes les places incluses dans son offre. Un administrateur peut d'abord désactiver quelqu'un.",
+    "storageLimitReached": "Cette organisation utilise tout le stockage inclus dans son offre. Libérez d'abord de l'espace.",
+    "customAppLimitReached": "Cette organisation utilise toutes les applications personnalisées incluses dans son offre. Retirez-en d'abord une."
   }
 }

@@ -95,6 +95,12 @@ For an issuer in the EU, a customer in another EU country is either a business o
 - When VIES registers the number to a name unlike the customer's, the card shows both names and flags the mismatch.
 - If the customer really is a consumer, the agent says so (`buyer_is_consumer`). That is refused when a VAT number is on record for the customer. Against any other business evidence, every tool, drafts, edits and quotes below the approval threshold included, waits for a person, whatever auto-approve policy the org set: the approval card says the agent declared a private consumer and lists the evidence. A draft that waits for another reason, such as what the conversation read, gets a card saying what the call does: it names a private consumer only when the call declares one.
 
+### Sale date and services outside the EU
+
+- When an invoice is issued on another day than the sale (an order paid yesterday, a sale invoiced later), its PDF prints **Date of sale** under **Issued**, and its Factur-X carries the same date as the delivery date. An invoice issued on the day of the sale prints none. Credit notes never print one.
+- From 28 November 2026, services sold to a customer outside the EU (software, a digital download, a service) print a mention that French VAT does not apply because the place of supply is outside France, instead of the export of goods mention. Goods keep the export mention, and a document mixing both prints the two. Documents issued before keep their mention.
+- A sale whose tax its source computed (a checkout's own tax engine) is checked before it is issued: a reverse charge needs a VAT number VIES confirmed, a digital service to a consumer needs two pieces of location evidence (billing address, IP address, card country) that name the same country, and the source's tax must match the rate of that country. Anything else waits for a person. The place of supply and its evidence are kept with the invoice.
+
 The approval card of a new document states its tax treatment and rate, whether the prices were typed with VAT included (**Prices include tax** on the issuer profile) or net, and the net, VAT and total that will be issued.
 
 A credit note's card states its total, its lines, its issue date and the invoice it reverses, with that invoice's date. With no stated date it says the note takes the day it is approved. Whatever parks the request, the card says the same.

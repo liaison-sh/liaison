@@ -3,6 +3,7 @@
 // Handler barrel: every handler the manifest names, by exact export name.
 import type { UpstreamProbeResult, WebhookResult } from "@liaison/app-sdk"
 import { handleStripeEvent, type IngestCtx } from "./dispatch"
+import { runDisputesDue } from "./disputes-due"
 import { type MatchRunCtx, runCustomerMatch } from "./match"
 import { runMrrRebuild } from "./mrr-rebuild"
 import { holdWhileImporting, readInstall } from "./states"
@@ -79,6 +80,9 @@ export const backfillJob = (_params: unknown, ctx: SyncCtx) => runBackfill(ctx)
 
 /** The nightly reconcile: by list and by id, never a deletion from absence (sync/reconcile.ts). */
 export const reconcileJob = (_params: unknown, ctx: SyncCtx) => runReconcile(ctx)
+
+/** Every dispute still waiting for a response, said again each day (disputes-due.ts). */
+export const disputesDueJob = (_params: unknown, ctx: SyncCtx) => runDisputesDue(ctx)
 
 /** Failed deliveries played again (sync/maintenance.ts). */
 export const catchupRetryJob = (_params: unknown, ctx: SyncCtx) => runCatchup(ctx)

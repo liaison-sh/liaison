@@ -138,6 +138,9 @@ export function listSourceFiles(dir: string, out: string[] = []): string[] {
 export function serverSourceFiles(root = LIAISON_ROOT): string[] {
   const files = listSourceFiles(path.join(root, "apps", "api", "src"))
   for (const pkg of safeReaddir(path.join(root, "packages"))) {
+    // The remote CLI is a client program: it runs on people's machines and
+    // talks HTTPS, it never touches the database (packages/cli/src/main.ts).
+    if (pkg === "cli") continue
     listSourceFiles(path.join(root, "packages", pkg, "src"), files)
   }
   listSourceFiles(path.join(root, "apps", "db-gate", "src"), files)

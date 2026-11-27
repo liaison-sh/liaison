@@ -17,6 +17,22 @@ This works on any Liaison server that lets organizations have their own apps: it
   claude mcp add --transport http liaison https://<your Liaison address>/mcp
   ```
 
+## Or use the liaison command line
+
+An assistant that can run commands (Claude Code, Codex) can use the [`liaison` command line](cli.md) instead of MCP. The app's files then live in a folder on your computer, and the commands send them to the same builder:
+
+```
+liaison login --host https://<your Liaison address>
+liaison apps init visit-log --title "Visit log"
+cd visit-log
+liaison apps push            # build and type-check, errors as file:line
+liaison apps test            # the tests/*.json cases, in the preview
+liaison apps publish --wait  # the approval card, then waits for it
+liaison apps logs --follow
+```
+
+You approve the sign-in in your browser. The publish waits for the same approval as below, and the command line cannot approve it.
+
 ## Give your assistant the skill
 
 The skill tells the assistant the whole loop: the tools, their inputs, the limits, what each refusal means, and a worked example that the Liaison repository checks with every change. It is the file [`.claude/skills/building-an-org-app/SKILL.md`](https://github.com/liaison-sh/liaison/blob/main/.claude/skills/building-an-org-app/SKILL.md).

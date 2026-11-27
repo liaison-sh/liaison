@@ -212,6 +212,8 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   },
   // The app loader every loader host runs; the api's Workers executor and its
   // test stand-in (unit, integration) import it.
+  // The remote CLI: its own tests only (a fake server; it imports nothing of the api).
+  { glob: "packages/cli/**", suites: ["workspace-packages"] },
   { glob: "packages/app-loader/**", suites: ["workspace-packages", "unit", "integration"] },
   { glob: "packages/db-core/**", suites: ["workspace-packages", "unit", "integration"] },
   // The offline checker page: its own tests, the evidence zips that embed it

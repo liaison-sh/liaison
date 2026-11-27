@@ -104,6 +104,9 @@
     "packages/app-ui": {
       "entry": ["src/**/*.vitest.tsx"]
     },
+    "packages/cli": {
+      "entry": ["src/main.ts"]
+    },
     "packages/app-sdk": {
       "entry": [
         "src/types.test-d.ts"

@@ -1,0 +1,28 @@
+{
+  "name": "@liaison/cli",
+  "version": "0.1.0",
+  "description": "The liaison command line for a Liaison organization: sign in, build and publish your org's own apps, apply part of the config, over HTTPS.",
+  "license": "FSL-1.1-ALv2",
+  "type": "module",
+  "bin": {
+    "liaison": "dist/liaison.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "bun build src/main.ts --target node --outfile dist/liaison.js",
+    "prepack": "bun run build",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "^1",
+    "typescript": "^6",
+    "yaml": "^2.9.1"
+  }
+}

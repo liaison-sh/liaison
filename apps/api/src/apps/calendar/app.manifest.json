@@ -702,6 +702,7 @@
       "event:create",
       "event:update",
       "event:delete",
+      "event:changed",
       "event:sync_conflict"
     ],
     "subscribes": {

@@ -25,15 +25,15 @@ export function normaliseIdentity(raw: {
   shopifyCustomerId?: string | null
   hubUserId?: string | null
 }): BuyerIdentity {
-  const clean = (v: string | null | undefined) => {
+  const trimmedOrNull = (v: string | null | undefined) => {
     const t = (v ?? "").trim()
     return t === "" ? null : t
   }
-  const email = clean(raw.email)
+  const email = trimmedOrNull(raw.email)
   return {
     email: email ? email.toLowerCase() : null,
-    shopifyCustomerId: clean(raw.shopifyCustomerId),
-    hubUserId: clean(raw.hubUserId),
+    shopifyCustomerId: trimmedOrNull(raw.shopifyCustomerId),
+    hubUserId: trimmedOrNull(raw.hubUserId),
   }
 }
 

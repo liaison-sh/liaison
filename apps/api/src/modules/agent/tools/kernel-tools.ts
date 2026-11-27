@@ -998,10 +998,6 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     params: z.object({
       fileId: z.string().min(1),
       expiresInSec: z.number().int().min(60).max(900).optional(),
-      download: z
-        .boolean()
-        .optional()
-        .describe("true: a download URL even for a text file, instead of its text."),
     }),
     handler: handleFilesRead as (params: unknown, ctx: any) => Promise<unknown>,
     // A text file's content reaches the model. When the file came from outside the org (an

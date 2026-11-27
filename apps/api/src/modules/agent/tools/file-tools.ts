@@ -141,8 +141,7 @@ interface VisibleFileRow {
  * JSON, YAML, XML, HTML, source code, a log) comes back as its text, at most
  * `TEXT_READ_MAX_BYTES` of it with a note when cut, fenced as untrusted outside
  * content: an attachment is data, never instructions. Any other file (an image,
- * a PDF, a `.espreset` blob), or a text file asked for with `download: true`,
- * comes back as a short-lived signed download URL, which keeps large binary
+ * a PDF, a `.espreset` blob) comes back as a short-lived signed download URL, which keeps large binary
  * attachments out of the agent's context.
  *
  * Access is the file's own: the row is read under the caller's RLS context (a
@@ -155,24 +154,22 @@ interface VisibleFileRow {
  * The tool is gated on `kernel:files:read`.
  */
 export async function handleFilesRead(
-  params: { fileId: string; expiresInSec?: number; download?: boolean },
+  params: { fileId: string; expiresInSec?: number },
   ctx: FileToolContext,
   deps: FilesReadDeps = defaultFilesReadDeps,
 ): Promise<AgentFileDownload | AgentFileText | FileReadError> {
-  if (params.download !== true) {
-    const row = extractRows<VisibleFileRow>(
-      await ctx.db.execute(
-        sql`SELECT id, app, filename, mime_type AS "mimeType", size_bytes AS "sizeBytes",
-                   storage_key AS "storageKey", enc_version AS "encVersion"
-              FROM ${K}.files WHERE id = ${params.fileId} LIMIT 1`,
-      ),
-    )[0]
-    if (!row) throw new FileServiceError("PARENT_NOT_FOUND", "File not visible")
-    const text = isTextLikeFile(row.mimeType, row.filename)
-      ? await readTextFile(row, ctx, deps)
-      : null
-    if (text) return text
-  }
+  const row = extractRows<VisibleFileRow>(
+    await ctx.db.execute(
+      sql`SELECT id, app, filename, mime_type AS "mimeType", size_bytes AS "sizeBytes",
+                 storage_key AS "storageKey", enc_version AS "encVersion"
+            FROM ${K}.files WHERE id = ${params.fileId} LIMIT 1`,
+    ),
+  )[0]
+  if (!row) throw new FileServiceError("PARENT_NOT_FOUND", "File not visible")
+  const text = isTextLikeFile(row.mimeType, row.filename)
+    ? await readTextFile(row, ctx, deps)
+    : null
+  if (text) return text
   const result = await getRelayDownloadUrl(params.fileId, {
     rlsTx: ctx.db,
     ttlSeconds: params.expiresInSec,

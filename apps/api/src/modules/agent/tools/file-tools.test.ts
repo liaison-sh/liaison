@@ -68,9 +68,26 @@ describe("handleFilesRead", () => {
     mock.restore()
   })
 
-  const ctx = { orgId: ORG, userId: USER, db: {} } as never
+  // A binary file the caller can see: files_read gives its URL, never its bytes.
+  const ctx = {
+    orgId: ORG,
+    userId: USER,
+    db: {
+      execute: mock(async () => [
+        {
+          id: "f-log",
+          app: "tickets",
+          filename: "preset.espreset",
+          mimeType: "application/octet-stream",
+          sizeBytes: 95,
+          storageKey: "orgs/o/tickets/staged/f-log/preset.espreset",
+          encVersion: 0,
+        },
+      ]),
+    },
+  } as never
 
-  it("returns a capability URL + metadata when a download is asked for (URL only, never the bytes)", async () => {
+  it("returns a capability URL + metadata for a binary file (URL only, never the bytes)", async () => {
     const spy = spyOn(fileService, "getRelayDownloadUrl").mockResolvedValue({
       id: "f-log",
       filename: "labLogCurrent.log",
@@ -79,7 +96,7 @@ describe("handleFilesRead", () => {
       downloadUrl: "https://staging.fabrikam.example/api/file-relay-dl/tok.abc.def",
       expiresInSec: 300,
     })
-    const res = await handleFilesRead({ fileId: "f-log", download: true }, ctx)
+    const res = await handleFilesRead({ fileId: "f-log" }, ctx)
     expect(res).toEqual({
       fileId: "f-log",
       filename: "labLogCurrent.log",
@@ -104,14 +121,14 @@ describe("handleFilesRead", () => {
       downloadUrl: "https://h/api/file-relay-dl/t",
       expiresInSec: 900,
     })
-    const res = await handleFilesRead({ fileId: "f-log", expiresInSec: 900, download: true }, ctx)
+    const res = await handleFilesRead({ fileId: "f-log", expiresInSec: 900 }, ctx)
     expect((res as { expiresInSec: number }).expiresInSec).toBe(900)
     expect(spy).toHaveBeenCalledWith("f-log", expect.objectContaining({ ttlSeconds: 900 }))
   })
 
   it("rejects a file the caller cannot see (builder throws)", async () => {
     spyOn(fileService, "getRelayDownloadUrl").mockRejectedValue(new Error("File not visible"))
-    await expect(handleFilesRead({ fileId: "nope", download: true }, ctx)).rejects.toThrow()
+    await expect(handleFilesRead({ fileId: "nope" }, ctx)).rejects.toThrow()
   })
 })
 

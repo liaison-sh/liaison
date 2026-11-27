@@ -144,6 +144,13 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   subscription_check_unavailable: 503,
   issuer_required: 400,
   stream_not_choosable: 400,
+  // Revenue streams: a stream or issuer named that does not exist, one bound twice, the shop's
+  // stream set by hand, the shop's issuer set on its stream instead of the shop mapping.
+  stream_not_found: 404,
+  issuer_profile_not_found: 404,
+  stream_exists: 409,
+  shop_stream_automatic: 409,
+  issuer_from_shop_mapping: 409,
   card_stream_not_connected: 409,
   issuer_unknown: 503,
   // Card payments from the payments app: what waits in the queue, how to name it, the rate a

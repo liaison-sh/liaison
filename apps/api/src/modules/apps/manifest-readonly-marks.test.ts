@@ -325,6 +325,8 @@ const READ_ONLY: Record<string, string[]> = {
     // Who issues what per issuer profile, and the card stream's issuer the payment connector's refunds read.
     "issuer_stream_get",
     "card_stream_issuer",
+    // The bound revenue streams and the apps that could be bound.
+    "revenue_streams_list",
   ],
   monitoring: ["incidents_list", "incidents_get", "incidents_summary", "webhook_info"],
   stripe: [
@@ -388,6 +390,9 @@ const READ_ONLY: Record<string, string[]> = {
   ],
   // A missing install_metadata row is derived in memory on the read path, never inserted.
   shopify: [
+    // revenue-stream@1: an order as its webhook delivered it, read back as a sale.
+    "rs_sale_get",
+    "rs_sales_list",
     "orders_invoice_links",
     "home_load",
     "analytics_query",

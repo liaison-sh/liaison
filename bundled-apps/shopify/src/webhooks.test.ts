@@ -18,10 +18,12 @@
 import { describe, expect, it } from "bun:test"
 import type { AppContext } from "@liaison/app-sdk"
 import { channelName, loadDeclaredEmits } from "./lib/emit.testutil"
+import { rs_sale_get } from "./sales"
 import {
   appUninstalledHandler,
   buyerTaxIdFromNoteAttributes,
   customersCreateHandler,
+  customersDeleteHandler,
   draftOrdersCreateHandler,
   draftOrdersDeleteHandler,
   draftOrdersUpdateHandler,
@@ -114,7 +116,13 @@ function makeCtx(): { ctx: AppContext; spy: CtxSpy } {
         if (idx >= 0) arr[idx] = Object.assign({}, arr[idx], data, { id }) as StoredRow
       },
       updateMany: async () => ({ count: 0 }),
-      delete: async () => undefined,
+      delete: async (entity: string, id: string) => {
+        const arr = spy.rows.get(entity) ?? []
+        spy.rows.set(
+          entity,
+          arr.filter((r) => r.id !== id),
+        )
+      },
       count: async () => 0,
     },
     // Enforcing emit: throws (like the kernel rpc-bridge guard) if a handler
@@ -405,7 +413,8 @@ describe("webhooks — downstream emit failure", () => {
     // 2nd delivery (Shopify retry) — should re-process & emit, not dedup.
     const res2 = await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-retry"))
     expect(res2.status).toBe(200)
-    expect(spy.emits.length).toBe(initialEmits + 1)
+    // order:created and the sale:paid of the same order.
+    expect(spy.emits.length).toBe(initialEmits + 2)
     const row = (spy.rows.get("webhook_deliveries") ?? []).find((r) => r.webhookId === "wh-retry")
     expect(row?.status).toBe("processed")
   })
@@ -497,7 +506,7 @@ describe("webhooks — shop-domain validation", () => {
     await ctx.db.insert("install_metadata", { shopDomain: "demo.myshopify.com" })
     const res = await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-match"))
     expect(res.status).toBe(200)
-    expect(spy.emits.length).toBe(1)
+    expect(spy.emits.filter((e) => e.entity === "order").length).toBe(1)
   })
 
   it("refuses a delivery with no X-Shopify-Shop-Domain header (a stripped-header replay)", async () => {
@@ -536,7 +545,7 @@ describe("webhooks — shop-domain validation", () => {
     expect(spy.rows.get("install_metadata") ?? []).toHaveLength(0)
     const res = await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-recover"))
     expect(res.status).toBe(200)
-    expect(spy.emits.length).toBe(1)
+    expect(spy.emits.filter((e) => e.entity === "order").length).toBe(1)
     const rows = spy.rows.get("install_metadata") ?? []
     expect(rows.some((r) => r.shopDomain === "demo.myshopify.com")).toBe(true)
   })
@@ -598,7 +607,7 @@ describe("webhooks — install_metadata self-heal on write paths (X3d)", () => {
     ;(ctx as { connections: Record<string, unknown> }).connections = activeConnection()
     const res = await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-heal-match"))
     expect(res.status).toBe(200)
-    expect(spy.emits.length).toBe(1)
+    expect(spy.emits.filter((e) => e.entity === "order").length).toBe(1)
     const rows = spy.rows.get("install_metadata") ?? []
     expect(rows.some((r) => r.shopDomain === "demo.myshopify.com")).toBe(true)
   })
@@ -971,7 +980,10 @@ describe("webhooks — Cluster-1 canonical emit identity", () => {
   it("orders/create resolves to events:shopify:order:created (not the old doubled channel)", async () => {
     const { ctx, spy } = makeCtx()
     await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-c1-order"))
-    expect(spy.channels).toEqual([channelName("shopify", "order", "created")])
+    expect(spy.channels).toEqual([
+      channelName("shopify", "sale", "paid"),
+      channelName("shopify", "order", "created"),
+    ])
     // Guard against the pre-fix collapse `events:shopify:shopify:order_created`.
     expect(spy.channels).not.toContain(channelName("shopify", "shopify", "order_created"))
   })
@@ -1009,7 +1021,8 @@ describe("webhooks — no claim before the work (no run-wide transaction)", () =
       return origEmit(...args)
     }
     await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-emit-then-record"))
-    expect(callLog).toEqual(["emit", "ledger:processed"])
+    // sale:paid, then order:created, then the ledger.
+    expect(callLog).toEqual(["emit", "emit", "ledger:processed"])
   })
 
   it("a run killed after its emit is run again by the redelivery (at least once, never dropped)", async () => {
@@ -1269,5 +1282,47 @@ describe("webhooks: invoicing tax facts (marketplace tax, buyer VAT id, shipping
         "EUR",
       ),
     ).toBe("2400")
+  })
+})
+
+describe("webhooks — orders/create as a revenue-stream@1 sale", () => {
+  it("keeps the order, emits sale:paid, and sale_get reads the sale back", async () => {
+    const { ctx, spy } = makeCtx()
+    await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-sale"))
+    const evt = spy.emits.find((e) => e.entity === "sale" && e.action === "paid")
+    expect(evt?.data).toMatchObject({ external_id: String(FIXTURE_ORDER.id) })
+    const occurredAt = String((evt?.data as { occurred_at?: string } | undefined)?.occurred_at)
+    expect(Number.isNaN(Date.parse(occurredAt))).toBe(false)
+    const got = await rs_sale_get({ external_id: String(FIXTURE_ORDER.id) }, ctx)
+    expect(got).toMatchObject({
+      found: true,
+      sale: {
+        external_id: String(FIXTURE_ORDER.id),
+        sold_at: occurredAt,
+        refs: { order_name: "#1001", account: "demo.myshopify.com" },
+        buyer: { email: "alice@example.com", name: "Alice Chen", customer_id: "5555" },
+        lines: [{ description: "Aldcaste", quantity: "1", kind: "goods" }],
+      },
+    })
+    expect(await rs_sale_get({ external_id: "nope" }, ctx)).toEqual({ found: false })
+  })
+
+  it("a redelivery keeps one row and the first reception instant", async () => {
+    const { ctx, spy } = makeCtx()
+    await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-s1"))
+    const first = (spy.rows.get("sale_snapshots") ?? [])[0]?.receivedAt
+    await ordersCreateHandler({ ...FIXTURE_ORDER, name: "#1001-b" }, ctx, HDR("wh-s2"))
+    const rows = spy.rows.get("sale_snapshots") ?? []
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.receivedAt).toEqual(first)
+    expect((rows[0]?.order as { name?: string } | undefined)?.name).toBe("#1001-b")
+  })
+
+  it("a customer's deletion forgets their kept orders", async () => {
+    const { ctx, spy } = makeCtx()
+    await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-s3"))
+    expect(spy.rows.get("sale_snapshots") ?? []).toHaveLength(1)
+    await customersDeleteHandler({ id: FIXTURE_CUSTOMER.id }, ctx, HDR("wh-s4"))
+    expect(spy.rows.get("sale_snapshots") ?? []).toHaveLength(0)
   })
 })

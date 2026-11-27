@@ -41,7 +41,7 @@ import { TabVisibilityProvider } from "~/modules/shell/TabVisibilityContext"
 import { TabLoadingBar, TabSuspenseFallback } from "~/modules/shell/tab-loading"
 import { hasTabBeenActive, promoteActiveTab, tabStore } from "~/modules/shell/tab-store"
 import { traceTabScope, traceTabSource } from "~/modules/shell/tab-teardown-trail"
-import { createPushNav } from "~/primitives/createPushNav"
+import { createPushNav, type PushNav } from "~/primitives/createPushNav"
 
 /**
  * The phone tier's top bar. Kept in its own component so `createPushNav`,
@@ -60,6 +60,35 @@ function appOfTabType(type: string): string | null {
   if (!type.includes(":")) return null
   const appId = appIdOfTabType(type)
   return isSystemAppId(appId) ? null : appId
+}
+
+/**
+ * The phone back control: "< Work", "< Projects", the screen Back returns to.
+ * One control for the shell's bar and for a screen that hides that bar, so the
+ * label, the target and the edge swipe's marker (`data-phone-back`) cannot
+ * drift between them.
+ */
+const PhoneBackButton: Component<{ pushNav: PushNav }> = (props) => {
+  const i18n = useI18n()
+  return (
+    <button
+      type="button"
+      data-testid="main-panel-back"
+      data-phone-back
+      aria-label={i18n.t("kernel.back")}
+      onClick={() => props.pushNav.popDetail()}
+      class="flex min-h-11 shrink-0 items-center gap-0.5 rounded-md pl-1 pr-1.5 text-text-secondary hover:bg-surface-hover"
+    >
+      <ChevronLeft size={20} />
+      <Show when={props.pushNav.backLabel()}>
+        {(label) => (
+          <span data-testid="main-panel-back-label" class="max-w-24 truncate text-[14px]">
+            {label()}
+          </span>
+        )}
+      </Show>
+    </button>
+  )
 }
 
 const PhoneTopBar: Component = () => {
@@ -99,12 +128,14 @@ const PhoneTopBar: Component = () => {
     if (!tab) return undefined
     return getTabType(tab.type)?.phoneHeader ?? getPhoneHeader(tab.type)
   }
-  // F3: a root screen that owns a large title of its own (Chats, Work) hides
-  // this bar ENTIRELY rather than customizing its content — see
-  // `hidePhoneTopBar` on the registry entry (or its runtime-attached
-  // equivalent, `registerAppPhoneTopBarHidden`, for a manifest tab type). A
-  // back control never applies here either: a root screen with no detail
-  // pushed over it has nothing to go back to.
+  // F3: a root screen that owns a large title of its own (Chats, Work, the
+  // Mail and Tickets inboxes, Approvals) hides this bar ENTIRELY rather than
+  // customizing its content — see `hidePhoneTopBar` on the registry entry (or
+  // its runtime-attached equivalent, `registerAppPhoneTopBarHidden`, for a
+  // manifest tab type). Such a screen opened from another one (Work > Mail)
+  // still has a way back: the bar's back control, alone on a row of its own
+  // above the screen's title, so every such screen gets it from here and the
+  // edge swipe finds it (`data-phone-back`).
   const hidePhoneTopBar = () => {
     tabTypeRegistryVersion()
     const tab = activeTab()
@@ -112,7 +143,16 @@ const PhoneTopBar: Component = () => {
     return (getTabType(tab.type)?.hidePhoneTopBar ?? false) || getPhoneTopBarHidden(tab.type)
   }
   return (
-    <Show when={!hidePhoneTopBar()}>
+    <Show
+      when={!hidePhoneTopBar()}
+      fallback={
+        <Show when={pushNav.detailOpen()}>
+          <div class="flex shrink-0 items-center py-1 pl-1" data-testid="phone-back-row">
+            <PhoneBackButton pushNav={pushNav} />
+          </div>
+        </Show>
+      }
+    >
       {/* The right gutter is the phone chrome's own 16px, not the bar's 4px:
           without it the workspace name ends flush against the screen edge. A
           registered header owns the whole bar and places its own trailing
@@ -128,23 +168,7 @@ const PhoneTopBar: Component = () => {
           `TicketPhoneHeader`, `ThreadPhoneHeader`) — the shell must not also
           render one, or the screen shows two back controls stacked. */}
         <Show when={pushNav.detailOpen() && !headerSlot()}>
-          <button
-            type="button"
-            data-testid="main-panel-back"
-            data-phone-back
-            aria-label={i18n.t("kernel.back")}
-            onClick={() => pushNav.popDetail()}
-            class="flex min-h-11 shrink-0 items-center gap-0.5 rounded-md pl-1 pr-1.5 text-text-secondary hover:bg-surface-hover"
-          >
-            <ChevronLeft size={20} />
-            <Show when={pushNav.backLabel()}>
-              {(label) => (
-                <span data-testid="main-panel-back-label" class="max-w-24 truncate text-[14px]">
-                  {label()}
-                </span>
-              )}
-            </Show>
-          </button>
+          <PhoneBackButton pushNav={pushNav} />
         </Show>
         {/* The navigator: at phone width the shell has no sidebar column, so the
           tab type's REGISTERED sidebar (mail folders, settings sections,

@@ -578,7 +578,7 @@ export function conferenceLinkOf(item: {
 /**
  * getEventForCaller — one event as `list_events` returns it, by its local id or, for a recurring
  * series, the Google id `list_events` gives it as `eventId`. Null when it does not exist, was
- * deleted, or the caller cannot see it (RLS). The event tab reads it when the calendar window
+ * deleted, its calendar is deselected, or the caller cannot see it (RLS). The event tab reads it when the calendar window
  * does not hold the event (a tab reopened after a reload).
  */
 export async function getEventForCaller(
@@ -596,6 +596,9 @@ export async function getEventForCaller(
     SELECT ${sql.raw(EVENT_COLUMNS)}
     FROM ${sql.raw(schema)}.events
     WHERE org_id = ${orgId}::uuid AND ${match} AND deleted_at IS NULL AND status != 'cancelled'
+      AND calendar_id NOT IN (
+        SELECT id FROM ${sql.raw(schema)}.calendars WHERE org_id = ${orgId}::uuid AND selected = false
+      )
     ORDER BY (id::text = ${eventId}) DESC
     LIMIT 1
   `)) as unknown as { rows?: RawEventRow[] } | RawEventRow[]

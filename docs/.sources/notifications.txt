@@ -1,7 +1,7 @@
 Mute silences push, desktop and email for a muted conversation or a kind set to off, in-app kept quiet -> apps/api/src/modules/notifications/router.ts:320
 Archive quiets channel posts only; mentions and direct messages still interrupt -> apps/api/src/modules/notifications/router.ts:325
 A new message by a person or an agent un-archives the conversation for its members, muted members excepted -> apps/api/src/modules/threads/message.ts:782
-The same rule in the database: muted members keep it archived; replies the channel hides and system lines do not count -> apps/api/src/db/migrations/0357_thread_resurface_on_message.sql:30
+The same rule in the database: muted members keep it archived; replies the channel hides and system lines do not count -> apps/api/src/db/migrations/0358_thread_resurface_on_message.sql:30
 Each member's devices are told (thread_state, isArchived false) and reload the list -> apps/web/src/modules/threads/read-state-sync.ts:105
 Muted items stay unread, marked quiet in metadata -> apps/api/src/modules/attention/translator.ts:235
 A reply in a muted thread keeps its quiet row (no drop before routing) -> apps/api/src/modules/attention/kernel-translations.ts:149

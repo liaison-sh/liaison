@@ -643,7 +643,7 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     expect(db.__all("deferred_events")).toHaveLength(0)
   })
 
-  test("amount > threshold → returns pending_approval (no document yet)", async () => {
+  test("a paid order above the issuer's approval threshold issues with no card: the threshold gates agents, not sales", async () => {
     const issuerWithThreshold: IssuerProfileRow = {
       ...issuerFR,
       invoice_approval_threshold_minor: 5000n,
@@ -652,22 +652,9 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
       issuerProfiles: [{ profile: issuerWithThreshold, shopify_shop_id: "shop-1" }],
     })
     const result = await onShopifyOrderPaid(basePayload(), ctx)
-    expect(result.status).toBe("pending_approval")
-    if (result.status !== "pending_approval") throw new Error("unreachable")
-    expect(result.approval_id).toMatch(/^approval-/)
-    expect(db.__all("documents")).toHaveLength(0)
-    expect(extras.approvalsFiled).toHaveLength(1)
-    expect(extras.approvalsFiled[0]!.tool_name).toBe("invoicing:onShopifyOrderPaid")
-    // The effect in one sentence; the order's API id is never shown (it has no store name here).
-    expect(extras.approvalsFiled[0]!.summary).toBe("Issue invoice for Acme France SAS, 120.00 EUR")
-    const detail = extras.approvalsFiled[0]!.summary_detail!
-    expect([extras.approvalsFiled[0]!.summary, ...(detail.lines ?? [])].join("\n")).not.toContain(
-      "shopify-order-1",
-    )
-    expect(detail.subtitle).toContain("Acme France SAS")
-    expect(detail.lines).toContain("Customer: Acme France SAS")
-    expect(detail.lines).toContain("Line: Widget A x 1 @ 100.00 EUR")
-    expect(detail.lines).toContain("Total: 120.00 EUR")
+    expect(result.status).toBe("ok")
+    expect(extras.approvalsFiled).toHaveLength(0)
+    expect(db.__all("documents")).toHaveLength(1)
   })
 
   test("re-invocation post-approval: ctx.approval populated → threshold skipped, document issued", async () => {

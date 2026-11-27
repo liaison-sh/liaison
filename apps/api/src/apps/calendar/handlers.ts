@@ -530,6 +530,9 @@ interface EventRowShape {
   pending_push: string
   /** The attendee list a local attendee edit started from; null = attendees not edited. */
   attendees_base?: unknown
+  /** The modelled fields as last synced, when a local edit started; null = no local edit. */
+  push_base?: unknown
+  updated_at?: string
   /** A conference change for Google: "add" (create a Google Meet) or "remove"; null = none. */
   conference_request?: string | null
   hangout_link?: string | null
@@ -653,17 +656,23 @@ export async function calendarPush(payload: unknown, ctx: CalendarCtx): Promise<
   }
 }
 
-async function pushRow(event: EventRowShape, ctx: CalendarCtx, authRetry: boolean): Promise<void> {
-  const calendarJson = await ctx.calendar_getCalendar(event.calendar_id)
+async function pushRow(row: EventRowShape, ctx: CalendarCtx, authRetry: boolean): Promise<void> {
+  const calendarJson = await ctx.calendar_getCalendar(row.calendar_id)
   const calendar = JSON.parse(calendarJson) as {
     google_calendar_id: string
     account_id: string
+    time_zone?: string | null
   } | null
   if (!calendar) return
   const accountJson = await ctx.calendar_getAccount(calendar.account_id)
   const account = JSON.parse(accountJson) as { email_address: string } | null
   if (!account) return
   const token = await ctx.connections_getToken("google-calendar", account.email_address)
+  // Every timed point Google receives names its time zone: Google refuses a recurring event
+  // without one ("Missing time zone definition"), and the zone is what keeps a weekly 09:00
+  // at 09:00 across a daylight saving change. A point without one takes the calendar's zone.
+  const zone = calendar.time_zone || "UTC"
+  const event = { ...row, start: withTimeZone(row.start, zone), end: withTimeZone(row.end, zone) }
 
   if (event.pending_push === "delete") {
     await pushDeleteTombstone(event, calendar.google_calendar_id, token, ctx, authRetry)
@@ -674,6 +683,110 @@ async function pushRow(event: EventRowShape, ctx: CalendarCtx, authRetry: boolea
   } else {
     await pushUpdate(event, calendar.google_calendar_id, token, ctx, 0, authRetry)
   }
+}
+
+/** A timed point with `timeZone` set (kept when it has one); an all-day point as it is. */
+function withTimeZone(point: unknown, zone: string): unknown {
+  const p = point as { dateTime?: unknown; timeZone?: unknown } | null | undefined
+  if (!p || typeof p !== "object" || typeof p.dateTime !== "string" || p.timeZone) return point
+  return { ...p, timeZone: zone }
+}
+
+// --- Per-field merge of a local edit onto Google's current event (owner decision D5) ---
+
+/** The modelled fields a local edit can change: the row column and Google's field. */
+const MERGED_FIELDS = [
+  { row: "title", google: "summary", label: "title" },
+  { row: "description", google: "description", label: "description" },
+  { row: "location", google: "location", label: "location" },
+  { row: "start", google: "start", label: "start" },
+  { row: "end", google: "end", label: "end" },
+  { row: "recurrence", google: "recurrence", label: "repeat rule" },
+] as const
+
+type MergedRowField = (typeof MERGED_FIELDS)[number]["row"]
+
+/** The instant (or the date) a calendar point names, for comparing two versions of a time. */
+function pointKey(point: unknown): string | null {
+  const p = point as { date?: unknown; dateTime?: unknown } | null | undefined
+  if (!p || typeof p !== "object") return null
+  if (typeof p.date === "string") return `d:${p.date}`
+  if (typeof p.dateTime === "string") {
+    const t = Date.parse(p.dateTime)
+    return Number.isNaN(t) ? `t:${p.dateTime}` : `t:${t}`
+  }
+  return null
+}
+
+/** Whether two versions of a field are the same value (a time compared as an instant). */
+function sameFieldValue(field: MergedRowField, a: unknown, b: unknown): boolean {
+  if (field === "start" || field === "end") return pointKey(a) === pointKey(b)
+  if (field === "recurrence") {
+    const list = (v: unknown) => (Array.isArray(v) && v.length > 0 ? JSON.stringify(v) : null)
+    return list(a) === list(b)
+  }
+  const text = (v: unknown) => (v === null || v === undefined ? "" : String(v))
+  return text(a) === text(b)
+}
+
+/** A field value as a person reads it in a notice. */
+function displayValue(field: MergedRowField, value: unknown): string {
+  if (field === "start" || field === "end") {
+    const p = value as { date?: string; dateTime?: string } | null
+    return p?.dateTime ?? p?.date ?? "none"
+  }
+  if (field === "recurrence")
+    return Array.isArray(value) && value.length > 0 ? value.join(" ") : "none"
+  const text = value === null || value === undefined ? "" : String(value)
+  return text.length > 120 ? `${text.slice(0, 117)}...` : text || "empty"
+}
+
+export interface FieldConflict {
+  field: string
+  /** Whose version was kept: the newer change. */
+  kept: "google" | "liaison"
+  /** The value that lost, as a person reads it. */
+  lostValue: string
+}
+
+/**
+ * mergeOntoRemote — the modelled fields to write, per field, from the local row, the base the
+ * local edit started from (`push_base`, the row as last synced) and Google's current event:
+ * a field only Google changed keeps Google's value, a field only Liaison changed takes the
+ * local value, and a field both changed to different values (a true conflict) keeps the newer
+ * change (the row's last edit vs Google's `updated`), reported in `conflicts`.
+ */
+function mergeOntoRemote(
+  event: EventRowShape,
+  base: Record<string, unknown>,
+  remote: Record<string, unknown>,
+): { fields: Record<string, unknown>; conflicts: FieldConflict[] } {
+  const fields: Record<string, unknown> = {}
+  const conflicts: FieldConflict[] = []
+  const localAt = event.updated_at ? Date.parse(event.updated_at) : 0
+  const remoteAt = typeof remote.updated === "string" ? Date.parse(remote.updated) : 0
+  for (const f of MERGED_FIELDS) {
+    const local = event[f.row]
+    const remoteValue = remote[f.google]
+    const localChanged = !sameFieldValue(f.row, local, base[f.row])
+    const remoteChanged = !sameFieldValue(f.row, remoteValue, base[f.row])
+    if (!localChanged || sameFieldValue(f.row, local, remoteValue)) {
+      fields[f.google] = remoteValue
+      continue
+    }
+    if (!remoteChanged) {
+      fields[f.google] = local ?? undefined
+      continue
+    }
+    const googleNewer = remoteAt > localAt
+    fields[f.google] = googleNewer ? remoteValue : (local ?? undefined)
+    conflicts.push({
+      field: f.label,
+      kept: googleNewer ? "google" : "liaison",
+      lostValue: displayValue(f.row, googleNewer ? local : remoteValue),
+    })
+  }
+  return { fields, conflicts }
 }
 
 /** One push job per row version and attempt: a duplicate enqueue (the sweep finding a row
@@ -1055,6 +1168,22 @@ async function pushUpdate(
   for (const [key, value] of Object.entries(body)) {
     if (value !== undefined) merged[key] = value
   }
+  // The local edit's own changes go onto Google's current event field by field: an edit made in
+  // Google since the last sync (a new description while the time moved here) is kept. A row
+  // with no base (an edit from before bases were kept) writes its fields as before.
+  const base =
+    event.push_base && typeof event.push_base === "object"
+      ? (event.push_base as Record<string, unknown>)
+      : null
+  let conflicts: FieldConflict[] = []
+  if (base) {
+    const outcome = mergeOntoRemote(event, base, remote)
+    conflicts = outcome.conflicts
+    for (const [key, value] of Object.entries(outcome.fields)) {
+      if (value === undefined || value === null) delete merged[key]
+      else merged[key] = value
+    }
+  }
   merged.attendees = mergeAttendeesForPush(event.attendees, event.attendees_base, remote.attendees)
   if (merged.attendees === undefined) delete merged.attendees
   // Conference changes are sent only when asked for (conferenceDataVersion=1); otherwise Google
@@ -1103,6 +1232,8 @@ async function pushUpdate(
         hangoutLink: conferenceLinkOfResource(updated),
         // What Google really stored (it ignores a non-organizer's guest changes).
         remote: updated,
+        // The row takes the merged fields Google stored (Google's own edits included).
+        ...(base ? { merged: true, conflicts } : {}),
         syncVersion: event.liaison_sync_version,
       }),
     )
@@ -1124,6 +1255,20 @@ async function pushUpdate(
       JSON.stringify(remote),
       "events.update refused by Google (403); local edit replaced by Google's version",
       event.liaison_sync_version,
+    )
+    return
+  }
+  if (putRes.status === 412 && base) {
+    // Google changed the event between our read and our write: read it again and merge again.
+    if (attempt < 2) {
+      await pushUpdate(event, googleCalendarId, token, ctx, attempt + 1, authRetry)
+      return
+    }
+    await ctx.calendar_recordPushFailure(
+      event.id,
+      event.calendar_id,
+      "EtagMismatch",
+      "events.update 412 after 3 attempts; pendingPush retained",
     )
     return
   }

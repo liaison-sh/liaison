@@ -26,9 +26,64 @@ export function isCalendarAdmin(callerScopes: string[] | undefined): boolean {
 function isoStringToCalendarPoint(
   iso: string | undefined,
   allDay: boolean | undefined,
-): { dateTime: string } | { date: string } | undefined {
+  timeZone?: string | null,
+): { dateTime: string; timeZone?: string } | { date: string } | undefined {
   if (!iso) return undefined
-  return allDay ? { date: iso.slice(0, 10) } : { dateTime: iso }
+  if (allDay) return { date: iso.slice(0, 10) }
+  // A timed point names its zone (the calendar's): Google requires it on a recurring event, and
+  // the series expands in it, so a weekly 09:00 stays at 09:00 across a daylight saving change.
+  return timeZone ? { dateTime: iso, timeZone } : { dateTime: iso }
+}
+
+/** The day after a YYYY-MM-DD date. */
+function nextDay(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * The start and end points of an edit. An all-day event's end is exclusive (Google's rule): an
+ * end on or before the start day (a one-day event given as start = end) becomes the day after
+ * the start, never the empty range Google refuses.
+ */
+function eventPoints(
+  params: { start?: string; end?: string; allDay?: boolean },
+  timeZone: string | null | undefined,
+): {
+  start: ReturnType<typeof isoStringToCalendarPoint>
+  end: ReturnType<typeof isoStringToCalendarPoint>
+} {
+  const start = isoStringToCalendarPoint(params.start, params.allDay, timeZone)
+  let end = isoStringToCalendarPoint(params.end, params.allDay, timeZone)
+  if (params.allDay && start && "date" in start) {
+    if (!end || ("date" in end && end.date <= start.date)) end = { date: nextDay(start.date) }
+  }
+  return { start, end }
+}
+
+/** Google lets an account write only to calendars it owns or may edit. */
+const WRITABLE_ACCESS_ROLES = new Set(["owner", "writer"])
+
+/** Refuses a write on a calendar the account may only read (a holiday or a shared calendar):
+ * Google would refuse it (403), leaving a local event that never reaches Google. */
+function assertWritableCalendar(
+  calendar: { id: string; name?: string | null; access_role?: string | null },
+  tool: string,
+): void {
+  const role = calendar.access_role
+  if (!role || WRITABLE_ACCESS_ROLES.has(role)) return
+  throw Object.assign(
+    new Error(
+      `${tool}: calendar "${calendar.name ?? calendar.id}" is read-only for this account (access ${role}). Call list_calendars and pick a calendar whose accessRole is owner or writer.`,
+    ),
+    { status: 422, code: "invalid_params" },
+  )
+}
+
+/** A person's id, or undefined for a system or agent actor id. */
+function personId(userId: string | undefined): string | undefined {
+  return userId && /^[0-9a-f-]{36}$/i.test(userId) ? userId : undefined
 }
 
 /** A create/update carrying a conference change is pushed by the tool handler itself, so the
@@ -395,6 +450,8 @@ export function createCalendarMethods(
       }
       const calendar = await getCalendarById(txDb, orgId, params.calendarId)
       if (!calendar) throw new Error(`calendar ${params.calendarId} not found`)
+      assertWritableCalendar(calendar, "create_event")
+      const points = eventPoints(params, calendar.time_zone)
       const { eventId } = await createLocalEvent(
         txDb,
         orgId,
@@ -407,8 +464,8 @@ export function createCalendarMethods(
           attendees: params.attendees,
           recurrence: params.recurrence,
           allDay: params.allDay,
-          start: isoStringToCalendarPoint(params.start, params.allDay),
-          end: isoStringToCalendarPoint(params.end, params.allDay),
+          start: points.start,
+          end: points.end,
           conference,
         },
       )
@@ -462,6 +519,11 @@ export function createCalendarMethods(
         changesRecurrence: params.recurrence !== undefined,
       })
       const eventId = target.eventId
+      const { getCalendarById, getEventById } = await import("~/apps/calendar/sync")
+      const row = await getEventById(txDb, orgId, eventId)
+      const calendar = row ? await getCalendarById(txDb, orgId, row.calendar_id) : undefined
+      if (calendar) assertWritableCalendar(calendar, "update_event")
+      const points = eventPoints(params, calendar?.time_zone)
       const { syncVersion } = await updateLocalEvent(txDb, orgId, eventId, {
         title: params.title,
         description: params.description,
@@ -469,9 +531,11 @@ export function createCalendarMethods(
         attendees: params.attendees,
         recurrence: params.recurrence,
         allDay: params.allDay,
-        start: isoStringToCalendarPoint(params.start, params.allDay),
-        end: isoStringToCalendarPoint(params.end, params.allDay),
+        start: points.start,
+        // A start alone on an all-day event keeps its own end (not a one-day default).
+        end: params.end !== undefined || params.allDay === undefined ? points.end : undefined,
         conference,
+        editorId: personId(userId),
       })
       await enqueue(
         "calendar",
@@ -511,6 +575,12 @@ export function createCalendarMethods(
         throw err
       }
       const eventId = target.eventId
+      {
+        const { getCalendarById, getEventById } = await import("~/apps/calendar/sync")
+        const row = await getEventById(txDb, orgId, eventId)
+        const calendar = row ? await getCalendarById(txDb, orgId, row.calendar_id) : undefined
+        if (calendar) assertWritableCalendar(calendar, "delete_event")
+      }
       // An event Google has (or may have: a create in flight) becomes a tombstone that the push
       // deletes on Google, retrying like any push; the import cannot resurrect it meanwhile.
       const { needsGooglePush, syncVersion } = await deleteLocalEvent(txDb, orgId, eventId)

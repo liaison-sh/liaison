@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.40.4",
+  "version": "0.41.1",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1095,7 +1095,8 @@
           "approved_at": "date?",
           "service_period_start": "day?",
           "service_period_end": "day?",
-          "latest_issue_on": "day?"
+          "latest_issue_on": "day?",
+          "sale_id": "uuid?"
       },
       "constraints": {
         "unique": [
@@ -1169,6 +1170,9 @@
         ],
         [
           "company_id"
+        ],
+        [
+          "sale_id"
         ]
       ]
     },
@@ -1554,6 +1558,29 @@
       },
       "constraints": { "unique": [["schedule_id", "period_key"], ["document_id"]] },
       "indexes": [["run_id", "position"], ["state"]]
+    },
+    "sales": {
+      "rlsScope": "documents",
+      "internalWriteScope": "invoicing:documents:write",
+      "fields": {
+        "issuer_profile_id": {
+          "type": "uuid",
+          "references": { "table": "issuer_profiles", "column": "id", "onDelete": "restrict" }
+        },
+        "stream": "text",
+        "external_id": "text",
+        "source_ref": "text",
+        "source_name": "text?",
+        "sold_on": "day",
+        "buyer_email": "text?",
+        "shopify_customer_id": "text?",
+        "hub_user_id": "text?",
+        "total_minor": "bigint?",
+        "currency": "text?",
+        "state": { "type": "string", "enum": ["pending", "issued", "void"], "default": "pending" }
+      },
+      "constraints": { "unique": [["issuer_profile_id", "stream", "external_id"]] },
+      "indexes": [["buyer_email"], ["shopify_customer_id"], ["hub_user_id"]]
     },
     "stripe_sales": {
       "rlsScope": "internal",
@@ -7737,6 +7764,11 @@
             "block": "custom",
             "component": "InvoicingIssuerStreams",
             "reason": "Who issues what per issuer profile: the card stream's issuer chosen by a person with a confirm, and a person's statement that Stripe's own customer emails are off."
+          },
+          {
+            "block": "custom",
+            "component": "InvoicingWebsiteAccess",
+            "reason": "Website access keys of the buyer invoices API per issuer profile: created by a person's click and shown once, at most two active, revoked with a confirm."
           }
         ]
       },

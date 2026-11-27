@@ -272,6 +272,19 @@ When **Subscriptions paid by card** is issued by **Liaison**, each Stripe invoic
 - **Missed events.** Every 10 minutes Liaison asks Stripe what an event may have missed (invoicing turned off, an event that failed) and hands it to the same steps: the missing invoice, a payment, a credit note. It never issues anything by itself beyond that.
 
 
+## Show buyers their invoices on your website
+
+Your own website can list a signed-in buyer's invoices and credit notes and let them download each PDF, from its server, with a website access key.
+
+1. Open **Settings > Invoicing**, **Website access**. You need the issuer admin permission (`invoicing:issuer:admin`).
+2. Under the issuer profile, name the key and choose **Create key**. Copy it into your website's server settings: it starts with `linv_` and is shown only once.
+3. Your server calls `POST /api/buyer-invoices/list` with `Authorization: Bearer <key>` and the buyer it holds for the signed-in person (`email`, `shopifyCustomerId`, `hubUserId`), and `POST /api/buyer-invoices/link` with a document id for a download link that lives 5 minutes.
+
+- A key reads one issuer profile's invoices and credit notes, nothing else. At most two keys are active per profile, so you can move your website to a new key before you revoke the old one. **Revoke** stops the key and its open download links at once.
+- A buyer sees a sale when a strong id matches (the Shopify customer id, or your website's user id recorded with the sale), or by email only for a sale that has no strong id (a guest checkout). One id that differs hides the sale, whatever the email says.
+- A paid sale not invoiced yet shows as pending, with no number and no link.
+- Each key may make 120 requests a minute. Every list, link and download is written to the audit log, without the buyer's email.
+
 ## Settings
 
 | Section | Who can edit | What it holds |

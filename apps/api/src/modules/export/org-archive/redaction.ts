@@ -43,6 +43,8 @@ export const REDACTED_COLUMNS: Readonly<Record<string, string>> = {
   "kernel.nodes.credential_hash": "node credential hash",
   "kernel.notification_device_credentials.token_hash": "device credential hash",
   "kernel.suppression_links.token_hash": "opt-out link token hash",
+  "kernel.buyer_invoice_keys.key_hash": "buyer invoices API key hash",
+  "kernel.buyer_invoice_links.token_hash": "invoice download link token hash",
   "kernel.push_tokens.token": "push notification token",
   "kernel.browser_push_subscriptions.auth": "web push subscription secret",
   "kernel.browser_push_subscriptions.p256dh": "web push subscription key",

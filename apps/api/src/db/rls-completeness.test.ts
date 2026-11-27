@@ -126,6 +126,10 @@ const DENY_ALL_LEDGERS = new Set<string>([
   // privileged pool only, scoped to the org explicitly.
   "kernel.api_adapters",
   "kernel.api_adapter_versions",
+  // The buyer invoices API's server keys and download links (migration 0357): looked up by the
+  // public routes before any org is known, so privileged pool only (modules/buyer-invoices).
+  "kernel.buyer_invoice_keys",
+  "kernel.buyer_invoice_links",
   // The moves an org took part in, per instance (migration 0270): privileged
   // pool only, never read by a person.
   "kernel.org_transfer_ledger",

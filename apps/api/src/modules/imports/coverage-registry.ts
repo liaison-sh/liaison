@@ -377,6 +377,8 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   },
   "kernel.api_adapter_versions": { exempt: "config", reason: "credentials and configuration" },
   "kernel.api_adapters": { exempt: "config", reason: "credentials and configuration" },
+  "kernel.buyer_invoice_keys": { exempt: "config", reason: "credentials and configuration" },
+  "kernel.buyer_invoice_links": { exempt: "system", reason: "five-minute download links" },
   "kernel.app_build_artifacts": {
     exempt: "derived",
     reason: "bytes the app builder built from a draft version, rebuilt from its files",

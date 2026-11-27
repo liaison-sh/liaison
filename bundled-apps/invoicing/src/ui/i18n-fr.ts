@@ -983,4 +983,17 @@ export const FR: Record<string, string> = {
   "Not an advance": "Ce n'est pas un acompte",
   "Then invoice or link the payment as any other payment, from its line on Home. Nothing was drafted.":
     "Facturez ou rattachez alors ce paiement comme tout autre, depuis sa ligne sur l'Accueil. Rien n'a été préparé.",
+  "The key was not created.": "La clé n'a pas été créée.",
+  "The website stops reading invoices with this key, and its open links stop working.": "Le site ne lit plus les factures avec cette clé, et ses liens ouverts cessent de fonctionner.",
+  "You need the issuer admin permission to see these keys.": "Il faut la permission d'administration des émetteurs pour voir ces clés.",
+  "Created": "Créée le",
+  "Revoked": "Révoquée le",
+  "Revoke": "Révoquer",
+  "Copy this key into your website's server settings now: it is shown only once.": "Copiez cette clé maintenant dans les réglages du serveur de votre site : elle n'est affichée qu'une fois.",
+  "Done": "Terminé",
+  "Key name, for example Website": "Nom de la clé, par exemple Site web",
+  "Create key": "Créer une clé",
+  "Website access": "Accès du site web",
+  "Your website's server lists a signed-in buyer's invoices and credit notes with a key. A key reads one issuer profile only.": "Le serveur de votre site liste les factures et avoirs d'un acheteur connecté avec une clé. Une clé ne lit qu'un seul profil émetteur.",
+  "Website": "Site web",
 }

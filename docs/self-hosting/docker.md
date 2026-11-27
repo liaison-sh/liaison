@@ -42,7 +42,8 @@ To run Compose yourself, name the project and file: `docker compose -p liaison -
 | `app` | `ghcr.io/liaison-sh/liaison` (tag from `LIAISON_IMAGE`) | API, web app, MCP, background jobs | 3 GB |
 | `postgres` | `postgres:17-alpine` | Database | 2 GB |
 | `redis` | `redis:7-alpine` | Pub-sub, rate limits, job queues | 512 MB (Redis heap capped at 384 MB) |
-| `meilisearch` | `getmeili/meilisearch:v1.10` | Search | 1.5 GB |
+| `meilisearch` | `getmeili/meilisearch:v1.58.0` | Search | 1.5 GB |
+| `search-upgrade-stage` | `getmeili/meilisearch:v1.10` | Hands the 1.10 search binary to `meilisearch` while the search volume still holds a 1.10 index, then exits ([Upgrade the search service](#upgrade-the-search-service)) | |
 | `objectstore` | `chrislusf/seaweedfs:4.48` | S3-compatible file storage | 1 GB |
 | `objectstore-init` | SeaweedFS | Creates the bucket once, then exits | |
 | `data-init` | `busybox` | Prepares the app's data directory, then exits | |
@@ -68,6 +69,7 @@ You can point Liaison at Amazon S3, Cloudflare R2 or any S3-compatible endpoint 
 | `postgres_data` | The database |
 | `redis_data` | Redis data (append-only file) |
 | `meili_data` | The search index, rebuildable from the database |
+| `meili_legacy` | The 1.10 search binary, only while a 1.10 index waits to be carried over |
 | `objectstore_data` | Files |
 | `deploy/data` | Installed app packages and push key files, mounted at `/var/lib/liaison` |
 | `deploy/setup` | Config and knowledge files for the setup playbook, mounted read-only at `/setup` |
@@ -269,6 +271,26 @@ All optional. Compose passes each of them to the app from `deploy/.env`.
 | `LIAISON_APP_FRAME_ORIGIN_TEMPLATE`, `LIAISON_FRAMED_APPS` | In a browser tab, frame each outside app's screens (and the first-party apps listed in `LIAISON_FRAMED_APPS`, for example `shopify,boxtal`) on an origin of their own, `https://{app}--{org}.<a domain of its own>`, instead of the opaque frame. Point a wildcard DNS name and certificate for that domain at the server. Empty by default: outside apps run in the opaque frame ([App screens on an origin of their own](../app-sandbox.md#app-screens-on-an-origin-of-their-own)) |
 
 For every variable, see the [environment reference](../reference/env.md).
+
+## Upgrade the search service
+
+The search service runs Meilisearch 1.58. A server that ran an earlier Liaison has a Meilisearch 1.10 index, which 1.58 cannot open. You do nothing: the first `docker compose up -d` with the new compose file carries it over.
+
+1. `search-upgrade-stage` sees the 1.10 index and hands the 1.10 binary to the search service.
+2. The search service starts 1.10 on its own loopback, takes a dump of the index, and stops it. It keeps the 1.10 index as `data.ms.v1.10` on the `meili_data` volume.
+3. It imports the dump with 1.58 into a new index, then starts serving. The dump holds the documents, their vectors and the settings, so nothing is read again from the database and no vector is computed again.
+
+While it runs, search answers nothing and the app waits for the search service to be healthy (up to 2 hours). IMPORT_TIME_LINE A step killed half way (out of memory, a reboot) starts again at the next start; a half-imported index is never served. Follow it with `docker compose -p liaison -f deploy/docker-compose.yml logs -f meilisearch` (lines start with `search-upgrade:`).
+
+Once search works, free the space the old index takes (about its own size):
+
+```bash
+docker compose -p liaison -f deploy/docker-compose.yml exec meilisearch rm -rf /meili_data/data.ms.v1.10
+```
+
+To go back to 1.10 before you delete it: stop the stack, check out the previous Liaison release, move `data.ms` away and rename `data.ms.v1.10` to `data.ms` on the `meili_data` volume, and start it again.
+
+Later Meilisearch versions upgrade the index in place on their first start (`MEILI_UPGRADE_DB`). A database older than 1.10, or a 1.11 one, is not carried over: the search service stops with a message. Remove the `meili_data` volume, and the app rebuilds the index from the database at its next start. Older messages then match by their words only: their vectors were in the old index.
 
 ## Check health
 

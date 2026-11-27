@@ -24,3 +24,4 @@ Page shows only after interface approval, and only on the org's own host -> apps
 expectError true or an error code; cases run in file-name order on one scratch store -> packages/cli/src/apps.ts (readFixtures, test)
 login names asked scopes the token lacks; --no-browser -> packages/cli/src/auth.ts (login)
 skills entries go to kernel:create_skill / update_skill (name, description, body, visibility, requiredScopes) -> packages/cli/src/config-apply.ts (byName), apps/api/src/modules/agent/tools/skills-routines-tools.ts (create_skill)
+Plain http only to loopback and *.localhost hosts -> packages/cli/src/http.ts (normalizeHost)

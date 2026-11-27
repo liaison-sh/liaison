@@ -29,7 +29,7 @@ The tarball holds one file, `dist/liaison.js`, with no other dependency: copy it
 liaison login --host https://acme.liaison.example
 ```
 
-The command prints a link and a code and opens your browser (`--no-browser` only prints them). Check that the page shows the same code, read what it asks for, and press **Approve**. You must be signed in to that organization in the browser.
+The address is https; plain http is accepted only for this machine (`localhost`, `127.0.0.1`, or a `*.localhost` name, as a local server giving each organization its own address uses). The command prints a link and a code and opens your browser (`--no-browser` only prints them). Check that the page shows the same code, read what it asks for, and press **Approve**. You must be signed in to that organization in the browser.
 
 What the sign-in may do is decided by the server, not by the command line:
 

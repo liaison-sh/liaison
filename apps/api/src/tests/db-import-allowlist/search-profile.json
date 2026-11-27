@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "seed/bulk/search-profile.ts": "The realistic search profile of the lively seed tier: months of mail, tickets and agent work for one org, set-based, which only time produces, as the bulk volume writer does. It writes only into the org the lively tier just seeded (seed-lively.ts), with deterministic ids so a re-run adopts its rows, and reads back that org's counts."
+  }
+}

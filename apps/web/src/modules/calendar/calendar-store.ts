@@ -202,6 +202,21 @@ export function isCalendarVisible(calendarId: string): boolean {
   return !calendarStore.hiddenCalendarIds.includes(calendarId)
 }
 
+/**
+ * Changes an event in the store at once (an optimistic move or resize: painted in the same frame
+ * as the drop) and answers what it was, so a refusal can put it back.
+ */
+export function patchEventLocally(
+  eventId: string,
+  patch: Pick<CalendarEventDto, "start" | "end">,
+): Pick<CalendarEventDto, "start" | "end"> | null {
+  const current = calendarStore.events.find((e) => e.eventId === eventId)
+  if (!current) return null
+  const before = { start: current.start, end: current.end }
+  setCalendarStore("events", (e) => e.eventId === eventId, patch)
+  return before
+}
+
 export async function createCalendarEvent(api: ApiClient, input: CreateEventInput): Promise<void> {
   await apiCreateEvent(api, input)
 }

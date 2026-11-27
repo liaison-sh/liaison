@@ -108,3 +108,96 @@ describe("TimeGridView — now-line ticker gated on tab activity", () => {
     expect(reactivatedTop).not.toBe(Number.parseFloat(initialTop))
   })
 })
+
+describe("TimeGridView drag", () => {
+  // jsdom has no layout: each day column is 100 px wide from x = 56, the grid starts at y = 0.
+  function layOut() {
+    const cols = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid^="calendar-day-column-"]'),
+    )
+    cols.forEach((col, i) => {
+      col.getBoundingClientRect = () =>
+        ({ left: 56 + i * 100, right: 156 + i * 100, top: 0, bottom: 1152 }) as DOMRect
+    })
+    return cols
+  }
+  const pointer = (type: string, x: number, y: number) =>
+    new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 }) as PointerEvent
+
+  function week(handlers: Record<string, unknown>, canDrag = true) {
+    render(() => (
+      <TimeGridView
+        rangeStart={new Date(2026, 6, 12)}
+        dayCount={7}
+        occurrences={[occ({ title: "Standup" })]}
+        calendarColors={{}}
+        canDrag={() => canDrag}
+        {...handlers}
+      />
+    ))
+    return layOut()
+  }
+
+  it("a drag over empty slots creates that range (14:00 to 16:00)", () => {
+    const onCreateRange = vi.fn()
+    const cols = week({ onCreateRange })
+    cols[1]!.dispatchEvent(pointer("pointerdown", 100, 14 * 48 + 2))
+    document.dispatchEvent(pointer("pointermove", 100, 15 * 48 + 40))
+    expect(screen.getByTestId("calendar-drag-ghost")).toBeTruthy()
+    document.dispatchEvent(pointer("pointerup", 100, 15 * 48 + 40))
+    const [start, end] = onCreateRange.mock.calls[0] as [Date, Date]
+    expect([start.getDate(), start.getHours(), start.getMinutes()]).toEqual([13, 14, 0])
+    expect([end.getHours(), end.getMinutes()]).toEqual([16, 0])
+  })
+
+  it("dragging an event two hours down and one day right moves it there", () => {
+    const onMoveEvent = vi.fn()
+    week({ onMoveEvent })
+    const block = screen.getByTestId("calendar-timed-event")
+    // The event is on Wednesday 15 (column 3).
+    block.dispatchEvent(pointer("pointerdown", 360, 9 * 48 + 10))
+    document.dispatchEvent(pointer("pointermove", 460, 11 * 48 + 10))
+    document.dispatchEvent(pointer("pointerup", 460, 11 * 48 + 10))
+    const [id, start, end] = onMoveEvent.mock.calls[0] as [string, Date, Date]
+    expect(id).toBe("e1")
+    expect([start.getDate(), start.getHours()]).toEqual([16, 11])
+    expect([end.getDate(), end.getHours()]).toEqual([16, 12])
+  })
+
+  it("dragging the bottom edge resizes; Esc cancels a drag; a still click opens the event", () => {
+    const onMoveEvent = vi.fn()
+    const onSelectEvent = vi.fn()
+    week({ onMoveEvent, onSelectEvent })
+    const handle = screen.getByTestId("calendar-event-resize")
+    handle.dispatchEvent(pointer("pointerdown", 360, 10 * 48))
+    document.dispatchEvent(pointer("pointermove", 360, 10 * 48 + 24))
+    document.dispatchEvent(pointer("pointerup", 360, 10 * 48 + 24))
+    const [, , end] = onMoveEvent.mock.calls[0] as [string, Date, Date]
+    expect([end.getHours(), end.getMinutes()]).toEqual([10, 30])
+
+    const block = screen.getByTestId("calendar-timed-event")
+    block.dispatchEvent(pointer("pointerdown", 360, 9 * 48 + 10))
+    document.dispatchEvent(pointer("pointermove", 360, 12 * 48))
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+    document.dispatchEvent(pointer("pointerup", 360, 12 * 48))
+    expect(onMoveEvent).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId("calendar-drag-ghost")).toBeNull()
+
+    block.dispatchEvent(pointer("pointerdown", 360, 9 * 48 + 10))
+    document.dispatchEvent(pointer("pointerup", 361, 9 * 48 + 11))
+    expect(onSelectEvent).toHaveBeenCalledWith("e1")
+  })
+
+  it("an event that may not be dragged only opens", () => {
+    const onMoveEvent = vi.fn()
+    const onSelectEvent = vi.fn()
+    week({ onMoveEvent, onSelectEvent }, false)
+    const block = screen.getByTestId("calendar-timed-event")
+    block.dispatchEvent(pointer("pointerdown", 360, 9 * 48 + 10))
+    document.dispatchEvent(pointer("pointermove", 360, 12 * 48))
+    document.dispatchEvent(pointer("pointerup", 360, 12 * 48))
+    expect(onMoveEvent).not.toHaveBeenCalled()
+    expect(onSelectEvent).toHaveBeenCalledWith("e1")
+    expect(screen.queryByTestId("calendar-event-resize")).toBeNull()
+  })
+})

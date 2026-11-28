@@ -94,6 +94,7 @@ import {
   connectDeepLinkAddress,
   onOAuthCompleteLink,
 } from "./onboarding/DeepLinkHandler"
+import { refreshShell, shellReady, shellStatus } from "./served-shell"
 import { isClaudeAuthError } from "./session/claude-auth-failure"
 import { buildDesktopServers } from "./session/desktop-servers"
 import {
@@ -1987,6 +1988,11 @@ function buildBridge(): DesktopBridge {
     checkForUpdates: (options) => checkForUpdates(options),
     // Which version this app is, for the server's client policy (updates.ts).
     appVersion: () => appVersion(),
+    // The served shell (served_shell.rs): ready after first render, which
+    // build runs, and a refresh when the page saw a newer server build.
+    shellReady: (buildId) => shellReady(buildId),
+    shellStatus: () => shellStatus(),
+    refreshShell: () => refreshShell(),
     // P4 N-D T4: this computer as the user's node (node.rs).
     storeNodeCredential: (server, node) => storeNodeCredential(server, node),
     loadNodeCredential: (server) => loadNodeCredential(server),

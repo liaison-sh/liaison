@@ -22,6 +22,7 @@ import App from "~/App"
 import { buildHostServices } from "~/framework/host-services"
 import { spaNavigate } from "~/framework/spa-navigate"
 import { signalNativeReady } from "~/lib/native-bridge"
+import { signalShellReady } from "~/lib/served-shell"
 import { reloadWhenOnline } from "~/lib/stale-chunk"
 import "~/index.css"
 import type { EnsureFreshTokenOptions } from "~/lib/auth-refresh"
@@ -132,5 +133,8 @@ render(() => <App />, document.getElementById("app")!)
 // synchronous, so by this line the shell is painted. No-op in a browser,
 // which publishes no bridge at all (lib/native-bridge.ts).
 signalNativeReady()
+// The desktop's served shell (lib/served-shell.ts): the page rendered, so a
+// served build is marked good; then the page learns what runs.
+signalShellReady()
 
 void completeRuntimeInit()

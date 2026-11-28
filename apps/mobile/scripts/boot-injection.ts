@@ -26,8 +26,6 @@ const TAG = `<script src="/${BOOT_SCRIPT_NAME}"></script>`
 // The page's ONE <head> tag: `<head>` or `<head ...>`, never `<header>` or `<head-x>`.
 const HEAD_TAG = /<head(?=[\s>/])[^>]*>/i
 const HEAD_TAGS = /<head(?=[\s>/])[^>]*>/gi
-/** A comment as HTML allows it: no `--` inside, closed by `-->` (not `--!>`). */
-const WELL_FORMED_COMMENT = /<!--(?!>|->)(?:(?!--)[\s\S])*-->/g
 
 /**
  * `html` with the boot script as the first thing in `<head>`. Idempotent: a
@@ -162,11 +160,25 @@ export function applyMobileCsp(html: string): { html: string; files: ExtractedSc
  * one would run before the policy. Only a leading doctype may remain.
  */
 export function withoutComments(html: string): string {
-  const bare = html.replace(WELL_FORMED_COMMENT, "")
-  const rest = bare.replace(/^\s*<!doctype[^>]*>/i, "")
-  if (rest.includes("<!") || rest.includes("--!>"))
-    throw new Error("the page has a comment or markup declaration it does not allow")
-  return bare
+  const refuse = () => new Error("the page has a comment or markup declaration it does not allow")
+  const doctype = /^\s*<!doctype[^>]*>/i.exec(html)
+  let out = doctype ? doctype[0] : ""
+  let at = out.length
+  for (;;) {
+    const open = html.indexOf("<!", at)
+    if (open === -1) break
+    // Only a well-formed comment: `<!--`, not `<!-->` / `<!--->`, no `--` inside, closed by `-->`.
+    if (!html.startsWith("<!--", open)) throw refuse()
+    const body = open + 4
+    if (html.startsWith(">", body) || html.startsWith("->", body)) throw refuse()
+    const close = html.indexOf("--", body)
+    if (close === -1 || !html.startsWith("-->", close)) throw refuse()
+    out += html.slice(at, open)
+    at = close + 3
+  }
+  out += html.slice(at)
+  if (out.includes("--!>")) throw refuse()
+  return out
 }
 
 /**

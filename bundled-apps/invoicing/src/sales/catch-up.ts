@@ -47,9 +47,11 @@ import {
 import { counterpartyCompletenessError, type PreviewParent } from "../issue"
 import { lineSubtotal, lineTax } from "../money"
 import type { MutationsCtx } from "../mutations/shared"
+import { overseasLineTax } from "../overseas-tax"
 import { supplyDateOf } from "../sale-tax"
 import { excludeRecordedSale, recordSale, reincludeSale, saleExclusion } from "../sales-ledger"
-import { classify, isUntaxedIntraEuSaleWithoutVat } from "../tax"
+import { classify, isUntaxedIntraEuSaleWithoutVat, lineRateBp } from "../tax"
+import { vatTerritoryOf } from "../vat-territory"
 import { issueSale, type SaleCtx, streamParkId, streamSource, totalsMismatch } from "./issue-sale"
 import { creditSaleRefund } from "./refunds"
 import { orderPaidPayloadFromSale } from "./sale-payload"
@@ -166,6 +168,7 @@ async function previewOne(
   issuerCountry: string,
   sale: Sale,
   fxOf: (currency: string, soldAt: string) => Promise<FxPreview>,
+  pricesIncludeTax = false,
 ) {
   const problems = saleProblems(sale)
   if (problems.length > 0) {
@@ -176,29 +179,52 @@ async function previewOne(
   }
   const payload = orderPaidPayloadFromSale(sale)
   const c = payload.customer
-  const counterpartyCountry = c?.tax_country ?? c?.country ?? issuerCountry
+  const rawTaxCountry = c?.tax_country ?? c?.country ?? issuerCountry
+  const counterpartyCountry = vatTerritoryOf(
+    rawTaxCountry,
+    c?.delivery?.postcode && (c.delivery.country_code ?? rawTaxCountry) === rawTaxCountry
+      ? c.delivery.postcode
+      : c?.billing?.postcode,
+  )
   const classification = classify({
     issuer_country: issuerCountry,
     counterparty_country: counterpartyCountry,
     has_vat_id: !!c?.vat_id,
+    line_kinds: payload.line_items.map((li) => li.line_kind ?? "goods"),
   })
+  // As the issue does: the French overseas rules check (and may extract) each line's tax.
+  const overseas = overseasLineTax(payload.line_items, classification, {
+    territory: counterpartyCountry,
+    consumer: !c?.vat_id && c?.kind !== "company",
+    pricesIncludeTax: pricesIncludeTax || payload.prices_include_tax === true,
+  })
+  const lineItems = overseas.ok ? overseas.lines : payload.line_items
   let net = 0n
   let computedTax = 0n
   let reportedTax = 0n
-  for (const li of payload.line_items) {
+  // VAT the overseas rules took out of a tax-inclusive gross the source left untaxed: on the
+  // invoice, never on the source's side of the comparison.
+  let extractedTax = 0n
+  for (const li of lineItems) {
     const sub =
       lineSubtotal({
         quantity: li.quantity,
         unit_price_minor: BigInt(String(li.unit_price_minor)),
       }) - BigInt(String(li.discount_minor ?? "0"))
-    const rate =
-      typeof li.tax_rate_bp === "number" ? li.tax_rate_bp : classification.default_rate_bp
+    const rate = lineRateBp(classification, {
+      line_kind: li.line_kind,
+      tax_rate_bp_override: li.tax_rate_bp,
+    })
     net += sub
     // As the issue does: the line's own tax when within a unit of its rate (streamLineSourceTax).
-    computedTax += streamLineSourceTax(li) ?? lineTax({ subtotal_minor: sub, tax_rate_bp: rate })
-    reportedTax += BigInt(String(li.shopify_tax_minor ?? "0"))
+    const lineTaxMinor =
+      streamLineSourceTax(li) ?? lineTax({ subtotal_minor: sub, tax_rate_bp: rate })
+    computedTax += lineTaxMinor
+    if (li.tax_from_gross) extractedTax += lineTaxMinor
+    else reportedTax += BigInt(String(li.shopify_tax_minor ?? "0"))
   }
   const blockers: string[] = []
+  if (!overseas.ok) blockers.push(`${overseas.reason}: ${overseas.message}`)
   if (!c?.email) blockers.push("buyer email missing")
   const incomplete = c
     ? counterpartyCompletenessError(
@@ -221,11 +247,15 @@ async function previewOne(
     payload.line_items.length > 0 && payload.line_items.every((li) => li.tax_rate_bp === 0)
   if (isUntaxedIntraEuSaleWithoutVat(classification.treatment, chargesNoTax))
     blockers.push("EU buyer charged no VAT and gave no VAT number")
-  for (const m of streamRateMismatches(payload.line_items, classification))
+  // The overseas rules checked every line against its kind's rate already.
+  for (const m of classification.rate_bp_by_kind
+    ? []
+    : streamRateMismatches(payload.line_items, classification))
     blockers.push(
       `"${m.description}" charged at ${m.tax_rate_bp} bp, ${classification.treatment} is ${classification.default_rate_bp} bp`,
     )
-  const diff = computedTax > reportedTax ? computedTax - reportedTax : reportedTax - computedTax
+  const checked = computedTax - extractedTax
+  const diff = checked > reportedTax ? checked - reportedTax : reportedTax - checked
   if (diff > BigInt(Math.max(1, payload.line_items.length)))
     blockers.push(`tax computed ${computedTax} differs from the source's ${reportedTax}`)
   const totals = totalsMismatch(sale)
@@ -329,7 +359,10 @@ export async function revenueStreamCatchUpPreview(ctx: SaleCtx, input: CatchUpIn
     rates.set(key, p)
     return p
   }
-  for (const s of read.sales) rows.push(await previewOne(ctx, stream, issuer.country, s, fxOf))
+  for (const s of read.sales)
+    rows.push(
+      await previewOne(ctx, stream, issuer.country, s, fxOf, issuer.prices_include_tax === true),
+    )
   const toIssue = rows.filter(
     (r) => !("already_invoiced" in r && r.already_invoiced) && !("excluded" in r && r.excluded),
   )

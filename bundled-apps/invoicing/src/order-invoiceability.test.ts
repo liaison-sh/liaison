@@ -155,3 +155,57 @@ describe("ordersInvoiceabilityCheck: applies only when an issuer profile is mapp
     expect(out).toEqual({ applies: true, issuer_profile_id: "iss-1", problems: [] })
   })
 })
+
+// A business buyer in Guyane (an overseas department outside French VAT): the e-invoicing gate
+// parks the order until a person records the territory treatment. (Guadeloupe, Martinique and
+// La Réunion are French VAT territory and never wait for one.) The check used to answer "would invoice", and the paid order
+// then waited with no invoice and no sign of why.
+describe("an order the e-invoicing territory check would park", () => {
+  const RE_ADDRESS = {
+    address1: "5 rue de Cayenne",
+    zip: "97300",
+    city: "Cayenne",
+    country_code: "GF",
+  }
+  const reunion = italianB2b({
+    billing_address: RE_ADDRESS,
+    shipping_address: RE_ADDRESS,
+    vat_id: null,
+    tax_exempt: false,
+    total_price: "26.60",
+    total_tax: "0.00",
+  })
+  const vatSeller = { country: "FR", vat_id: "FR40123456782" }
+
+  it("enforce mode: named, with the tool that settles it", () => {
+    const problems = invoiceabilityProblems(reunion, vatSeller, { gateMode: "enforce" })
+    expect(problems.map((p) => p.reason)).toEqual(["einvoice_needs_review"])
+    expect(problems[0]!.message).toContain("GF")
+    expect(problems[0]!.message).toContain("counterparty_territory_set")
+  })
+
+  it("warn mode, or a seller outside French e-invoicing: nothing to predict", () => {
+    expect(invoiceabilityProblems(reunion, vatSeller, { gateMode: "warn" })).toEqual([])
+    expect(
+      invoiceabilityProblems(
+        reunion,
+        { country: "DE", vat_id: "DE123456789" },
+        {
+          gateMode: "enforce",
+        },
+      ),
+    ).toEqual([])
+  })
+
+  it("the tool reads the org's gate mode (enforce by default on a fresh install)", async () => {
+    const db = {
+      findMany: async (table: string, q: { where?: Record<string, unknown> }) =>
+        table === "issuer_profiles" && q.where?.shopify_shop_id === "shop.myshopify.com"
+          ? [{ id: "iss-1", legal_name: "Seller SAS", country: "FR", vat_id: "FR40123456782" }]
+          : [],
+    } as never
+    const out = await ordersInvoiceabilityCheck({ db }, reunion)
+    expect(out.problems.map((p) => p.reason)).toEqual(["einvoice_needs_review"])
+    expect(out.message).toContain("deferred list")
+  })
+})

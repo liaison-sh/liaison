@@ -293,3 +293,26 @@ Preview PDFs readable with documents read and settings read, replaced per sale, 
 parked Shopify orders show as pending, same matching rule, no park reason -> apps/api/src/modules/buyer-invoices/store.ts:313
 issued invoice replaces the pending entry -> apps/api/src/modules/buyer-invoices/store.ts:481
 parked order identity from the order payload -> apps/api/src/modules/buyer-invoices/parks.ts:1
+Shopify line keeps Shopify's tax, net = gross less that tax -> bundled-apps/invoicing/src/handlers/shopify-order-paid.ts:1914
+order invoices must total the paid total less marketplace tax, else order_total_mismatch park -> bundled-apps/invoicing/src/handlers/shopify-order-paid.ts:1343
+invoiceability check names einvoice_needs_review and counterparty_territory_set -> bundled-apps/invoicing/src/order-invoiceability.ts:193
+country printed once by name in the face language -> bundled-apps/invoicing/templates/shared.ts:1483
+ship to equal to billing but for a country line is not repeated -> bundled-apps/invoicing/templates/shared.ts:1389
+share capital localised with its currency -> bundled-apps/invoicing/templates/shared.ts:1848
+Incoterm only for B2B cross border goods or a non default term -> bundled-apps/invoicing/templates/shared.ts:1353
+goods invoice carries the shipping, digital invoice digital lines only -> bundled-apps/invoicing/src/handlers/shopify-order-paid.ts:1023
+shipping never makes a supply mixed -> bundled-apps/invoicing/src/einvoicing/classify-operation.ts:25
+long header value wraps under itself -> bundled-apps/invoicing/templates/shared.ts:1294
+overseas territories: DOM with VAT, without VAT, COM, Monaco as France -> bundled-apps/invoicing/src/vat-territory.ts:103
+8.5% standard rate in GP, MQ, RE; 2.1% reduced -> bundled-apps/invoicing/src/vat-territory.ts:49
+overseas postcodes, 97133 Saint-Barthélemy, 97150 Saint-Martin, 974 La Réunion -> bundled-apps/invoicing/src/vat-territory.ts:53
+goods export, digital 8.5%, business services 8.5%, consumer other services seller rate -> bundled-apps/invoicing/src/tax.ts:521
+Guyane and Mayotte no VAT -> bundled-apps/invoicing/src/tax.ts:525
+DOM issuer services to EU buyers, EU issuer services to a DOM: not classified -> bundled-apps/invoicing/src/tax.ts:470
+overseas mentions 262 I and 294-2, 294-1, exempt goods on a mixed document, from 2026-11-28 -> bundled-apps/invoicing/src/tax.ts:745
+Factur-X S for a taxed line, G export, E exempt with the mention as reason -> bundled-apps/invoicing/src/facturx/vat-breakdown.ts:29
+VAT extracted from the gross for a consumer charged nothing on tax-inclusive prices, total unchanged -> bundled-apps/invoicing/src/overseas-tax.ts:60
+overseas_tax_mismatch and overseas_tax_not_collected parks -> bundled-apps/invoicing/src/overseas-tax.ts:167
+overseas rules on the Shopify and revenue-stream path, deferred_tax_override modes -> bundled-apps/invoicing/src/handlers/shopify-order-paid.ts:931
+DOM with VAT counts as French for e-invoicing -> bundled-apps/invoicing/src/einvoicing/territory.ts:57
+consumer overseas or in Monaco is e-reporting, no territory decision -> bundled-apps/invoicing/src/einvoicing/classify.ts:122

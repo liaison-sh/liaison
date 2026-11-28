@@ -175,6 +175,121 @@ describe("G14: this and following", () => {
     expect(row?.deleted_at).toBeNull()
   })
 
+  it("one occurrence of a series not on Google yet is edited here (no Google needed)", async () => {
+    // No drain: the series never reaches Google (as on a calendar with no Google account).
+    const { h } = await connected()
+    const cal = "team0001@group.calendar.google.com"
+    const team = await h.calendar(cal)
+    const created = (await h.tool("create_event", {
+      calendarId: team?.id,
+      title: "Local weekly",
+      start: "2026-12-07T09:00:00.000Z",
+      end: "2026-12-07T09:30:00.000Z",
+      recurrence: ["RRULE:FREQ=WEEKLY"],
+    })) as { eventId: string }
+    const key = created.eventId.replace(/-/g, "")
+    const moved = (await h.tool("update_event", {
+      eventId: created.eventId,
+      scope: "occurrence",
+      occurrenceStart: "2026-12-14T09:00:00.000Z",
+      start: "2026-12-14T11:00:00.000Z",
+      end: "2026-12-14T11:30:00.000Z",
+    })) as { eventId: string; scope: string }
+    expect(moved.scope).toBe("occurrence")
+    expect(moved.eventId).not.toBe(created.eventId)
+    let rows = await h.events(cal)
+    const occurrence = rows.find((r) => r.id === moved.eventId)
+    expect(occurrence?.recurring_event_id).toBe(key)
+    expect(occurrence?.google_event_id).toBe(`${key}_20261214T090000Z`)
+    expect(occurrence?.title).toBe("Local weekly")
+    expect(
+      new Date(
+        (occurrence?.start as { dateTime?: string } | undefined)?.dateTime ?? "",
+      ).toISOString(),
+    ).toBe("2026-12-14T11:00:00.000Z")
+    expect(rows.find((r) => r.id === created.eventId)?.recurrence).toEqual(["RRULE:FREQ=WEEKLY"])
+
+    // The same occurrence again (by its series and original start) is that row, not a second.
+    const again = (await h.tool("update_event", {
+      eventId: created.eventId,
+      scope: "occurrence",
+      occurrenceStart: "2026-12-14T09:00:00.000Z",
+      title: "Local weekly (moved)",
+    })) as { eventId: string }
+    expect(again.eventId).toBe(moved.eventId)
+    // Opened as itself, the occurrence knows its series.
+    const following = (await h.tool("update_event", {
+      eventId: moved.eventId,
+      scope: "series",
+      title: "Local weekly (all)",
+    })) as { eventId: string; scope: string }
+    expect(following).toMatchObject({ eventId: created.eventId, scope: "series" })
+
+    // Deleting the whole series takes its edited occurrence with it.
+    await h.tool("delete_event", { eventId: created.eventId, scope: "series" })
+    rows = await h.events(cal)
+    expect(rows.filter((r) => r.recurring_event_id === key && !r.deleted_at)).toEqual([])
+  })
+
+  it("an occurrence edited before its series reached Google is pushed after the series", async () => {
+    const { google, h } = await connected()
+    const cal = "team0001@group.calendar.google.com"
+    const team = await h.calendar(cal)
+    const created = (await h.tool("create_event", {
+      calendarId: team?.id,
+      title: "Fresh weekly",
+      start: "2026-12-07T09:00:00.000Z",
+      end: "2026-12-07T09:30:00.000Z",
+      recurrence: ["RRULE:FREQ=WEEKLY;COUNT=4"],
+    })) as { eventId: string }
+    const moved = (await h.tool("update_event", {
+      eventId: created.eventId,
+      scope: "occurrence",
+      occurrenceStart: "2026-12-14T09:00:00.000Z",
+      start: "2026-12-14T13:00:00.000Z",
+      end: "2026-12-14T13:30:00.000Z",
+    })) as { eventId: string }
+    await h.drain()
+    const key = created.eventId.replace(/-/g, "")
+    expect(google.getEvent(cal, key)?.recurrence).toEqual(["RRULE:FREQ=WEEKLY;COUNT=4"])
+    const instance = google.getEvent(cal, `${key}_20261214T090000Z`)
+    expect(new Date(instance?.start?.dateTime as string).toISOString()).toBe(
+      "2026-12-14T13:00:00.000Z",
+    )
+    const rows = await h.events(cal)
+    expect(rows.find((r) => r.id === moved.eventId)?.pending_push).toBe("none")
+    expect(rows.find((r) => r.id === created.eventId)?.pending_push).toBe("none")
+    expect(google.unhandled).toEqual([])
+  })
+
+  it("a one-off event given a repeat rule becomes a series, here and on Google", async () => {
+    const { google, h } = await connected()
+    const cal = "team0001@group.calendar.google.com"
+    const team = await h.calendar(cal)
+    const created = (await h.tool("create_event", {
+      calendarId: team?.id,
+      title: "One-off review",
+      start: "2026-12-08T15:00:00.000Z",
+      end: "2026-12-08T16:00:00.000Z",
+    })) as { eventId: string }
+    await h.drain()
+    const updated = (await h.tool("update_event", {
+      eventId: created.eventId,
+      recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TU"],
+    })) as { eventId: string }
+    expect(updated.eventId).toBe(created.eventId)
+    await h.drain()
+    const row = (await h.events(cal)).find((r) => r.id === created.eventId)
+    expect(row?.recurrence).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=TU"])
+    expect(google.getEvent(cal, row?.google_event_id as string)?.recurrence).toEqual([
+      "RRULE:FREQ=WEEKLY;BYDAY=TU",
+    ])
+    // From now on it is a recurring meeting: a change asks which occurrences.
+    await expect(h.tool("update_event", { eventId: created.eventId, title: "x" })).rejects.toThrow(
+      /"following"/,
+    )
+  })
+
   it("a recurring meeting without a scope names the three choices; a wrong start is refused", async () => {
     const { h, masterId } = await connected()
     await expect(h.tool("update_event", { eventId: masterId, title: "x" })).rejects.toThrow(

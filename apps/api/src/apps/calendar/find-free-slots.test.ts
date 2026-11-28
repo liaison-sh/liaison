@@ -19,6 +19,7 @@ const WINDOW = { timeMin: "2026-12-07T00:00:00+01:00", timeMax: "2026-12-09T00:0
 
 let orgId: string
 let userId: string
+let teammate: string
 
 beforeAll(async () => {
   await acquireAppSchemaJsLock("app_calendar")
@@ -28,6 +29,14 @@ beforeAll(async () => {
     orgId,
     email: `owner-${slug}@x.test`,
     name: "Owner",
+    status: "active",
+    passwordHash: "h",
+  })
+  teammate = `teammate-${slug}@x.test`
+  await seedUserRow({
+    orgId,
+    email: teammate,
+    name: "Teammate",
     status: "active",
     passwordHash: "h",
   })
@@ -136,5 +145,37 @@ describe("find_free_slots", () => {
       scope: "https://www.googleapis.com/auth/calendar.freebusy",
     })
     expect(result.slots[0]?.start).toBe("2026-12-07T10:30:00+01:00")
+  })
+
+  it("counts a teammate's events Liaison already holds, without Google's free/busy", async () => {
+    const { google, h } = await connected()
+    google.grantFreeBusy(false)
+    // Tuesday 09:00-10:00: the teammate attends; the owner declined, so only the teammate is busy.
+    const created = (await h.tool("create_event", {
+      calendarId: (await h.calendar(OWNER))?.id,
+      title: "Teammate review",
+      start: "2026-12-08T08:00:00.000Z",
+      end: "2026-12-08T09:00:00.000Z",
+      attendees: [teammate, OWNER],
+    })) as { eventId: string }
+    const { sql } = await import("drizzle-orm")
+    await h.sql(
+      sql`UPDATE app_calendar.events SET attendees = ${JSON.stringify([
+        { email: OWNER, self: true, responseStatus: "declined" },
+        { email: teammate, responseStatus: "accepted" },
+      ])}::jsonb WHERE id = ${created.eventId}::uuid`,
+    )
+    const result = (await h.tool("find_free_slots", {
+      attendees: [teammate],
+      timeZone: PARIS,
+      timeMin: "2026-12-08T00:00:00+01:00",
+      timeMax: "2026-12-09T00:00:00+01:00",
+      maxResults: 1,
+    })) as SlotsResult
+    expect(result.attendees).toEqual([
+      { email: teammate, status: "checked", reason: "calendars in Liaison" },
+    ])
+    expect(result.consent).toBeUndefined()
+    expect(result.slots[0]?.start).toBe("2026-12-08T10:00:00+01:00")
   })
 })

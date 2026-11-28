@@ -338,6 +338,41 @@ describeLive("Agent + Calendar Scenario", () => {
     )
     expect(attendeeOverlap.length).toBeGreaterThanOrEqual(1)
 
+    // An agent that emails the guests (sendUpdates "all": "for the team" reads as an invitation)
+    // parks the create for a person, as an invitation must; with no email it runs at once, its
+    // list_calendars read no longer parking it (scope-taint.ts, rule 6l). Either way the call is
+    // ONE request: a parked one is approved here and the row then lands.
+    if (args.sendUpdates === "all" || args.sendUpdates === "externalOnly") {
+      const pending = (await env.db.sql.unsafe(
+        `SELECT id FROM ${ks}.approval_requests
+         WHERE org_id = $1 AND status = 'pending' AND tool_name = 'calendar:create_event'`,
+        [world.org.id],
+      )) as unknown as Array<{ id: string }>
+      expect(pending).toHaveLength(1)
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${world.admin.token}`,
+      }
+      const shown = (await (
+        await fetch(`${url}/api/approvals/${pending[0]!.id}`, { headers })
+      ).json()) as { data?: { payloadHash?: string } }
+      const decided = await fetch(`${url}/api/approvals/${pending[0]!.id}/decide`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ decision: "approve", payloadHash: shown.data?.payloadHash }),
+      })
+      expect(decided.status).toBe(200)
+      // The approved call runs right after the decision; wait for its row.
+      for (let i = 0; i < 40; i++) {
+        const landed = (await env.db.sql.unsafe(
+          `SELECT 1 FROM ${cs}.events WHERE org_id = $1 AND title ILIKE '%Q3 planning%' LIMIT 1`,
+          [world.org.id],
+        )) as unknown as unknown[]
+        if (landed.length > 0) break
+        await Bun.sleep(250)
+      }
+    }
+
     // DB-level proof: an events row landed on the org calendar with the right title and a
     // start/end matching next Tuesday's 10:00-11:00 window (within the same day — tolerant of
     // the agent picking an exact minute/second or a slightly different literal timezone offset
@@ -359,6 +394,17 @@ describeLive("Agent + Calendar Scenario", () => {
         attendees: unknown
       }>
     )[0]
+    if (!created) {
+      // Say why no row landed (a parked approval, a refusal): the calls and their results.
+      console.log(
+        "agent-calendar S1: no event row; tool calls and results:",
+        JSON.stringify(
+          events
+            .filter((e) => e.event === "tool-call" || e.event === "tool-result")
+            .map((e) => e.data),
+        ).slice(0, 6000),
+      )
+    }
     expect(created).toBeDefined()
     expect(created!.calendar_id).toBe(orgCalendarId)
 

@@ -13,6 +13,7 @@ import {
   type Counterparty,
   type IssueCtx,
   type IssueDb,
+  issuerTerritoryOf,
   storedTaxCountry,
   taxCountryOf,
 } from "../issue"
@@ -158,10 +159,12 @@ export async function ensureDocumentPdf(
   }
   const classification = classify({
     issuer_country: issuer.country,
+    issuer_postcode: (issuer as { postcode?: string | null }).postcode ?? null,
     // Same inputs issueDocument classified on, so a re-render keeps the issue-time legal mention
     // (the tax destination, and the VAT id that makes an intra EU sale a reverse charge).
     counterparty_country: taxCountryOf(counterparty),
     has_vat_id: !!counterparty.vat_id,
+    line_kinds: lines.map((l) => (l as { line_kind?: string | null }).line_kind ?? "goods"),
   })
   const type = String(doc.type) as DocumentType
   // A credit note's reference to the invoice it reverses (number + issue date, and the reason) is
@@ -178,6 +181,10 @@ export async function ensureDocumentPdf(
       issueDate: dateOnly(doc.issued_at),
       // The stored buyer kind, so a re-render prints the issue-time wording.
       customerKind: (doc.customer_kind as string | null | undefined) ?? null,
+      taxTerritory: taxCountryOf(counterparty),
+      issuerTerritory: issuerTerritoryOf(
+        issuer as { country?: string | null; postcode?: string | null },
+      ),
     },
   )
   if (firstRender) {

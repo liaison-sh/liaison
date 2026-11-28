@@ -65,6 +65,10 @@ With it off, the profile keeps the plain invoice mail, sent only when `autoEmail
 
 When an order cannot be invoiced automatically, it appears under **Deferred** in the Invoicing sidebar (the row shows only when something is waiting). The list holds the orders still waiting, newest first; an order that was invoiced or cancelled since leaves it. `documents_for_orders` answers the same for an order with no document: its `parks` entry names the reason and what it waits on, so a waiting order never reads as one invoicing never saw. An order whose tax needs a decision offers **Issue with Shopify's tax** and **Issue as computed**. Both file an approval.
 
+An order with physical goods and digital items gets two invoices: the goods with their shipping (the one that states the Incoterm), and the digital items alone, as a supply of services with the services mention (for a consumer outside the EU, art. 259 B). An order of goods alone, shipping included, gets one. Shipping never makes a supply "goods and services". A paid order's invoices total exactly what the buyer paid. Each line keeps the tax Shopify charged on it, and with tax-inclusive prices its amount excluding VAT is the price less that tax, so a 79.00 order is invoiced at 79.00, never 78.99. An order whose invoices would still not total what was paid (less any tax a marketplace collected itself) is not issued: it waits under **Deferred** with the reason `order_total_mismatch` and both totals, for a tax decision.
+
+A buyer whose French e-invoicing territory needs a decision (an overseas department such as Réunion, Monaco, a VAT number from another country) waits under **Deferred** with the reason `einvoice_needs_review` until a person records it with `counterparty_territory_set`. `orders_invoiceability_check` says so before the order is placed.
+
 A retried order reads the Shopify order as it is now: a VAT number added as a custom attribute named `VAT number`, or a billing company, after the order was parked is used, and a customer with a VAT number is invoiced under the billing company's name.
 
 An order to a customer in another EU country that Shopify charged no VAT (tax exempt, or 0%) and that carries no VAT number is not invoiced: it would be neither a reverse charge nor a consumer invoice. It waits under **Deferred** for a tax decision. For a business, add its VAT number to the Shopify order (custom attribute `VAT number`), then choose **Issue with Shopify's tax**: the invoice is a reverse charge. For a consumer, **Issue as computed** charges the VAT of the customer's country.
@@ -129,11 +133,33 @@ For an issuer in the EU, a customer in another EU country is either a business o
 
 ### Sale date and services outside the EU
 
+- A long header value, such as the operation "Delivery of goods and provision of services", wraps under itself and never covers its label.
+- The PDF names each country once, in the document's language ("France", "Allemagne"), and never adds a country code under an address that already ends with its country. A delivery address that is the billing address with only a country line added is not printed a second time. The share capital prints with its currency in the document's language ("share capital EUR 26,838.60", "au capital de 26 838,60 €"), and the SIREN in groups of three. The Incoterm prints only on goods sold to a business in another country, or when the document carries another term than the default DAP.
 - When an invoice is issued on another day than the sale (an order paid yesterday, a sale invoiced later), its PDF prints **Date of sale** under **Issued**, and its Factur-X carries the same date as the delivery date. An invoice issued on the day of the sale prints none. Credit notes never print one.
 - From 28 November 2026, services sold to a customer outside the EU (software, a digital download, a service) print a mention that French VAT does not apply because the place of supply is outside France, instead of the export of goods mention. Goods keep the export mention, and a document mixing both prints the two. Documents issued before keep their mention.
 - From 28 November 2026, digital services sold to a consumer outside the EU print "TVA non applicable, art. 259 B du CGI" (in English, "VAT not applicable, art. 259 B of the French Tax Code"). A business outside the EU keeps the place of supply mention above. Documents issued before keep their mention.
 - A sale whose tax its source computed (a checkout's own tax engine) is checked before it is issued: a reverse charge needs a VAT number VIES confirmed, a digital service to a consumer needs two pieces of location evidence (billing address, IP address, card country) that name the same country, and the source's tax must match the rate of that country. Anything else waits for a person. The place of supply and its evidence are kept with the invoice.
 - A sale to a consumer outside the EU (the United Kingdom or Switzerland, say) on which the source collected no tax is issued with no VAT and the mention above. One on which the source did collect tax waits for a person, since that tax belongs to a registration abroad.
+
+### Overseas France and Monaco
+
+Guadeloupe, Martinique and La Réunion are in French VAT, at their own rates (8.5% standard, 2.1% reduced). Guyane and Mayotte are French but charge no VAT. The overseas collectivities (Saint-Barthélemy, Saint-Martin, Saint-Pierre-et-Miquelon, Wallis-et-Futuna, French Polynesia, New Caledonia, the TAAF) are outside French VAT. Monaco is French VAT territory. A buyer is placed there by its country code (RE, GP, MQ, GF, YT, BL, MF, PM, WF, PF, NC, TF, MC) or by a French address with an overseas postcode (97411 is La Réunion, 97133 Saint-Barthélemy, 97150 Saint-Martin). Check with your accountant: the rules below follow the French tax administration's guidance (BOFIP BOI-TVA-GEO-20), and the wording of the new mentions is not yet an accountant's.
+
+For an issuer in metropolitan France:
+
+| Buyer | Goods and shipping | Digital services | Other services |
+|---|---|---|---|
+| Guadeloupe, Martinique, La Réunion | export, no VAT | 8.5% | business 8.5%, consumer 20% (a sale waits for a person) |
+| Guyane, Mayotte | export, no VAT | no VAT | business no VAT, consumer: ask your accountant |
+| Overseas collectivities | export, no VAT | no VAT, as outside the EU | as outside the EU |
+| Monaco | 20% | 20% | 20% |
+
+- Goods print "Exportation : exonération de TVA (articles 262 I et 294-2 du CGI)". Services in Guyane or Mayotte print "TVA non applicable, art. 294-1 du CGI". Services taxed at 8.5% print no mention: it is French VAT, with no reverse charge. A document with exported goods next to taxed services names the exempt goods. Documents issued before 28 November 2026 keep their mention.
+- In the Factur-X, an 8.5% line is standard rated (S), exported goods are an export (G), and exempt goods on a document with taxed services are exempt (E) with that mention as the reason.
+- Shopify charges 0% to these departments unless you set it up, and Stripe Tax computes nothing there or in Monaco. When a consumer's line was charged nothing and your prices include tax (**Prices include tax** on the issuer profile), the VAT is taken out of what the buyer paid: 108.50 paid is 100.00 net and 8.50 VAT, and the invoice still totals 108.50. Goods stay an export at 0%.
+- Any other difference waits for a person in `deferred_list`: a source rate that is not the territory's (`overseas_tax_mismatch`), or no tax on a business buyer or on prices without tax (`overseas_tax_not_collected`). `deferred_tax_override` then keeps the source's tax (`shopify_reported`) or charges the territory's rate on the net prices (`as_computed`).
+- An issuer in La Réunion, Guadeloupe or Martinique (a French address with a 974, 971 or 972 postcode) charges its own 8.5% at home, exports goods to metropolitan France, and charges 20% on digital services to metropolitan consumers. Its services to buyers in other EU countries, and services to an overseas department from an issuer in another EU country, are not classified: they wait for a person.
+- For e-invoicing, a buyer in Guadeloupe, Martinique or La Réunion counts as French. A consumer anywhere overseas or in Monaco is e-reporting and never waits for a territory decision; a business in Guyane, Mayotte, a collectivity or Monaco still needs `counterparty_territory_set`.
 
 ### VAT settings for sales to consumers abroad
 

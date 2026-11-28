@@ -21,6 +21,7 @@ import {
 import { registerJobWorker, unregisterAppJobHandlers } from "~/infra/jobs/jobs"
 import { withPinnedJobSlot } from "~/infra/jobs/pinned-jobs-gate"
 import { isManagedEdition } from "~/lib/edition"
+import { isRecord } from "~/lib/guards"
 import { appsLogger as log } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { describeDbError } from "~/lib/transient-db-error"
@@ -3496,6 +3497,17 @@ async function registerSingleApp(
             if (core || desc._firstParty === true) {
               if (tool.sinkReadersSelf === true) entry.sinkReadersSelf = true
               if (Array.isArray(tool.contentParams)) entry.contentParams = tool.contentParams
+              // A write back into the app itself on a turn that read only this app (rule 6l).
+              if (isRecord(tool.taintReturnsToOwnApp)) {
+                const outward = tool.taintReturnsToOwnApp.outwardWhen
+                entry.taintReturnsToOwnApp = isRecord(outward)
+                  ? {
+                      outwardWhen: Object.fromEntries(
+                        Object.entries(outward).filter(([, v]) => Array.isArray(v)),
+                      ) as Record<string, readonly unknown[]>,
+                    }
+                  : {}
+              }
               // Where a call may run: a product rule of first-party apps (contract.ts).
               if (tool.humanTurnOnly === true) entry.humanTurnOnly = true
               if (tool.dmOnly === true) entry.dmOnly = true

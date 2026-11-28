@@ -184,12 +184,12 @@ describe("einvoiceGateError (enforce)", () => {
     expect(ev.operationSource).toBe("lines_authoritative")
   })
 
-  test("Réunion buyer without a territory treatment → einvoice_needs_review", async () => {
+  test("Guyane business buyer without a territory treatment → einvoice_needs_review", async () => {
     const buyer = await buyerFrom({
       ...FR_BUSINESS_CONFIRMED,
-      billing_postcode: "97400",
-      billing_city: "Saint-Denis",
-      billing_country_code: "RE",
+      billing_postcode: "97300",
+      billing_city: "Cayenne",
+      billing_country_code: "GF",
     })
     const r = einvoiceGateError(input({ buyer }))
     expect(r?.code).toBe("einvoice_needs_review")

@@ -6,6 +6,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { FakeGoogleCalendar } from "~/apps/calendar/__fixtures__/google/fake-google-calendar"
 import { createCalendarSyncHarness } from "~/apps/calendar/__fixtures__/google/sync-harness"
+import { seedConnectedAccountRow } from "~/seed/factories/org/platform-rows"
 import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
 import { acquireAppSchemaJsLock, releaseAppSchemaJsLock } from "~/tests/helpers/app-schema-lock"
 
@@ -14,14 +15,16 @@ const TEAM = "team0001@group.calendar.google.com"
 
 let orgId: string
 let userId: string
+let userEmail: string
 
 beforeAll(async () => {
   await acquireAppSchemaJsLock("app_calendar")
   const slug = `cal-invitations-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
   orgId = await seedOrgRow({ name: "Calendar Invitations Org", slug })
+  userEmail = `owner-${slug}@x.test`
   userId = await seedUserRow({
     orgId,
-    email: `owner-${slug}@x.test`,
+    email: userEmail,
     name: "Owner",
     status: "active",
     passwordHash: "h",
@@ -94,6 +97,43 @@ describe("G12 / D3: invitations", () => {
     expect(google.requestsFor("events.insert")[0]?.query.sendUpdates).toBe("none")
   })
 
+  it("a write result says whether guests were emailed and whether the calendar reaches Google", async () => {
+    const { h, teamId, email } = await connected()
+    h.callAs("agent")
+    // No Google credential behind the account (a seeded calendar): Liaison only, nobody emailed.
+    const local = (await h.tool("create_event", { ...MEETING, calendarId: teamId })) as Record<
+      string,
+      unknown
+    >
+    expect(local).toMatchObject({ google: "not_connected", guestsEmailed: false })
+    expect(String(local.notice)).toContain("Liaison only")
+
+    // The account's Google connection is active: the event syncs, the guests were not emailed.
+    await seedConnectedAccountRow({
+      orgId,
+      appName: "calendar",
+      connectionName: "google-calendar",
+      ownerType: "user",
+      ownerId: userId,
+      providerType: "oauth2",
+      identifier: email,
+      status: "active",
+      createdBy: userId,
+    })
+    const synced = (await h.tool("create_event", { ...MEETING, calendarId: teamId })) as Record<
+      string,
+      unknown
+    >
+    expect(synced).toMatchObject({ google: "syncing", guestsEmailed: false })
+    expect(String(synced.notice)).toContain("NOT emailed")
+    const moved = (await h.tool("update_event", {
+      eventId: synced.eventId,
+      start: "2026-12-01T16:00:00.000Z",
+      end: "2026-12-01T17:00:00.000Z",
+    })) as Record<string, unknown>
+    expect(moved).toMatchObject({ google: "syncing", guestsEmailed: false })
+  })
+
   it("an agent's invitation waits for approval; nothing reaches Google before it", async () => {
     const { google, h, teamId } = await connected()
     h.callAs("agent")
@@ -107,6 +147,7 @@ describe("G12 / D3: invitations", () => {
     expect(h.approvals[0]?.tool_name).toBe("calendar:create_event")
     expect(h.approvals[0]?.summary).toContain("Roadmap review")
     expect(h.approvals[0]?.summary_detail?.lines?.join("\n")).toContain("guest.one@partner.test")
+    expect(h.approvals[0]?.summary_detail?.lines?.join("\n")).toMatch(/^Calendar: \S/m)
     await h.drain()
     expect(google.requestsFor("events.insert")).toHaveLength(0)
     expect((await h.events(TEAM)).some((r) => r.title === "Roadmap review")).toBe(false)
@@ -174,6 +215,37 @@ describe("G12: RSVP", () => {
     expect(attendees.find((a) => a.email === "boss@partner.test")?.responseStatus).toBe("accepted")
     const after = await h.event(OWNER, invite.id)
     expect(after?.rsvp_request).toBeNull()
+  })
+
+  it("the signed-in person's own entry reads as self and can be answered without Google's flag", async () => {
+    const { h, teamId } = await connected()
+    const created = (await h.tool("create_event", {
+      calendarId: teamId,
+      title: "Preamp launch",
+      start: "2026-12-04T09:00:00.000Z",
+      end: "2026-12-04T10:00:00.000Z",
+      attendees: [userEmail, "guest.one@partner.test"],
+    })) as { eventId: string }
+    const shown = (await h.tool("get_event", { eventId: created.eventId })) as {
+      attendees: Array<{ email: string; self?: boolean }>
+    }
+    expect(shown.attendees.find((a) => a.email === userEmail)?.self).toBe(true)
+    expect(shown.attendees.find((a) => a.email === "guest.one@partner.test")?.self).toBeUndefined()
+    const answered = (await h.tool("respond_to_invitation", {
+      eventId: created.eventId,
+      response: "tentative",
+    })) as { response: string }
+    expect(answered.response).toBe("tentative")
+    const rows = await h.events(TEAM)
+    const stored = (rows.find((r) => r.id === created.eventId)?.attendees ?? []) as Array<{
+      email: string
+      self?: boolean
+      responseStatus?: string
+    }>
+    const mine = stored.find((a) => a.email === userEmail)
+    expect(mine?.responseStatus).toBe("tentative")
+    // Not stored as the account's own entry: another viewer does not see it as theirs.
+    expect(mine?.self).toBeUndefined()
   })
 
   it("an event the account is not a guest of cannot be answered", async () => {

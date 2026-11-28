@@ -571,6 +571,8 @@ interface EventRowShape {
   id: string
   calendar_id: string
   google_event_id: string | null
+  /** An occurrence row's series: the master's Google id (or the id its create will give it). */
+  recurring_event_id?: string | null
   etag: string | null
   title: string | null
   description: string | null
@@ -740,7 +742,19 @@ export async function calendarPush(payload: unknown, ctx: CalendarCtx): Promise<
   }
 }
 
+/** Whether an occurrence row's series is a local one Google does not have yet: its push waits
+ * (the series' own push queues it once the series is on Google). Its key is then the uuid hex
+ * of the master row, which still has no Google id. */
+async function seriesNotOnGoogleYet(row: EventRowShape, ctx: CalendarCtx): Promise<boolean> {
+  const key = row.recurring_event_id
+  if (!key || !/^[0-9a-f]{32}$/.test(key)) return false
+  const masterId = `${key.slice(0, 8)}-${key.slice(8, 12)}-${key.slice(12, 16)}-${key.slice(16, 20)}-${key.slice(20)}`
+  const master = JSON.parse(await ctx.calendar_getEvent(masterId)) as EventRowShape | null
+  return master !== null && master.calendar_id === row.calendar_id && !master.google_event_id
+}
+
 async function pushRow(row: EventRowShape, ctx: CalendarCtx, authRetry: boolean): Promise<void> {
+  if (await seriesNotOnGoogleYet(row, ctx)) return
   const calendarJson = await ctx.calendar_getCalendar(row.calendar_id)
   const calendar = JSON.parse(calendarJson) as {
     google_calendar_id: string
@@ -1650,6 +1664,9 @@ const FREE_BUSY_MAX_DAYS = 62
 
 interface FreeBusyContext {
   events: BusyEventLike[]
+  /** Guests who are people of the organization, with the events Liaison holds that they attend
+   * (on calendars the caller sees). Only their busy times are used. */
+  teammates?: Array<{ email: string; events: BusyEventLike[] }>
   selfEmails: string[]
   timeZone: string | null
   account: { identifier: string; hasFreeBusyScope: boolean | null } | null
@@ -1711,7 +1728,7 @@ export async function calendarFindFreeSlots(params: unknown, ctx: CalendarCtx): 
   ].slice(0, FREE_BUSY_MAX_ATTENDEES)
   const window = { timeMin: windowStart.toISOString(), timeMax: windowEnd.toISOString() }
   const context = JSON.parse(
-    await ctx.calendar_freeBusyContext(JSON.stringify(window)),
+    await ctx.calendar_freeBusyContext(JSON.stringify({ ...window, attendees })),
   ) as FreeBusyContext
   const requestedZone = typeof p.timeZone === "string" ? p.timeZone : null
   const timeZone = isValidTimeZone(requestedZone)
@@ -1727,6 +1744,16 @@ export async function calendarFindFreeSlots(params: unknown, ctx: CalendarCtx): 
     timeZone,
     selfEmails,
   )
+
+  // Teammates: their events on the calendars Liaison holds are busy times already known here,
+  // whether or not Google's free/busy can be asked about them.
+  const held = new Set<string>()
+  for (const t of context.teammates ?? []) {
+    const email = t.email.toLowerCase()
+    if (selfEmails.has(email)) continue
+    held.add(email)
+    busy.push(...busyFromEvents(t.events, windowStart, windowEnd, timeZone, new Set([email])))
+  }
 
   const others = attendees.filter((a) => !selfEmails.has(a))
   const availability: AttendeeAvailability[] = []
@@ -1780,6 +1807,17 @@ export async function calendarFindFreeSlots(params: unknown, ctx: CalendarCtx): 
     }
   }
 
+  // A teammate Google could not be asked about still counts as checked: their busy times on the
+  // calendars Liaison holds were used.
+  for (const a of availability) {
+    if (a.status !== "checked" && held.has(a.email)) {
+      a.status = "checked"
+      a.reason = "calendars in Liaison"
+    }
+  }
+  const unchecked = availability.filter((a) => a.status !== "checked")
+  if (consentNeeded && unchecked.length === 0) consentNeeded = false
+
   const maxResults = Math.min(Math.max(Number(p.maxResults ?? 10) || 10, 1), 50)
   const slots = findFreeSlots({
     windowStart,
@@ -1826,11 +1864,6 @@ function notifies(value: unknown): value is "all" | "externalOnly" {
   return value === "all" || value === "externalOnly"
 }
 
-function describeWhen(p: Record<string, unknown>): string | null {
-  if (typeof p.start !== "string") return null
-  return typeof p.end === "string" ? `${p.start} to ${p.end}` : p.start
-}
-
 /** Stage the approval; null when the kernel granted it inline (a person's own call). */
 async function parkForApproval(
   ctx: CalendarCtx,
@@ -1858,7 +1891,77 @@ async function parkForApproval(
 }
 
 const PENDING_NOTE =
-  "Nothing has been sent or changed yet: this waits for a human approval. Report it as pending, never as done."
+  "Nothing has been sent or changed yet: this waits for ONE human approval, which runs it as staged. Report it as pending, never as done. Do not call the tool again for the same change: this request already holds it (to change it, edit the pending request with approval_update_payload)."
+
+/** A point (`2026-12-01T10:00:00Z` or Google's `{dateTime}`/`{date}`) as card text. */
+function pointText(point: unknown): string | null {
+  if (typeof point === "string" && point) return point
+  if (point && typeof point === "object") {
+    const p = point as { dateTime?: unknown; date?: unknown }
+    if (typeof p.dateTime === "string") return p.dateTime
+    if (typeof p.date === "string") return p.date
+  }
+  return null
+}
+
+/** The event a write names, as a card reads it: its title, time and calendar. Lookups that fail
+ * leave the field out (a weak agent's id may name nothing). */
+async function describeTarget(
+  ctx: CalendarCtx,
+  p: Record<string, unknown>,
+): Promise<{ title: string | null; when: string | null; calendar: string | null }> {
+  let row: { title?: string | null; start?: unknown; end?: unknown; calendar_id?: string } | null =
+    null
+  if (typeof p.eventId === "string" && p.eventId) {
+    try {
+      row = JSON.parse(await ctx.calendar_getEvent(p.eventId))
+    } catch {
+      row = null
+    }
+  }
+  const calendarId =
+    typeof p.calendarId === "string" && p.calendarId ? p.calendarId : row?.calendar_id
+  let calendar: string | null = null
+  if (calendarId) {
+    try {
+      const cal = JSON.parse(await ctx.calendar_getCalendar(calendarId)) as { name?: string } | null
+      calendar = cal?.name ?? null
+    } catch {
+      calendar = null
+    }
+  }
+  const title = typeof p.title === "string" && p.title ? p.title : (row?.title ?? null)
+  const start = pointText(p.start) ?? pointText(row?.start)
+  const end = pointText(p.end) ?? pointText(row?.end)
+  const occurrence = typeof p.occurrenceStart === "string" ? p.occurrenceStart : null
+  const when = occurrence ?? (start ? (end ? `${start} to ${end}` : start) : null)
+  return { title, when, calendar }
+}
+
+/**
+ * What a create or update did, in the words the agent repeats (walk 2026-11-28: the agent said
+ * "an email invitation to each" for a call without sendUpdates, and "synced to Google" on a
+ * calendar with no Google account): whether the guests were emailed and whether the calendar
+ * syncs to Google at all.
+ */
+function writeOutcome(params: unknown, result: Record<string, unknown>): Record<string, unknown> {
+  const p = (params ?? {}) as Record<string, unknown>
+  const guests = Array.isArray(p.attendees) ? p.attendees.length : null
+  const google = result.google === "not_connected" ? "not_connected" : "syncing"
+  const emailed = google === "syncing" && notifies(p.sendUpdates)
+  let notice: string
+  if (google === "not_connected") {
+    notice =
+      "Saved in Liaison only: this calendar has no connected Google account, so nothing syncs to Google and nobody is emailed. Do not say it was synced or that an invitation went out."
+  } else if (emailed) {
+    notice = "Saved. Google emails the guests as it receives the change, in the next minute."
+  } else if (guests !== null && guests > 0) {
+    notice = `Saved and syncing to Google. The ${guests === 1 ? "guest is" : `${guests} guests are`} on the event but NOT emailed (no sendUpdates "all"). Do not say an invitation was sent. If the user asked to invite them, say no invitation went out and offer to send it: one update_event with sendUpdates "all".`
+  } else {
+    notice = "Saved and syncing to Google. Nobody was emailed."
+  }
+  return { ...result, google, guestsEmailed: emailed, notice }
+}
 
 async function gateNotifyingWrite(
   tool: "create_event" | "update_event",
@@ -1868,8 +1971,7 @@ async function gateNotifyingWrite(
   const p = (params ?? {}) as Record<string, unknown>
   if (ctx.approval || !notifies(p.sendUpdates)) return null
   const guests = Array.isArray(p.attendees) ? p.attendees.map(String) : []
-  const title = typeof p.title === "string" && p.title ? p.title : null
-  const when = describeWhen(p)
+  const { title, when, calendar } = await describeTarget(ctx, p)
   const who = p.sendUpdates === "externalOnly" ? "guests outside the organization" : "every guest"
   return parkForApproval(ctx, {
     tool,
@@ -1880,6 +1982,7 @@ async function gateNotifyingWrite(
     lines: [
       ...(title ? [`Title: ${title}`] : []),
       ...(when ? [`When: ${when}`] : []),
+      ...(calendar ? [`Calendar: ${calendar}`] : []),
       ...(guests.length > 0 ? [`Guests: ${guests.join(", ")}`] : []),
       `Google emails ${who} once approved.`,
     ],
@@ -1895,7 +1998,7 @@ export async function calendarCreateEvent(params: unknown, ctx: CalendarCtx): Pr
     eventId: string
     conference?: string | null
   }
-  return withConferenceOutcome(result, ctx)
+  return writeOutcome(params, (await withConferenceOutcome(result, ctx)) as Record<string, unknown>)
 }
 
 export async function calendarUpdateEvent(params: unknown, ctx: CalendarCtx): Promise<unknown> {
@@ -1905,7 +2008,7 @@ export async function calendarUpdateEvent(params: unknown, ctx: CalendarCtx): Pr
     eventId: string
     conference?: string | null
   }
-  return withConferenceOutcome(result, ctx)
+  return writeOutcome(params, (await withConferenceOutcome(result, ctx)) as Record<string, unknown>)
 }
 
 /**
@@ -1967,21 +2070,15 @@ async function withConferenceOutcome(
 export async function calendarDeleteEvent(params: unknown, ctx: CalendarCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   if (!ctx.approval) {
-    let title: string | null = null
-    try {
-      const row = JSON.parse(await ctx.calendar_getEvent(String(p.eventId ?? ""))) as {
-        title?: string | null
-      } | null
-      title = row?.title ?? null
-    } catch {
-      title = null
-    }
+    const { title, when, calendar } = await describeTarget(ctx, p)
     const scope = typeof p.scope === "string" ? p.scope : null
     const parked = await parkForApproval(ctx, {
       tool: "delete_event",
       summary: `Delete ${title ? `"${title}"` : "a calendar event"}`,
       lines: [
         ...(title ? [`Event: ${title}`] : [`Event: ${String(p.eventId ?? "")}`]),
+        ...(when && scope !== "occurrence" ? [`When: ${when}`] : []),
+        ...(calendar ? [`Calendar: ${calendar}`] : []),
         ...(scope === "occurrence"
           ? [`Only the occurrence of ${String(p.occurrenceStart ?? "")}`]
           : scope === "series"

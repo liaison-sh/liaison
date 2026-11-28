@@ -291,7 +291,9 @@ describe("calendar app registration", () => {
     expect(del.description).toContain('scope: "occurrence"')
     expect(del.description).toContain("ask the user")
     expect(del.requiredScopes).toEqual(create.requiredScopes)
-    const instructions = m.agentInstructions as string
+    // The guide's core plus its per-tool sections (app-guide.ts): what the agent can be given.
+    const guide = m.agentInstructions as { core: string; sections: Array<{ text: string }> }
+    const instructions = [guide.core, ...guide.sections.map((s) => s.text)].join("\n")
     expect(instructions).toContain('conference: "google_meet"')
     expect(instructions).toContain("Never put a conferencing product name")
     expect(instructions).toContain("update_event")

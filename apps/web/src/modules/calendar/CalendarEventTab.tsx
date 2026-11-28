@@ -139,6 +139,13 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
   })
 
   const update = (patch: Partial<EventFormValues>) => setForm({ ...form(), ...patch })
+  /** The weekday code ("MO".."SU") of the form's start day, or null. */
+  const startWeekday = (): string | null => {
+    const day = (form().allDay ? form().startDate : form().startLocal.slice(0, 10)) || ""
+    const at = new Date(`${day}T12:00:00`)
+    if (Number.isNaN(at.getTime())) return null
+    return ["SU", "MO", "TU", "WE", "TH", "FR", "SA"][at.getDay()] ?? null
+  }
   const editRepeat = (patch: Partial<RepeatRule>) => {
     setRepeat({ ...repeat(), ...patch })
     setRepeatChanged(true)
@@ -586,7 +593,13 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
                 <select
                   class={fieldClass}
                   value={repeat().freq}
-                  onChange={(e) => editRepeat({ freq: e.currentTarget.value as RepeatFreq })}
+                  onChange={(e) => {
+                    const freq = e.currentTarget.value as RepeatFreq
+                    // Weekly starts on the event's own weekday, as Google does.
+                    const day =
+                      freq === "weekly" && repeat().byDay.length === 0 ? startWeekday() : null
+                    editRepeat({ freq, ...(day ? { byDay: [day] } : {}) })
+                  }}
                   data-testid="event-recurrence-select"
                 >
                   <For each={REPEAT_FREQS}>

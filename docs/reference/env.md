@@ -33,6 +33,7 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_MIN_CLIENT_DESKTOP` | `string` | `"0.1.33"` | no | The oldest desktop app version this server supports, published at GET /api/client-policy; an older desktop shows an update notice. Keep it covering at least the last three desktop releases and the last 90 days. |
 | `LIAISON_MIN_CLIENT_IOS` | `string` | `"1.0.34"` | no | The oldest iOS app version this server supports (`1.0.<build>`), published at GET /api/client-policy. |
 | `LIAISON_MIN_CLIENT_ANDROID` | `string` | `"0.0.0"` | no | The oldest Android app version this server supports, published at GET /api/client-policy. 0.0.0 sets no minimum. |
+| `LIAISON_SERVED_SHELL` | `boolean` | `true` | no | Whether the desktop and phone apps may run this server's own web build in place of the one compiled into them, once its signed statement checks out (GET /api/shell/info, GET /api/client-policy). false keeps every app on its bundled shell. |
 | `TRUSTED_PROXY_CIDRS` | `string` | `""` | no | Extra networks (comma-separated CIDRs) whose direct connections may carry X-Forwarded-For, beyond loopback and the private ranges that are always trusted (lib/request-context.ts). Only needed when a proxy reaches the app from a public address, e.g. a CDN connecting straight to the app port. |
 | `LIAISON_EDGE_MODE` | `"direct" \| "signed"` |  | no | How the request's host and client address are read when an edge proxy sits in front (lib/request-context.ts `effectiveRequest`). Unset: the Host header and X-Forwarded-For per TRUSTED_PROXY_HOPS, as always. `direct`: the edge preserves the Host, and the client address is CF-Connecting-IP when the connection comes from a tunnel connector on loopback. `signed`: the edge rewrites the host and passes the original host and client address in signed `x-liaison-*` headers (LIAISON_EDGE_SECRET); unsigned or stale ones are ignored. |
 | `LIAISON_EDGE_SECRET` | `string` |  | no | The secret the edge signs `x-liaison-host` / `x-liaison-client-ip` with (LIAISON_EDGE_MODE=signed). At least 32 characters. |
@@ -319,14 +320,15 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/modules/apps/connections/sql/credentials.ts:145`, `apps/api/src/modules/apps/connections/sql/credentials.ts:165` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/modules/apps/connections/sql/credentials.ts:154` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:157` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1917` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1922` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
-| `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:522`, `apps/api/src/modules/apps/app-frame.ts:35` |
+| `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/web-shell-builds.ts:27`, `apps/api/src/modules/apps/app-frame.ts:35` |
+| `LIAISON_PUBLIC_NATIVE_DIR` | `apps/api/src/lib/web-shell-builds.ts:34` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |
 | `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:307` |
 | `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:107` |
-| `MAINTENANCE_FLAG_PATH` | `apps/api/src/lib/server.ts:178`, `apps/api/src/middleware/maintenance.ts:23` |
-| `MAINTENANCE_VERSION_PATH` | `apps/api/src/lib/server.ts:185`, `apps/api/src/middleware/maintenance.ts:27` |
+| `MAINTENANCE_FLAG_PATH` | `apps/api/src/lib/server.ts:190`, `apps/api/src/middleware/maintenance.ts:23` |
+| `MAINTENANCE_VERSION_PATH` | `apps/api/src/lib/server.ts:197`, `apps/api/src/middleware/maintenance.ts:27` |
 | `MCP_MAILBOX_WAIT_MS` | `apps/api/src/modules/mcp/mcp-mailbox-plaintext.ts:54` |
 | `MCP_MAX_RESPONSE_BYTES` | `apps/api/src/modules/mcp-client/call.ts:485` |
 | `MCP_MAX_TOOLS_PER_CONNECTION` | `apps/api/src/modules/mcp-client/projector.ts:51` |
@@ -344,7 +346,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ORG_MAINTENANCE_FLAG_PATH` | `apps/api/src/middleware/org-maintenance.ts:25` |
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:473` |
-| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:593`, `apps/api/src/middleware/public-surface-limits.ts:144`, `apps/api/src/middleware/rate-limiter.ts:261` and 2 more |
+| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:594`, `apps/api/src/middleware/public-surface-limits.ts:147`, `apps/api/src/middleware/rate-limiter.ts:261` and 2 more |
 | `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:71` |
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:74` |

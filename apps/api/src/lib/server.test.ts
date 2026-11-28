@@ -15,10 +15,12 @@ import { beginShutdown, ShutdownTestAccess } from "~/lib/shutdown"
 import { readyzRoutes } from "~/modules/healthz/readyz"
 import {
   createServer,
+  isNativeShellPath,
   maintenanceFlagActive,
   maintenanceHtml,
   readMaintenanceTargetVersion,
   readWebBuildId,
+  serveNativeShellAsset,
   serveSpaFallback,
   serveStaticAsset,
   WEB_BUILD_HEADER,
@@ -174,6 +176,82 @@ describe("static cache headers", () => {
     expect(WEB_BUILD_HEADER).toBe("X-Liaison-Web-Build")
     const none = withWebBuildHeader(new Response("{}"), null)
     expect(none.headers.get(WEB_BUILD_HEADER)).toBeNull()
+  })
+})
+
+describe("the native web build under /native/", () => {
+  // The phone apps' build: served from its own directory with the desktop
+  // build's cache rules, and no SPA fallback (a client fetches it file by file).
+  let nativeDir: string
+  let publicDir: string
+  let server: Server<WsData>
+  let base: string
+  const app = new Hono().get("/api/ping", (c) => c.json({ ok: true }))
+
+  beforeAll(async () => {
+    nativeDir = mkdtempSync(join(tmpdir(), "liaison-public-native-"))
+    publicDir = mkdtempSync(join(tmpdir(), "liaison-public-desktop-"))
+    writeFileSync(join(nativeDir, "index.html"), "<!doctype html><html><body>native</body></html>")
+    writeFileSync(join(nativeDir, "build-id.txt"), "fedcba9876543210\n")
+    mkdirSync(join(nativeDir, "assets"))
+    writeFileSync(join(nativeDir, "assets", "index-N4t1ve.js"), "console.log('n')")
+    writeFileSync(join(publicDir, "index.html"), "<!doctype html><html><body>desktop</body></html>")
+    server = await createServer(app, {
+      port: 0,
+      publicDir,
+      nativePublicDir: nativeDir,
+      wsManager: new WebSocketManager(redis),
+    })
+    base = `http://127.0.0.1:${server.port}`
+  })
+
+  afterAll(() => {
+    server.stop(true)
+    ShutdownTestAccess.reset()
+    rmSync(nativeDir, { recursive: true, force: true })
+    rmSync(publicDir, { recursive: true, force: true })
+  })
+
+  it("/native/build-id.txt is the native build's id, never cached", async () => {
+    const r = await serveNativeShellAsset(nativeDir, "/native/build-id.txt")
+    expect(r?.headers.get("cache-control")).toBe("no-store")
+    expect((await r?.text())?.trim()).toBe("fedcba9876543210")
+  })
+
+  it("assets are immutable and the index revalidates, as on the desktop build", async () => {
+    const asset = await serveNativeShellAsset(nativeDir, "/native/assets/index-N4t1ve.js")
+    expect(asset?.headers.get("cache-control")).toBe("public, max-age=31536000, immutable")
+    for (const path of ["/native", "/native/", "/native/index.html"]) {
+      const index = await serveNativeShellAsset(nativeDir, path)
+      expect(index?.headers.get("cache-control")).toBe("no-cache")
+      expect(await index?.text()).toContain("native")
+    }
+  })
+
+  it("never climbs out of the native build", async () => {
+    expect(await serveNativeShellAsset(nativeDir, "/native/../index.html")).toBeUndefined()
+    expect(
+      await serveNativeShellAsset(nativeDir, "/native/%2e%2e/%2e%2e/etc/passwd"),
+    ).toBeUndefined()
+  })
+
+  it("isNativeShellPath matches /native and below only", () => {
+    expect(isNativeShellPath("/native")).toBe(true)
+    expect(isNativeShellPath("/native/assets/x.js")).toBe(true)
+    expect(isNativeShellPath("/natives")).toBe(false)
+    expect(isNativeShellPath("/api/native")).toBe(false)
+  })
+
+  it("over HTTP: the native files, a 404 for a missing one, the desktop build elsewhere", async () => {
+    const id = await fetch(`${base}/native/build-id.txt`)
+    expect(id.status).toBe(200)
+    expect(id.headers.get("cache-control")).toBe("no-store")
+    expect((await id.text()).trim()).toBe("fedcba9876543210")
+    const missing = await fetch(`${base}/native/assets/nope.js`)
+    expect(missing.status).toBe(404)
+    await missing.text()
+    const desktop = await fetch(`${base}/settings`)
+    expect(await desktop.text()).toContain("desktop")
   })
 })
 

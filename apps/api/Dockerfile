@@ -63,10 +63,13 @@ RUN bun install --frozen-lockfile \
   || (echo "install scripts failed (CDN outage?) -- retrying with --ignore-scripts" \
       && bun install --frozen-lockfile --ignore-scripts)
 
-# Build the web bundle
+# Build the web bundle: the desktop build (served at /) and the native build
+# the phone apps wrap (served under /native/). Both are reproducible, so the
+# build ids here match the ones a signed shell statement names for this commit
+# (scripts/shell-signing/build-manifest.ts).
 FROM deps AS web-build
 COPY . .
-RUN cd apps/web && bun run build
+RUN cd apps/web && bun run build && bun run build:native
 # First-party app catalog: one `.liaisonapp` per bundled-apps/<name>/ + a
 # catalog.json index under /app/app-catalog, baked into the runtime image so the
 # Apps UI / `liaison config apply` can install a bundled app with one click.
@@ -129,6 +132,7 @@ COPY apps/api /app/apps/api
 COPY packages /app/packages
 COPY scripts /app/scripts
 COPY --from=web-build /app/apps/web/dist /app/apps/api/public
+COPY --from=web-build /app/apps/web/dist-native /app/apps/api/public-native
 # First-party app catalog (frozen `.liaisonapp` tarballs + catalog.json), read by
 # modules/apps/catalog.ts from /app/app-catalog at runtime.
 COPY --from=web-build /app/app-catalog /app/app-catalog

@@ -104,6 +104,7 @@ import {
 } from "~/modules/client-actions/public-routes"
 import { clientActionRoutes } from "~/modules/client-actions/routes"
 import { CLIENT_HEADER, clientPolicyRoutes, logClientHeader } from "~/modules/client-policy/routes"
+import { shellInfoRoutes } from "~/modules/client-policy/shell-info-routes"
 import { cellHeaderMiddleware } from "~/modules/cloud/cell-header"
 import { mailSenderRoutes, managedMailSenderOnly } from "~/modules/cloud/mail-sender-routes"
 import { cloudRoutes } from "~/modules/cloud/routes"
@@ -670,6 +671,9 @@ app.route("/api/settings", brandingRoutes)
 // per-IP budget on top of the /api/* ceiling.
 app.use("/api/client-policy", publicSurfaceRateLimit(redis))
 app.route("/api/client-policy", clientPolicyRoutes)
+// Which web builds this server ships, for the apps that can run them (public).
+app.use("/api/shell/info", publicSurfaceRateLimit(redis))
+app.route("/api/shell", shellInfoRoutes)
 
 // The public demo signup (POST /api/demo/orgs). Mounted ONLY when
 // LIAISON_DEMO_MODE is on: with the flag off the route does not exist and the

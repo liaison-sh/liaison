@@ -25,6 +25,13 @@ import { redis } from "~/lib/redis"
 import { effectiveRequestFromRaw } from "~/lib/request-context"
 import { msSinceShutdownBegan, registerShutdownPhase, shutdownBudgets } from "~/lib/shutdown"
 import { AFTER_DRAIN_DEADLINE_MS, SHUTDOWN_ORDER } from "~/lib/shutdown-budget"
+import {
+  defaultNativePublicDir,
+  defaultPublicDir,
+  NATIVE_SHELL_PREFIX,
+  readWebBuildId,
+  WEB_BUILD_ID_FILE,
+} from "~/lib/web-shell-builds"
 import { isPublicPagePath, webShellHeaders } from "~/middleware/security-headers"
 import { holdOrgRuntime } from "~/modules/apps/app-registries"
 import { isOrgEndedAsync, onOrgEnded } from "~/modules/apps/org-apps"
@@ -138,6 +145,11 @@ export interface ApiServerOptions extends BaseServerOptions {
   onUpgrade?: (req: Request, server: Server<WsData>) => Promise<WsData | null>
   /** Directory of built web assets to serve. Defaults to apps/api/public when present. */
   publicDir?: string
+  /**
+   * Directory of the native web build, served under `/native/`. Defaults to
+   * apps/api/public-native when present (lib/web-shell-builds.ts).
+   */
+  nativePublicDir?: string
 }
 
 /**
@@ -220,11 +232,10 @@ function isBackendPath(path: string): boolean {
  * caller sends every backend route to Hono first, so no API response is ever
  * given one of these headers.
  */
+export { readWebBuildId, WEB_BUILD_ID_FILE }
 export const INDEX_CACHE_CONTROL = "no-cache"
 export const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"
 export const STATIC_CACHE_CONTROL = "public, max-age=3600"
-/** The web build's id, written by apps/web's Vite build next to index.html. */
-export const WEB_BUILD_ID_FILE = "build-id.txt"
 /** The response header that tells the web app which build the server ships. */
 export const WEB_BUILD_HEADER = "X-Liaison-Web-Build"
 
@@ -271,23 +282,6 @@ function ifNoneMatchHits(header: string | null | undefined, etag: string): boole
     const tag = raw.trim()
     return tag === "*" || tag.replace(/^W\//, "") === bare
   })
-}
-
-/**
- * The build id the bundled web app was built with, read once at startup.
- * Null when no web app is bundled (dev, API-only images) or the file is
- * missing, in which case no response is stamped and the web app never
- * prompts a reload.
- */
-export function readWebBuildId(publicDir: string): string | null {
-  try {
-    const p = join(publicDir, WEB_BUILD_ID_FILE)
-    if (!existsSync(p)) return null
-    const id = readFileSync(p, "utf8").trim()
-    return id === "" ? null : id
-  } catch {
-    return null
-  }
 }
 
 /**
@@ -359,6 +353,27 @@ export async function serveStaticAsset(
       ...webShellHeaders({ html: isHtml ? await file.text() : null }),
     },
   })
+}
+
+/** `/native` and everything under `/native/`. */
+export function isNativeShellPath(pathname: string): boolean {
+  return pathname === NATIVE_SHELL_PREFIX || pathname.startsWith(`${NATIVE_SHELL_PREFIX}/`)
+}
+
+/**
+ * A file of the native web build, `/native/<path>` read from `nativeDir`, with
+ * the cache rules of the desktop build (index no-cache with an ETag, assets
+ * immutable, build-id.txt no-store). `/native` and `/native/` are its
+ * index.html. Undefined when there is no such file.
+ */
+export async function serveNativeShellAsset(
+  nativeDir: string,
+  pathname: string,
+  requestHeaders?: Headers,
+): Promise<Response | undefined> {
+  const rest = pathname.slice(NATIVE_SHELL_PREFIX.length)
+  if (rest === "" || rest === "/") return serveSpaFallback(nativeDir, requestHeaders)
+  return serveStaticAsset(nativeDir, rest, requestHeaders)
 }
 
 export async function serveSpaFallback(
@@ -517,13 +532,13 @@ async function createApiServer(app: FetchApp, options: ApiServerOptions) {
       wsManager.closeConnectionsForOrg(orgId, ORG_MOVING_WS_CLOSE, ORG_MOVING_CODE)
     }
   })
-  const publicDir =
-    options.publicDir ??
-    (process.env.LIAISON_PUBLIC_DIR || resolve(new URL("../../public", import.meta.url).pathname))
+  const publicDir = options.publicDir ?? defaultPublicDir()
   const publicDirAvailable = existsSync(publicDir)
   // Read once: the image is immutable, so the bundled web build cannot change
   // under a running process.
   const webBuildId = publicDirAvailable ? readWebBuildId(publicDir) : null
+  const nativePublicDir = options.nativePublicDir ?? defaultNativePublicDir()
+  const nativePublicDirAvailable = existsSync(nativePublicDir)
 
   async function handle(req: Request, server: Server<WsData>): Promise<Response | undefined> {
     const url = new URL(req.url)
@@ -617,6 +632,20 @@ async function createApiServer(app: FetchApp, options: ApiServerOptions) {
     // (lib/org-host.ts: the cell's own names, a tunnel host, an IP) serves no
     // web app: those requests go to the app, whose non-org host gate answers
     // 404 for everything outside its short allowlist.
+    // The native web build (the phone apps' shell) under /native/: the same
+    // cache rules as the desktop build, and no SPA fallback, since a client
+    // fetches it file by file and a missing file must read as missing.
+    if (
+      isNativeShellPath(url.pathname) &&
+      nativePublicDirAvailable &&
+      (req.method === "GET" || req.method === "HEAD") &&
+      !frameHost &&
+      rawRequestHostBinding(req, server.requestIP(req)?.address ?? null).kind !== "non-org"
+    ) {
+      const asset = await serveNativeShellAsset(nativePublicDir, url.pathname, req.headers)
+      return asset ?? new Response("Not found", { status: 404 })
+    }
+
     if (
       publicDirAvailable &&
       (req.method === "GET" || req.method === "HEAD") &&

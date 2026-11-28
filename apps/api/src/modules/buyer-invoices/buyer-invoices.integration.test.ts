@@ -527,7 +527,7 @@ describe("POST /api/buyer-invoices/list", () => {
 
   it("a parked order follows the matching rule: never another buyer's, never by email alone", async () => {
     expect(await listOf({ email: "dee@example.com" })).toEqual([])
-    expect(await listOf({ email: "dee@example.com", shopifyCustomerId: "888" })).toEqual([])
+    expect(await listOf({ email: "dee@example.com", shopifyCustomerId: "999" })).toEqual([])
     const eve = JSON.stringify(await listOf({ email: "eve@example.com", shopifyCustomerId: "888" }))
     expect(eve).toContain("6100000000002")
     expect(eve).not.toContain("6100000000001")

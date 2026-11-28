@@ -19,6 +19,32 @@ interface ContactRow {
   email?: string | null
 }
 
+/**
+ * How well a suggestion matches what was typed, lower first: a word of the name or of the
+ * address's local part starting with it, then the name containing it, then the local part, and
+ * last a match on the domain alone (typing "am" must not list everyone at example.com before
+ * Amina).
+ */
+export function suggestionRank(s: AttendeeSuggestion, query: string): number {
+  const q = query.trim().toLowerCase()
+  if (!q) return 0
+  const name = s.name.toLowerCase()
+  const local = s.email.toLowerCase().split("@")[0] ?? ""
+  const words = [...name.split(/[\s'.-]+/), ...local.split(/[._+-]+/)].filter(Boolean)
+  if (words.some((w) => w.startsWith(q)) || local.startsWith(q) || name.startsWith(q)) return 0
+  if (name.includes(q)) return 1
+  if (local.includes(q)) return 2
+  return 3
+}
+
+/** Suggestions in rank order, the search's own order kept within a rank. */
+export function rankSuggestions(rows: AttendeeSuggestion[], query: string): AttendeeSuggestion[] {
+  return rows
+    .map((row, index) => ({ row, index, rank: suggestionRank(row, query) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((r) => r.row)
+}
+
 export function createAttendeeSearch(
   api: { get: (path: string) => Promise<unknown> },
   exclude: Accessor<Set<string>>,
@@ -56,7 +82,7 @@ export function createAttendeeSearch(
       if (p.type === "user") add(p.secondaryLabel, p.label, "person")
     }
     for (const c of contacts) add(c.email, c.name ?? "", "contact")
-    return out.slice(0, LIMIT)
+    return rankSuggestions(out, q).slice(0, LIMIT)
   }
 
   function setQuery(q: string): void {

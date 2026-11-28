@@ -139,6 +139,7 @@
   "weekday.TU": "mar.",
   "weekday.WE": "mer.",
   "eventMoved": "Événement déplacé",
+  "eventResized": "Événement modifié",
   "moveFailed": "L'événement n'a pas pu être déplacé : {{message}}",
   "scopeMoveTitle": "Déplacer l'événement récurrent",
   "secondaryZone": "Second fuseau horaire",

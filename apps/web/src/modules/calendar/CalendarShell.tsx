@@ -373,8 +373,11 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
       return
     }
     void reloadCurrentWindow(api)
+    // A resize keeps the start: it is a change of length, not a move.
+    const resized =
+      !times.allDay && Date.parse(before.start?.dateTime ?? "") === Date.parse(times.start)
     addToast({
-      message: i18n.t("calendar.eventMoved"),
+      message: i18n.t(resized ? "calendar.eventResized" : "calendar.eventMoved"),
       type: "info",
       durationMs: 8000,
       action: {

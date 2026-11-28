@@ -29,19 +29,44 @@ export interface MonthViewProps {
 /** The drag payload type: an event id, nothing a drop outside the calendar could act on. */
 const DRAG_TYPE = "application/x-liaison-calendar-event"
 
-/** The drag payload: the event id and the dragged occurrence's start, nothing else. */
-function dragPayload(eventId: string, start: CalendarEventPoint | null | undefined): string {
-  return JSON.stringify({ id: eventId, start: start ?? null })
+/** The drag payload: the event id, the dragged occurrence's start and, for a band spanning
+ * several days, how many days after its first day it was grabbed (a drop puts that day there). */
+function dragPayload(
+  eventId: string,
+  start: CalendarEventPoint | null | undefined,
+  grabOffsetDays = 0,
+): string {
+  return JSON.stringify({ id: eventId, start: start ?? null, offset: grabOffsetDays })
 }
 
-function readDragPayload(raw: string): { id: string; occurrence: CalendarEventPoint | null } {
+function readDragPayload(raw: string): {
+  id: string
+  occurrence: CalendarEventPoint | null
+  offset: number
+} {
   try {
-    const v = JSON.parse(raw) as { id?: unknown; start?: CalendarEventPoint | null }
-    if (typeof v.id === "string") return { id: v.id, occurrence: v.start ?? null }
+    const v = JSON.parse(raw) as {
+      id?: unknown
+      start?: CalendarEventPoint | null
+      offset?: unknown
+    }
+    if (typeof v.id === "string") {
+      const offset = typeof v.offset === "number" && Number.isInteger(v.offset) ? v.offset : 0
+      return { id: v.id, occurrence: v.start ?? null, offset }
+    }
   } catch {
     // A bare id (an older payload).
   }
-  return { id: raw, occurrence: null }
+  return { id: raw, occurrence: null, offset: 0 }
+}
+
+const DAY_MS = 86_400_000
+
+/** Whole local days from `a` to `b`. */
+function daysBetween(a: Date, b: Date): number {
+  const da = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())
+  const db = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate())
+  return Math.round((db - da) / DAY_MS)
 }
 
 const MAX_LANES = 2
@@ -133,8 +158,10 @@ export const MonthView: Component<MonthViewProps> = (props) => {
                           const raw = e.dataTransfer?.getData(DRAG_TYPE)
                           if (!raw) return
                           e.preventDefault()
-                          const { id, occurrence } = readDragPayload(raw)
-                          props.onMoveEventToDay?.(id, new Date(day), occurrence)
+                          const { id, occurrence, offset } = readDragPayload(raw)
+                          const target = new Date(day)
+                          target.setDate(target.getDate() - offset)
+                          props.onMoveEventToDay?.(id, target, occurrence)
                         }}
                         data-date={`${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`}
                         onClick={(e) =>
@@ -257,6 +284,28 @@ export const MonthView: Component<MonthViewProps> = (props) => {
                           data-testid="calendar-span-band"
                           data-declined={seg.occ.declined ? "true" : undefined}
                           classList={{ "opacity-60 line-through": seg.occ.declined === true }}
+                          draggable={props.canDrag?.(seg.occ.eventId) ?? false}
+                          onDragStart={(e) => {
+                            // The day under the pointer, counted from the event's first day.
+                            const cols = seg.endCol - seg.startCol + 1
+                            const width = e.currentTarget.getBoundingClientRect().width
+                            const within =
+                              width > 0
+                                ? Math.min(
+                                    cols - 1,
+                                    Math.max(0, Math.floor((e.offsetX / width) * cols)),
+                                  )
+                                : 0
+                            const grabbed = weekRow[seg.startCol + within]
+                            const first = occStartDate(seg.occ)
+                            const offset =
+                              grabbed && first ? Math.max(0, daysBetween(first, grabbed)) : 0
+                            e.dataTransfer?.setData(
+                              DRAG_TYPE,
+                              dragPayload(seg.occ.eventId, seg.occ.start, offset),
+                            )
+                            if (e.dataTransfer) e.dataTransfer.effectAllowed = "move"
+                          }}
                           onClick={(e) => {
                             e.stopPropagation()
                             props.onSelectEvent?.(seg.occ.eventId, seg.occ.start)

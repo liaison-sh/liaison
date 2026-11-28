@@ -21,6 +21,11 @@ describe("calendar manifest governance", () => {
     expect(field.required).toBe(false)
   })
 
+  it("update_event takes a repeat rule (the event tab saves one, a one-off becomes a series)", () => {
+    const props = calendarManifest.tools.update_event.params.properties as Record<string, unknown>
+    expect(props.recurrence).toMatchObject({ type: "array", items: { type: "string" } })
+  })
+
   it("counts role and tool scopes as grantable", () => {
     const grantable = declaredGrantableScopes(calendarManifest)
     expect(grantable).toContain("calendar:events:read")

@@ -216,6 +216,7 @@ describe("app verify", () => {
       checks: [
         { check: "manifest", ok: true },
         { check: "host_api", ok: true },
+        { check: "settings_schema", ok: true },
         { check: "icon", ok: true },
       ],
     })
@@ -237,6 +238,19 @@ describe("app verify", () => {
     expect(checks.find((c) => c.check === "host_api")?.message).toContain("needs host API ^99")
   })
 
+  it("fails a settings schema this build does not provide", async () => {
+    const res = await runAppVerify(
+      writeManifest("schema.json", { ...MANIFEST, requires: { settingsSchema: 99 } }),
+    )
+    expect(res.exitCode).toBe(1)
+    const checks = (
+      res.report as { checks: Array<{ check: string; ok: boolean; message?: string }> }
+    ).checks
+    expect(checks.find((c) => c.check === "settings_schema")?.message).toContain(
+      "needs settings schema 99",
+    )
+  })
+
   it("reports a noRollback security release", async () => {
     const res = await runAppVerify(writeManifest("sec.json", { ...MANIFEST, noRollback: true }))
     expect(res.report).toMatchObject({ ok: true, noRollback: true })
@@ -250,6 +264,7 @@ describe("app verify", () => {
         { check: "package", ok: true },
         { check: "manifest", ok: true },
         { check: "host_api", ok: true },
+        { check: "settings_schema", ok: true },
         { check: "icon", ok: true },
       ],
     })

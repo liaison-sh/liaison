@@ -112,7 +112,7 @@ import {
   registerAppSettingsPage,
   unregisterAppSettingsPage,
 } from "~/modules/settings/app-page/app-settings-pages"
-import { hasUnsupportedSettings } from "~/modules/settings/app-page/supported"
+import { hasUnusableSettings } from "~/modules/settings/app-page/supported"
 import { billingMode } from "~/modules/settings/BillingState"
 import { notifyCreditUpdate } from "~/modules/settings/credit-store"
 import { appSettingsPath, SETTINGS_CONNECTORS_PATH } from "~/modules/settings/settings-aliases"
@@ -1683,8 +1683,8 @@ function manifestVersion(manifest: unknown): string | null {
 /**
  * Notes, afresh, whether this app runs in compatibility mode in a desktop or
  * phone app (compat-mode.ts): its settings page uses a block or field type
- * this build cannot draw. A browser runs the server's own build and notes
- * nothing.
+ * this build cannot draw and that gives no fallback to show instead. A
+ * browser runs the server's own build and notes nothing.
  */
 function noteCompatFor(name: string, manifest: unknown): void {
   clearCompatMode(name)
@@ -1692,7 +1692,7 @@ function noteCompatFor(name: string, manifest: unknown): void {
   // A served desktop shell is the server's own build: it knows every block
   // the server's apps use, so it never runs one in compatibility mode (S2).
   if (runningServedShell()) return
-  if (hasUnsupportedSettings(manifest)) {
+  if (hasUnusableSettings(manifest)) {
     noteCompatMode({ app: name, reason: "settings", serverVersion: manifestVersion(manifest) })
   }
 }

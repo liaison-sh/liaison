@@ -30,7 +30,7 @@ import {
   verifyStatement,
 } from "@liaison/shared"
 import { appIconErrors } from "~/modules/apps/contract"
-import { hostApiIncompatibility } from "~/modules/apps/host-api"
+import { hostApiIncompatibility, settingsSchemaIncompatibility } from "~/modules/apps/host-api"
 import { verifyAppPackage } from "~/modules/apps/verify-package"
 
 export const APP_VERIFY_USAGE = "usage: liaison app verify <file|dir>"
@@ -42,7 +42,7 @@ export interface AppCliResult {
 }
 
 export interface VerifyCheck {
-  check: "package" | "manifest" | "host_api" | "icon"
+  check: "package" | "manifest" | "host_api" | "settings_schema" | "icon"
   ok: boolean
   message?: string
 }
@@ -54,6 +54,7 @@ interface Manifest {
   iconSvg?: unknown
   iconName?: unknown
   noRollback?: boolean
+  requires?: { settingsSchema?: number }
 }
 
 function errorText(err: unknown): string {
@@ -167,12 +168,16 @@ function resolveTarget(target: string): { file: string } | { error: string } {
   return { file: join(target, pkgs[0]) }
 }
 
-/** The manifest's own checks, after it parsed: host API range and icon. */
+/** The manifest's own checks, after it parsed: host API range, settings schema and icon. */
 function manifestChecks(manifest: Manifest): VerifyCheck[] {
   const host = hostApiIncompatibility(manifest)
+  const settings = settingsSchemaIncompatibility(manifest)
   const icon = appIconErrors(manifest)
   return [
     host ? { check: "host_api", ok: false, message: host } : { check: "host_api", ok: true },
+    settings
+      ? { check: "settings_schema", ok: false, message: settings }
+      : { check: "settings_schema", ok: true },
     icon.length > 0
       ? { check: "icon", ok: false, message: icon.join("; ") }
       : { check: "icon", ok: true },

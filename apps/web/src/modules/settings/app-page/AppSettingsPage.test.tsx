@@ -156,6 +156,51 @@ describe("AppSettingsPage from a newer server", () => {
   })
 })
 
+describe("AppSettingsPage: a fallback for a part this build cannot draw", () => {
+  it("draws the fallback text and an Open in browser link, never the update placeholder", async () => {
+    const opened = vi.spyOn(window, "open").mockImplementation(() => null)
+    resetAppSettingsPages()
+    registerAppSettingsPage({
+      appId: FIXTURE_APP,
+      manifest: {
+        ...fixtureManifest,
+        settings: {
+          sections: [
+            {
+              id: "future",
+              title: "Future",
+              scope: "org",
+              blocks: [
+                {
+                  block: "gallery",
+                  key: "g",
+                  fallback: { text: "Pick the pictures on the web.", href: "#future" },
+                },
+                { block: "carousel", fallback: { text: "Set it on the web." } },
+              ],
+            },
+          ],
+        } as never,
+      },
+    })
+    renderPage()
+    const section = await screen.findByTestId("settings-section-future")
+    expect(within(section).queryByTestId("settings-unsupported")).toBeNull()
+    const parts = within(section).getAllByTestId("settings-fallback")
+    expect(parts).toHaveLength(2)
+    expect(parts[0].textContent).toContain("Pick the pictures on the web.")
+    const links = within(section).getAllByTestId("settings-fallback-open")
+    expect(links[0].textContent).toContain("Open in browser")
+    fireEvent.click(links[0])
+    fireEvent.click(links[1])
+    const origin = window.location.origin
+    await waitFor(() => expect(opened).toHaveBeenCalledTimes(2))
+    expect(opened.mock.calls[0][0]).toBe(`${origin}/settings/apps/${FIXTURE_APP}#future`)
+    expect(opened.mock.calls[1][0]).toBe(`${origin}/settings/apps/${FIXTURE_APP}`)
+    opened.mockRestore()
+  })
+})
+
 describe("AppSettingsPage: the scope badge of a section holding connections", () => {
   const register = () => {
     // As in production: the connections come from the API, the manifest feed has none.

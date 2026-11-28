@@ -1131,6 +1131,13 @@ export const appManifestJsonSchema = {
     // The host API range the app needs ("^1" when absent): checked against
     // this server's host API version at install, upgrade and registration.
     host: { type: "string", minLength: 1 },
+    // What else of the server the app needs: the settings page format
+    // (SETTINGS_SCHEMA_VERSION), checked at install, upgrade and registration.
+    requires: {
+      type: "object",
+      additionalProperties: false,
+      properties: { settingsSchema: { type: "integer", minimum: 1 } },
+    },
     // A security release: once this version is active, a rollback never goes
     // below it. Honoured for first-party (catalog) packages only (activation.ts).
     noRollback: { type: "boolean" },

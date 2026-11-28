@@ -42,6 +42,7 @@ export {
   type SettingsConnectionsBlock,
   type SettingsCustomBlock,
   type SettingsDeclarationOptions,
+  type SettingsFallback,
   type SettingsField,
   type SettingsFieldSource,
   type SettingsFieldType,

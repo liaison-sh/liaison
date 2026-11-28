@@ -1076,6 +1076,16 @@ server's host API version; an app the server cannot satisfy is refused with a
 message naming both versions (see "Host API version" in
 [the package format](app-package-format.md)).
 
+**Fallbacks.** A desktop or phone app built before your settings page used a
+new block or field type cannot draw it. Give such a block a `fallback`:
+`{ "text": "...", "href": "/..." }`. `text` (1 to 280 characters) is shown in
+its place, with an "Open in browser" link to `href` on your server: a path
+starting with `/`, or an anchor on your settings page starting with `#`; without
+`href` the link opens your settings page. A block without a fallback shows
+"This setting needs a newer version of Liaison". The settings page format has
+a version, `SETTINGS_SCHEMA_VERSION` in `@liaison/app-sdk`, raised when a block
+kind or field type is added.
+
 To ship a new app version: publish a new `.liaisonapp` at your `updateUrl`,
 then re-fetch it via the admin UI's upgrade action or
 `POST /api/apps/:name/upgrade/preview` followed by `.../upgrade/apply`. If the new

@@ -320,3 +320,4 @@ Vectors are carried only from the live index -> apps/api/src/modules/search/rein
 The image builds the web app in both modes, the native build served under /native/ -> apps/api/Dockerfile:72 ; apps/api/Dockerfile:135 ; apps/api/src/lib/web-shell-builds.ts:22
 GET /api/shell/info names both build ids -> apps/api/src/modules/client-policy/shell-info-routes.ts:33
 LIAISON_SERVED_SHELL=false keeps the apps on their compiled-in build -> apps/api/src/lib/env.ts:303
+The compose file passes LIAISON_SERVED_SHELL to the app service, on when unset -> deploy/docker-compose.yml:431

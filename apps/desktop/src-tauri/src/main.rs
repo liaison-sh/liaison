@@ -72,6 +72,7 @@ mod servers;
 /// The connected server's own web build, verified against the app-signing
 /// keys, served in the main window instead of the bundled one (S5).
 mod served_shell;
+mod walk_seam;
 /// Which permission answers the page may give and which only the shell's own
 /// dialog may (D11).
 mod permission_gate;

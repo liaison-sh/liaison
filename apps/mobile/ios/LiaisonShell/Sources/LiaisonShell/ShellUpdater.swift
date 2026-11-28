@@ -273,6 +273,12 @@ public final class ShellUpdater {
 
     public func refresh(address: String, now: Date = Date()) async -> UpdateOutcome {
         guard let origin = ShellStore.origin(of: address) else { return .refused(.noServer) }
+        // A refusal of the server's build is kept on its pointer: with none of
+        // its builds kept, it is why the page runs bundled (`shell=bundled:<reason>`).
+        func refuse(_ refusal: Refusal) -> UpdateOutcome {
+            store.updatePointer(origin) { pointer in pointer.refused = refusal.rawValue }
+            return .refused(refusal)
+        }
         guard let info = await refreshLists(address: address, now: now) else { return .refused(.fetch) }
         if !info.servedShell { return .serverOff }
         guard let buildId = info.nativeBuildId else { return .noBuild }
@@ -285,6 +291,7 @@ public final class ShellUpdater {
         // that may be running from it (review P7 #10).
         if case .success = store.verifyStored(buildId, trust: trust, overlay: overlay) {
             let moved = store.updatePointer(origin) { pointer -> Bool in
+                pointer.refused = nil
                 if pointer.quarantined.contains(buildId) || pointer.current == buildId { return false }
                 pointer.current = buildId
                 return true
@@ -294,27 +301,27 @@ public final class ShellUpdater {
 
         let base = downloads.appendingPathComponent("shell/native/\(buildId)/statement.json")
         guard case let .success(statementBytes) = await http.get(base, limit: ShellUpdater.maxSmallBytes) else {
-            return .refused(.noStatement)
+            return refuse(.noStatement)
         }
         guard case let .success(sigData) = await http.get(URL(string: base.absoluteString.replacingOccurrences(
             of: "statement.json", with: "statement.sig"))!, limit: 4096),
               let sig = String(data: sigData, encoding: .utf8) else {
-            return .refused(.noStatement)
+            return refuse(.noStatement)
         }
         let statement: ShellStatement
         switch ShellVerifier.verify(statementBytes, sig: sig, trust: trust, buildId: buildId) {
-        case let .failure(refusal): return .refused(refusal)
+        case let .failure(refusal): return refuse(refusal)
         case let .success(value): statement = value
         }
-        if case let .failure(refusal) = store.checkNames(statement, overlay: overlay) { return .refused(refusal) }
+        if case let .failure(refusal) = store.checkNames(statement, overlay: overlay) { return refuse(refusal) }
 
         let files: [String: Data]
         switch await fetchFiles(origin: origin, statement: statement) {
-        case let .failure(refusal): return .refused(refusal)
+        case let .failure(refusal): return refuse(refusal)
         case let .success(value): files = value
         }
         switch store.install(statementBytes: statementBytes, sig: sig, statement: statement, files: files, overlay: overlay) {
-        case let .failure(refusal): return .refused(refusal)
+        case let .failure(refusal): return refuse(refusal)
         case .success: break
         }
         // Only `current` moves: a quarantine or a ready recorded while the
@@ -322,6 +329,7 @@ public final class ShellUpdater {
         let staged = store.updatePointer(origin) { pointer -> Bool in
             if pointer.quarantined.contains(buildId) { return false }
             pointer.current = buildId
+            pointer.refused = nil
             return true
         }
         store.gc()

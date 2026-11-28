@@ -243,6 +243,16 @@ jobs:
           JWT_SECRET: replace-with-at-least-32-char-secret
           ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
         run: bun test src/modules/apps/contract src/modules/apps/run-limits.test.ts
+      # A read-only run refuses every bridge write: each host bridge method is
+      # refused, guards itself or is a reviewed read. Pure (a poison transaction),
+      # but it sits in the `security` suite, which only the nightly runs: seven
+      # unclassified calendar bridge methods reached main unseen because of it.
+      - name: Bridge read-only classification
+        working-directory: apps/api
+        env:
+          JWT_SECRET: replace-with-at-least-32-char-secret
+          ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+        run: bun test src/tests/security/bridge-read-only-run.test.ts
       # The self-hosted sandbox service's probes, against real workerd processes
       # (the pinned binary comes with bun install): CPU, wall and memory kills,
       # no network but the bridge, processes driven by the supervisor only,

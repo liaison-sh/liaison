@@ -68,7 +68,9 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   // The stand-in itself and the sandbox egress paths that hand it a demo org's payments
   // calls (fetch, file download, platform-held SQL): its real-kernel test runs in integration-extra.
   { glob: "apps/api/src/modules/demo/worlds/saas/payments/**", suites: ["integration-extra", "demo-seed", "unit", "web-unit", "guards"] },
-  { glob: "apps/api/src/modules/apps/sandbox/bridge/{egress,files,db}.ts", suites: ["integration-extra", "unit", "integration", "api-guards"] },
+  // The bridge's read-only classification and its other door tests live in the security suite.
+  { glob: "apps/api/src/modules/apps/sandbox/bridge/{egress,files,db}.ts", suites: ["integration-extra", "unit", "integration", "api-guards", "security"] },
+  { glob: "apps/api/src/modules/apps/sandbox/{rpc-bridge.ts,bridge/**}", suites: ["unit", "integration", "api-guards", "security"] },
   // The owner's question played through the agent loop on the seeded world: seeded, so demo-seed only.
   { glob: "apps/api/src/seed/worlds/saas/owner-question-reach.saas.integration.test.ts", suites: ["demo-seed"] },
   { glob: "apps/api/src/seed/worlds/saas/seed-without-owner.saas.integration.test.ts", suites: ["demo-seed"] },

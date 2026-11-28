@@ -65,9 +65,13 @@ function ownOccurrence(e: CalendarEventLike, recurrenceComplex: boolean): Expand
   }
 }
 
-/** The id a series' exception rows name in `recurringEventId`: Google's id of the master. */
-function seriesKey(master: CalendarEventLike): string {
-  return master.googleEventId ?? master.eventId
+/** The id a series' exception rows name in `recurringEventId`: Google's id of the master, or for
+ * a series not on Google yet the id its create gives it (its uuid without dashes), which its
+ * occurrences edited meanwhile already carry. */
+function seriesKeys(master: CalendarEventLike): string[] {
+  if (master.googleEventId) return [master.googleEventId]
+  const local = master.eventId.replace(/-/g, "").toLowerCase()
+  return local === master.eventId ? [local] : [master.eventId, local]
 }
 
 /**
@@ -105,7 +109,7 @@ export function expandEvents(
     out.push(
       ...expandMaster(
         master,
-        exceptionsBySeries.get(seriesKey(master)) ?? [],
+        seriesKeys(master).flatMap((key) => exceptionsBySeries.get(key) ?? []),
         windowStart,
         windowEnd,
       ),
@@ -115,7 +119,7 @@ export function expandEvents(
   // An exception is a real instance with its own time: one whose master is not in the fetched
   // set (the server leaves out series with no occurrence in the window) still shows when moved
   // into the window.
-  const listedSeries = new Set(masters.map(seriesKey))
+  const listedSeries = new Set(masters.flatMap(seriesKeys))
   for (const [series, exceptions] of exceptionsBySeries) {
     if (listedSeries.has(series)) continue
     for (const ex of exceptions) {

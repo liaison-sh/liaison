@@ -139,6 +139,7 @@
   "weekday.TU": "Tue",
   "weekday.WE": "Wed",
   "eventMoved": "Event moved",
+  "eventResized": "Event changed",
   "moveFailed": "The event could not be moved: {{message}}",
   "scopeMoveTitle": "Move the recurring event",
   "secondaryZone": "Second time zone",

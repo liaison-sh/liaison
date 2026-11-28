@@ -29,7 +29,7 @@ const b64 = (s: string): string => Buffer.from(s, "utf8").toString("base64")
 export const PAGE_SAMPLES: string[] = [
   // Nested comment pieces: one removal pass would leave a new "<!--" (CodeQL js/incomplete-multi-character-sanitization).
   '<!doctype html><html><!<!---->--<script>x()</script>--><head><meta name="viewport" content="width=device-width"></head><body></body></html>',
-  "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width\"></head><body><!-- open</body></html>",
+  '<!doctype html><html><head><meta name="viewport" content="width=device-width"></head><body><!-- open</body></html>',
   `<!doctype html>
 <html lang="en">
   <head>

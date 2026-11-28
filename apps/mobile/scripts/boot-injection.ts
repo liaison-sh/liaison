@@ -164,7 +164,8 @@ export function applyMobileCsp(html: string): { html: string; files: ExtractedSc
 export function withoutComments(html: string): string {
   const bare = html.replace(WELL_FORMED_COMMENT, "")
   const rest = bare.replace(/^\s*<!doctype[^>]*>/i, "")
-  if (rest.includes("<!") || rest.includes("--!>")) throw new Error("the page has a comment or markup declaration it does not allow")
+  if (rest.includes("<!") || rest.includes("--!>"))
+    throw new Error("the page has a comment or markup declaration it does not allow")
   return bare
 }
 

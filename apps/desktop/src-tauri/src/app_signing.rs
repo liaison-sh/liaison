@@ -193,24 +193,24 @@ pub fn canonical_json(value: &Value) -> String {
 }
 
 /// The value these bytes hold, only when they are its canonical form.
-fn canonical_value(bytes: &[u8]) -> Option<Value> {
+pub(crate) fn canonical_value(bytes: &[u8]) -> Option<Value> {
     let text = std::str::from_utf8(bytes).ok()?;
     let value: Value = serde_json::from_str(text).ok()?;
     (canonical_json(&value) == text).then_some(value)
 }
 
-fn exact_keys(value: &Value, keys: &[&str]) -> bool {
+pub(crate) fn exact_keys(value: &Value, keys: &[&str]) -> bool {
     let Some(map) = value.as_object() else {
         return false;
     };
     map.len() == keys.len() && keys.iter().all(|key| map.contains_key(*key))
 }
 
-fn non_empty(value: &Value) -> Option<String> {
+pub(crate) fn non_empty(value: &Value) -> Option<String> {
     value.as_str().filter(|s| !s.is_empty()).map(str::to_string)
 }
 
-fn hex64(value: &Value) -> Option<String> {
+pub(crate) fn hex64(value: &Value) -> Option<String> {
     value
         .as_str()
         .filter(|s| {
@@ -254,7 +254,7 @@ pub fn parse_statement(bytes: &[u8]) -> Option<Statement> {
     })
 }
 
-fn signature_holds(bytes: &[u8], sig_base64: &str, key: &PinnedKey) -> bool {
+pub(crate) fn signature_holds(bytes: &[u8], sig_base64: &str, key: &PinnedKey) -> bool {
     let Some(raw) = decode_base64(sig_base64) else {
         return false;
     };
@@ -313,10 +313,39 @@ fn parse_entry(value: &Value) -> Option<RevocationEntry> {
     if below.is_none() && !map.contains_key("versions") {
         return None;
     }
+    // A shell floor (served_shell.rs, revocations.ts `isShellEntry`): exactly
+    // `{name: "shell:desktop" | "shell:native", below: "<decimal seq>"}`. A
+    // malformed one refuses the whole list, as the shared parser does.
+    if name.starts_with("shell:") && !is_shell_entry(&name, below.as_deref(), map) {
+        return None;
+    }
     Some(RevocationEntry {
         name,
         below,
         versions,
+    })
+}
+
+fn is_shell_entry(name: &str, below: Option<&str>, map: &serde_json::Map<String, Value>) -> bool {
+    matches!(name, "shell:desktop" | "shell:native")
+        && !map.contains_key("versions")
+        && below
+            .is_some_and(|b| (1..=15).contains(&b.len()) && b.bytes().all(|c| c.is_ascii_digit()))
+}
+
+/// Whether a shell build of `mode` at `seq` is below its mode's floor in
+/// `entries`. `below` is a DECIMAL STRING (released clients parse every
+/// entry's `below` as a string), compared here as a number, never as text:
+/// "999" is below "1000".
+pub fn below_shell_floor(entries: &[RevocationEntry], mode: &str, seq: u64) -> bool {
+    let name = format!("shell:{mode}");
+    entries.iter().any(|entry| {
+        entry.name == name
+            && entry
+                .below
+                .as_deref()
+                .and_then(|below| below.parse::<u64>().ok())
+                .is_some_and(|below| seq < below)
     })
 }
 

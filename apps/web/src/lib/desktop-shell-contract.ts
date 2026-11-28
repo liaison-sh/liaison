@@ -35,10 +35,19 @@
 // those. No Solid signal, no store, no DOM node, no class instance.
 
 import { EFFORT_LEVELS, type EffortLevel } from "@liaison/shared"
-import { bridgeRangeAllows, SHELL_BRIDGE_RANGE } from "~/lib/shell-bridge-range"
+import { bridgeRangeAllows, SHELL_BRIDGE_RANGE } from "./shell-bridge-range"
 
 /** The bridge shape this build of apps/web understands. Bumped on a break. */
 export const DESKTOP_BRIDGE_VERSION = 1
+
+/** What the main window runs: a served build (and which) or the bundled shell (and why). */
+export interface DesktopShellStatus {
+  served: boolean
+  buildId: string | null
+  reason: string | null
+  /** Another build is waiting for the next load. */
+  pending: boolean
+}
 
 /** The window property the shell publishes itself on. */
 export const DESKTOP_BRIDGE_KEY = "__LIAISON_DESKTOP__"
@@ -1115,6 +1124,23 @@ export interface DesktopBridge {
    * the page then neither names itself nor shows the notice.
    */
   appVersion?(): Promise<string>
+
+  /**
+   * THE SERVED SHELL (src-tauri/src/served_shell.rs). The window may run the
+   * server's own web build, verified by the shell against Liaison's signing
+   * keys, instead of the one compiled into the app.
+   *
+   * `shellReady` is called once after the page's first render with the page's
+   * build id: a served build that never says so within 20 s, twice, is
+   * quarantined and the shell falls back to its last good or bundled build.
+   * `shellStatus` says what runs (and why the bundled shell runs, when it
+   * does). `refreshShell` asks the shell to fetch the server's newer build
+   * now; it answers the build id that will run at the next load, or null.
+   * All optional: an older shell has none and the page behaves as before.
+   */
+  shellReady?(buildId: string): Promise<void>
+  shellStatus?(): Promise<DesktopShellStatus | null>
+  refreshShell?(): Promise<string | null>
 
   /**
    * THE NODE CREDENTIAL (P4 N-D T4), kept BY THE SHELL per server (the named

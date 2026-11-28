@@ -7,7 +7,10 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": ["deferred_events", "{\"where\":{\"status\":{\"in\":[\"awaiting_config\",\"awaiting_data\",\"awaiting_dependency\",\"render_failed\",\"email_failed\"]}},\"orderBy\":{\"createdAt\":\"desc\"},\"limit\":20}"],
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"status\":{\"in\":[\"awaiting_config\",\"awaiting_data\",\"awaiting_dependency\",\"render_failed\",\"email_failed\"]}},\"orderBy\":{\"createdAt\":\"desc\"},\"limit\":20}"
+      ],
       "reply": "[]"
     }
   ]

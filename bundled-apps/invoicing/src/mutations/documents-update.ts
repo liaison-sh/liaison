@@ -14,7 +14,7 @@ import { issueDateParts } from "../issue-date"
 import { documentRollup, lineSubtotal, lineTax, lineTotal } from "../money"
 import { type DocumentFull, documentsGet, isUuid, type ReadsCtx } from "../reads"
 import { runItemDraftRefusal } from "../recurring/run-card"
-import { type ClassifyInput, classify } from "../tax"
+import { type ClassifyInput, classifyLines, lineRateBp } from "../tax"
 import {
   dateOnly,
   FOREIGN_ID_CHARS,
@@ -154,14 +154,11 @@ async function recomputeLines(
   lineRows: Array<Omit<LineInsertLike, "document_id" | "id">>
   rollup: { subtotal_minor: bigint; tax_total_minor: bigint; grand_total_minor: bigint }
 }> {
-  const classification = classify(classifyInput)
+  const classification = classifyLines(classifyInput, lines)
   const lineRows: Array<Omit<LineInsertLike, "document_id" | "id">> = []
   for (const [idx, l] of lines.entries()) {
     const enriched = await enrichLineCustoms(ctx, l, classification.requires_hs_code)
-    const tax_rate_bp =
-      typeof l.tax_rate_bp_override === "number"
-        ? l.tax_rate_bp_override
-        : classification.default_rate_bp
+    const tax_rate_bp = lineRateBp(classification, l)
     // Discount is subtracted from the line subtotal and carried on the row,
     // exactly as the issue path does it (issue.ts). It used to be dropped here:
     // `recomputeLines` never read `discount_minor` and the document_lines insert

@@ -59,9 +59,11 @@ import {
 } from "../money"
 import { isFullyCredited } from "../mutations"
 import { isUniqueViolation } from "../mutations/quote-proforma-po"
+import { overseasLineTax } from "../overseas-tax"
 import { supplyDateOf } from "../sale-tax"
 import { planSaleMail } from "../sale-thanks"
 import { classify, EXEMPT_TREATMENTS, isUntaxedIntraEuSaleWithoutVat } from "../tax"
+import { vatTerritoryOf } from "../vat-territory"
 
 export interface OrderPaidPayload {
   id: string // Shopify order ID (external_id)
@@ -154,8 +156,14 @@ export interface OrderPaidPayload {
     marketplace_tax_minor?: string
     /** goods (default) / software / shipping — drives customs + PDF grouping. */
     line_kind?: LineKind
+    /** The line's VAT was extracted from its tax-inclusive gross under the French overseas rules
+     *  (`overseasLineTax`): its tax is `shopify_tax_minor`, so the invoice totals what was paid. */
+    tax_from_gross?: boolean
   }>
   market?: { country?: string }
+  /** The source's prices include tax (a revenue-stream sale that says so). The issuer profile's
+   *  `prices_include_tax` says the same for the shop's orders. */
+  prices_include_tax?: boolean
   /**
    * A person's decision on a tax review park (set only by `deferred_tax_override`, after its
    * approval): which source of truth the lines take, and which park it resolves. With it, the tax
@@ -397,7 +405,7 @@ function computeInvoiceTotal(
         unit_price_minor: toBigIntMinor(li.unit_price_minor),
       }) - toBigIntMinor(li.discount_minor)
     const rate = typeof li.tax_rate_bp === "number" ? li.tax_rate_bp : defaultTaxRateBp
-    const source = withSourceTax ? streamLineSourceTax(li) : null
+    const source = withSourceTax || li.tax_from_gross === true ? streamLineSourceTax(li) : null
     grand += subtotal + (source ?? lineTax({ subtotal_minor: subtotal, tax_rate_bp: rate }))
   }
   return grand
@@ -756,7 +764,7 @@ export async function issueOrderFlow(
   ctx: OrderPaidCtx,
   src: StreamSaleSource | null,
 ): Promise<OrderPaidResult> {
-  const payload: OrderPaidPayload = incoming.tax_override
+  let payload: OrderPaidPayload = incoming.tax_override
     ? { ...incoming, line_items: applyTaxOverride(incoming.line_items, incoming.tax_override.mode) }
     : incoming
   // What a park of a stream sale is keyed by and carries (the source is read again on retry).
@@ -883,13 +891,24 @@ export async function issueOrderFlow(
   // The TAX country is the delivery destination; the PRINTED country is the billing address's.
   // A payload adapted before the two were split carries only `country` (the destination then), so
   // it keeps classifying and printing exactly as it did.
-  const counterpartyCountry =
+  const rawTaxCountry =
     customer.tax_country ?? customer.country ?? payload.market?.country ?? issuer.country
-  const billingCountry = customer.country ?? counterpartyCountry
+  const billingCountry = customer.country ?? rawTaxCountry
+  // FR with an overseas postcode is that territory (FR 97411 is RE): the delivery's postcode when
+  // the tax country is the delivery's, else the billing one.
+  const counterpartyCountry = vatTerritoryOf(
+    rawTaxCountry,
+    customer.delivery?.postcode &&
+      (customer.delivery.country_code ?? rawTaxCountry) === rawTaxCountry
+      ? customer.delivery.postcode
+      : customer.billing?.postcode,
+  )
   const classification = classify({
     issuer_country: issuer.country,
+    issuer_postcode: issuer.postcode ?? null,
     counterparty_country: counterpartyCountry,
     has_vat_id: !!customer.vat_id,
+    line_kinds: payload.line_items.map((li) => li.line_kind ?? "goods"),
   })
   if (classification.treatment === "unconfigured") {
     const def = await insertDeferred(ctx.db, {
@@ -920,6 +939,34 @@ export async function issueOrderFlow(
       blocked_on: { kind: "tax_check", lines: taxMismatches },
     })
   }
+  // (1b) The French overseas rules (Guadeloupe, Martinique, La Réunion, Guyane, Mayotte, Monaco):
+  // each line's rate is its kind's (goods exported at 0, a service taxed where the rules place
+  // it). A consumer's line the source charged nothing on, at a tax-inclusive price, has the
+  // territory's VAT extracted from what was paid; any other difference waits for a person.
+  const overseas = payload.tax_override
+    ? null
+    : overseasLineTax(payload.line_items, classification, {
+        territory: counterpartyCountry,
+        consumer: !customer.vat_id && customer.kind !== "company",
+        pricesIncludeTax: issuer.prices_include_tax === true || payload.prices_include_tax === true,
+      })
+  if (overseas && !overseas.ok) {
+    return parkForTaxReview(ctx, parkPayload, orderNumber, src, {
+      status: "awaiting_data",
+      reason: overseas.reason,
+      blocked_on: {
+        kind: "tax_rate",
+        treatment: classification.treatment,
+        counterparty_country: counterpartyCountry,
+        lines: overseas.lines,
+        detail:
+          `${overseas.message} deferred_tax_override mode shopify_reported keeps the source's tax, ` +
+          "mode as_computed charges the territory's rate on the net prices.",
+      },
+    })
+  }
+  if (overseas?.ok && overseas.applied) payload = { ...payload, line_items: overseas.lines }
+  const overseasRules = !!overseas?.ok && !!classification.rate_bp_by_kind
   // (2) An exempt treatment (export, reverse charge) prints an exemption mention: a line that
   // nonetheless carries the seller's tax would contradict it on the same page. Which one is wrong
   // (the classification, or a tax Shopify should not have charged) is a human call.
@@ -993,8 +1040,11 @@ export async function issueOrderFlow(
   // own (French VAT at home, the consumer's member state rate through the OSS). The source's
   // amount is the truth the invoice reconciles against, never overridden: a sale charged another
   // rate (none on a domestic business sale, another country's, a reduced one) waits for a person.
+  // The overseas rules (1b) already checked every line against its kind's rate.
   const rateMismatches =
-    src && !payload.tax_override ? streamRateMismatches(payload.line_items, classification) : []
+    src && !payload.tax_override && !overseasRules
+      ? streamRateMismatches(payload.line_items, classification)
+      : []
   if (rateMismatches.length > 0) {
     return parkForTaxReview(ctx, parkPayload, orderNumber, src, {
       status: "awaiting_data",
@@ -1132,7 +1182,7 @@ export async function issueOrderFlow(
   // decided the tax (`tax_override`): the invoice then totals exactly what the buyer paid.
   const useSourceTax = !payload.tax_override
   const sourceTaxOf = (li: OrderPaidPayload["line_items"][number]) =>
-    useSourceTax ? streamLineSourceTax(li) : null
+    useSourceTax || li.tax_from_gross === true ? streamLineSourceTax(li) : null
   const buildIssueInput = (
     scope: "goods" | "software",
     items: OrderPaidPayload["line_items"],

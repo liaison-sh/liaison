@@ -145,5 +145,6 @@ export function orderPaidPayloadFromSale(sale: Sale): OrderPaidPayload {
     })),
     market:
       refs.market_country !== undefined ? { country: refs.market_country ?? undefined } : undefined,
+    ...(sale.prices_include_tax ? { prices_include_tax: true } : {}),
   }
 }

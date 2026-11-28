@@ -5,6 +5,13 @@
 // the `tax_regimes` config table.
 
 import type { OperationCategory } from "./einvoicing/classify-operation"
+import {
+  frTerritoryRateBp,
+  frVatZone,
+  isFrenchOverseas,
+  territoryKind,
+  vatTerritoryOf,
+} from "./vat-territory"
 
 export type TaxTreatment =
   | "eu_domestic"
@@ -26,13 +33,30 @@ export interface ClassifyInput {
   issuer_country: string | null | undefined
   counterparty_country: string | null | undefined
   has_vat_id: boolean
+  /** The issuer's postcode: a French issuer with a 971/972/974 postcode is established in a
+   *  department where French VAT applies at its own rates. */
+  issuer_postcode?: string | null
+  /** The tax destination's postcode: `FR` with an overseas postcode is that territory. */
+  counterparty_postcode?: string | null
+  /** The document's line kinds (goods, software, service, shipping). They decide the French
+   *  overseas rules: goods are exported to a department, its services are taxed there. Absent,
+   *  the document reads as goods. */
+  line_kinds?: ReadonlyArray<string | null | undefined>
 }
+
+export type ClassifyLineKind = "goods" | "software" | "service" | "shipping"
 
 export interface ClassifyResult {
   treatment: TaxTreatment
   default_rate_bp: number
   legal_mention_key: string
   requires_hs_code: boolean
+  /** Set when the French overseas rules decided the sale: the rate of each line kind (goods
+   *  exported at 0 next to services taxed at 8.5 %, say). A line takes its kind's rate before the
+   *  document default. */
+  rate_bp_by_kind?: Record<ClassifyLineKind, number>
+  /** The buyer's tax territory the overseas rules read (RE for FR 97411). */
+  territory?: string
 }
 
 /**
@@ -420,12 +444,111 @@ export function isEuCountry(code: string | null | undefined): boolean {
   return EU_COUNTRIES.has((code ?? "").trim().toUpperCase())
 }
 
+const UNCONFIGURED: ClassifyResult = {
+  treatment: "unconfigured",
+  default_rate_bp: 0,
+  legal_mention_key: "",
+  requires_hs_code: false,
+}
+
+/**
+ * The French overseas rules (decision table: docs/apps/invoicing.md, "Overseas France").
+ * Applies when the seller is in French VAT (metropolitan France or a department where VAT
+ * applies) and either side is overseas, or the buyer is in Monaco. Null leaves the sale to the
+ * general rules. Sources: BOI-TVA-GEO-20, BOI-TVA-GEO-20-40, BOI-TVA-CHAMP-20-10.
+ */
+function classifyOverseas(input: ClassifyInput): ClassifyResult | null {
+  const seller = vatTerritoryOf(input.issuer_country, input.issuer_postcode)
+  const buyer = vatTerritoryOf(input.counterparty_country, input.counterparty_postcode)
+  const sellerKind = territoryKind(seller)
+  const buyerKind = territoryKind(buyer)
+  const sellerOverseas = sellerKind !== "fr_metro" && sellerKind !== "other"
+  const buyerOverseas = isFrenchOverseas(buyer)
+  if (!sellerOverseas && !buyerOverseas && buyer !== "MC") return null
+  // A seller in Guyane or Mayotte charges no VAT, a seller in a COM is outside French VAT: not
+  // modelled, a person decides.
+  if (sellerKind === "dom_no_vat" || sellerKind === "com") return UNCONFIGURED
+  const kinds = (input.line_kinds ?? []).map((k) =>
+    k === "software" || k === "service" || k === "shipping" ? k : "goods",
+  ) as ClassifyLineKind[]
+  if (kinds.length === 0) kinds.push("goods")
+  const services = kinds.some((k) => k === "software" || k === "service")
+  const goods = kinds.some((k) => k === "goods" || k === "shipping")
+  const sellerZone = frVatZone(seller)
+  const buyerZone = frVatZone(buyer)
+  const sellerRate = frTerritoryRateBp(seller) ?? 0
+  const byKind = (goodsBp: number, softwareBp: number, serviceBp: number) => ({
+    goods: goodsBp,
+    shipping: goodsBp,
+    software: softwareBp,
+    service: serviceBp,
+  })
+  const result = (
+    treatment: TaxTreatment,
+    rates: Record<ClassifyLineKind, number>,
+  ): ClassifyResult => {
+    const first = kinds.find((k) => k === "software" || k === "service") ?? kinds[0] ?? "goods"
+    return {
+      treatment,
+      default_rate_bp: rates[first],
+      legal_mention_key: treatment,
+      requires_hs_code: goods && rates.goods === 0,
+      rate_bp_by_kind: rates,
+      territory: buyer,
+    }
+  }
+
+  if (sellerZone === null) {
+    // A seller in another member state (or anywhere outside French VAT): goods to a department are
+    // an export from the EU, as before. Its services taxed in a department under French law are
+    // not modelled (UNCONFIRMED: how it accounts for them): a person decides.
+    if (isEuCountry(seller) && buyerKind === "dom_vat" && services) return UNCONFIGURED
+    return null
+  }
+
+  // Inside French VAT.
+  if (buyerZone !== null) {
+    if (buyerZone === sellerZone) {
+      // Domestic: one territory (the Antilles are one market).
+      return result("eu_domestic", byKind(sellerRate, sellerRate, sellerRate))
+    }
+    // Different French VAT territories: goods are exported (CGI 262 I, 294-2); services are taxed
+    // where art. 259-259 D place them, with no reverse charge (BOI-TVA-GEO-20-40 § 110-230):
+    // a business's territory (259-1°), a consumer's for electronic services (259 D), the seller's
+    // for other consumer services (259-2°).
+    const buyerRate = frTerritoryRateBp(buyer) ?? 0
+    const software = buyerRate
+    const service = input.has_vat_id ? buyerRate : sellerRate
+    return result(services ? "eu_domestic" : "eu_export_non_eu", byKind(0, software, service))
+  }
+  if (buyerKind === "dom_no_vat") {
+    // Guyane, Mayotte: VAT not applicable (CGI 294-1); goods are exported to them (294-2).
+    return result("eu_export_non_eu", byKind(0, 0, 0))
+  }
+  if (sellerOverseas) {
+    // A seller in a department selling outside French VAT. Another member state: goods are an
+    // export (CGI 294-2); services are UNCONFIRMED (the EU OSS does not cover a seller outside
+    // the EU VAT territory): a person decides.
+    if (isEuCountry(buyer) && services) return UNCONFIGURED
+    if (!KNOWN_COUNTRIES.has(buyer)) return null
+    // A COM or a third country: exports and services outside French VAT, as for a metropolitan
+    // seller (CGI 262 I; 259-1°, 259 B).
+    return result("eu_export_non_eu", byKind(0, 0, 0))
+  }
+  // A metropolitan seller and a COM: a third territory, the general rules apply.
+  return null
+}
+
 export function classify(input: ClassifyInput): ClassifyResult {
+  const overseas = classifyOverseas(input)
+  if (overseas) return overseas
   // Null-safe: a missing/empty country becomes "" which falls through to the unconfigured (issuer)
   // / ambiguous (counterparty) degradations below — issuance proceeds instead of throwing a
   // "cannot read property 'toUpperCase' of undefined" that aborts the whole gated approval (422).
   const issuer = (input.issuer_country ?? "").toUpperCase()
-  const counterparty = (input.counterparty_country ?? "").toUpperCase()
+  // FR with an overseas postcode is that territory (FR 97133 is Saint-Barthélemy, a third
+  // territory): the general rules read the resolved code.
+  const counterparty = vatTerritoryOf(input.counterparty_country, input.counterparty_postcode)
 
   if (!SUPPORTED_ISSUER_REGIMES.has(issuer)) {
     return {
@@ -537,6 +660,25 @@ export function classify(input: ClassifyInput): ClassifyResult {
   }
 }
 
+/** `classify` with the line kinds read from the lines (unless the input names its own). */
+export function classifyLines(
+  input: ClassifyInput,
+  lines: ReadonlyArray<{ line_kind?: string | null }>,
+): ClassifyResult {
+  return classify({ ...input, line_kinds: input.line_kinds ?? lines.map((l) => l.line_kind) })
+}
+
+/** A line's rate: its override, else its kind's rate (French overseas rules), else the
+ *  document's default. */
+export function lineRateBp(
+  c: Pick<ClassifyResult, "default_rate_bp" | "rate_bp_by_kind">,
+  line: { line_kind?: string | null; tax_rate_bp_override?: unknown },
+): number {
+  if (typeof line.tax_rate_bp_override === "number") return line.tax_rate_bp_override
+  const kind = (line.line_kind ?? "goods") as ClassifyLineKind
+  return c.rate_bp_by_kind?.[kind] ?? c.default_rate_bp
+}
+
 export type MentionLanguage = "en" | "fr" | "de"
 
 /** Date from which the CIBS (Code des impositions sur les biens et services) numbering applies;
@@ -593,6 +735,65 @@ const CONSUMER_SERVICES_OUTSIDE_EU: MentionEntry = {
 /** The first issue date that prints CONSUMER_SERVICES_OUTSIDE_EU. Documents issued before keep
  *  the wording they were issued with, on every re-render. */
 export const CONSUMER_SERVICES_OUTSIDE_EU_FROM = "2026-11-28"
+
+/**
+ * French overseas departments (BOI-TVA-GEO-20 § 10 and 40; BOI-TVA-GEO-20-40 § 60). Goods sent
+ * between metropolitan France and a department, or between La Réunion and the Antilles, are an
+ * export (CGI art. 262 I and 294-2). Services are not applicable in Guyane and Mayotte (art. 294-1).
+ * OPEN: the exact wording waits for the accountant; the articles are the legal basis.
+ */
+const OVERSEAS_GOODS_EXPORT: MentionEntry = {
+  en: "Export to a French overseas department: VAT-exempt (Articles 262 I and 294-2 of the French Tax Code, CGI).",
+  fr: "Exportation : exonération de TVA (articles 262 I et 294-2 du CGI)",
+  de: "Ausfuhr in ein franzoesisches Ueberseedepartement, steuerfrei nach Art. 262 I und 294-2 CGI.",
+}
+const OVERSEAS_GOODS_EXEMPT: MentionEntry = {
+  en: "Supply of goods exempt from VAT (Articles 262 I and 294-2 of the French Tax Code, CGI)",
+  fr: "Livraison de biens exonérée (articles 262 I et 294-2 du CGI)",
+  de: "Warenlieferung steuerfrei nach Art. 262 I und 294-2 CGI",
+}
+const OVERSEAS_NO_VAT_SERVICES: MentionEntry = {
+  en: "VAT not applicable, art. 294-1 of the French Tax Code",
+  fr: "TVA non applicable, art. 294-1 du CGI",
+  de: "Nicht steuerbar, Art. 294-1 CGI",
+}
+
+/** The first issue date that prints the overseas mentions. Documents issued before keep the
+ *  wording they were issued with, on every re-render. */
+export const OVERSEAS_MENTIONS_FROM = "2026-11-28"
+
+/** The overseas mention of a document, or null when the general wording applies. */
+function overseasMention(
+  treatment: TaxTreatment,
+  language: MentionLanguage,
+  opts: LegalMentionOptions,
+): string | null {
+  const issued = ISO_DATE.exec(String(opts.issueDate ?? ""))?.[1] ?? ""
+  if (!opts.taxTerritory || issued < OVERSEAS_MENTIONS_FROM) return null
+  const buyer = opts.taxTerritory.trim().toUpperCase()
+  const sellerZone = frVatZone(opts.issuerTerritory ?? "FR")
+  const buyerZone = frVatZone(buyer)
+  const noVat = territoryKind(buyer) === "dom_no_vat"
+  // Goods leave the seller's French VAT territory for another one, or for Guyane / Mayotte.
+  const withinFrance =
+    sellerZone !== null && ((buyerZone !== null && buyerZone !== sellerZone) || noVat)
+  if (!withinFrance) return null
+  const text = (e: MentionEntry) => e[language] ?? e.en
+  const category = opts.category ?? "goods"
+  if (treatment === "eu_export_non_eu") {
+    const goods = text(OVERSEAS_GOODS_EXPORT)
+    if (category === "goods") return goods
+    if (!noVat) return null
+    const services = text(OVERSEAS_NO_VAT_SERVICES)
+    return category === "services" ? services : `${goods.replace(/\.\s*$/, "")}. ${services}`
+  }
+  if (treatment === "eu_domestic") {
+    // Services taxed in the buyer's territory are plain domestic VAT; goods on the same document
+    // are exported, which the exemption names.
+    return category === "mixed" ? text(OVERSEAS_GOODS_EXEMPT) : ""
+  }
+  return null
+}
 
 /**
  * The shipped legal-mention texts per (key, language), dated by legal period: `cgi` applies before
@@ -672,6 +873,11 @@ export interface LegalMentionOptions {
   /** The buyer's kind as the document stored it (`documents.customer_kind`): `individual` picks
    *  the consumer wording of services outside the EU. Unknown reads as a business. */
   customerKind?: string | null
+  /** The buyer's tax territory (`vatTerritoryOf`, RE for FR 97411): picks the French overseas
+   *  wording. Absent, the general wording applies. */
+  taxTerritory?: string | null
+  /** The issuer's tax territory (FR, or a department for a seller established there). */
+  issuerTerritory?: string | null
 }
 
 /**
@@ -687,6 +893,8 @@ export function resolveLegalMention(
   opts: LegalMentionOptions = {},
 ): string {
   const table = FR_LEGAL_MENTIONS[legalMentionPeriod(opts.issueDate, opts.cibsSwitchDate)]
+  const overseas = overseasMention(treatment, language, opts)
+  if (overseas !== null) return overseas
   if (treatment === "eu_reverse_charge") {
     const g = table.eu_reverse_charge_goods ?? GOODS_EXEMPTION
     const goods = g[language] ?? g.en

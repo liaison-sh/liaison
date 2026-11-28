@@ -66,6 +66,7 @@ import { numberingSequence } from "./numbering"
 import { dueOn, paymentTermsOf } from "./payment-terms"
 import type { PlaceOfSupply } from "./sale-tax"
 import { classify, operationLabel } from "./tax"
+import { vatTerritoryOf } from "./vat-territory"
 
 export type DocumentType = "invoice" | "quote" | "proforma" | "purchase_order" | "credit_note"
 
@@ -1561,8 +1562,10 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   const taxCountry = taxCountryOf(counterparty)
   const classification = classify({
     issuer_country: issuer.country,
+    issuer_postcode: issuer.postcode ?? null,
     counterparty_country: taxCountry,
     has_vat_id: !!counterparty.vat_id,
+    line_kinds: draft.lines.map((l) => l.line_kind ?? "goods"),
   })
   const externalRefs: Record<string, unknown> = {
     ...draft.external_refs,
@@ -1592,8 +1595,12 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
         : { hs_code: null, country_of_origin: null, customs_description: null, fetchFailure: null }
     const { hs_code, country_of_origin, customs_description } = enriched
     if (enriched.fetchFailure) customsFetchFailures.push(enriched.fetchFailure)
+    // A line takes its kind's rate under the French overseas rules (goods exported at 0 next to
+    // services taxed in the department), else the document's default.
     const tax_rate_bp =
-      typeof dl.tax_rate_bp_override === "number" ? dl.tax_rate_bp_override : docDefaultRateBp
+      typeof dl.tax_rate_bp_override === "number"
+        ? dl.tax_rate_bp_override
+        : (classification.rate_bp_by_kind?.[lineKind] ?? docDefaultRateBp)
     const discount_minor = dl.discount_minor ?? 0n
     // Discount is subtracted from the line subtotal and rendered explicitly on
     // the document — never folded into the unit price.
@@ -1936,6 +1943,8 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
           null,
         issueDate: draft.issued_at,
         customerKind: (documentInsert.einvoice?.customer_kind as string | null | undefined) ?? null,
+        taxTerritory: taxCountry,
+        issuerTerritory: issuerTerritoryOf(issuer),
       },
     )
     const templateData = buildTemplateData({
@@ -2130,6 +2139,8 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
           null,
         issueDate: draft.issued_at,
         customerKind: (documentInsert.einvoice?.customer_kind as string | null | undefined) ?? null,
+        taxTerritory: taxCountry,
+        issuerTerritory: issuerTerritoryOf(issuer),
       },
     )
     return {
@@ -2153,9 +2164,30 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
 
 /** The country the classifier must read for this counterparty: its tax destination when one was
  *  recorded, else its billing country. */
-export function taxCountryOf(counterparty: Pick<Counterparty, "country" | "tax_country">): string {
+export function taxCountryOf(
+  counterparty: Pick<Counterparty, "country" | "tax_country"> &
+    Partial<Pick<Counterparty, "billing_postcode" | "delivery">>,
+): string {
   const t = typeof counterparty.tax_country === "string" ? counterparty.tax_country.trim() : ""
-  return t !== "" ? t : counterparty.country
+  const raw = t !== "" ? t : counterparty.country
+  // A French address with an overseas postcode is that territory (FR 97411 is RE): the French
+  // overseas VAT rules key off it (vat-territory.ts). The delivery's postcode when the supply
+  // goes there, else the billing one.
+  if ((raw ?? "").trim().toUpperCase() !== "FR") return raw
+  const d = counterparty.delivery
+  const postcode =
+    d?.postcode && (d.country_code ?? "FR").trim().toUpperCase() === "FR"
+      ? d.postcode
+      : counterparty.billing_postcode
+  return vatTerritoryOf(raw, postcode)
+}
+
+/** The issuer's own tax territory: FR, or the overseas department it is established in. */
+export function issuerTerritoryOf(issuer: {
+  country?: string | null
+  postcode?: string | null
+}): string {
+  return vatTerritoryOf(issuer.country, issuer.postcode)
 }
 
 /** The tax destination recorded on a persisted document (`external_refs.tax_country`), or null for

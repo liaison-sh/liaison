@@ -7,10 +7,15 @@ import {
   nativeAppLock,
   nativeAuthenticate,
   nativeBridge,
+  nativeBridgeVersionSupported,
   nativeHaptic,
   nativePushPermission,
+  nativeRefreshShell,
   nativeServers,
   nativeSetTheme,
+  nativeShellInfo,
+  nativeShellReport,
+  nativeShellServed,
   signalNativeReady,
 } from "~/lib/native-bridge"
 
@@ -202,5 +207,57 @@ describe("the phone's sign out", () => {
       disposeBefore()
       disposeGuard()
     }
+  })
+})
+
+describe("the served shell on the phone", () => {
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
+  const served = {
+    bridgeVersion: 1,
+    shell: "served:0123456789abcdef",
+    served: true,
+    buildId: "0123456789abcdef",
+  }
+
+  it("tells the host this build painted, with its build id", async () => {
+    const shellReady = vi.fn()
+    setBridge({ ready: vi.fn(), shellInfo: async () => served, shellReady })
+    signalNativeReady()
+    await flush()
+    // No document in this environment: no meta, so a null build id.
+    expect(shellReady).toHaveBeenCalledWith(null)
+  })
+
+  it("stays unconfirmed when the host's bridge is outside this build's range", async () => {
+    const shellReady = vi.fn()
+    setBridge({ shellInfo: async () => ({ ...served, bridgeVersion: 2 }), shellReady })
+    signalNativeReady()
+    await flush()
+    expect(shellReady).not.toHaveBeenCalled()
+    expect(nativeBridgeVersionSupported({ ...served, bridgeVersion: 2 })).toBe(false)
+    expect(nativeBridgeVersionSupported(served)).toBe(true)
+  })
+
+  it("reports which shell runs, and nothing without a host that knows", async () => {
+    setBridge({ shellInfo: async () => served })
+    expect(await nativeShellReport()).toBe("served:0123456789abcdef")
+    expect(await nativeShellServed()).toBe(true)
+    setBridge({
+      shellInfo: async () => ({ bridgeVersion: 1, shell: "bundled:no_build", served: false }),
+    })
+    expect(await nativeShellServed()).toBe(false)
+    setBridge({ shellInfo: async () => Promise.reject(new Error("gone")) })
+    expect(await nativeShellInfo()).toBeNull()
+    setBridge({})
+    expect(await nativeShellReport()).toBeNull()
+  })
+
+  it("asks the host to choose the build again", async () => {
+    setBridge({ refreshShell: async () => true })
+    expect(await nativeRefreshShell()).toBe(true)
+    setBridge({ refreshShell: async () => Promise.reject(new Error("x")) })
+    expect(await nativeRefreshShell()).toBe(false)
+    setBridge(null)
+    expect(await nativeRefreshShell()).toBe(false)
   })
 })

@@ -16,6 +16,7 @@
 // callers each keep a browser fallback of their own (`lib/share.ts`,
 // `navigator.onLine`).
 import { confirmSignOut, runBeforeSignOut } from "~/lib/session-lifecycle"
+import { SHELL_BRIDGE_RANGE } from "~/lib/shell-bridge-range"
 
 /** The name the mobile boot bundle publishes. Changing it changes both sides. */
 export const NATIVE_BRIDGE_GLOBAL = "__LIAISON_NATIVE__"
@@ -145,6 +146,31 @@ export interface NativeBridge {
    * (lib/client-version.ts). Null when the shell cannot read it.
    */
   clientVersion?: () => Promise<NativeClientVersion | null>
+  /**
+   * THE SERVED SHELL (iOS). The phone app runs either the web build compiled
+   * into it or the connected server's own build, which its native host
+   * verified against Liaison's signature before loading it (apps/mobile/ios/
+   * LiaisonShell). This answers the host's bridge version (NATIVE_BRIDGE_
+   * VERSION) and which one runs.
+   */
+  shellInfo?: () => Promise<NativeShellInfo | null>
+  /**
+   * The page painted, with the build id of its index.html. A served build
+   * that never says so is quarantined by the host after its second try.
+   */
+  shellReady?: (buildId: string | null) => void
+  /** Asks the host to choose the build again; true when a reload would change it. */
+  refreshShell?: () => Promise<boolean>
+}
+
+/** What the phone's host reports about the shell the page runs. */
+export interface NativeShellInfo {
+  bridgeVersion: number
+  /** `served:<buildId>` or `bundled:<reason>`, the shell part of the client report. */
+  shell: string
+  served: boolean
+  buildId?: string
+  reason?: string
 }
 
 /** The phone app as it names itself to the server. */
@@ -223,6 +249,82 @@ export function signalNativeReady(): void {
     bridgeFn("ready")?.()
   } catch {
     // A shell that cannot hide its splash screen still has a 3 s fallback.
+  }
+  void signalShellReady()
+}
+
+/** The build id this page's index.html carries (web-build.ts reads the same meta). */
+function pageBuildId(): string | null {
+  const meta = globalThis.document?.querySelector?.('meta[name="liaison-web-build"]')
+  return meta?.getAttribute("content") ?? null
+}
+
+/**
+ * Whether this build runs against the phone host's bridge version: the
+ * `ios`/`android` range of SHELL_BRIDGE_RANGE, as the host itself checks it
+ * before loading a served build. Only the caret form the ranges use (`^N`) is
+ * read here; anything else is the host's call alone.
+ */
+export function nativeBridgeVersionSupported(info: NativeShellInfo): boolean {
+  const range =
+    nativeShellPlatform() === "android" ? SHELL_BRIDGE_RANGE.android : SHELL_BRIDGE_RANGE.ios
+  const caret = /^\^(\d+)$/.exec(range)
+  return caret === null || Number(caret[1]) === info.bridgeVersion
+}
+
+/** The host's served-shell report, or null (a browser, the desktop, an older app). */
+export async function nativeShellInfo(): Promise<NativeShellInfo | null> {
+  const info = bridgeFn("shellInfo")
+  if (!info) return null
+  try {
+    const answer = await info()
+    if (answer === null || typeof answer !== "object") return null
+    if (typeof answer.bridgeVersion !== "number" || typeof answer.shell !== "string") return null
+    return answer
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Tells the host this build painted, unless the host's bridge is outside the
+ * range it was written for: such a build stays unconfirmed and the host falls
+ * back to its last good build, else the bundled one.
+ */
+async function signalShellReady(): Promise<void> {
+  const ready = bridgeFn("shellReady")
+  if (!ready) return
+  const info = await nativeShellInfo()
+  if (info !== null && !nativeBridgeVersionSupported(info)) return
+  try {
+    ready(pageBuildId())
+  } catch {
+    // An unconfirmed build only costs the served shell, never the page.
+  }
+}
+
+/** `served:<buildId>` or `bundled:<reason>` from the phone's host, else null. */
+export async function nativeShellReport(): Promise<string | null> {
+  return (await nativeShellInfo())?.shell ?? null
+}
+
+/** True when the phone runs the server's own build (no compat notes needed). */
+export async function nativeShellServed(): Promise<boolean> {
+  return (await nativeShellInfo())?.served === true
+}
+
+/**
+ * Asks the phone's host to choose the build for the current server again (a
+ * newer verified build may be staged). True when the page should reload to
+ * run it; false in a browser, the desktop or an older app.
+ */
+export async function nativeRefreshShell(): Promise<boolean> {
+  const refresh = bridgeFn("refreshShell")
+  if (!refresh) return false
+  try {
+    return (await refresh()) === true
+  } catch {
+    return false
   }
 }
 

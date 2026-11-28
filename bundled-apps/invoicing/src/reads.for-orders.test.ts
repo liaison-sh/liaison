@@ -14,6 +14,51 @@ function makeCtx(documents: Array<Record<string, unknown>>) {
 }
 
 describe("documentsForOrders", () => {
+  test("a paid order with no document names its open park, so it never reads as never invoiced", async () => {
+    // A paid order whose invoice waits on its buyer's e-invoicing identity has no document yet:
+    // the lookup returned no link at all, the same answer as an order invoicing never saw.
+    const db = createMockDb({
+      seed: {
+        documents: [],
+        deferred_events: [
+          {
+            id: "00000000-0000-4000-8000-00000000e001",
+            event_id: "13470003953995",
+            event_payload_json: { id: "13470003953995", order_number: "#3609" },
+            status: "awaiting_data",
+            reason: "awaiting_data",
+            blocked_on: { kind: "einvoice_identity", code: "einvoice_data_missing" },
+            retry_count: 3,
+          },
+          {
+            id: "00000000-0000-4000-8000-00000000e002",
+            event_id: "13470003953995",
+            event_payload_json: { id: "13470003953995" },
+            status: "resolved",
+            reason: "duplicate_park",
+            blocked_on: {},
+            retry_count: 0,
+          },
+        ],
+      },
+      bridgeWhereOperators: true,
+    })
+    const result = await documentsForOrders(
+      { db },
+      { shopify_order_ids: ["gid://shopify/Order/13470003953995", "999"] },
+    )
+    expect(result.links).toEqual([])
+    expect(result.parks).toEqual([
+      {
+        shopify_order_id: "13470003953995",
+        deferred_id: "00000000-0000-4000-8000-00000000e001",
+        status: "awaiting_data",
+        reason: "awaiting_data",
+        blocked_on: { kind: "einvoice_identity", code: "einvoice_data_missing" },
+      },
+    ])
+  })
+
   test("the HUMAN order name resolves too — a '#3276' lookup finds the order's invoice", async () => {
     // Handing the order NAME instead of the numeric id used to return [], which
     // reads as "this order has no invoice" on an order that plainly has one.

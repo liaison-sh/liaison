@@ -88,6 +88,17 @@ Apps that come with Liaison come from your server too, at the version it runs:
 - The desktop app checks that an app is exactly what Liaison released before it runs it in its own page. It downloads the app from your server, checks Liaison's signature with the keys built into the desktop app, and refuses a version Liaison withdrew. If any check fails, or your server runs a version Liaison did not sign, the app still works: it runs in the sandboxed frame.
 - The phone app runs every app in the sandboxed frame, Liaison's own included. It only runs scripts it ships with.
 
+## The desktop app runs your server's own version
+
+The desktop app can run the version of Liaison your server runs, instead of the one it was installed with. When it connects to a server, it asks which version the server runs and checks that Liaison signed it: Liaison's signature with the keys built into the desktop app, every file, and that the version suits this desktop app and was not withdrawn. It keeps the checked files and uses them from the next time it opens, switches server or reloads.
+
+- When your server moves to a newer version, the app switches to it at that next start, switch or reload, or on its own once you have not used it for 10 minutes and nothing you typed would be lost. It never asks.
+- When any check fails, your server runs a version Liaison did not sign, or the app cannot reach the list of withdrawn versions for 3 days, it runs the version it was installed with.
+- A version that does not start properly twice is not used again on this computer; the app goes back to the last one that worked.
+- A server operator can turn this off with `LIAISON_SERVED_SHELL=false` (see [Environment variables](../reference/env.md)).
+
+While the app runs your server's version, no app runs in compatibility mode.
+
 ## When some apps run in compatibility mode
 
 Your organization's server may be updated before your app is. When an app's settings use something your desktop or phone app cannot show yet, that app keeps working in compatibility mode, and the app says **Some apps run in compatibility mode until you update Liaison.** An app in compatibility mode shows the icon its publisher gave it, or a tile with its initial when it has none. A setting the app cannot show yet says **This setting needs a newer version of Liaison. Update Liaison to change it.**

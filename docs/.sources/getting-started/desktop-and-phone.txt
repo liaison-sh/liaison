@@ -95,3 +95,10 @@ iPhone app out-of-credits sentence -> packages/shared/src/i18n/locales/en/cloud-
 Phone app forgot link opens the find-workspace page (lookup only) -> apps/mobile/src/onboarding/server-address.ts:427 ; packages/shared/src/cloud-workspace.ts:109
 iPhone app has no App store page; installed apps and their settings pages stay -> apps/web/src/lib/native-bridge.ts:216 ; apps/web/src/framework/bootstrap.ts:866
 iPhone app text follows the system text size, up to the largest standard size -> apps/web/src/index.tsx:106 ; apps/web/src/lib/dynamic-type.ts:21
+Desktop runs the server's signed version: signature, files, bridge range, withdrawn versions -> apps/desktop/src-tauri/src/served_shell.rs:303 ; apps/desktop/src-tauri/src/served_shell.rs:937
+Desktop uses the checked version at the next start, switch or reload -> apps/desktop/src-tauri/src/served_shell.rs:1151 ; apps/desktop/src-tauri/src/account.rs:376
+Desktop switches on its own after 10 minutes idle with nothing unsaved, no prompt -> apps/web/src/lib/served-shell.ts:90 ; apps/web/src/lib/served-shell.ts:146
+Desktop falls back to its installed version on any failure, unsigned server version, or a withdrawn-versions list older than 3 days -> apps/desktop/src-tauri/src/served_shell.rs:804 ; apps/desktop/src-tauri/src/served_shell.rs:81
+A version that does not start twice is not used again; last working one -> apps/desktop/src-tauri/src/served_shell.rs:83 ; apps/desktop/src-tauri/src/served_shell.rs:1542
+Operator switch LIAISON_SERVED_SHELL -> apps/api/src/modules/client-policy/shell-info-routes.ts:39
+No compatibility mode while the server's version runs -> apps/web/src/framework/bootstrap.ts:1694

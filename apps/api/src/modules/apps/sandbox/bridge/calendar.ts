@@ -120,7 +120,10 @@ export function createCalendarMethods(
    * agent, so it never says "synced" or "invited" for a calendar kept in Liaison only. */
   async function reachesGoogle(calendarId: string): Promise<boolean> {
     const { calendarReachesGoogle } = await import("~/apps/calendar/sync")
-    return calendarReachesGoogle(orgId, calendarId)
+    const { withPrivilegedDb } = await import("~/db/privileged")
+    return withPrivilegedDb(orgId, "calendar-reaches-google", (tx) =>
+      calendarReachesGoogle(tx, orgId, calendarId),
+    )
   }
 
   /**

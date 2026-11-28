@@ -249,13 +249,17 @@ async function activeConnectionForAddressSql() {
  * (a Google credential). A calendar whose account has none (a seeded or imported account, a
  * revoked connection) keeps its events in Liaison only: pushes have nothing to send with, so no
  * guest is emailed either. What the write tools tell the agent (handlers.ts, writeOutcome).
- * Privileged read of a yes/no about a calendar the caller has already written to.
+ * `db` is privileged (the caller's RLS may hide the kernel connection): a yes/no about a calendar
+ * the caller has just written to.
  */
-export async function calendarReachesGoogle(orgId: string, calendarId: string): Promise<boolean> {
+export async function calendarReachesGoogle(
+  db: AccountDb,
+  orgId: string,
+  calendarId: string,
+): Promise<boolean> {
   const { sql } = await import("drizzle-orm")
-  const { withPrivilegedDb } = await import("~/db/privileged")
-  return withPrivilegedDb(orgId, "calendar-reaches-google", async (tx) => {
-    const rows = (await tx.execute(sql`
+  {
+    const rows = (await db.execute(sql`
       SELECT 1 AS linked
       FROM ${sql.raw(CALENDAR_SCHEMA())}.calendars cal
       JOIN ${sql.raw(CALENDAR_SCHEMA())}.accounts a ON a.id = cal.account_id AND a.org_id = cal.org_id
@@ -267,7 +271,7 @@ export async function calendarReachesGoogle(orgId: string, calendarId: string): 
       LIMIT 1
     `)) as unknown as { rows?: unknown[] } | unknown[]
     return (Array.isArray(rows) ? rows : (rows.rows ?? [])).length > 0
-  })
+  }
 }
 
 async function hasActiveCalendarConnection(

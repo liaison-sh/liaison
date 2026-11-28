@@ -4,10 +4,9 @@
 // approval and nothing reaches Google before it, and the account's own answer to an invitation
 // (yes, no, maybe) is pushed onto its attendee entry.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { sql as drizzleSql } from "drizzle-orm"
 import { FakeGoogleCalendar } from "~/apps/calendar/__fixtures__/google/fake-google-calendar"
 import { createCalendarSyncHarness } from "~/apps/calendar/__fixtures__/google/sync-harness"
-import { withSystemDb } from "~/db/privileged"
+import { seedConnectedAccountRow } from "~/seed/factories/org/platform-rows"
 import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
 import { acquireAppSchemaJsLock, releaseAppSchemaJsLock } from "~/tests/helpers/app-schema-lock"
 
@@ -108,13 +107,17 @@ describe("G12 / D3: invitations", () => {
     expect(String(local.notice)).toContain("Liaison only")
 
     // The account's Google connection is active: the event syncs, the guests were not emailed.
-    await withSystemDb("calendar-invitations-connection", (tx) =>
-      tx.execute(drizzleSql`INSERT INTO kernel.connected_accounts
-        (org_id, app_name, connection_name, owner_type, owner_id, provider_type, identifier,
-         status, created_by)
-      VALUES (${orgId}::uuid, 'calendar', 'google-calendar', 'user', ${userId}::uuid, 'oauth2',
-        ${email}, 'active', ${userId}::uuid)`),
-    )
+    await seedConnectedAccountRow({
+      orgId,
+      appName: "calendar",
+      connectionName: "google-calendar",
+      ownerType: "user",
+      ownerId: userId,
+      providerType: "oauth2",
+      identifier: email,
+      status: "active",
+      createdBy: userId,
+    })
     const synced = (await h.tool("create_event", { ...MEETING, calendarId: teamId })) as Record<
       string,
       unknown

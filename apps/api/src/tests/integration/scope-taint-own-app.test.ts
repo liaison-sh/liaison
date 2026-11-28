@@ -21,13 +21,16 @@ import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-ac
 import { initializedOrgRuntimes, toolRegistry } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { seedOrgRow, seedUserRows, seedUserScopeGrantRow } from "~/seed/factories/org/rows"
+import { agentDm } from "~/seed/tiers/minimal"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const ORG = "00000000-0000-4000-8000-0000000e7d01"
 const REQUESTER = "00000000-0000-4000-8000-0000000e7d02"
 /** Reads and writes the calendar, but no mail: a reader the mail taint must not reach. */
 const COLLEAGUE = "00000000-0000-4000-8000-0000000e7d03"
-const THREAD = "00000000-0000-4000-8000-0000000e7d04"
+/** The requester's DM with their agent, where the calls are made. */
+let thread = ""
 const CALENDAR_ID = "00000000-0000-4000-8000-0000000e7d05"
 
 const CALENDAR_READ = "calendar:events:read"
@@ -69,7 +72,7 @@ async function callOnTurn(
         orgId: ORG,
         actor,
         params,
-        threadId: THREAD,
+        threadId: thread,
         origin: "in-app-agent",
       }),
     )
@@ -106,27 +109,31 @@ const createParams = {
 describe("scope taint: a first-party app's write back into itself (rule 6l)", () => {
   beforeAll(async () => {
     await acquireTestLock()
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${ORG}, 'Taint Own App Org', 'taint-own-app-org') ON CONFLICT DO NOTHING`
-    for (const [id, email] of [
-      [REQUESTER, "taint-own-app-requester@test.com"],
-      [COLLEAGUE, "taint-own-app-colleague@test.com"],
-    ] as const) {
-      await sql`INSERT INTO kernel.users (id, org_id, email, name, status, password_hash)
-        VALUES (${id}, ${ORG}, ${email}, ${email}, 'active', 'x') ON CONFLICT DO NOTHING`
-    }
+    await seedOrgRow(
+      { id: ORG, name: "Taint Own App Org", slug: "taint-own-app-org" },
+      { onConflict: "skip" },
+    )
+    await seedUserRows(
+      [
+        [REQUESTER, "taint-own-app-requester@test.com"],
+        [COLLEAGUE, "taint-own-app-colleague@test.com"],
+      ].map(([id, email]) => ({
+        id,
+        orgId: ORG,
+        email,
+        name: email,
+        status: "active",
+        passwordHash: "x",
+      })),
+      { onConflict: "skip" },
+    )
     for (const scope of actor.scopes) {
-      await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
-        VALUES (${REQUESTER}, ${ORG}, ${scope}) ON CONFLICT DO NOTHING`
+      await seedUserScopeGrantRow({ userId: REQUESTER, orgId: ORG, scope })
     }
     for (const scope of ["calendar:events:read", "calendar:events:write"]) {
-      await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
-        VALUES (${COLLEAGUE}, ${ORG}, ${scope}) ON CONFLICT DO NOTHING`
+      await seedUserScopeGrantRow({ userId: COLLEAGUE, orgId: ORG, scope })
     }
-    await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
-      VALUES (${THREAD}, ${ORG}, 'taint-own-app-dm', 'agent_chat', ${REQUESTER}) ON CONFLICT DO NOTHING`
-    await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id)
-      VALUES (${THREAD}, ${REQUESTER}, ${ORG}) ON CONFLICT DO NOTHING`
+    thread = await agentDm(ORG, REQUESTER)
 
     await ensureAppsForOrg(ORG)
     for (const tool of ["create_event", "update_event"] as const) {
@@ -147,7 +154,7 @@ describe("scope taint: a first-party app's write back into itself (rule 6l)", ()
 
   beforeEach(async () => {
     await sql`DELETE FROM kernel.approval_requests WHERE org_id = ${ORG}`
-    await sql`UPDATE kernel.threads SET tainted = false, tainted_sources = NULL WHERE id = ${THREAD}`
+    await sql`UPDATE kernel.threads SET tainted = false, tainted_sources = NULL WHERE id = ${thread}`
   })
 
   afterAll(async () => {

@@ -23,6 +23,11 @@ export const BOOT_SCRIPT_NAME = "liaison-mobile-boot.js"
 // came up with no native bridge and no server address.
 const TAG = `<script src="/${BOOT_SCRIPT_NAME}"></script>`
 
+// The page's ONE <head> tag: `<head>` or `<head ...>`, never `<header>` or `<head-x>`.
+const HEAD_TAG = /<head(?=[\s>/])[^>]*>/i
+const HEAD_TAGS = /<head(?=[\s>/])[^>]*>/gi
+const COMMENT = /<!--[\s\S]*?-->/g
+
 /**
  * `html` with the boot script as the first thing in `<head>`. Idempotent: a
  * re-sync rewrites the same file, and a stack of identical script tags is the
@@ -30,7 +35,7 @@ const TAG = `<script src="/${BOOT_SCRIPT_NAME}"></script>`
  */
 export function injectBootScript(html: string): string {
   if (html.includes(TAG)) return html
-  const head = html.match(/<head[^>]*>/i)
+  const head = html.match(HEAD_TAG)
   if (!head) {
     throw new Error("the synced index.html has no <head> to inject the mobile boot script into")
   }
@@ -89,11 +94,26 @@ const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${MOBILE_C
 
 const SCRIPT_TAG = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi
 
-/** The bodies of the page's inline (src-less) scripts, import maps included. */
+/**
+ * What a `<script>` with these attributes is: one the browser runs (no type,
+ * `text/javascript` or `module`), an import map, or anything else (JSON, a
+ * template), which the browser never runs and the policy would block anyway.
+ */
+export function scriptKind(attrs: string): "run" | "importmap" | "data" {
+  const m = /\btype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(attrs)
+  if (!m) return "run"
+  const type = (m[1] ?? m[2] ?? m[3] ?? "").trim().toLowerCase()
+  if (type === "" || type === "text/javascript" || type === "module") return "run"
+  if (type === "importmap") return "importmap"
+  return "data"
+}
+
+/** The bodies of the page's inline (src-less) scripts that would run, import maps included. */
 export function inlineScripts(html: string): string[] {
   const bodies: string[] = []
   for (const m of html.matchAll(SCRIPT_TAG)) {
-    if (!/\bsrc\s*=/i.test(m[1] ?? "")) bodies.push(m[2] ?? "")
+    const attrs = m[1] ?? ""
+    if (!/\bsrc\s*=/i.test(attrs) && scriptKind(attrs) !== "data") bodies.push(m[2] ?? "")
   }
   return bodies
 }
@@ -116,15 +136,49 @@ export function applyMobileCsp(html: string): { html: string; files: ExtractedSc
   const files: ExtractedScript[] = []
   let out = html.replace(SCRIPT_TAG, (tag, attrs: string, body: string) => {
     if (/\bsrc\s*=/i.test(attrs)) return tag
-    if (/\btype\s*=\s*["']?importmap/i.test(attrs)) return ""
+    const kind = scriptKind(attrs)
+    if (kind === "importmap") return ""
+    // A data block (JSON, a template) stays as it is: the browser never runs it.
+    if (kind === "data") return tag
     const name = `liaison-inline-${createHash("sha256").update(body).digest("hex").slice(0, 12)}.js`
     files.push({ name, content: body })
     const type = /\btype\s*=\s*["']?module/i.test(attrs) ? ' type="module"' : ""
-    return `<script${type} src="/${name}"></script>`
+    const nomodule = /\bnomodule\b/i.test(attrs) ? " nomodule" : ""
+    return `<script${type}${nomodule} src="/${name}"></script>`
   })
   out = out.replace(/<meta\s+http-equiv=["']Content-Security-Policy["'][^>]*>/gi, "")
-  const head = out.match(/<head[^>]*>/i)
+  const head = out.match(HEAD_TAG)
   if (!head) throw new Error("the synced index.html has no <head> to carry the phone's policy")
   const at = (head.index ?? 0) + head[0].length
   return { html: out.slice(0, at) + CSP_META + out.slice(at), files }
+}
+
+/**
+ * Refuses a made page unless its shape is the one the policy relies on, read
+ * with comments removed: exactly one `<head>`, nothing before it but the
+ * doctype, `<html>` and white space (a script there would run before the
+ * policy and the boot bundle), the CSP meta and then the boot script as the
+ * first two things in it, and the boot script nowhere else. A served build's
+ * page (the iOS host, MobilePage.swift) that fails it is not used.
+ */
+export function checkMobilePage(html: string): void {
+  const bare = html.replace(COMMENT, "")
+  const heads = [...bare.matchAll(HEAD_TAGS)]
+  if (heads.length !== 1) throw new Error("the page must have exactly one <head>")
+  const head = heads[0]
+  const at = head.index ?? 0
+  if (!/^\s*(?:<!doctype[^>]*>\s*)?(?:<html(?=[\s>])[^>]*>\s*)?$/i.test(bare.slice(0, at))) {
+    throw new Error("the page has content before its <head>")
+  }
+  if (!bare.slice(at + head[0].length).startsWith(CSP_META + TAG)) {
+    throw new Error("the page's <head> must start with the policy and the boot script")
+  }
+  if (bare.split(TAG).length !== 2) throw new Error("the boot script must appear exactly once")
+}
+
+/** The phone's page as build-mobile.ts writes it (and the iOS host derives it), checked. */
+export function makeMobilePage(html: string): { html: string; files: ExtractedScript[] } {
+  const page = applyMobileCsp(pinViewportScale(injectBootScript(html)))
+  checkMobilePage(page.html)
+  return page
 }

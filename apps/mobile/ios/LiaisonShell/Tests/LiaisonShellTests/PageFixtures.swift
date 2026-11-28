@@ -6,6 +6,8 @@
 
 struct PageCase {
     let input: String
+    /// boot-injection.ts refuses this page (checkMobilePage): the Swift port must too.
+    let refused: Bool
     let html: String
     let files: [String: String]
 }
@@ -13,6 +15,7 @@ struct PageCase {
 let pageCases: [PageCase] = [
     PageCase(
         input: "PCFkb2N0eXBlIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KICA8aGVhZD4KICAgIDxtZXRhIGNoYXJzZXQ9IlVURi04IiAvPgogICAgPG1ldGEgbmFtZT0idmlld3BvcnQiIGNvbnRlbnQ9IndpZHRoPWRldmljZS13aWR0aCwgaW5pdGlhbC1zY2FsZT0xLjAsIHZpZXdwb3J0LWZpdD1jb3ZlciIgLz4KICAgIDxtZXRhIG5hbWU9ImxpYWlzb24td2ViLWJ1aWxkIiBjb250ZW50PSIwMTIzNDU2Nzg5YWJjZGVmIiAvPgogICAgPG1ldGEgaHR0cC1lcXVpdj0iQ29udGVudC1TZWN1cml0eS1Qb2xpY3kiIGNvbnRlbnQ9ImRlZmF1bHQtc3JjICoiPgogICAgPHRpdGxlPkxpYWlzb248L3RpdGxlPgogICAgPHNjcmlwdD5kb2N1bWVudC5kb2N1bWVudEVsZW1lbnQuZGF0YXNldC50aGVtZSA9IGxvY2FsU3RvcmFnZS5nZXRJdGVtKCJ0aGVtZSIpIHx8ICJsaWdodCI8L3NjcmlwdD4KICAgIDxzY3JpcHQgdHlwZT0iaW1wb3J0bWFwIj57ImltcG9ydHMiOnsic29saWQtanMiOiIvYXNzZXRzL3NvbGlkLmpzIn19PC9zY3JpcHQ+CiAgICA8c2NyaXB0IHR5cGU9Im1vZHVsZSI+aW1wb3J0ICIvYXNzZXRzL3ByZS5qcyI7IHdpbmRvdy5fX8OpID0gImNhZsOpIPCfmoAiPC9zY3JpcHQ+CiAgICA8c2NyaXB0IHR5cGU9Im1vZHVsZSIgY3Jvc3NvcmlnaW4gc3JjPSIvYXNzZXRzL2luZGV4LWFiYy5qcyI+PC9zY3JpcHQ+CiAgICA8bGluayByZWw9InN0eWxlc2hlZXQiIGNyb3Nzb3JpZ2luIGhyZWY9Ii9hc3NldHMvaW5kZXgtYWJjLmNzcyI+CiAgPC9oZWFkPgogIDxib2R5PjxkaXYgaWQ9InJvb3QiPjwvZGl2PjwvYm9keT4KPC9odG1sPgo=",
+        refused: false,
         html: "PCFkb2N0eXBlIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KICA8aGVhZD48bWV0YSBodHRwLWVxdWl2PSJDb250ZW50LVNlY3VyaXR5LVBvbGljeSIgY29udGVudD0iZGVmYXVsdC1zcmMgJ3NlbGYnOyBzY3JpcHQtc3JjICdzZWxmJzsgc3R5bGUtc3JjICdzZWxmJyAndW5zYWZlLWlubGluZSc7IGltZy1zcmMgJ3NlbGYnIGRhdGE6IGJsb2I6IGh0dHBzOjsgZm9udC1zcmMgJ3NlbGYnIGRhdGE6OyBtZWRpYS1zcmMgJ3NlbGYnIGRhdGE6IGJsb2I6OyB3b3JrZXItc3JjICdzZWxmJyBibG9iOjsgYmFzZS11cmkgJ3NlbGYnOyBmb3JtLWFjdGlvbiAnc2VsZic7IGNvbm5lY3Qtc3JjICdzZWxmJyBodHRwczogd3NzOiBodHRwOi8vbG9jYWxob3N0Oiogd3M6Ly9sb2NhbGhvc3Q6KjsgZnJhbWUtc3JjICdzZWxmJyBibG9iOiBkYXRhOjsgb2JqZWN0LXNyYyAnbm9uZSciPjxzY3JpcHQgc3JjPSIvbGlhaXNvbi1tb2JpbGUtYm9vdC5qcyI+PC9zY3JpcHQ+CiAgICA8bWV0YSBjaGFyc2V0PSJVVEYtOCIgLz4KICAgIDxtZXRhIG5hbWU9InZpZXdwb3J0IiBjb250ZW50PSJ3aWR0aD1kZXZpY2Utd2lkdGgsIGluaXRpYWwtc2NhbGU9MS4wLCB2aWV3cG9ydC1maXQ9Y292ZXIsIG1heGltdW0tc2NhbGU9MSIgLz4KICAgIDxtZXRhIG5hbWU9ImxpYWlzb24td2ViLWJ1aWxkIiBjb250ZW50PSIwMTIzNDU2Nzg5YWJjZGVmIiAvPgogICAgCiAgICA8dGl0bGU+TGlhaXNvbjwvdGl0bGU+CiAgICA8c2NyaXB0IHNyYz0iL2xpYWlzb24taW5saW5lLWI0ZmEzOGVjOWE2Mi5qcyI+PC9zY3JpcHQ+CiAgICAKICAgIDxzY3JpcHQgdHlwZT0ibW9kdWxlIiBzcmM9Ii9saWFpc29uLWlubGluZS00MmIzYjE5OTJlY2YuanMiPjwvc2NyaXB0PgogICAgPHNjcmlwdCB0eXBlPSJtb2R1bGUiIGNyb3Nzb3JpZ2luIHNyYz0iL2Fzc2V0cy9pbmRleC1hYmMuanMiPjwvc2NyaXB0PgogICAgPGxpbmsgcmVsPSJzdHlsZXNoZWV0IiBjcm9zc29yaWdpbiBocmVmPSIvYXNzZXRzL2luZGV4LWFiYy5jc3MiPgogIDwvaGVhZD4KICA8Ym9keT48ZGl2IGlkPSJyb290Ij48L2Rpdj48L2JvZHk+CjwvaHRtbD4K",
         files: [
             "liaison-inline-b4fa38ec9a62.js": "ZG9jdW1lbnQuZG9jdW1lbnRFbGVtZW50LmRhdGFzZXQudGhlbWUgPSBsb2NhbFN0b3JhZ2UuZ2V0SXRlbSgidGhlbWUiKSB8fCAibGlnaHQi",
@@ -21,9 +24,67 @@ let pageCases: [PageCase] = [
     ),
     PageCase(
         input: "PGh0bWw+PEhFQUQgZGF0YS14PSIxIj48bWV0YSBuYW1lPSd2aWV3cG9ydCcgY29udGVudD0nd2lkdGg9ZGV2aWNlLXdpZHRoLHVzZXItc2NhbGFibGU9bm8sbWF4aW11bS1zY2FsZT01Jz48U0NSSVBUPmE8YjwvU0NSSVBUID48L0hFQUQ+PGJvZHk+PC9ib2R5PjwvaHRtbD4=",
+        refused: false,
         html: "PGh0bWw+PEhFQUQgZGF0YS14PSIxIj48bWV0YSBodHRwLWVxdWl2PSJDb250ZW50LVNlY3VyaXR5LVBvbGljeSIgY29udGVudD0iZGVmYXVsdC1zcmMgJ3NlbGYnOyBzY3JpcHQtc3JjICdzZWxmJzsgc3R5bGUtc3JjICdzZWxmJyAndW5zYWZlLWlubGluZSc7IGltZy1zcmMgJ3NlbGYnIGRhdGE6IGJsb2I6IGh0dHBzOjsgZm9udC1zcmMgJ3NlbGYnIGRhdGE6OyBtZWRpYS1zcmMgJ3NlbGYnIGRhdGE6IGJsb2I6OyB3b3JrZXItc3JjICdzZWxmJyBibG9iOjsgYmFzZS11cmkgJ3NlbGYnOyBmb3JtLWFjdGlvbiAnc2VsZic7IGNvbm5lY3Qtc3JjICdzZWxmJyBodHRwczogd3NzOiBodHRwOi8vbG9jYWxob3N0Oiogd3M6Ly9sb2NhbGhvc3Q6KjsgZnJhbWUtc3JjICdzZWxmJyBibG9iOiBkYXRhOjsgb2JqZWN0LXNyYyAnbm9uZSciPjxzY3JpcHQgc3JjPSIvbGlhaXNvbi1tb2JpbGUtYm9vdC5qcyI+PC9zY3JpcHQ+PG1ldGEgbmFtZT0ndmlld3BvcnQnIGNvbnRlbnQ9J3dpZHRoPWRldmljZS13aWR0aCwgbWF4aW11bS1zY2FsZT0xJz48c2NyaXB0IHNyYz0iL2xpYWlzb24taW5saW5lLTRhODI2YWFjZjU4MC5qcyI+PC9zY3JpcHQ+PC9IRUFEPjxib2R5PjwvYm9keT48L2h0bWw+",
         files: [
             "liaison-inline-4a826aacf580.js": "YTxi",
+        ]
+    ),
+    PageCase(
+        input: "PCFkb2N0eXBlIGh0bWw+PGh0bWw+PGhlYWQ+PG1ldGEgbmFtZT0idmlld3BvcnQiIGNvbnRlbnQ9IndpZHRoPWRldmljZS13aWR0aCI+PHNjcmlwdCB0eXBlPSJhcHBsaWNhdGlvbi9qc29uIiBpZD0iY2ZnIj57ImEiOjF9PC9zY3JpcHQ+PHNjcmlwdCB0eXBlPSd0ZXh0L3RlbXBsYXRlJz48Yj54PC9iPjwvc2NyaXB0PjxzY3JpcHQgbm9tb2R1bGU+bGVnYWN5KCk8L3NjcmlwdD48c2NyaXB0IHR5cGU9InRleHQvamF2YXNjcmlwdCI+cnVuKCk8L3NjcmlwdD48L2hlYWQ+PGJvZHk+PGhlYWRlcj50b3A8L2hlYWRlcj48L2JvZHk+PC9odG1sPg==",
+        refused: false,
+        html: "PCFkb2N0eXBlIGh0bWw+PGh0bWw+PGhlYWQ+PG1ldGEgaHR0cC1lcXVpdj0iQ29udGVudC1TZWN1cml0eS1Qb2xpY3kiIGNvbnRlbnQ9ImRlZmF1bHQtc3JjICdzZWxmJzsgc2NyaXB0LXNyYyAnc2VsZic7IHN0eWxlLXNyYyAnc2VsZicgJ3Vuc2FmZS1pbmxpbmUnOyBpbWctc3JjICdzZWxmJyBkYXRhOiBibG9iOiBodHRwczo7IGZvbnQtc3JjICdzZWxmJyBkYXRhOjsgbWVkaWEtc3JjICdzZWxmJyBkYXRhOiBibG9iOjsgd29ya2VyLXNyYyAnc2VsZicgYmxvYjo7IGJhc2UtdXJpICdzZWxmJzsgZm9ybS1hY3Rpb24gJ3NlbGYnOyBjb25uZWN0LXNyYyAnc2VsZicgaHR0cHM6IHdzczogaHR0cDovL2xvY2FsaG9zdDoqIHdzOi8vbG9jYWxob3N0Oio7IGZyYW1lLXNyYyAnc2VsZicgYmxvYjogZGF0YTo7IG9iamVjdC1zcmMgJ25vbmUnIj48c2NyaXB0IHNyYz0iL2xpYWlzb24tbW9iaWxlLWJvb3QuanMiPjwvc2NyaXB0PjxtZXRhIG5hbWU9InZpZXdwb3J0IiBjb250ZW50PSJ3aWR0aD1kZXZpY2Utd2lkdGgsIG1heGltdW0tc2NhbGU9MSI+PHNjcmlwdCB0eXBlPSJhcHBsaWNhdGlvbi9qc29uIiBpZD0iY2ZnIj57ImEiOjF9PC9zY3JpcHQ+PHNjcmlwdCB0eXBlPSd0ZXh0L3RlbXBsYXRlJz48Yj54PC9iPjwvc2NyaXB0PjxzY3JpcHQgbm9tb2R1bGUgc3JjPSIvbGlhaXNvbi1pbmxpbmUtMjllYzVmMmJlOGU5LmpzIj48L3NjcmlwdD48c2NyaXB0IHNyYz0iL2xpYWlzb24taW5saW5lLTAyZmNhZTg4YmQxMi5qcyI+PC9zY3JpcHQ+PC9oZWFkPjxib2R5PjxoZWFkZXI+dG9wPC9oZWFkZXI+PC9ib2R5PjwvaHRtbD4=",
+        files: [
+            "liaison-inline-29ec5f2be8e9.js": "bGVnYWN5KCk=",
+            "liaison-inline-02fcae88bd12.js": "cnVuKCk=",
+        ]
+    ),
+    PageCase(
+        input: "PCFkb2N0eXBlIGh0bWw+PCEtLSA8aGVhZD4gLS0+PGh0bWw+PGhlYWQ+PG1ldGEgbmFtZT0idmlld3BvcnQiIGNvbnRlbnQ9IndpZHRoPWRldmljZS13aWR0aCI+PC9oZWFkPjxib2R5PjwvYm9keT48L2h0bWw+",
+        refused: true,
+        html: "",
+        files: [
+            :
+        ]
+    ),
+    PageCase(
+        input: "PGh0bWw+PGhlYWRlcj48L2hlYWRlcj48aGVhZD48bWV0YSBuYW1lPSJ2aWV3cG9ydCIgY29udGVudD0id2lkdGg9ZGV2aWNlLXdpZHRoIj48L2hlYWQ+PGJvZHk+PC9ib2R5PjwvaHRtbD4=",
+        refused: true,
+        html: "",
+        files: [
+            :
+        ]
+    ),
+    PageCase(
+        input: "PCFkb2N0eXBlIGh0bWw+PHNjcmlwdCBzcmM9Imh0dHBzOi8vZXZpbC5leGFtcGxlL3guanMiPjwvc2NyaXB0PjxodG1sPjxoZWFkPjxtZXRhIG5hbWU9InZpZXdwb3J0IiBjb250ZW50PSJ3aWR0aD1kZXZpY2Utd2lkdGgiPjwvaGVhZD48Ym9keT48L2JvZHk+PC9odG1sPg==",
+        refused: true,
+        html: "",
+        files: [
+            :
+        ]
+    ),
+    PageCase(
+        input: "PGh0bWw+PGhlYWQ+PG1ldGEgbmFtZT0idmlld3BvcnQiIGNvbnRlbnQ9IndpZHRoPWRldmljZS13aWR0aCI+PC9oZWFkPjxib2R5PjxzY3JpcHQgc3JjPSIvbGlhaXNvbi1tb2JpbGUtYm9vdC5qcyI+PC9zY3JpcHQ+PC9ib2R5PjwvaHRtbD4=",
+        refused: true,
+        html: "",
+        files: [
+            :
+        ]
+    ),
+    PageCase(
+        input: "PGh0bWw+PGhlYWQ+PCEtLSA8c2NyaXB0IHNyYz0iL2xpYWlzb24tbW9iaWxlLWJvb3QuanMiPjwvc2NyaXB0PiAtLT48bWV0YSBuYW1lPSJ2aWV3cG9ydCIgY29udGVudD0id2lkdGg9ZGV2aWNlLXdpZHRoIj48L2hlYWQ+PGJvZHk+PC9ib2R5PjwvaHRtbD4=",
+        refused: true,
+        html: "",
+        files: [
+            :
+        ]
+    ),
+    PageCase(
+        input: "PGh0bWw+PGhlYWQ+PG1ldGEgbmFtZT0idmlld3BvcnQiIGNvbnRlbnQ9IndpZHRoPWRldmljZS13aWR0aCI+PC9oZWFkPjxoZWFkPjwvaGVhZD48Ym9keT48L2JvZHk+PC9odG1sPg==",
+        refused: true,
+        html: "",
+        files: [
+            :
         ]
     ),
 ]

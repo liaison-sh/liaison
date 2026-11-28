@@ -14,10 +14,11 @@
 // So a served build gets the same three steps here, ported from
 // apps/mobile/scripts/boot-injection.ts (a fixture test pins the two against
 // each other, apps/mobile/shell-page-parity.test.ts), and the boot bundle and
-// Capacitor's own files come from THIS app's bundle: the JavaScript that talks
-// to the native plugins is always the one compiled into the binary, never a
-// server's. The served index.html is checked against its signed hash BEFORE
-// these steps; the result is re-derived and compared on every launch.
+// Capacitor's own files come from THIS app's bundle. The served page itself is
+// Liaison-signed code and calls the native plugins as the bundled page does;
+// what it can never do is add one. The served index.html is checked against its
+// signed hash BEFORE these steps; the result must pass `check` (the shape the
+// policy relies on) and is re-derived and compared on every launch.
 
 import CryptoKit
 import Foundation
@@ -27,8 +28,9 @@ public enum MobilePage {
     public static let bootScriptName = "liaison-mobile-boot.js"
 
     /// Files a served build takes from the app's bundled `public/` folder,
-    /// those of them the bundle has. A statement listing one of these names is
-    /// refused: these are the binary's own.
+    /// those of them the bundle has. A statement listing any of these names
+    /// (in any case or Unicode form) is refused, whether the bundle has it or
+    /// not: these are the binary's own.
     public static let overlayNames = [bootScriptName, "cordova.js", "cordova_plugins.js"]
 
     /// boot-injection.ts `MOBILE_CSP`, pinned by the parity test.
@@ -53,11 +55,36 @@ public enum MobilePage {
         public let files: [String: String]
     }
 
-    public enum PageError: Error { case noHead, noViewport }
+    public enum PageError: Error { case noHead, noViewport, shape }
 
-    /// applyMobileCsp(pinViewportScale(injectBootScript(html))), as build-mobile.ts runs them.
+    /// makeMobilePage: applyMobileCsp(pinViewportScale(injectBootScript(html))),
+    /// as build-mobile.ts runs them, then checkMobilePage.
     public static func make(_ html: String) throws -> Page {
-        try applyMobileCsp(pinViewportScale(injectBootScript(html)))
+        let page = try applyMobileCsp(pinViewportScale(injectBootScript(html)))
+        try check(page.html)
+        return page
+    }
+
+    static let bootTag = "<script src=\"/\(bootScriptName)\"></script>"
+    static var cspTag: String { "<meta http-equiv=\"Content-Security-Policy\" content=\"\(mobileCsp)\">" }
+    static let comment = regex("<!--[\\s\\S]*?-->")
+    static let beforeHead = regex("^\\s*(?:<!doctype[^>]*>\\s*)?(?:<html(?=[\\s>])[^>]*>\\s*)?$")
+
+    /// boot-injection.ts `checkMobilePage`: with comments removed, exactly one
+    /// <head>, nothing before it but the doctype, <html> and white space, the
+    /// CSP meta and then the boot script first in it, the boot script nowhere else.
+    static func check(_ html: String) throws {
+        let bare = comment.stringByReplacingMatches(
+            in: html, range: NSRange(location: 0, length: (html as NSString).length), withTemplate: ""
+        )
+        let ns = bare as NSString
+        let heads = headTag.matches(in: bare, range: NSRange(location: 0, length: ns.length))
+        guard heads.count == 1, let head = heads.first else { throw PageError.shape }
+        guard matches(beforeHead, ns.substring(to: head.range.location)) else { throw PageError.shape }
+        guard ns.substring(from: head.range.location + head.range.length).hasPrefix(cspTag + bootTag) else {
+            throw PageError.shape
+        }
+        guard bare.components(separatedBy: bootTag).count == 2 else { throw PageError.shape }
     }
 
     static func regex(_ pattern: String) -> NSRegularExpression {
@@ -65,12 +92,31 @@ public enum MobilePage {
         try! NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
     }
 
-    static let headTag = regex("<head[^>]*>")
+    static let headTag = regex("<head(?=[\\s>/])[^>]*>")
     static let viewportMeta = regex("<meta\\s+name=[\"']viewport[\"']\\s+content=[\"']([^\"']*)[\"'][^>]*>")
     static let scriptTag = regex("<script\\b([^>]*)>([\\s\\S]*?)</script\\s*>")
     static let srcAttr = regex("\\bsrc\\s*=")
-    static let importMapType = regex("\\btype\\s*=\\s*[\"']?importmap")
+    static let typeAttr = regex("\\btype\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'>]+))")
     static let moduleType = regex("\\btype\\s*=\\s*[\"']?module")
+    static let noModule = regex("\\bnomodule\\b")
+
+    enum ScriptKind { case run, importMap, data }
+
+    /// boot-injection.ts `scriptKind`.
+    static func scriptKind(_ attrs: String) -> ScriptKind {
+        let ns = attrs as NSString
+        guard let m = typeAttr.firstMatch(in: attrs, range: NSRange(location: 0, length: ns.length)) else { return .run }
+        var type = ""
+        for group in 1...3 where m.range(at: group).location != NSNotFound {
+            type = ns.substring(with: m.range(at: group))
+            break
+        }
+        // JavaScript's trim() and toLowerCase() on what an HTML attribute holds.
+        type = type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if type.isEmpty || type == "text/javascript" || type == "module" { return .run }
+        if type == "importmap" { return .importMap }
+        return .data
+    }
     static let cspMeta = regex("<meta\\s+http-equiv=[\"']Content-Security-Policy[\"'][^>]*>")
     static let sizeOrScalable = regex("^(maximum-scale|user-scalable)\\s*=")
 
@@ -89,9 +135,8 @@ public enum MobilePage {
     }
 
     static func injectBootScript(_ html: String) throws -> String {
-        let tag = "<script src=\"/\(bootScriptName)\"></script>"
-        if html.contains(tag) { return html }
-        return try afterHead(html, tag)
+        if html.contains(bootTag) { return html }
+        return try afterHead(html, bootTag)
     }
 
     static func pinViewportScale(_ html: String) throws -> String {
@@ -131,18 +176,25 @@ public enum MobilePage {
                 out += tag
                 continue
             }
-            if matches(importMapType, attrs) { continue }
+            switch scriptKind(attrs) {
+            case .importMap: continue
+            case .data:
+                // A data block (JSON, a template) stays as it is: never run.
+                out += tag
+                continue
+            case .run: break
+            }
             let digest = SHA256.hash(data: Data(body.utf8)).map { String(format: "%02x", $0) }.joined()
             let name = "liaison-inline-\(digest.prefix(12)).js"
             files[name] = body
             let type = matches(moduleType, attrs) ? " type=\"module\"" : ""
-            out += "<script\(type) src=\"/\(name)\"></script>"
+            let nomodule = matches(noModule, attrs) ? " nomodule" : ""
+            out += "<script\(type)\(nomodule) src=\"/\(name)\"></script>"
         }
         out += ns.substring(from: cursor)
         let withoutCsp = cspMeta.stringByReplacingMatches(
             in: out, range: NSRange(location: 0, length: (out as NSString).length), withTemplate: ""
         )
-        let meta = "<meta http-equiv=\"Content-Security-Policy\" content=\"\(mobileCsp)\">"
-        return Page(html: try afterHead(withoutCsp, meta), files: files)
+        return Page(html: try afterHead(withoutCsp, cspTag), files: files)
     }
 }

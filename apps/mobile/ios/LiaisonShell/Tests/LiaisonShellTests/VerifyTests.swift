@@ -175,8 +175,13 @@ final class VerifyTests: XCTestCase {
 
     func testPageDerivationMatchesBootInjection() throws {
         XCTAssertFalse(pageCases.isEmpty)
+        XCTAssertTrue(pageCases.contains { $0.refused }, "the fixture carries refusal cases")
         for (i, c) in pageCases.enumerated() {
             let input = String(data: try XCTUnwrap(Data(base64Encoded: c.input)), encoding: .utf8)!
+            if c.refused {
+                XCTAssertThrowsError(try MobilePage.make(input), "case \(i) must be refused")
+                continue
+            }
             let page = try MobilePage.make(input)
             XCTAssertEqual(page.html, String(data: try XCTUnwrap(Data(base64Encoded: c.html)), encoding: .utf8), "case \(i)")
             let expected = c.files.mapValues { String(data: Data(base64Encoded: $0)!, encoding: .utf8)! }

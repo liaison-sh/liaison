@@ -17,7 +17,7 @@ import { writeFileSync } from "node:fs"
 import path from "node:path"
 import { canonicalJson } from "../../../packages/shared/src/app-signing/statement"
 import { createTestSigningKey } from "../../../packages/shared/src/app-signing/testing"
-import { applyMobileCsp, injectBootScript, pinViewportScale } from "./boot-injection"
+import { makeMobilePage } from "./boot-injection"
 
 const TESTS = path.resolve(import.meta.dir, "../ios/LiaisonShell/Tests/LiaisonShellTests")
 export const PAGE_FIXTURES = path.join(TESTS, "PageFixtures.swift")
@@ -45,24 +45,44 @@ export const PAGE_SAMPLES: string[] = [
 </html>
 `,
   `<html><HEAD data-x="1"><meta name='viewport' content='width=device-width,user-scalable=no,maximum-scale=5'><SCRIPT>a<b</SCRIPT ></HEAD><body></body></html>`,
+  // Data blocks stay inline and keep their type; nomodule survives the move; a <header> is not a <head>.
+  `<!doctype html><html><head><meta name="viewport" content="width=device-width"><script type="application/json" id="cfg">{"a":1}</script><script type='text/template'><b>x</b></script><script nomodule>legacy()</script><script type="text/javascript">run()</script></head><body><header>top</header></body></html>`,
+  // Refused: a <head> inside a comment before the real one.
+  `<!doctype html><!-- <head> --><html><head><meta name="viewport" content="width=device-width"></head><body></body></html>`,
+  // Refused: a <header> before the head would take the injection.
+  `<html><header></header><head><meta name="viewport" content="width=device-width"></head><body></body></html>`,
+  // Refused: a script before <head> runs before the policy and the boot bundle.
+  `<!doctype html><script src="https://evil.example/x.js"></script><html><head><meta name="viewport" content="width=device-width"></head><body></body></html>`,
+  // Refused: the boot tag already elsewhere (end of body) skips the injection.
+  `<html><head><meta name="viewport" content="width=device-width"></head><body><script src="/liaison-mobile-boot.js"></script></body></html>`,
+  // Refused: the boot tag only inside a comment.
+  `<html><head><!-- <script src="/liaison-mobile-boot.js"></script> --><meta name="viewport" content="width=device-width"></head><body></body></html>`,
+  // Refused: two heads.
+  `<html><head><meta name="viewport" content="width=device-width"></head><head></head><body></body></html>`,
 ]
 
+/** The page boot-injection.ts makes of `html`, or null when it refuses it. */
 export function makePage(html: string): {
   html: string
   files: Array<{ name: string; content: string }>
-} {
-  return applyMobileCsp(pinViewportScale(injectBootScript(html)))
+} | null {
+  try {
+    return makeMobilePage(html)
+  } catch {
+    return null
+  }
 }
 
 export function renderPageFixtures(): string {
   const cases = PAGE_SAMPLES.map((input) => {
     const out = makePage(input)
-    const files = out.files
+    const files = (out?.files ?? [])
       .map((f) => `            ${JSON.stringify(f.name)}: ${JSON.stringify(b64(f.content))},`)
       .join("\n")
     return `    PageCase(
         input: ${JSON.stringify(b64(input))},
-        html: ${JSON.stringify(b64(out.html))},
+        refused: ${out === null},
+        html: ${JSON.stringify(b64(out?.html ?? ""))},
         files: [
 ${files.length > 0 ? files : "            :"}
         ]
@@ -76,6 +96,8 @@ ${files.length > 0 ? files : "            :"}
 
 struct PageCase {
     let input: String
+    /// boot-injection.ts refuses this page (checkMobilePage): the Swift port must too.
+    let refused: Bool
     let html: String
     let files: [String: String]
 }

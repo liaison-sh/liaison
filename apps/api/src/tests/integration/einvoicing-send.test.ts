@@ -345,9 +345,9 @@ describe("e-invoice send through the einvoicing-pa@1 contract (real Postgres, sa
     issuerId = randomUUID()
     await sql`INSERT INTO app_invoicing.issuer_profiles
       (id, org_id, legal_name, country, vat_id, address, default_currency, default_language, iban, swift_bic,
-       siren, routing_address, address_line1, postcode, city, country_code)
+       siren, routing_address, address_line1, postcode, city, country_code, legal_form, share_capital, rcs_city)
       VALUES (${issuerId}, ${ORG}, 'Maison Exemple SAS', 'FR', 'FR40902000009', '1 rue de Test, 75011 Paris',
-       'EUR', 'fr', 'FR7630006000011234567890189', 'AGRIFRPP', '902000009', '902000009', '1 rue de Test', '75011', 'Paris', 'FR')`
+       'EUR', 'fr', 'FR7630006000011234567890189', 'AGRIFRPP', '902000009', '902000009', '1 rue de Test', '75011', 'Paris', 'FR', 'SAS', '10 000', 'Paris')`
     await sql`INSERT INTO app_invoicing.einvoicing_settings
       (org_id, gate_mode, gate_mode_source, provider_app, cutover_date, send_enabled, book_enabled, changed_by)
       VALUES (${ORG}, 'enforce', 'config', 'pennylane', '2026-01-01', true, false, ${USER})`

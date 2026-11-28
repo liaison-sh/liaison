@@ -54,6 +54,10 @@ export async function writeInvoicing(p: {
     org_id: p.orgId,
     legal_name: `Maison Issuer ${p.tag}`,
     country: "FR",
+    siren: "900000001",
+    legal_form: "SAS",
+    share_capital: "10 000",
+    rcs_city: "Paris",
     default_currency: "EUR",
   })
   const documentId = randomUUID()

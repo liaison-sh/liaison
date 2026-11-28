@@ -356,6 +356,10 @@ export async function insertIssuer(w: DoorWorld): Promise<string> {
     org_id: w.orgId,
     legal_name: w.orgName,
     country: "FR",
+    siren: "900000001",
+    legal_form: "SAS",
+    share_capital: "10 000",
+    rcs_city: "Paris",
     default_currency: "EUR",
   })
   return id

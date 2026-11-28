@@ -181,8 +181,8 @@ describe("invoicing:order_reissue_apply -- atomic rollback against real Postgres
     // approval), so the fixture writes the row directly.
     issuerProfileId = crypto.randomUUID()
     await sql`INSERT INTO app_invoicing.issuer_profiles
-      (id, org_id, legal_name, country, default_currency)
-      VALUES (${issuerProfileId}, ${ORG}, 'Reissue Atomic Issuer SAS', 'FR', 'EUR')`
+      (id, org_id, legal_name, country, default_currency, legal_form, share_capital, rcs_city, siren)
+      VALUES (${issuerProfileId}, ${ORG}, 'Reissue Atomic Issuer SAS', 'FR', 'EUR', 'SAS', '10 000', 'Paris', '900000001')`
   }, 60_000)
 
   afterAll(async () => {

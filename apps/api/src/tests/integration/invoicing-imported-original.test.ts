@@ -198,9 +198,9 @@ describe("imported legacy originals (real Postgres + storage, issuer scopes)", (
 
     const issuerId = randomUUID()
     await sql`INSERT INTO app_invoicing.issuer_profiles
-      (id, org_id, legal_name, country, vat_id, address, default_currency, default_language)
+      (id, org_id, legal_name, country, vat_id, address, default_currency, default_language, legal_form, share_capital, rcs_city)
       VALUES (${issuerId}, ${ORG}, 'Fictive Issuer SAS', 'FR', 'FR60902000009',
-        '2 rue Test, 75001 Paris', 'EUR', 'fr')`
+        '2 rue Test, 75001 Paris', 'EUR', 'fr', 'SAS', '10 000', 'Paris')`
 
     // Files exactly as the importer stores them: system-uploaded, `pdf` parent keyed by their own id.
     const filenames: Record<string, string> = {

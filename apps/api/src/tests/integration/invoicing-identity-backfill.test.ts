@@ -182,9 +182,9 @@ describe("invoicing identity backfill + readiness (real Postgres, issuer scopes)
 
     issuerId = randomUUID()
     await sql`INSERT INTO app_invoicing.issuer_profiles
-      (id, org_id, legal_name, country, vat_id, tax_registration_id, address, default_currency, default_language)
+      (id, org_id, legal_name, country, vat_id, tax_registration_id, address, default_currency, default_language, legal_form, share_capital, rcs_city)
       VALUES (${issuerId}, ${ORG}, 'Backfill Issuer SAS', 'FR', 'FR60902000009', ${ISSUER_SIRET},
-        '2 rue Test, 75001 Paris', 'EUR', 'fr')`
+        '2 rue Test, 75001 Paris', 'EUR', 'fr', 'SAS', '10 000', 'Paris')`
     await sql`INSERT INTO app_invoicing.einvoicing_settings (org_id, gate_mode, gate_mode_source)
       VALUES (${ORG}, 'enforce', 'config')`
     const docs: Array<[string, string, string, string | null, string, string]> = [

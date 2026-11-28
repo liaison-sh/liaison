@@ -317,6 +317,9 @@ describe("a Stripe refund becomes a credit note, end to end", () => {
       params: {
         legal_name: `Studio ${randomUUID().slice(0, 8)}`,
         country: "FR",
+        legal_form: "SAS",
+        share_capital: "10 000",
+        rcs_city: "Paris",
         vat_id: "FR40902000009",
         address: "1 rue de Test, 75011 Paris",
         default_currency: "EUR",

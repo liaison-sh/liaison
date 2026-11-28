@@ -3167,7 +3167,7 @@
       "readOnly": true
     },
     "orders_invoiceability_check": {
-      "description": "Would the order-created auto-flow invoice this Shopify order, or park it (no invoice)? Pass what the order will carry (shop_id, email of the customer record, addresses, vat_id, tax_exempt, total_price, total_tax). Returns applies (false when no issuer profile is mapped to the shop) and problems [{reason, field, message}], each message naming the fix (a buyer whose French e-invoicing territory needs a decision, e.g. Réunion, is named as einvoice_needs_review: the order would wait in the deferred list). The Shopify app calls it before it stages a draft order create or complete. Read only.",
+      "description": "Would the order-created auto-flow invoice this Shopify order, or park it (no invoice)? Pass what the order will carry (shop_id, email of the customer record, addresses, vat_id, tax_exempt, total_price, total_tax). Returns applies (false when no issuer profile is mapped to the shop) and problems [{reason, field, message}], each message naming the fix. The Shopify app calls it before it stages a draft order create or complete. Read only.",
       "requiredScopes": ["invoicing:documents:read"],
       "handler": "ordersInvoiceabilityCheckHandler",
       "params": {

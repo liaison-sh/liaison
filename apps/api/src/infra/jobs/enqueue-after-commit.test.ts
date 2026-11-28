@@ -10,6 +10,7 @@ import { sql } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { FairnessTestAccess } from "~/infra/jobs/fairness"
 import { enqueueAppJob, registerJobWorker, unregisterAppJobHandlers } from "~/infra/jobs/jobs"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { waitFor } from "~/tests/helpers/wait-for"
 
 const APP = "commit-probe"
@@ -32,9 +33,15 @@ async function writeAndEnqueue(afterCommit: boolean, fail = false): Promise<stri
   const slug = `commit-probe-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
   created.push(slug)
   const run = withSystemDb("commit-probe-write", async (tx) => {
-    await tx.execute(drizzleSql`
-      INSERT INTO kernel.organizations (id, name, slug) VALUES (gen_random_uuid(), 'Commit Probe', ${slug})
-    `)
+    await tx.execute(
+      drizzleSql.raw(
+        insertSql("kernel.organizations", {
+          id: { raw: "gen_random_uuid()" },
+          name: "Commit Probe",
+          slug,
+        }),
+      ),
+    )
     await enqueueAppJob(APP, JOB, { slug }, { jobId: `probe:${slug}`, afterCommit })
     if (fail) throw new Error("roll back")
   })

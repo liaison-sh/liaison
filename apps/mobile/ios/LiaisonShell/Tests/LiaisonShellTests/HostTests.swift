@@ -102,6 +102,40 @@ final class HostTests: XCTestCase {
         XCTAssertEqual(h.current.buildId, newer.buildId)
     }
 
+    // MARK: Walk W4/W12: a refused first build names its refusal
+
+    func testAnUnsignedFirstBuildReportsNoStatement() async {
+        let build = Build()
+        serve(http, build, signer: signer)
+        http.responses.removeValue(forKey: "\(downloads)/shell/native/\(build.buildId)/statement.json")
+        let h = host()
+        _ = await h.refresh()
+        XCTAssertEqual(h.launch(deadline: 0), .bundled(reason: .noStatement))
+        XCTAssertEqual(h.info["shell"] as? String, "bundled:no_statement")
+    }
+
+    func testATamperedFirstBuildReportsTheFileHashThenAGoodOneClearsIt() async {
+        var build = Build()
+        serve(http, build, signer: signer)
+        let path = build.files.keys.sorted().first { $0 != "build-id.txt" }!
+        http.set("\(server)/native/\(path)", Data("tampered".utf8))
+        let h = host()
+        _ = await h.refresh()
+        XCTAssertEqual(h.launch(deadline: 0), .bundled(reason: .fileHash))
+        build = Build()
+        serve(http, build, signer: signer)
+        _ = await h.refresh()
+        XCTAssertEqual(h.launch(deadline: 0).buildId, build.buildId, "an accepted build clears the refusal")
+        XCTAssertNil(store.pointer(for: origin).refused)
+    }
+
+    func testAnUnreachableServerStillReportsNoBuild() async {
+        publish(list: 1, entries: [])
+        let h = host()
+        _ = await h.refresh()
+        XCTAssertEqual(h.launch(deadline: 0), .bundled(reason: .noBuild))
+    }
+
     func testTheLaunchReadsTheListsBeforeChoosing() async {
         let h = await running()
         // Published after the app last ran: the cold launch must see it.

@@ -28,7 +28,11 @@
 // TEST KEYS. Every check below takes its keys as a parameter, and the only
 // caller outside the tests (`verified_apps::verify_first_party_app`) passes
 // `pinned()`, the compiled list. Tests sign with keys of their own inside
-// `#[cfg(test)]`; no build of the shell has a way to add a key at run time.
+// `#[cfg(test)]`; no release build of the shell has a way to add a key at run
+// time. The one exception is a WALK build (`cargo build --features walk`,
+// never built by a release workflow): it also pins the keys of the file named
+// by LIAISON_WALK_KEYS, so a walk can sign revoked, killed or broken shells
+// with a throwaway key (walk_seam.rs).
 
 use std::sync::OnceLock;
 
@@ -157,7 +161,13 @@ pub fn parse_key_file(text: &str) -> (Vec<PinnedKey>, Vec<RevocationEntry>) {
 /// The keys and floor compiled into this build.
 pub fn pinned() -> &'static (Vec<PinnedKey>, Vec<RevocationEntry>) {
     static PINNED: OnceLock<(Vec<PinnedKey>, Vec<RevocationEntry>)> = OnceLock::new();
-    PINNED.get_or_init(|| parse_key_file(KEYS_JSON))
+    PINNED.get_or_init(|| {
+        #[allow(unused_mut)]
+        let mut pinned = parse_key_file(KEYS_JSON);
+        #[cfg(feature = "walk")]
+        crate::walk_seam::add_walk_keys(&mut pinned);
+        pinned
+    })
 }
 
 /// Strict base64 (padded, standard alphabet), surrounding whitespace ignored.

@@ -495,6 +495,10 @@ pub struct Pointer {
     pub quarantined: Vec<String>,
     pub misses: BTreeMap<String, u32>,
     pub served_shell: Option<bool>,
+    /// Why the server's build was last refused while no build of it is
+    /// kept (`shell=bundled:<reason>`); cleared when a build is accepted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refused: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -929,7 +933,7 @@ pub fn select(store: &ShellStore, address: &str, local: &Local<'_>) -> Active {
         return Active::Bundled("server_off".into());
     }
     let Some(current) = pointer.current.clone() else {
-        return Active::Bundled("no_build".into());
+        return Active::Bundled(pointer.refused.unwrap_or_else(|| "no_build".into()));
     };
     if !local.revocations_fresh {
         return Active::Bundled(Refusal::RevocationsStale.code().into());
@@ -1363,13 +1367,28 @@ pub async fn refresh_pointer<F: Fetcher>(
     if pointer.quarantined.contains(&build_id) {
         return Ok(pointer);
     }
-    let trust = trust.ok_or(Refusal::RevocationsStale)?;
+    // A refusal is kept on the pointer: with no build kept, it is the reason
+    // the window runs bundled (`shell=bundled:<reason>`).
+    let note_refusal = |refusal: Refusal| {
+        let _ = store.update_pointer(server, |pointer| {
+            let code = Some(refusal.code().to_string());
+            let changed = pointer.refused != code;
+            pointer.refused = code;
+            changed
+        });
+        refusal
+    };
+    let trust = trust
+        .ok_or(Refusal::RevocationsStale)
+        .map_err(note_refusal)?;
     let stored_ok = pointer.current.as_deref() == Some(build_id.as_str())
         && load_build(store, &build_id, trust).is_ok();
     if stored_ok {
         return Ok(pointer);
     }
-    fetch_build(fetcher, store, downloads, server, &build_id, trust).await?;
+    fetch_build(fetcher, store, downloads, server, &build_id, trust)
+        .await
+        .map_err(note_refusal)?;
     // The fetch took a while: the pointer is read again and only `current`
     // and this build's misses move, so a quarantine or a last good build
     // recorded meanwhile is kept (review P6 #4).
@@ -1380,6 +1399,7 @@ pub async fn refresh_pointer<F: Fetcher>(
             }
             pointer.current = Some(build_id.clone());
             pointer.misses.remove(&build_id);
+            pointer.refused = None;
             true
         })
         .map_err(|_| Refusal::Cache)?;
@@ -1867,11 +1887,8 @@ pub fn on_start<R: Runtime>(app: &AppHandle<R>) {
     if enabled() {
         if let Some(address) = address.as_deref() {
             let started = std::time::Instant::now();
-            let read = tauri::async_runtime::block_on(tokio::time::timeout(
-                START_DEADLINE,
-                read_lists_and_server(app, address),
-            ));
-            if read.is_err() {
+            let read = block_on_within(START_DEADLINE, read_lists_and_server(app, address));
+            if read.is_none() {
                 eprintln!(
                     "liaison: shell lists not read within {} ms: the kept copies decide",
                     started.elapsed().as_millis()
@@ -1889,6 +1906,13 @@ pub fn on_start<R: Runtime>(app: &AppHandle<R>) {
     spawn_periodic_refresh(app.clone());
 }
 
+/// Runs `future` to its end or `deadline` from a thread outside any runtime
+/// (the start path). The timer is made INSIDE the runtime `block_on` enters:
+/// made outside it, tokio panics ("there is no reactor running").
+pub fn block_on_within<T>(deadline: Duration, future: impl Future<Output = T>) -> Option<T> {
+    tauri::async_runtime::block_on(async move { tokio::time::timeout(deadline, future).await.ok() })
+}
+
 /// The fleet flags, the revocation list and `address`'s kill switch, read
 /// and kept (no build fetched).
 async fn read_lists_and_server<R: Runtime>(app: &AppHandle<R>, address: &str) {
@@ -1900,7 +1924,15 @@ async fn read_lists_and_server<R: Runtime>(app: &AppHandle<R>, address: &str) {
         return;
     };
     let (keys, _) = app_signing::pinned();
-    read_lists_then_server(&fetcher, &store, &cache, keys, DOWNLOADS, address).await;
+    read_lists_then_server(
+        &fetcher,
+        &store,
+        &cache,
+        keys,
+        &crate::walk_seam::downloads(),
+        address,
+    )
+    .await;
 }
 
 /// `refresh_lists`, then the server's shell info (its kill switch kept on its
@@ -1919,7 +1951,7 @@ pub async fn read_lists_then_server<F: Fetcher>(
         cache,
         keys,
         downloads,
-        crate::verified_apps::REVOCATIONS_URL,
+        &crate::walk_seam::revocations_url(),
     )
     .await;
     let _ = read_server_shell(fetcher, store, server).await;
@@ -2051,13 +2083,14 @@ async fn refresh<R: Runtime>(app: &AppHandle<R>, address: &str) -> Option<String
     let cache = crate::verified_apps::cache_for(app)?;
     let fetcher = HttpFetcher::new()?;
     let (keys, floor) = app_signing::pinned();
+    let downloads = crate::walk_seam::downloads();
     refresh_lists(
         &fetcher,
         &store,
         &cache,
         keys,
-        DOWNLOADS,
-        crate::verified_apps::REVOCATIONS_URL,
+        &downloads,
+        &crate::walk_seam::revocations_url(),
     )
     .await;
     let list = cache.stored_revocations(keys).ok();
@@ -2068,7 +2101,7 @@ async fn refresh<R: Runtime>(app: &AppHandle<R>, address: &str) -> Option<String
         list: list.as_ref(),
         bridge_version: DESKTOP_BRIDGE_VERSION,
     });
-    if let Err(refusal) = refresh_pointer(&fetcher, &store, DOWNLOADS, address, trust).await {
+    if let Err(refusal) = refresh_pointer(&fetcher, &store, &downloads, address, trust).await {
         eprintln!(
             "liaison: shell for {}: refresh refused ({})",
             crate::servers::host_of(address),

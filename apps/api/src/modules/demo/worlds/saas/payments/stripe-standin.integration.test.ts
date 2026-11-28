@@ -501,6 +501,7 @@ describe("the card-payments stand-in on the real kernel", () => {
         legal_form: "SAS",
         share_capital: "10 000",
         rcs_city: "Paris",
+        siren: "902000009",
         default_currency: "EUR",
         default_language: "en",
       },

@@ -291,6 +291,7 @@ describe("a retainer turned off, on the real kernel", () => {
       legal_form: "SAS",
       share_capital: "10 000",
       rcs_city: "Paris",
+      siren: "902000009",
       vat_id: "FR40902000009",
       address: "1 rue de Test, 75011 Paris",
       default_currency: "EUR",

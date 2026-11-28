@@ -156,6 +156,7 @@ export async function monthEnd(
       legal_form: "SAS",
       share_capital: "10 000",
       rcs_city: "Paris",
+      siren: "902000009",
       vat_id: "FR40902000009",
       address: "1 rue de Test, 75011 Paris",
       iban: "FR7630006000011234567890189",

@@ -35,6 +35,7 @@
 // those. No Solid signal, no store, no DOM node, no class instance.
 
 import { EFFORT_LEVELS, type EffortLevel } from "@liaison/shared"
+import { bridgeRangeAllows, SHELL_BRIDGE_RANGE } from "~/lib/shell-bridge-range"
 
 /** The bridge shape this build of apps/web understands. Bumped on a break. */
 export const DESKTOP_BRIDGE_VERSION = 1
@@ -1285,6 +1286,9 @@ export function getDesktopBridge(
   if (target === null || typeof target !== "object") return null
   const candidate = (target as Record<string, unknown>)[DESKTOP_BRIDGE_KEY]
   if (candidate === null || typeof candidate !== "object") return null
-  if ((candidate as { version?: unknown }).version !== DESKTOP_BRIDGE_VERSION) return null
+  const version = (candidate as { version?: unknown }).version
+  if (typeof version !== "number" || !bridgeRangeAllows(SHELL_BRIDGE_RANGE.desktop, version)) {
+    return null
+  }
   return candidate as unknown as DesktopBridge
 }

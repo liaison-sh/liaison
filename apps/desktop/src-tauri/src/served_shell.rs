@@ -36,9 +36,13 @@
 // A newer build is never swapped under a running page: it is STAGED and
 // becomes the active build at the next document load (app start, a server
 // switch, a reload), and the page asks for an idle reload itself (web side).
+// The one exception is a SECURITY RELOAD: the lists and the server are read
+// again at start (within START_DEADLINE, before a build is selected), every
+// REFRESH_EVERY and when the window comes forward, and a running build that
+// was revoked, fell below the floor or was switched off stops at once.
 //
 // LAST GOOD AND QUARANTINE (D9, S8). A served build that has not called
-// `shell_ready` 20 s after it first loaded is reloaded once; a second miss
+// `shell_ready` READY_WITHIN (45 s) after it first loaded is reloaded once; a second miss
 // quarantines it for this install (never retried until the server serves
 // another build id) and the window falls back to the server's last good build,
 // else the bundled shell. The bundled shell is always there: any refusal, any
@@ -73,6 +77,8 @@ pub const MODE: &str = "desktop";
 pub const DOWNLOADS: &str = "https://downloads.liaison.sh";
 
 const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
+/// The most one build's fetch may take, every file together.
+pub const FETCH_DEADLINE: Duration = Duration::from_secs(120);
 /// The most a build may weigh, every fetched file together.
 pub const MAX_BUILD_BYTES: usize = 30 * 1024 * 1024;
 /// A statement lists ~700 files: well under this.
@@ -80,7 +86,16 @@ const MAX_SMALL_BYTES: usize = 2 * 1024 * 1024;
 /// A served build runs only on a revocation list this young (D7a, A1).
 pub const REVOCATIONS_MAX_AGE: Duration = Duration::from_secs(72 * 3600);
 /// How long a served build has to call `shell_ready` after it loaded.
-pub const READY_WITHIN: Duration = Duration::from_secs(20);
+///
+/// 45 s, not D9's 20 s (review P6 #11): a page inside a shell awaits its
+/// session restore before its first render (apps/web startup.ts
+/// `initializeAuth`), and that wait is bounded at 30 s
+/// (auth-store.ts `RESTORE_TIMEOUT_MS`), after which the page renders its
+/// "try again" state and signals ready. A slow server must not get a good
+/// build quarantined, so the window covers the whole bound plus 15 s for the
+/// render itself; a test pins it above the web constant. A second signal
+/// ("restore done") would have added a protocol message for the same result.
+pub const READY_WITHIN: Duration = Duration::from_secs(45);
 /// Missed readies before a build is quarantined.
 pub const MISSES_TO_QUARANTINE: u32 = 2;
 /// Files fetched at once.
@@ -377,6 +392,17 @@ pub fn verify_flags(bytes: &[u8], sig: &str, keys: &[PinnedKey]) -> Option<Flags
         .then_some(flags)
 }
 
+/// The fleet flags as kept on disk.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StoredFlags {
+    None,
+    Verified(Flags),
+    /// Kept, but no pinned key verifies them any more.
+    Unverifiable {
+        seq: u64,
+    },
+}
+
 // ───────────────────────────── inline scripts ─────────────────────────────
 
 fn find_ci(haystack: &str, needle: &str, from: usize) -> Option<usize> {
@@ -484,18 +510,46 @@ pub struct ShellStore {
     root: PathBuf,
 }
 
+/// The bytes of `<blobs>/<sha>` while they hash to `sha`; a blob that does
+/// not is deleted.
+fn read_verified_blob(blobs: &Path, sha: &str) -> Option<Vec<u8>> {
+    if !is_hex(sha, 64) {
+        return None;
+    }
+    let path = blobs.join(sha);
+    let bytes = std::fs::read(&path).ok()?;
+    if app_signing::sha256_hex(&bytes) == sha {
+        return Some(bytes);
+    }
+    eprintln!("liaison: shell blob {sha} no longer matches its hash: deleted");
+    let _ = std::fs::remove_file(path);
+    None
+}
+
 fn now_secs(now: SystemTime) -> u64 {
     now.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
+/// Writes `bytes` to a temporary file of its own beside `path`, then renames
+/// it over `path`: a reader sees the old file or the new one, never half of
+/// one, and two writers never share a temporary file (review P6 #4).
 fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(tmp, path)
+    let tmp = path.with_extension(format!("tmp-{}", random_hex()));
+    let result = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, path));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
+
+/// Every read-modify-write of a pointer file holds this (review P6 #4): a
+/// refresh that fetched for minutes, a missed ready and a ready never write
+/// over each other's quarantine or last good build. One process holds the
+/// store (the app runs as a single instance), so a process lock is enough.
+static POINTER_WRITES: Mutex<()> = Mutex::new(());
 
 fn random_hex() -> String {
     let mut bytes = [0u8; 8];
@@ -540,9 +594,29 @@ impl ShellStore {
             .unwrap_or_default()
     }
 
+    /// Writes a whole pointer. Writers that start from the stored pointer go
+    /// through `update_pointer`, which re-reads it under the lock.
     pub fn save_pointer(&self, address: &str, pointer: &Pointer) -> std::io::Result<()> {
         let bytes = serde_json::to_vec(pointer).map_err(std::io::Error::other)?;
         write_atomically(&self.pointer_path(address), &bytes)
+    }
+
+    /// Reads the pointer of `address` under the pointer lock, lets `change`
+    /// edit it, and saves it when `change` answers true. Answers the pointer
+    /// as it now is.
+    pub fn update_pointer(
+        &self,
+        address: &str,
+        change: impl FnOnce(&mut Pointer) -> bool,
+    ) -> std::io::Result<Pointer> {
+        let _one_writer = POINTER_WRITES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut pointer = self.pointer(address);
+        if change(&mut pointer) {
+            self.save_pointer(address, &pointer)?;
+        }
+        Ok(pointer)
     }
 
     /// The stored statement and signature of a build.
@@ -552,17 +626,16 @@ impl ShellStore {
         Some((record.statement.into_bytes(), record.sig))
     }
 
+    /// Whether a blob is kept AND still hashes to its name (review P6 #3): a
+    /// truncated or altered blob counts as absent, so it is fetched again.
     pub fn has_blob(&self, sha: &str) -> bool {
-        is_hex(sha, 64) && self.blobs().join(sha).is_file()
+        self.read_blob(sha).is_some()
     }
 
-    /// A blob's bytes, only while they still hash to their name.
+    /// A blob's bytes, only while they still hash to their name. A blob that
+    /// no longer does is deleted, never trusted: the next refresh fetches it.
     pub fn read_blob(&self, sha: &str) -> Option<Vec<u8>> {
-        if !is_hex(sha, 64) {
-            return None;
-        }
-        let bytes = std::fs::read(self.blobs().join(sha)).ok()?;
-        (app_signing::sha256_hex(&bytes) == sha).then_some(bytes)
+        read_verified_blob(&self.blobs(), sha)
     }
 
     /// Keeps a verified build: every fetched file goes to a temporary folder
@@ -590,9 +663,10 @@ impl ShellStore {
             }
             std::fs::create_dir_all(self.blobs())?;
             for (sha, _) in fetched {
-                let target = self.blobs().join(sha);
-                if !target.is_file() {
-                    std::fs::rename(tmp.join(sha), target)?;
+                // A blob already kept is replaced unless it still verifies
+                // (read_blob deletes one that does not).
+                if !self.has_blob(sha) {
+                    std::fs::rename(tmp.join(sha), self.blobs().join(sha))?;
                 }
             }
             let record = serde_json::to_vec(&StatementRecord {
@@ -610,25 +684,62 @@ impl ShellStore {
         self.root.join("flags.signed.json")
     }
 
-    /// The fleet flags last accepted, re-verified.
-    pub fn flags(&self, keys: &[PinnedKey]) -> Option<Flags> {
-        let stored: Value = serde_json::from_slice(&std::fs::read(self.flags_path()).ok()?).ok()?;
-        verify_flags(
-            stored["flags"].as_str()?.as_bytes(),
-            stored["sig"].as_str()?,
-            keys,
-        )
+    /// The fleet flags last accepted, re-verified against the keys pinned
+    /// NOW (a key rotation drops the old key).
+    pub fn stored_flags(&self, keys: &[PinnedKey]) -> StoredFlags {
+        let Some(stored) = std::fs::read(self.flags_path())
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        else {
+            return StoredFlags::None;
+        };
+        let (Some(text), Some(sig)) = (stored["flags"].as_str(), stored["sig"].as_str()) else {
+            return StoredFlags::Unverifiable { seq: 0 };
+        };
+        match verify_flags(text.as_bytes(), sig, keys) {
+            Some(flags) => StoredFlags::Verified(flags),
+            None => StoredFlags::Unverifiable {
+                seq: parse_flags(text.as_bytes()).map_or(0, |f| f.seq),
+            },
+        }
     }
 
-    /// Keeps newly read flags when they verify and do not go back in `seq`,
-    /// and answers the flags to apply. `None` when there are none (on).
+    /// The fleet flags last accepted, when they still verify.
+    pub fn flags(&self, keys: &[PinnedKey]) -> Option<Flags> {
+        match self.stored_flags(keys) {
+            StoredFlags::Verified(flags) => Some(flags),
+            _ => None,
+        }
+    }
+
+    /// Whether the fleet lets this host serve a desktop shell. No flags ever
+    /// read: on. Kept flags that no longer verify against the pinned keys (a
+    /// rotation dropped their key, or the file was altered): OFF until flags
+    /// signed by a pinned key are read (review P6 #9), so a stored
+    /// `desktop: false` never silently turns on.
+    pub fn fleet_enabled(&self, keys: &[PinnedKey]) -> bool {
+        match self.stored_flags(keys) {
+            StoredFlags::None => true,
+            StoredFlags::Verified(flags) => flags.desktop,
+            StoredFlags::Unverifiable { .. } => false,
+        }
+    }
+
+    /// Keeps newly read flags when they verify and do not go back in `seq`
+    /// (the stored `seq` counts even when its signature no longer verifies),
+    /// and answers the flags to apply. `None` when there are none.
     pub fn offer_flags(&self, bytes: &[u8], sig: &str, keys: &[PinnedKey]) -> Option<Flags> {
-        let stored = self.flags(keys);
-        let Some(flags) = verify_flags(bytes, sig, keys) else {
-            return stored;
+        let stored = self.stored_flags(keys);
+        let (stored_flags, stored_seq) = match stored {
+            StoredFlags::None => (None, None),
+            StoredFlags::Verified(flags) => (Some(flags), Some(flags.seq)),
+            StoredFlags::Unverifiable { seq } => (None, Some(seq)),
         };
-        if stored.is_some_and(|s| flags.seq < s.seq) {
-            return stored;
+        let Some(flags) = verify_flags(bytes, sig, keys) else {
+            return stored_flags;
+        };
+        if stored_seq.is_some_and(|seq| flags.seq < seq) {
+            return stored_flags;
         }
         if let Ok(text) = std::str::from_utf8(bytes) {
             let record = serde_json::json!({ "flags": text, "sig": sig.trim() });
@@ -715,6 +826,10 @@ impl ShellStore {
 #[derive(Debug)]
 pub struct ServedBuild {
     pub build_id: String,
+    /// The server this build was selected for: a ready or a missed ready is
+    /// recorded on that server's pointer, whatever the window shows when the
+    /// timer fires (review P6 #5).
+    pub server: String,
     files: HashMap<String, String>,
     blobs: PathBuf,
     html_hashes: HashMap<String, Vec<String>>,
@@ -724,9 +839,7 @@ impl ServedBuild {
     /// A listed file's bytes, re-hashed: None for an unlisted path or a blob
     /// that no longer matches.
     pub fn read(&self, path: &str) -> Option<Vec<u8>> {
-        let sha = self.files.get(path)?;
-        let bytes = std::fs::read(self.blobs.join(sha)).ok()?;
-        (app_signing::sha256_hex(&bytes) == *sha).then_some(bytes)
+        read_verified_blob(&self.blobs, self.files.get(path)?)
     }
 
     pub fn csp_hashes(&self, path: &str) -> Vec<String> {
@@ -735,7 +848,10 @@ impl ServedBuild {
 }
 
 /// Re-checks a stored build from disk alone (no network): its statement
-/// against `trust` and every blob present.
+/// against `trust` and every blob, RE-HASHED (review P6 #3): a blob that no
+/// longer matches is deleted and the build counts as incomplete, so the
+/// next refresh fetches what is missing instead of the build missing its
+/// readies into quarantine.
 pub fn load_build(
     store: &ShellStore,
     build_id: &str,
@@ -747,18 +863,21 @@ pub fn load_build(
         return Err(Refusal::MissingFile);
     }
     let mut html_hashes = HashMap::new();
+    let mut checked = HashSet::new();
     for (path, sha) in &statement.files {
-        if !store.has_blob(sha) {
-            return Err(Refusal::MissingFile);
+        let is_html = path.ends_with(".html");
+        if !is_html && !checked.insert(sha.as_str()) {
+            continue;
         }
-        if path.ends_with(".html") {
-            let bytes = store.read_blob(sha).ok_or(Refusal::MissingFile)?;
+        let bytes = store.read_blob(sha).ok_or(Refusal::MissingFile)?;
+        if is_html {
             let html = String::from_utf8_lossy(&bytes);
             html_hashes.insert(path.clone(), inline_script_hashes(&html));
         }
     }
     Ok(ServedBuild {
         build_id: build_id.to_string(),
+        server: String::new(),
         files: statement.files.into_iter().collect(),
         blobs: store.blobs(),
         html_hashes,
@@ -827,7 +946,10 @@ pub fn select(store: &ShellStore, address: &str, local: &Local<'_>) -> Active {
     let mut reason = "quarantined".to_string();
     for build_id in candidates {
         match load_build(store, &build_id, local.trust) {
-            Ok(build) => return Active::Served(Arc::new(build)),
+            Ok(mut build) => {
+                build.server = address.to_string();
+                return Active::Served(Arc::new(build));
+            }
             Err(refusal) => {
                 eprintln!(
                     "liaison: stored shell {build_id} not used: {}",
@@ -840,6 +962,66 @@ pub fn select(store: &ShellStore, address: &str, local: &Local<'_>) -> Active {
     Active::Bundled(reason)
 }
 
+/// Why the build `build_id`, running now for `address`, must stop at once
+/// (review P6 #1), or None when it may keep running until the next load:
+/// either kill switch, or a statement that no longer verifies against the
+/// pinned keys and the CURRENT revocation list and floor (revoked, below the
+/// `shell:desktop` floor, its key unpinned). A stale list, a missing blob or
+/// a newer build are not reasons: those wait for the next load.
+pub fn must_leave(
+    store: &ShellStore,
+    address: &str,
+    local: &Local<'_>,
+    build_id: &str,
+) -> Option<String> {
+    if !local.fleet_enabled {
+        return Some("fleet_off".into());
+    }
+    if store.pointer(address).served_shell == Some(false) {
+        return Some("server_off".into());
+    }
+    let (statement, sig) = store.record(build_id)?;
+    match verify_shell_statement(&statement, &sig, local.trust, build_id) {
+        Err(
+            refusal @ (Refusal::Revoked
+            | Refusal::BelowFloor
+            | Refusal::UnknownKey
+            | Refusal::BadSignature
+            | Refusal::NoKeys
+            | Refusal::MalformedStatement
+            | Refusal::WrongBuild),
+        ) => Some(refusal.code().into()),
+        _ => None,
+    }
+}
+
+/// What a refresh does to the window of `address`.
+#[derive(Debug)]
+pub enum AfterRefresh {
+    /// Run this from the next document load (S6: no reload forced).
+    Stage(Active),
+    /// The running build must not run any more: run this now and reload the
+    /// window at once, whatever the page is doing (a security reload).
+    Leave { next: Active, reason: String },
+}
+
+/// The decision after a refresh of `address`, whose window runs `active`.
+pub fn after_refresh(
+    store: &ShellStore,
+    address: &str,
+    local: &Local<'_>,
+    active: Option<&ServedBuild>,
+) -> AfterRefresh {
+    let next = select(store, address, local);
+    let running = active.filter(|build| crate::servers::same_server(&build.server, address));
+    if let Some(build) = running {
+        if let Some(reason) = must_leave(store, address, local, &build.build_id) {
+            return AfterRefresh::Leave { next, reason };
+        }
+    }
+    AfterRefresh::Stage(next)
+}
+
 // ───────────────────────────── fetching ─────────────────────────────
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -849,6 +1031,39 @@ pub enum FetchError {
     TooLarge,
 }
 
+/// The bytes a whole build may still take, shared by its concurrent
+/// fetches: each one takes from it as its body arrives (review P6 #8), so the
+/// build together never holds more than MAX_BUILD_BYTES.
+pub struct Budget(std::sync::atomic::AtomicUsize);
+
+impl Budget {
+    pub fn new(bytes: usize) -> Self {
+        Self(std::sync::atomic::AtomicUsize::new(bytes))
+    }
+
+    pub fn left(&self) -> usize {
+        self.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Takes `bytes`, or nothing and false when fewer are left.
+    pub fn take(&self, bytes: usize) -> bool {
+        use std::sync::atomic::Ordering;
+        let mut left = self.0.load(Ordering::SeqCst);
+        loop {
+            let Some(after) = left.checked_sub(bytes) else {
+                return false;
+            };
+            match self
+                .0
+                .compare_exchange(left, after, Ordering::SeqCst, Ordering::SeqCst)
+            {
+                Ok(_) => return true,
+                Err(now) => left = now,
+            }
+        }
+    }
+}
+
 /// One GET, its body refused past `limit` bytes.
 pub trait Fetcher: Sync {
     fn get(
@@ -856,6 +1071,23 @@ pub trait Fetcher: Sync {
         url: &str,
         limit: usize,
     ) -> impl Future<Output = Result<Vec<u8>, FetchError>> + Send;
+
+    /// One GET whose body is taken from `budget`. The default takes it once
+    /// the body is in; the real fetcher takes it chunk by chunk.
+    fn get_within(
+        &self,
+        url: &str,
+        budget: &Budget,
+    ) -> impl Future<Output = Result<Vec<u8>, FetchError>> + Send {
+        async move {
+            let bytes = self.get(url, budget.left()).await?;
+            if budget.take(bytes.len()) {
+                Ok(bytes)
+            } else {
+                Err(FetchError::TooLarge)
+            }
+        }
+    }
 }
 
 /// The real one: no redirect followed, 15 s per request.
@@ -902,6 +1134,34 @@ impl Fetcher for HttpFetcher {
         }
         Ok(body)
     }
+
+    async fn get_within(&self, url: &str, budget: &Budget) -> Result<Vec<u8>, FetchError> {
+        let mut response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|_| FetchError::Failed)?;
+        match response.status() {
+            reqwest::StatusCode::OK => {}
+            reqwest::StatusCode::NOT_FOUND => return Err(FetchError::NotFound),
+            _ => return Err(FetchError::Failed),
+        }
+        if response
+            .content_length()
+            .is_some_and(|declared| declared > budget.left() as u64)
+        {
+            return Err(FetchError::TooLarge);
+        }
+        let mut body = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|_| FetchError::Failed)? {
+            if !budget.take(chunk.len()) {
+                return Err(FetchError::TooLarge);
+            }
+            body.extend_from_slice(&chunk);
+        }
+        Ok(body)
+    }
 }
 
 const SEGMENT: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
@@ -942,6 +1202,46 @@ pub async fn fetch_build<F: Fetcher>(
     build_id: &str,
     trust: Trust<'_>,
 ) -> Result<ShellStatement, Refusal> {
+    fetch_build_within(
+        fetcher,
+        store,
+        downloads,
+        server,
+        build_id,
+        trust,
+        FETCH_DEADLINE,
+    )
+    .await
+}
+
+/// `fetch_build` with its whole-build deadline: past it, the build is
+/// refused (`fetch`) and nothing is kept (review P6 #8: a server trickling
+/// bytes must not hold the refresh for half an hour).
+pub async fn fetch_build_within<F: Fetcher>(
+    fetcher: &F,
+    store: &ShellStore,
+    downloads: &str,
+    server: &str,
+    build_id: &str,
+    trust: Trust<'_>,
+    deadline: Duration,
+) -> Result<ShellStatement, Refusal> {
+    tokio::time::timeout(
+        deadline,
+        fetch_build_unbounded(fetcher, store, downloads, server, build_id, trust),
+    )
+    .await
+    .map_err(|_| Refusal::Fetch)?
+}
+
+async fn fetch_build_unbounded<F: Fetcher>(
+    fetcher: &F,
+    store: &ShellStore,
+    downloads: &str,
+    server: &str,
+    build_id: &str,
+    trust: Trust<'_>,
+) -> Result<ShellStatement, Refusal> {
     if !is_hex(build_id, 16) {
         return Err(Refusal::WrongBuild);
     }
@@ -970,24 +1270,19 @@ pub async fn fetch_build<F: Fetcher>(
             wanted.push((file_url(server, path).ok_or(Refusal::Fetch)?, sha.clone()));
         }
     }
-    let budget = Mutex::new(MAX_BUILD_BYTES);
+    let budget = Budget::new(MAX_BUILD_BYTES);
     use futures_util::stream::{self, StreamExt, TryStreamExt};
     let fetched: Vec<(String, Vec<u8>)> = stream::iter(wanted)
         .map(|(url, sha)| {
             let budget = &budget;
             async move {
-                let limit = budget
-                    .lock()
-                    .map(|left| *left)
-                    .map_err(|_| Refusal::Cache)?;
-                let bytes = fetcher.get(&url, limit).await.map_err(|e| match e {
-                    FetchError::TooLarge => Refusal::TooLarge,
-                    _ => Refusal::Fetch,
-                })?;
-                {
-                    let mut left = budget.lock().map_err(|_| Refusal::Cache)?;
-                    *left = left.checked_sub(bytes.len()).ok_or(Refusal::TooLarge)?;
-                }
+                let bytes = fetcher
+                    .get_within(&url, budget)
+                    .await
+                    .map_err(|e| match e {
+                        FetchError::TooLarge => Refusal::TooLarge,
+                        _ => Refusal::Fetch,
+                    })?;
                 if app_signing::sha256_hex(&bytes) != sha {
                     return Err(Refusal::FileHash);
                 }
@@ -1026,6 +1321,30 @@ pub fn parse_shell_info(bytes: &[u8]) -> Option<ServerShell> {
     })
 }
 
+/// Asks `server` which desktop build it serves and keeps its kill switch
+/// (`servedShell`) on its pointer.
+pub async fn read_server_shell<F: Fetcher>(
+    fetcher: &F,
+    store: &ShellStore,
+    server: &str,
+) -> Result<ServerShell, Refusal> {
+    let info_url = file_url(server, "api/shell/info").ok_or(Refusal::Fetch)?;
+    let info = fetcher
+        .get(&info_url, MAX_SMALL_BYTES)
+        .await
+        .ok()
+        .and_then(|bytes| parse_shell_info(&bytes))
+        .ok_or(Refusal::Fetch)?;
+    store
+        .update_pointer(server, |pointer| {
+            let changed = pointer.served_shell != Some(info.served_shell);
+            pointer.served_shell = Some(info.served_shell);
+            changed
+        })
+        .map_err(|_| Refusal::Cache)?;
+    Ok(info)
+}
+
 /// One refresh of a server's pointer, pure apart from the fetcher and the
 /// store: reads the server's build, fetches and verifies it when it is new,
 /// and moves the pointer. A refusal leaves the pointer as it was.
@@ -1036,20 +1355,8 @@ pub async fn refresh_pointer<F: Fetcher>(
     server: &str,
     trust: Option<Trust<'_>>,
 ) -> Result<Pointer, Refusal> {
-    let info_url = file_url(server, "api/shell/info").ok_or(Refusal::Fetch)?;
-    let info = fetcher
-        .get(&info_url, MAX_SMALL_BYTES)
-        .await
-        .ok()
-        .and_then(|bytes| parse_shell_info(&bytes))
-        .ok_or(Refusal::Fetch)?;
-    let mut pointer = store.pointer(server);
-    if pointer.served_shell != Some(info.served_shell) {
-        pointer.served_shell = Some(info.served_shell);
-        store
-            .save_pointer(server, &pointer)
-            .map_err(|_| Refusal::Cache)?;
-    }
+    let info = read_server_shell(fetcher, store, server).await?;
+    let pointer = store.pointer(server);
     let Some(build_id) = info.build_id.filter(|_| info.served_shell) else {
         return Ok(pointer);
     };
@@ -1063,10 +1370,18 @@ pub async fn refresh_pointer<F: Fetcher>(
         return Ok(pointer);
     }
     fetch_build(fetcher, store, downloads, server, &build_id, trust).await?;
-    pointer.current = Some(build_id.clone());
-    pointer.misses.remove(&build_id);
-    store
-        .save_pointer(server, &pointer)
+    // The fetch took a while: the pointer is read again and only `current`
+    // and this build's misses move, so a quarantine or a last good build
+    // recorded meanwhile is kept (review P6 #4).
+    let pointer = store
+        .update_pointer(server, |pointer| {
+            if pointer.quarantined.contains(&build_id) {
+                return false;
+            }
+            pointer.current = Some(build_id.clone());
+            pointer.misses.remove(&build_id);
+            true
+        })
         .map_err(|_| Refusal::Cache)?;
     store.gc(SystemTime::now());
     Ok(pointer)
@@ -1082,6 +1397,15 @@ struct Selection {
     previous: Option<Arc<ServedBuild>>,
     /// Becomes active at the next document load.
     pending: Option<Active>,
+    /// A top-level document load of the main window was asked for (app
+    /// start, a host reload, a server switch, a navigation of the main frame
+    /// to the app's own origin): the next `index.html` the resolver is asked
+    /// for is that document. Only that request swaps a staged build in and
+    /// starts a ready window (review P6 #2). Tauri also answers `index.html`
+    /// as the last fallback of ANY path a build does not list (a missing lazy
+    /// chunk, an icon): without this flag, such a request would swap the
+    /// build under the running page and arm a timer that page never answers.
+    expect_document: bool,
     /// The served build whose ready timer is running.
     armed: Option<String>,
     /// Builds that called `shell_ready` in this process.
@@ -1091,14 +1415,20 @@ struct Selection {
 /// The main window's build, shared by the asset resolver and the commands.
 pub struct ShellState {
     selection: RwLock<Selection>,
-    /// Called (off the lock) with a served build's id when it starts its
-    /// ready window.
-    on_arm: OnceLock<Box<dyn Fn(String) + Send + Sync>>,
+    /// Called (off the lock) with a served build's id and its server when it
+    /// starts its ready window.
+    on_arm: OnceLock<Box<dyn Fn(String, String) + Send + Sync>>,
     /// CspHash borrows its string: the few distinct hashes ever served live
     /// for the process.
     interned: Mutex<HashSet<&'static str>>,
     refreshing: tokio::sync::Mutex<()>,
+    /// When the lists and the server were last asked (any refresh).
+    last_refresh: Mutex<Option<SystemTime>>,
 }
+
+/// The sentinel `refresh_shell` answers when the bundled shell is staged for
+/// the next load (no build id to name).
+pub const PENDING_BUNDLED: &str = "bundled";
 
 enum Resolved {
     Bundled,
@@ -1123,17 +1453,39 @@ impl ShellState {
                 active: Active::Bundled("starting".into()),
                 previous: None,
                 pending: None,
+                expect_document: false,
                 armed: None,
                 ready: HashSet::new(),
             }),
             on_arm: OnceLock::new(),
             interned: Mutex::new(HashSet::new()),
             refreshing: tokio::sync::Mutex::new(()),
+            last_refresh: Mutex::new(None),
         })
     }
 
-    pub fn set_on_arm(&self, hook: Box<dyn Fn(String) + Send + Sync>) {
+    pub fn set_on_arm(&self, hook: Box<dyn Fn(String, String) + Send + Sync>) {
         let _ = self.on_arm.set(hook);
+    }
+
+    /// The next `index.html` asked for is a document load of the main window.
+    pub fn expect_document(&self) {
+        if let Ok(mut sel) = self.selection.write() {
+            sel.expect_document = true;
+        }
+    }
+
+    /// Notes a refresh starting at `now`; answers whether one was due, the
+    /// last one being `every` or more ago (or never, or in the future).
+    pub fn refresh_due(&self, now: SystemTime, every: Duration) -> bool {
+        let Ok(mut last) = self.last_refresh.lock() else {
+            return true;
+        };
+        if !refresh_due(*last, now, every) {
+            return false;
+        }
+        *last = Some(now);
+        true
     }
 
     /// Runs `active` from now on (start, quarantine).
@@ -1180,10 +1532,14 @@ impl ShellState {
         }
     }
 
-    /// The pending build id, when a served build is pending.
-    pub fn pending_build(&self) -> Option<String> {
+    /// What waits for the next load: a served build's id, PENDING_BUNDLED
+    /// for the bundled shell, None when nothing does.
+    pub fn pending_report(&self) -> Option<String> {
         let sel = self.selection.read().ok()?;
-        sel.pending.as_ref()?.build_id().map(str::to_string)
+        match sel.pending.as_ref()? {
+            Active::Served(build) => Some(build.build_id.clone()),
+            Active::Bundled(_) => Some(PENDING_BUNDLED.to_string()),
+        }
     }
 
     pub fn active_build(&self) -> Option<String> {
@@ -1191,16 +1547,30 @@ impl ShellState {
         sel.active.build_id().map(str::to_string)
     }
 
-    /// The page says it rendered. True when it is the active served build.
-    pub fn note_ready(&self, build_id: &str) -> bool {
-        let Ok(mut sel) = self.selection.write() else {
-            return false;
-        };
-        if sel.active.build_id() != Some(build_id) {
-            return false;
+    /// The served build running now, if one does.
+    pub fn active_served(&self) -> Option<Arc<ServedBuild>> {
+        let sel = self.selection.read().ok()?;
+        match &sel.active {
+            Active::Served(build) => Some(build.clone()),
+            Active::Bundled(_) => None,
         }
+    }
+
+    /// The page says it rendered. The server of the active served build
+    /// when it is that build, else None. From now on the build the page
+    /// loaded before it is not served any more (review P6 #6).
+    pub fn note_ready(&self, build_id: &str) -> Option<String> {
+        let mut sel = self.selection.write().ok()?;
+        let Active::Served(build) = &sel.active else {
+            return None;
+        };
+        if build.build_id != build_id {
+            return None;
+        }
+        let server = build.server.clone();
         sel.ready.insert(build_id.to_string());
-        true
+        sel.previous = None;
+        Some(server)
     }
 
     pub fn is_ready(&self, build_id: &str) -> bool {
@@ -1221,7 +1591,12 @@ impl ShellState {
             let Ok(mut sel) = self.selection.write() else {
                 return Resolved::Bundled;
             };
-            if path == "index.html" {
+            // Only the document load the host expects swaps a staged build
+            // in and starts a ready window; any other `index.html` (Tauri's
+            // fallback for an unlisted path) is the running build's.
+            let document = path == "index.html" && sel.expect_document;
+            if document {
+                sel.expect_document = false;
                 if let Some(next) = sel.pending.take() {
                     sel.previous = match &sel.active {
                         Active::Served(build) => Some(build.clone()),
@@ -1235,12 +1610,12 @@ impl ShellState {
                 return Resolved::Bundled;
             };
             let mut armed = None;
-            if path == "index.html"
+            if document
                 && sel.armed.as_deref() != Some(build.build_id.as_str())
                 && !sel.ready.contains(&build.build_id)
             {
                 sel.armed = Some(build.build_id.clone());
-                armed = Some(build.build_id.clone());
+                armed = Some((build.build_id.clone(), build.server.clone()));
             }
             (build, sel.previous.clone(), armed)
         };
@@ -1251,8 +1626,10 @@ impl ShellState {
                 previous.and_then(|p| p.read(path))
             }
         });
-        if let (Some(build_id), Some(hook), true) = (armed, self.on_arm.get(), bytes.is_some()) {
-            hook(build_id);
+        if let (Some((build_id, server)), Some(hook), true) =
+            (armed, self.on_arm.get(), bytes.is_some())
+        {
+            hook(build_id, server);
         }
         Resolved::Served(bytes)
     }
@@ -1284,7 +1661,10 @@ impl ShellState {
 /// listed files, or the bundled assets while the bundled shell runs. Tauri's
 /// own fallbacks (`<path>.html`, `<path>/index.html`, then `index.html`) ask
 /// this again, so a path a served build does not list resolves to that
-/// build's index.html, never to a bundled file (D15).
+/// build's index.html, never to a bundled file. That is the one deviation
+/// from D15's "unlisted -> 404", kept because the SPA's own routes reach
+/// the page that way, exactly as with the bundled build; the CSP header is
+/// on every response (`add_csp_header`).
 pub struct ShellAssets<R: Runtime> {
     bundled: Box<dyn Assets<R>>,
     state: Arc<ShellState>,
@@ -1319,6 +1699,48 @@ impl<R: Runtime> Assets<R> for ShellAssets<R> {
                 Box::new(interned.into_iter().map(CspHash::Script))
             }
         }
+    }
+}
+
+/// Whether a refresh is due: never done, done `every` or more ago, or
+/// recorded in the future (a clock set back). Wall-clock time, so a machine
+/// that slept past `every` refreshes at the first tick after it wakes (the
+/// runtime's own timers do not count the sleep).
+pub fn refresh_due(last: Option<SystemTime>, now: SystemTime, every: Duration) -> bool {
+    match last {
+        None => true,
+        Some(at) => now.duration_since(at).map_or(true, |age| age >= every),
+    }
+}
+
+/// Whether a navigation of the main webview is a document load of the app's
+/// own origin (the served or bundled shell), not a workspace frame
+/// (`liaison-frame:`) or an outside page.
+pub fn is_app_document(url: &url::Url) -> bool {
+    match url.scheme() {
+        "tauri" => url.host_str() == Some("localhost"),
+        "http" | "https" => url.host_str() == Some("tauri.localhost"),
+        _ => false,
+    }
+}
+
+/// D15: every response of the app's own origin while a served build runs
+/// carries the pinned CSP, not only its HTML (Tauri adds it, with the page's
+/// script hashes, to HTML alone). A worker script served from a blob then
+/// runs under the same policy. A response that has one keeps it.
+pub fn add_csp_header(
+    served: bool,
+    csp: &str,
+    response: &mut tauri::http::Response<Cow<'static, [u8]>>,
+) {
+    use tauri::http::header::{HeaderValue, CONTENT_SECURITY_POLICY};
+    if !served || csp.is_empty() || response.headers().contains_key(CONTENT_SECURITY_POLICY) {
+        return;
+    }
+    if let Ok(value) = HeaderValue::from_str(csp) {
+        response
+            .headers_mut()
+            .insert(CONTENT_SECURITY_POLICY, value);
     }
 }
 
@@ -1363,8 +1785,40 @@ fn store_for<R: Runtime>(app: &AppHandle<R>) -> Option<ShellStore> {
     ))
 }
 
+/// The state the resolver reads, as the app manages it.
+pub fn shared_state<R: Runtime>(app: &AppHandle<R>) -> Option<Arc<ShellState>> {
+    state_of(app)
+}
+
 fn state_of<R: Runtime>(app: &AppHandle<R>) -> Option<Arc<ShellState>> {
     app.try_state::<Shell>().map(|shell| shell.0.clone())
+}
+
+/// The keys, floor and kept lists, as `select` and `must_leave` read them.
+fn with_local<R: Runtime, T>(
+    app: &AppHandle<R>,
+    use_it: impl FnOnce(&ShellStore, &Local<'_>) -> T,
+) -> Result<T, String> {
+    let (Some(store), Some(cache)) = (store_for(app), crate::verified_apps::cache_for(app)) else {
+        return Err(Refusal::Cache.code().into());
+    };
+    let (keys, floor) = app_signing::pinned();
+    // A list accepted once that no pinned key verifies any more (a rotation,
+    // an altered file) is refused here, never treated as no list.
+    let Ok(list) = cache.stored_revocations(keys) else {
+        return Err(Refusal::RevocationsStale.code().into());
+    };
+    let local = Local {
+        trust: Trust {
+            keys,
+            floor,
+            list: list.as_ref(),
+            bridge_version: DESKTOP_BRIDGE_VERSION,
+        },
+        fleet_enabled: store.fleet_enabled(keys),
+        revocations_fresh: store.revocations_fresh(SystemTime::now()),
+    };
+    Ok(use_it(&store, &local))
 }
 
 /// The selection for `address` from disk alone.
@@ -1375,24 +1829,7 @@ fn select_from_disk<R: Runtime>(app: &AppHandle<R>, address: Option<&str>) -> Ac
     let Some(address) = address else {
         return Active::Bundled("no_server".into());
     };
-    let (Some(store), Some(cache)) = (store_for(app), crate::verified_apps::cache_for(app)) else {
-        return Active::Bundled(Refusal::Cache.code().into());
-    };
-    let (keys, floor) = app_signing::pinned();
-    let Ok(list) = cache.stored_revocations(keys) else {
-        return Active::Bundled(Refusal::RevocationsStale.code().into());
-    };
-    let local = Local {
-        trust: Trust {
-            keys,
-            floor,
-            list: list.as_ref(),
-            bridge_version: DESKTOP_BRIDGE_VERSION,
-        },
-        fleet_enabled: store.flags(keys).map_or(true, |flags| flags.desktop),
-        revocations_fresh: store.revocations_fresh(SystemTime::now()),
-    };
-    select(&store, address, &local)
+    with_local(app, |store, local| select(store, address, local)).unwrap_or_else(Active::Bundled)
 }
 
 fn log_active(address: Option<&str>, active: &Active) {
@@ -1403,23 +1840,89 @@ fn log_active(address: Option<&str>, active: &Active) {
     }
 }
 
-/// At start, before the window is built: the current server's stored build
-/// (or bundled), then a refresh in the background.
+/// How long the start waits for the fleet flags, the revocation list and the
+/// server's kill switch before it selects a build (review P6 #1). Past it,
+/// the kept copies decide (an offline start), within the 72 h rule.
+pub const START_DEADLINE: Duration = Duration::from_secs(3);
+/// A running window re-reads the lists and its server this often.
+pub const REFRESH_EVERY: Duration = Duration::from_secs(15 * 60);
+/// The window coming forward re-reads them when the last read is this old.
+pub const FOCUS_REFRESH_AFTER: Duration = Duration::from_secs(60);
+/// How often the periodic refresh looks at the wall clock.
+const REFRESH_TICK: Duration = Duration::from_secs(60);
+
+/// At start, before the window is built: the fleet flags, the revocation
+/// list and the server's kill switch, read fresh when the network answers
+/// within START_DEADLINE; then the current server's stored build (or
+/// bundled); then a full refresh in the background and the periodic one.
 pub fn on_start<R: Runtime>(app: &AppHandle<R>) {
     let Some(state) = state_of(app) else {
         return;
     };
     let handle = app.clone();
-    state.set_on_arm(Box::new(move |build_id| {
-        arm_ready_timer(handle.clone(), build_id)
+    state.set_on_arm(Box::new(move |build_id, server| {
+        arm_ready_timer(handle.clone(), build_id, server)
     }));
     let address = crate::sidecar::resolve_base_url(app);
+    if enabled() {
+        if let Some(address) = address.as_deref() {
+            let started = std::time::Instant::now();
+            let read = tauri::async_runtime::block_on(tokio::time::timeout(
+                START_DEADLINE,
+                read_lists_and_server(app, address),
+            ));
+            if read.is_err() {
+                eprintln!(
+                    "liaison: shell lists not read within {} ms: the kept copies decide",
+                    started.elapsed().as_millis()
+                );
+            }
+        }
+    }
     let active = select_from_disk(app, address.as_deref());
     log_active(address.as_deref(), &active);
     state.set_active(active);
+    state.expect_document();
     if let Some(address) = address {
         spawn_refresh(app.clone(), address);
     }
+    spawn_periodic_refresh(app.clone());
+}
+
+/// The fleet flags, the revocation list and `address`'s kill switch, read
+/// and kept (no build fetched).
+async fn read_lists_and_server<R: Runtime>(app: &AppHandle<R>, address: &str) {
+    let (Some(store), Some(cache), Some(fetcher)) = (
+        store_for(app),
+        crate::verified_apps::cache_for(app),
+        HttpFetcher::new(),
+    ) else {
+        return;
+    };
+    let (keys, _) = app_signing::pinned();
+    read_lists_then_server(&fetcher, &store, &cache, keys, DOWNLOADS, address).await;
+}
+
+/// `refresh_lists`, then the server's shell info (its kill switch kept on its
+/// pointer). Pure apart from the fetcher and the stores.
+pub async fn read_lists_then_server<F: Fetcher>(
+    fetcher: &F,
+    store: &ShellStore,
+    cache: &crate::verified_apps::VerifiedCache,
+    keys: &[PinnedKey],
+    downloads: &str,
+    server: &str,
+) {
+    refresh_lists(
+        fetcher,
+        store,
+        cache,
+        keys,
+        downloads,
+        crate::verified_apps::REVOCATIONS_URL,
+    )
+    .await;
+    let _ = read_server_shell(fetcher, store, server).await;
 }
 
 /// The window moved to `address` and is about to reload: that server's
@@ -1431,9 +1934,59 @@ pub fn on_switch<R: Runtime>(app: &AppHandle<R>, address: Option<&str>) {
     let active = select_from_disk(app, address);
     log_active(address, &active);
     state.stage(active);
+    state.expect_document();
     if let Some(address) = address {
         spawn_refresh(app.clone(), address.to_string());
     }
+}
+
+/// The main window came forward: the lists are read again when the last read
+/// is over a minute old.
+pub fn on_focus<R: Runtime>(app: &AppHandle<R>) {
+    if !enabled() {
+        return;
+    }
+    let Some(state) = state_of(app) else {
+        return;
+    };
+    if !state.refresh_due(SystemTime::now(), FOCUS_REFRESH_AFTER) {
+        return;
+    }
+    if let Some(address) = crate::sidecar::resolve_base_url(app) {
+        spawn_refresh(app.clone(), address);
+    }
+}
+
+/// The main webview is about to navigate to `url`: a document load of the
+/// app's own origin is what may swap a staged build in (review P6 #2).
+pub fn on_navigation(state: &ShellState, url: &url::Url) {
+    if is_app_document(url) {
+        state.expect_document();
+    }
+}
+
+/// Re-reads the lists and the server every REFRESH_EVERY while the app
+/// runs, by the wall clock, so a revocation or a kill switch reaches a
+/// window that stays open (review P6 #1) and a machine waking from sleep
+/// re-reads them within a minute.
+fn spawn_periodic_refresh<R: Runtime>(app: AppHandle<R>) {
+    if !enabled() {
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(REFRESH_TICK).await;
+            let Some(state) = state_of(&app) else {
+                return;
+            };
+            if !state.refresh_due(SystemTime::now(), REFRESH_EVERY) {
+                continue;
+            }
+            if let Some(address) = crate::sidecar::resolve_base_url(&app) {
+                let _ = refresh(&app, &address).await;
+            }
+        }
+    });
 }
 
 fn spawn_refresh<R: Runtime>(app: AppHandle<R>, address: String) {
@@ -1445,15 +1998,17 @@ fn spawn_refresh<R: Runtime>(app: AppHandle<R>, address: String) {
     });
 }
 
-/// Reads the fleet flags and the revocation list fresh; answers whether the
-/// list is fresh enough to verify with.
-async fn refresh_lists<F: Fetcher>(
+/// Reads the fleet flags and the revocation list fresh, and notes the list
+/// fresh when the one read is the one kept.
+pub async fn refresh_lists<F: Fetcher>(
     fetcher: &F,
     store: &ShellStore,
     cache: &crate::verified_apps::VerifiedCache,
     keys: &[PinnedKey],
+    downloads: &str,
+    revocations_url: &str,
 ) {
-    let flags_url = format!("{DOWNLOADS}/shell/flags.json");
+    let flags_url = format!("{downloads}/shell/flags.json");
     if let (Ok(bytes), Ok(sig)) = (
         fetcher.get(&flags_url, MAX_SMALL_BYTES).await,
         fetcher
@@ -1464,10 +2019,11 @@ async fn refresh_lists<F: Fetcher>(
             store.offer_flags(&bytes, &sig, keys);
         }
     }
-    let url = crate::verified_apps::REVOCATIONS_URL;
     if let (Ok(bytes), Ok(sig)) = (
-        fetcher.get(url, MAX_SMALL_BYTES).await,
-        fetcher.get(&format!("{url}.sig"), MAX_SMALL_BYTES).await,
+        fetcher.get(revocations_url, MAX_SMALL_BYTES).await,
+        fetcher
+            .get(&format!("{revocations_url}.sig"), MAX_SMALL_BYTES)
+            .await,
     ) {
         if let Ok(sig) = String::from_utf8(sig) {
             let fresh = app_signing::verify_revocation_list(&bytes, &sig, keys);
@@ -1481,17 +2037,29 @@ async fn refresh_lists<F: Fetcher>(
     }
 }
 
-/// Asks `address` for its build, keeps it when it verifies, and stages the
-/// new selection when `address` is still the window's server. Answers the
-/// pending build id, if any.
+/// Asks `address` for its build, keeps it when it verifies, and, when
+/// `address` is still the window's server, either stages the new selection
+/// for the next load or, when the running build must not run any more,
+/// switches and reloads at once. Answers what waits for the next load.
 async fn refresh<R: Runtime>(app: &AppHandle<R>, address: &str) -> Option<String> {
     let state = state_of(app)?;
     let _one_at_a_time = state.refreshing.lock().await;
+    if let Ok(mut last) = state.last_refresh.lock() {
+        *last = Some(SystemTime::now());
+    }
     let store = store_for(app)?;
     let cache = crate::verified_apps::cache_for(app)?;
     let fetcher = HttpFetcher::new()?;
     let (keys, floor) = app_signing::pinned();
-    refresh_lists(&fetcher, &store, &cache, keys).await;
+    refresh_lists(
+        &fetcher,
+        &store,
+        &cache,
+        keys,
+        DOWNLOADS,
+        crate::verified_apps::REVOCATIONS_URL,
+    )
+    .await;
     let list = cache.stored_revocations(keys).ok();
     let fresh = store.revocations_fresh(SystemTime::now());
     let trust = list.as_ref().filter(|_| fresh).map(|list| Trust {
@@ -1512,28 +2080,62 @@ async fn refresh<R: Runtime>(app: &AppHandle<R>, address: &str) -> Option<String
         .as_deref()
         .is_some_and(|c| crate::servers::same_server(c, address))
     {
-        let next = select_from_disk(app, Some(address));
-        state.stage(next);
+        apply_refresh(app, &state, address);
     }
-    state.pending_build()
+    state.pending_report()
 }
 
-fn reload_main<R: Runtime>(app: &AppHandle<R>) {
+fn apply_refresh<R: Runtime>(app: &AppHandle<R>, state: &ShellState, address: &str) {
+    if !enabled() {
+        return;
+    }
+    let active = state.active_served();
+    let decision = with_local(app, |store, local| {
+        after_refresh(store, address, local, active.as_deref())
+    });
+    match decision {
+        Ok(AfterRefresh::Stage(next)) => state.stage(next),
+        Ok(AfterRefresh::Leave { next, reason }) => {
+            // A SECURITY RELOAD, the one exception to S6's "a newer build
+            // waits for the next natural load or an idle, clean page": the
+            // running build was revoked, fell below the shell floor, lost its
+            // key, or a kill switch was flipped. It keeps the native bridge
+            // for as long as it runs, so it stops NOW, even over a draft.
+            eprintln!(
+                "liaison: served shell {} must stop ({reason}): reloading",
+                active.as_ref().map_or("?", |b| b.build_id.as_str())
+            );
+            log_active(Some(address), &next);
+            state.set_active(next);
+            reload_main(app, state);
+        }
+        // The stores cannot be read: the running build stays until the next
+        // load, which then selects from disk (and falls back to bundled).
+        Err(reason) => state.stage(Active::Bundled(reason)),
+    }
+}
+
+/// Reloads the main window as a document load the resolver expects.
+fn reload_main<R: Runtime>(app: &AppHandle<R>, state: &ShellState) {
+    state.expect_document();
     if let Some(window) = app.get_webview_window(crate::tray::MAIN_WINDOW) {
         let _ = window.reload();
     }
 }
 
-fn arm_ready_timer<R: Runtime>(app: AppHandle<R>, build_id: String) {
+fn arm_ready_timer<R: Runtime>(app: AppHandle<R>, build_id: String, server: String) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(READY_WITHIN).await;
         let Some(state) = state_of(&app) else {
             return;
         };
-        if state.is_ready(&build_id) || state.active_build().as_deref() != Some(build_id.as_str()) {
+        let still_running = state
+            .active_served()
+            .is_some_and(|b| b.build_id == build_id && b.server == server);
+        if state.is_ready(&build_id) || !still_running {
             return;
         }
-        missed_ready(&app, &state, &build_id);
+        missed_ready(&app, &state, &build_id, &server);
     });
 }
 
@@ -1561,44 +2163,46 @@ pub fn note_good(pointer: &mut Pointer, build_id: &str) {
     pointer.misses.remove(build_id);
 }
 
-fn missed_ready<R: Runtime>(app: &AppHandle<R>, state: &ShellState, build_id: &str) {
-    let address = crate::sidecar::resolve_base_url(app);
-    let (Some(store), Some(address)) = (store_for(app), address) else {
+fn missed_ready<R: Runtime>(app: &AppHandle<R>, state: &ShellState, build_id: &str, server: &str) {
+    let Some(store) = store_for(app) else {
         return;
     };
-    let mut pointer = store.pointer(&address);
-    let quarantined = note_miss(&mut pointer, build_id);
-    let _ = store.save_pointer(&address, &pointer);
+    let mut quarantined = false;
+    let _ = store.update_pointer(server, |pointer| {
+        quarantined = note_miss(pointer, build_id);
+        true
+    });
     if quarantined {
         eprintln!("liaison: served shell {build_id} never signalled ready twice: quarantined");
-        let next = select_from_disk(app, Some(&address));
-        log_active(Some(&address), &next);
+        let next = select_from_disk(app, Some(server));
+        log_active(Some(server), &next);
         state.set_active(next);
     } else {
         eprintln!("liaison: served shell {build_id} did not signal ready in time: reloading once");
         state.disarm();
     }
-    reload_main(app);
+    reload_main(app, state);
 }
 
-/// The page rendered (web startup.ts). Marks the build good for its server.
+/// The page rendered (web startup.ts). Marks the build good for the server
+/// it was selected for.
 #[tauri::command]
 pub fn shell_ready<R: Runtime>(app: AppHandle<R>, build_id: String) {
     let Some(state) = state_of(&app) else {
         return;
     };
-    if !state.note_ready(&build_id) {
+    let Some(server) = state.note_ready(&build_id) else {
         return;
-    }
-    if let (Some(store), Some(address)) = (store_for(&app), crate::sidecar::resolve_base_url(&app))
-    {
-        let mut pointer = store.pointer(&address);
-        if pointer.last_good.as_deref() != Some(build_id.as_str())
-            || pointer.misses.contains_key(&build_id)
-        {
-            note_good(&mut pointer, &build_id);
-            let _ = store.save_pointer(&address, &pointer);
-        }
+    };
+    if let Some(store) = store_for(&app) {
+        let _ = store.update_pointer(&server, |pointer| {
+            let changed = pointer.last_good.as_deref() != Some(build_id.as_str())
+                || pointer.misses.contains_key(&build_id);
+            if changed {
+                note_good(pointer, &build_id);
+            }
+            changed
+        });
     }
 }
 
@@ -1615,8 +2219,8 @@ pub fn shell_status<R: Runtime>(app: AppHandle<R>) -> ShellStatus {
         })
 }
 
-/// The page saw a newer server build: refresh now. Answers the build that
-/// will run at the next load, when one is pending.
+/// The page saw a newer server build: refresh now. Answers what runs at the
+/// next load when something is staged: a build id, or PENDING_BUNDLED.
 #[tauri::command]
 pub async fn refresh_shell<R: Runtime>(app: AppHandle<R>) -> Option<String> {
     if !enabled() {

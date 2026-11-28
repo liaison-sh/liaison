@@ -102,3 +102,4 @@ Desktop falls back to its installed version on any failure, unsigned server vers
 A version that does not start twice is not used again; last working one -> apps/desktop/src-tauri/src/served_shell.rs:83 ; apps/desktop/src-tauri/src/served_shell.rs:1542
 Operator switch LIAISON_SERVED_SHELL -> apps/api/src/modules/client-policy/shell-info-routes.ts:39
 No compatibility mode while the server's version runs -> apps/web/src/framework/bootstrap.ts:1694
+Desktop goes back to its installed version at once when the running one is withdrawn or turned off; checks every 15 minutes, on focus, at start -> apps/desktop/src-tauri/src/served_shell.rs:971 ; apps/desktop/src-tauri/src/served_shell.rs:2088 ; apps/desktop/src-tauri/src/served_shell.rs:1848

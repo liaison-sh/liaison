@@ -94,6 +94,7 @@ The desktop app can run the version of Liaison your server runs, instead of the 
 
 - When your server moves to a newer version, the app switches to it at that next start, switch or reload, or on its own once you have not used it for 10 minutes and nothing you typed would be lost. It never asks.
 - When any check fails, your server runs a version Liaison did not sign, or the app cannot reach the list of withdrawn versions for 3 days, it runs the version it was installed with.
+- When Liaison withdraws the version the app is running, or it is turned off for your server or for every server, the app goes back to its installed version at once and reloads its window, even if you are typing. It checks every 15 minutes, when its window comes forward, and when it opens.
 - A version that does not start properly twice is not used again on this computer; the app goes back to the last one that worked.
 - A server operator can turn this off with `LIAISON_SERVED_SHELL=false` (see [Environment variables](../reference/env.md)).
 

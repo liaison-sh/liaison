@@ -71,6 +71,10 @@ fn signed(key: &TestKey, value: &Value) -> (Vec<u8>, String) {
 #[derive(Default)]
 struct Fake {
     answers: HashMap<String, Result<Vec<u8>, FetchError>>,
+    /// Every answer waits this long first.
+    delay: Option<Duration>,
+    /// Runs on every GET of a URL under SERVER other than its shell info.
+    on_file: Option<Box<dyn Fn() + Send + Sync>>,
 }
 
 impl Fake {
@@ -99,6 +103,14 @@ impl Fake {
 
 impl Fetcher for Fake {
     async fn get(&self, url: &str, limit: usize) -> Result<Vec<u8>, FetchError> {
+        if let Some(delay) = self.delay {
+            tokio::time::sleep(delay).await;
+        }
+        if url.starts_with(SERVER) && !url.ends_with("api/shell/info") {
+            if let Some(hook) = &self.on_file {
+                hook();
+            }
+        }
         match self.answers.get(url) {
             Some(Ok(body)) if body.len() > limit => Err(FetchError::TooLarge),
             Some(answer) => answer.clone(),
@@ -782,7 +794,12 @@ fn a_staged_build_waits_for_the_next_document_load() {
     assert!(state.status().pending);
     // A lazy chunk of the running page: still bundled.
     assert!(matches!(state.resolve("assets/app.js"), Resolved::Bundled));
+    // Tauri's last fallback for a path no build lists is `index.html`: with
+    // no document load expected it is the running (bundled) page's.
+    assert!(matches!(state.resolve("index.html"), Resolved::Bundled));
+    assert!(state.status().pending);
     // The next document load runs the staged build.
+    state.expect_document();
     assert!(matches!(
         state.resolve("index.html"),
         Resolved::Served(Some(_))
@@ -833,10 +850,15 @@ fn a_build_that_never_signals_ready_ends_on_the_bundled_shell_and_is_not_retried
     let state = ShellState::new();
     let armed = Arc::new(Mutex::new(Vec::<String>::new()));
     let seen = armed.clone();
-    state.set_on_arm(Box::new(move |id| seen.lock().unwrap().push(id)));
+    state.set_on_arm(Box::new(move |id, server| {
+        assert_eq!(server, SERVER);
+        seen.lock().unwrap().push(id)
+    }));
     state.set_active(select(&f.store, SERVER, &local(&f.key)));
     // First load arms the timer; a reload of the same build does not re-arm.
+    state.expect_document();
     state.resolve("index.html");
+    state.expect_document();
     state.resolve("index.html");
     assert_eq!(armed.lock().unwrap().len(), 1);
     // First miss: counted, the build is retried (re-armed on the next load).
@@ -844,6 +866,7 @@ fn a_build_that_never_signals_ready_ends_on_the_bundled_shell_and_is_not_retried
     assert!(!note_miss(&mut pointer, BUILD));
     f.store.save_pointer(SERVER, &pointer).unwrap();
     state.disarm();
+    state.expect_document();
     state.resolve("index.html");
     assert_eq!(armed.lock().unwrap().len(), 2);
     // Second miss: quarantined; no last good build, so bundled.
@@ -870,11 +893,537 @@ fn a_ready_build_is_never_armed_again_and_ready_from_another_build_counts_for_no
     let state = ShellState::new();
     let armed = Arc::new(Mutex::new(0usize));
     let seen = armed.clone();
-    state.set_on_arm(Box::new(move |_| *seen.lock().unwrap() += 1));
+    state.set_on_arm(Box::new(move |_, _| *seen.lock().unwrap() += 1));
     state.set_active(select(&f.store, SERVER, &local(&f.key)));
-    assert!(!state.note_ready("ffffffffffffffff"));
-    assert!(state.note_ready(BUILD));
+    assert_eq!(state.note_ready("ffffffffffffffff"), None);
+    assert_eq!(state.note_ready(BUILD).as_deref(), Some(SERVER));
     assert!(state.is_ready(BUILD));
+    state.expect_document();
     state.resolve("index.html");
     assert_eq!(*armed.lock().unwrap(), 0);
+}
+
+// ── review P6 fixes ──
+
+const OTHER: &str = "fedcba9876543210";
+
+/// Installs a second build `OTHER` of SERVER with its own files.
+fn install_other(f: &Fixture, files: &[(String, Vec<u8>)]) {
+    let mut value = statement_value(&f.key, files);
+    value["buildId"] = Value::String(OTHER.into());
+    let (bytes, sig) = signed(&f.key, &value);
+    let fetched: Vec<(String, Vec<u8>)> = files
+        .iter()
+        .map(|(_, b)| (sha256_hex(b), b.clone()))
+        .collect();
+    f.store.install(OTHER, &bytes, &sig, &fetched).unwrap();
+}
+
+fn other_files() -> Vec<(String, Vec<u8>)> {
+    vec![
+        (
+            "index.html".into(),
+            b"<!doctype html><title>other</title>".to_vec(),
+        ),
+        (
+            "assets/other.js".into(),
+            b"export const other = 2\n".to_vec(),
+        ),
+    ]
+}
+
+fn served_of(store: &ShellStore, build_id: &str, key: &TestKey) -> Active {
+    let mut build = load_build(store, build_id, trust(key)).unwrap();
+    build.server = SERVER.into();
+    Active::Served(Arc::new(build))
+}
+
+#[test]
+fn an_unlisted_path_while_a_build_is_staged_serves_the_running_build_and_arms_nothing() {
+    let f = installed("fallback");
+    install_other(&f, &other_files());
+    let state = ShellState::new();
+    let armed = Arc::new(Mutex::new(0usize));
+    let seen = armed.clone();
+    state.set_on_arm(Box::new(move |_, _| *seen.lock().unwrap() += 1));
+    state.set_active(served_of(&f.store, BUILD, &f.key));
+    state.stage(served_of(&f.store, OTHER, &f.key));
+    // Tauri asks `missing.js`, then its `.html` and `/index.html` forms, then
+    // `index.html`: the running build's page, no swap, no ready window.
+    for path in ["missing.js", "missing.js.html", "missing.js/index.html"] {
+        assert!(matches!(state.resolve(path), Resolved::Served(None)));
+    }
+    let Resolved::Served(Some(body)) = state.resolve("index.html") else {
+        panic!("the running index.html");
+    };
+    assert_eq!(body, INDEX.as_bytes());
+    assert_eq!(state.active_build().as_deref(), Some(BUILD));
+    assert_eq!(state.pending_report().as_deref(), Some(OTHER));
+    assert_eq!(*armed.lock().unwrap(), 0);
+    // The explicit load swaps and arms once.
+    state.expect_document();
+    assert!(matches!(
+        state.resolve("index.html"),
+        Resolved::Served(Some(_))
+    ));
+    assert_eq!(state.active_build().as_deref(), Some(OTHER));
+    assert_eq!(*armed.lock().unwrap(), 1);
+    // The page that was running may still load its own chunks...
+    assert_eq!(
+        match state.resolve("assets/app.js") {
+            Resolved::Served(b) => b,
+            Resolved::Bundled => None,
+        }
+        .as_deref(),
+        Some(APP_JS.as_bytes())
+    );
+    // ...until the new build signals ready: then only the new build serves.
+    assert_eq!(state.note_ready(OTHER).as_deref(), Some(SERVER));
+    assert!(matches!(
+        state.resolve("assets/app.js"),
+        Resolved::Served(None)
+    ));
+}
+
+#[test]
+fn only_a_main_frame_load_of_the_app_origin_is_a_document_load() {
+    for (url, yes) in [
+        ("tauri://localhost/", true),
+        ("tauri://localhost/tickets/12", true),
+        ("http://tauri.localhost/", true),
+        ("https://tauri.localhost/x", true),
+        ("liaison-frame://app/index.html", false),
+        ("http://liaison-frame.localhost/", false),
+        ("https://example.com/", false),
+        ("tauri://evil/", false),
+    ] {
+        assert_eq!(
+            is_app_document(&url::Url::parse(url).unwrap()),
+            yes,
+            "{url}"
+        );
+    }
+    let state = ShellState::new();
+    on_navigation(&state, &url::Url::parse("liaison-frame://app/").unwrap());
+    assert!(!state.selection.read().unwrap().expect_document);
+    on_navigation(&state, &url::Url::parse("tauri://localhost/").unwrap());
+    assert!(state.selection.read().unwrap().expect_document);
+}
+
+fn list_text(key: &TestKey, seq: u64, entries: Value) -> (Vec<u8>, String) {
+    signed(
+        key,
+        &serde_json::json!({
+            "v": 1, "seq": seq, "issuedAt": "2026-11-28T00:00:00.000Z", "entries": entries,
+        }),
+    )
+}
+
+fn revocations_url() -> &'static str {
+    crate::verified_apps::REVOCATIONS_URL
+}
+
+/// The Local the app builds from its stores.
+fn read_local<'a>(
+    f: &'a Fixture,
+    cache: &crate::verified_apps::VerifiedCache,
+    list: &'a mut Option<RevocationList>,
+) -> Local<'a> {
+    let keys = std::slice::from_ref(&f.key.pinned);
+    *list = cache.stored_revocations(keys).unwrap();
+    Local {
+        trust: Trust {
+            keys,
+            floor: &[],
+            list: list.as_ref(),
+            bridge_version: DESKTOP_BRIDGE_VERSION,
+        },
+        fleet_enabled: f.store.fleet_enabled(keys),
+        revocations_fresh: f.store.revocations_fresh(SystemTime::now()),
+    }
+}
+
+#[test]
+fn a_revocation_or_kill_switch_read_while_running_stops_the_build_at_once() {
+    let f = installed("leave");
+    let cache = crate::verified_apps::VerifiedCache::new(f.dir.join("verified"));
+    let keys = [f.key.pinned.clone()];
+    // A first list (nothing revoked) is read: the build runs.
+    let mut fake = Fake::serving(&f, &statement_value(&f.key, &f.files));
+    let (list, sig) = list_text(&f.key, 1, serde_json::json!([]));
+    fake.put(revocations_url(), list);
+    fake.put(format!("{}.sig", revocations_url()), sig);
+    run(read_lists_then_server(
+        &fake, &f.store, &cache, &keys, DL, SERVER,
+    ));
+    let mut held = None;
+    let running = select(&f.store, SERVER, &read_local(&f, &cache, &mut held));
+    let Active::Served(build) = running.clone() else {
+        panic!("served");
+    };
+    let mut held = None;
+    let local = read_local(&f, &cache, &mut held);
+    assert!(matches!(
+        after_refresh(&f.store, SERVER, &local, Some(&build)),
+        AfterRefresh::Stage(_)
+    ));
+    // Liaison raises the shell floor over this build (seq 1_764_300_000).
+    let (list, sig) = list_text(
+        &f.key,
+        2,
+        serde_json::json!([{ "name": "shell:desktop", "below": "1764300001" }]),
+    );
+    fake.put(revocations_url(), list);
+    fake.put(format!("{}.sig", revocations_url()), sig);
+    run(read_lists_then_server(
+        &fake, &f.store, &cache, &keys, DL, SERVER,
+    ));
+    let mut held = None;
+    let local = read_local(&f, &cache, &mut held);
+    match after_refresh(&f.store, SERVER, &local, Some(&build)) {
+        AfterRefresh::Leave { next, reason } => {
+            assert_eq!(reason, "revoked");
+            assert!(matches!(next, Active::Bundled(r) if r == "revoked"));
+        }
+        other => panic!("{other:?}"),
+    }
+    // The window applies it: the bundled shell, at once, no staged leftover.
+    let state = ShellState::new();
+    state.set_active(running);
+    state.set_active(Active::Bundled("revoked".into()));
+    assert_eq!(state.status().reason.as_deref(), Some("revoked"));
+    assert_eq!(state.pending_report(), None);
+}
+
+#[test]
+fn a_kill_switch_flipped_while_running_stops_the_build_at_once() {
+    let f = installed("kill");
+    let cache = crate::verified_apps::VerifiedCache::new(f.dir.join("verified"));
+    let keys = [f.key.pinned.clone()];
+    f.store.mark_revocations_fetched(SystemTime::now());
+    let mut held = None;
+    let Active::Served(build) = select(&f.store, SERVER, &read_local(&f, &cache, &mut held)) else {
+        panic!("served");
+    };
+    // The server's own switch.
+    let mut fake = Fake::default();
+    fake.put(
+        format!("{SERVER}/api/shell/info"),
+        format!(r#"{{"data":{{"desktop":{{"buildId":"{BUILD}"}},"servedShell":false}}}}"#),
+    );
+    run(read_lists_then_server(
+        &fake, &f.store, &cache, &keys, DL, SERVER,
+    ));
+    let mut held = None;
+    let local = read_local(&f, &cache, &mut held);
+    assert!(matches!(
+        after_refresh(&f.store, SERVER, &local, Some(&build)),
+        AfterRefresh::Leave { reason, .. } if reason == "server_off"
+    ));
+    // The fleet's.
+    f.store
+        .update_pointer(SERVER, |p| {
+            p.served_shell = Some(true);
+            true
+        })
+        .unwrap();
+    let (off, off_sig) = signed(
+        &f.key,
+        &serde_json::json!({
+            "v": 1, "seq": 3, "issuedAt": "2026-11-28T00:00:00.000Z",
+            "servedShell": { "desktop": false, "native": true },
+        }),
+    );
+    fake.put(format!("{DL}/shell/flags.json"), off);
+    fake.put(format!("{DL}/shell/flags.json.sig"), off_sig);
+    fake.put(
+        format!("{SERVER}/api/shell/info"),
+        format!(r#"{{"data":{{"desktop":{{"buildId":"{BUILD}"}},"servedShell":true}}}}"#),
+    );
+    run(read_lists_then_server(
+        &fake, &f.store, &cache, &keys, DL, SERVER,
+    ));
+    let mut held = None;
+    let local = read_local(&f, &cache, &mut held);
+    assert!(matches!(
+        after_refresh(&f.store, SERVER, &local, Some(&build)),
+        AfterRefresh::Leave { reason, .. } if reason == "fleet_off"
+    ));
+    // A build of another server is not this server's to stop.
+    let mut elsewhere = load_build(&f.store, BUILD, trust(&f.key)).unwrap();
+    elsewhere.server = "https://other.example".into();
+    assert!(matches!(
+        after_refresh(&f.store, SERVER, &local, Some(&elsewhere)),
+        AfterRefresh::Stage(_)
+    ));
+}
+
+#[test]
+fn a_start_whose_lists_do_not_answer_in_time_selects_from_the_kept_copies() {
+    let f = installed("deadline");
+    let cache = crate::verified_apps::VerifiedCache::new(f.dir.join("verified"));
+    let keys = [f.key.pinned.clone()];
+    f.store.mark_revocations_fetched(SystemTime::now());
+    let mut fake = Fake::serving(&f, &statement_value(&f.key, &f.files));
+    let (list, sig) = list_text(
+        &f.key,
+        2,
+        serde_json::json!([{ "name": "shell:desktop", "below": "1764300001" }]),
+    );
+    fake.put(revocations_url(), list);
+    fake.put(format!("{}.sig", revocations_url()), sig);
+    fake.delay = Some(Duration::from_millis(500));
+    let started = std::time::Instant::now();
+    let read = run(async {
+        tokio::time::timeout(
+            Duration::from_millis(50),
+            read_lists_then_server(&fake, &f.store, &cache, &keys, DL, SERVER),
+        )
+        .await
+    });
+    assert!(read.is_err());
+    assert!(started.elapsed() < Duration::from_millis(400));
+    let mut held = None;
+    assert!(matches!(
+        select(&f.store, SERVER, &read_local(&f, &cache, &mut held)),
+        Active::Served(_)
+    ));
+    // Answered in time, the raised floor decides before the build is chosen.
+    fake.delay = None;
+    run(async {
+        tokio::time::timeout(
+            START_DEADLINE,
+            read_lists_then_server(&fake, &f.store, &cache, &keys, DL, SERVER),
+        )
+        .await
+    })
+    .unwrap();
+    let mut held = None;
+    assert!(matches!(
+        select(&f.store, SERVER, &read_local(&f, &cache, &mut held)),
+        Active::Bundled(r) if r == "revoked"
+    ));
+}
+
+#[test]
+fn a_staged_bundled_shell_is_reported_to_the_page() {
+    let f = installed("pending-bundled");
+    let state = ShellState::new();
+    state.set_active(served_of(&f.store, BUILD, &f.key));
+    assert_eq!(state.pending_report(), None);
+    state.stage(Active::Bundled("no_build".into()));
+    assert_eq!(state.pending_report().as_deref(), Some(PENDING_BUNDLED));
+    assert!(state.status().pending);
+}
+
+#[test]
+fn refreshes_are_due_by_the_wall_clock() {
+    let t = UNIX_EPOCH + Duration::from_secs(1_000_000);
+    assert!(refresh_due(None, t, REFRESH_EVERY));
+    assert!(!refresh_due(
+        Some(t),
+        t + Duration::from_secs(60),
+        REFRESH_EVERY
+    ));
+    assert!(refresh_due(Some(t), t + REFRESH_EVERY, REFRESH_EVERY));
+    // A clock set back counts as due.
+    assert!(refresh_due(
+        Some(t),
+        t - Duration::from_secs(1),
+        REFRESH_EVERY
+    ));
+    let state = ShellState::new();
+    assert!(state.refresh_due(t, FOCUS_REFRESH_AFTER));
+    assert!(!state.refresh_due(t + Duration::from_secs(10), FOCUS_REFRESH_AFTER));
+    assert!(state.refresh_due(t + FOCUS_REFRESH_AFTER, FOCUS_REFRESH_AFTER));
+}
+
+#[test]
+fn a_corrupted_blob_is_deleted_never_trusted_and_fetched_again() {
+    let f = installed("corrupt");
+    let js = sha256_hex(APP_JS.as_bytes());
+    let blob = f.dir.join("blobs").join(&js);
+    std::fs::write(&blob, "export const app = 1").unwrap(); // truncated
+    assert!(matches!(
+        select(&f.store, SERVER, &local(&f.key)),
+        Active::Bundled(r) if r == "missing_file"
+    ));
+    assert!(
+        !blob.exists(),
+        "a blob that does not match its name is deleted"
+    );
+    // The next refresh fetches it again and the build runs.
+    let fake = Fake::serving(&f, &statement_value(&f.key, &f.files));
+    refresh_with(&f, &fake, trust(&f.key)).unwrap();
+    assert_eq!(std::fs::read(&blob).unwrap(), APP_JS.as_bytes());
+    assert_eq!(
+        select(&f.store, SERVER, &local(&f.key)).build_id(),
+        Some(BUILD)
+    );
+    // install replaces a kept blob that no longer verifies.
+    std::fs::write(&blob, "alert(1)").unwrap();
+    let (statement, sig) = f.store.record(BUILD).unwrap();
+    f.store
+        .install(BUILD, &statement, &sig, &[(js, APP_JS.as_bytes().to_vec())])
+        .unwrap();
+    assert_eq!(std::fs::read(&blob).unwrap(), APP_JS.as_bytes());
+}
+
+#[test]
+fn pointer_writes_never_lose_a_quarantine_or_a_last_good_build() {
+    let f = fixture("pointer");
+    // A quarantine and a last good build recorded while a fetch runs.
+    let dir = f.dir.clone();
+    let mut fake = Fake::serving(&f, &statement_value(&f.key, &f.files));
+    fake.on_file = Some(Box::new(move || {
+        ShellStore::new(dir.clone())
+            .update_pointer(SERVER, |p| {
+                if !p.quarantined.contains(&"cccccccccccccccc".to_string()) {
+                    p.quarantined.push("cccccccccccccccc".into());
+                }
+                p.last_good = Some("aaaaaaaaaaaaaaaa".into());
+                true
+            })
+            .unwrap();
+    }));
+    let pointer = refresh_with(&f, &fake, trust(&f.key)).unwrap();
+    assert_eq!(pointer.current.as_deref(), Some(BUILD));
+    assert_eq!(pointer, f.store.pointer(SERVER));
+    assert_eq!(pointer.quarantined, vec!["cccccccccccccccc".to_string()]);
+    assert_eq!(pointer.last_good.as_deref(), Some("aaaaaaaaaaaaaaaa"));
+    // Concurrent writers: every one of them lands.
+    let threads: Vec<_> = (0..8)
+        .map(|i| {
+            let dir = f.dir.clone();
+            std::thread::spawn(move || {
+                ShellStore::new(dir)
+                    .update_pointer(SERVER, |p| {
+                        p.quarantined.push(format!("{i:016x}"));
+                        true
+                    })
+                    .unwrap();
+            })
+        })
+        .collect();
+    for t in threads {
+        t.join().unwrap();
+    }
+    assert_eq!(f.store.pointer(SERVER).quarantined.len(), 9);
+    // No temporary file is left behind.
+    let leftovers = std::fs::read_dir(f.dir.join("servers"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().contains("tmp"))
+        .count();
+    assert_eq!(leftovers, 0);
+}
+
+#[test]
+fn a_build_fetch_has_one_deadline_and_one_budget() {
+    let f = fixture("slow");
+    let mut fake = Fake::serving(&f, &statement_value(&f.key, &f.files));
+    fake.delay = Some(Duration::from_millis(200));
+    let refused = run(fetch_build_within(
+        &fake,
+        &f.store,
+        DL,
+        SERVER,
+        BUILD,
+        trust(&f.key),
+        Duration::from_millis(300),
+    ));
+    assert_eq!(refused, Err(Refusal::Fetch));
+    assert!(no_blobs(&f));
+    assert!(f.store.record(BUILD).is_none());
+    let budget = Budget::new(10);
+    assert!(budget.take(6));
+    assert!(!budget.take(5));
+    assert_eq!(budget.left(), 4);
+    assert!(budget.take(4));
+    assert_eq!(budget.left(), 0);
+}
+
+#[test]
+fn every_served_response_carries_the_pinned_csp() {
+    use tauri::http::header::CONTENT_SECURITY_POLICY;
+    let csp = "default-src 'self'";
+    let response = || tauri::http::Response::new(Cow::Borrowed(&b"x"[..]));
+    let mut js = response();
+    add_csp_header(true, csp, &mut js);
+    assert_eq!(js.headers()[CONTENT_SECURITY_POLICY], csp);
+    // An HTML response keeps Tauri's own (with its script hashes).
+    let mut html = response();
+    html.headers_mut().insert(
+        CONTENT_SECURITY_POLICY,
+        "default-src 'self'; script-src 'self' 'sha256-x'"
+            .parse()
+            .unwrap(),
+    );
+    add_csp_header(true, csp, &mut html);
+    assert!(html.headers()[CONTENT_SECURITY_POLICY]
+        .to_str()
+        .unwrap()
+        .contains("sha256-x"));
+    // The bundled shell is unchanged.
+    let mut bundled = response();
+    add_csp_header(false, csp, &mut bundled);
+    assert!(!bundled.headers().contains_key(CONTENT_SECURITY_POLICY));
+}
+
+#[test]
+fn kept_flags_no_pinned_key_verifies_turn_the_served_shell_off_until_new_ones_verify() {
+    let f = fixture("rotation");
+    let old = TestKey::new(1);
+    let new = TestKey::new(2);
+    let flags = |key: &TestKey, seq: u64, desktop: bool| {
+        signed(
+            key,
+            &serde_json::json!({
+                "v": 1, "seq": seq, "issuedAt": "2026-11-28T00:00:00.000Z",
+                "servedShell": { "desktop": desktop, "native": true },
+            }),
+        )
+    };
+    assert!(f.store.fleet_enabled(std::slice::from_ref(&new.pinned)));
+    let (off, sig) = flags(&old, 9, false);
+    f.store
+        .offer_flags(&off, &sig, std::slice::from_ref(&old.pinned));
+    assert!(!f.store.fleet_enabled(std::slice::from_ref(&old.pinned)));
+    // The rotation drops the old key: the stored "off" no longer verifies,
+    // and that is OFF, never "no flags".
+    let rotated = std::slice::from_ref(&new.pinned);
+    assert_eq!(
+        f.store.stored_flags(rotated),
+        StoredFlags::Unverifiable { seq: 9 }
+    );
+    assert!(!f.store.fleet_enabled(rotated));
+    // Flags under the new key below the kept seq are refused...
+    let (on, on_sig) = flags(&new, 8, true);
+    assert_eq!(f.store.offer_flags(&on, &on_sig, rotated), None);
+    assert!(!f.store.fleet_enabled(rotated));
+    // ...at or above it, they apply.
+    let (on, on_sig) = flags(&new, 10, true);
+    assert_eq!(
+        f.store
+            .offer_flags(&on, &on_sig, rotated)
+            .map(|f| f.desktop),
+        Some(true)
+    );
+    assert!(f.store.fleet_enabled(rotated));
+}
+
+#[test]
+fn the_ready_window_covers_the_pages_bounded_session_restore() {
+    let auth = include_str!("../../../../web/src/modules/auth/auth-store.ts");
+    let line = auth
+        .lines()
+        .find(|l| l.starts_with("const RESTORE_TIMEOUT_MS ="))
+        .expect("the restore bound");
+    let ms: u64 = line
+        .trim_start_matches("const RESTORE_TIMEOUT_MS =")
+        .trim()
+        .replace('_', "")
+        .parse()
+        .unwrap();
+    assert!(READY_WITHIN >= Duration::from_millis(ms) + Duration::from_secs(10));
 }

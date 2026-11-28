@@ -278,6 +278,14 @@ fn main() {
         // and the app keeps its connection and keeps notifying. Quit (the
         // tray's, or Cmd+Q) still quits.
         .on_window_event(|window, event| {
+            // The window coming forward re-reads the served shell's lists, so
+            // a revocation reaches a window left open (served_shell.rs).
+            if let tauri::WindowEvent::Focused(true) = event {
+                if window.label() == tray::MAIN_WINDOW {
+                    use tauri::Manager;
+                    served_shell::on_focus(window.app_handle());
+                }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == tray::MAIN_WINDOW
                     && tray::current_close_decision() == tray::CloseDecision::HideToTray
@@ -557,6 +565,8 @@ fn main() {
             // build when it has one, else the bundled shell; a refresh of
             // that server's build runs in the background.
             served_shell::on_start(app.handle());
+            let served_shell_state = served_shell::shared_state(app.handle())
+                .unwrap_or_else(served_shell::ShellState::new);
             let window_config = app
                 .config()
                 .app
@@ -596,8 +606,29 @@ fn main() {
             let node_on = sidecar::app_config_dir(app.handle())
                 .and_then(|dir| node::current_node_at(&dir))
                 .is_some_and(|node| node.enabled);
+            // THE SERVED SHELL'S DOCUMENT LOADS (served_shell.rs): a main
+            // frame navigation to the app's own origin is what may swap a
+            // staged build in; every response of that origin carries the
+            // pinned CSP while a served build runs (D15). Neither cancels or
+            // changes anything else.
+            let nav_state = served_shell_state.clone();
+            let csp_state = served_shell_state.clone();
+            let csp = tauri::Manager::config(app.handle())
+                .app
+                .security
+                .csp
+                .as_ref()
+                .map(|csp| csp.to_string())
+                .unwrap_or_default();
             let mut window =
                 tauri::WebviewWindowBuilder::from_config(app.handle(), &window_config)?
+                    .on_navigation(move |url| {
+                        served_shell::on_navigation(&nav_state, url);
+                        true
+                    })
+                    .on_web_resource_request(move |_request, response| {
+                        served_shell::add_csp_header(csp_state.status().served, &csp, response);
+                    })
                     .background_throttling(tray::throttling_policy(node_on))
                     .initialization_script(&device_script)
                     .initialization_script(app_frame::app_frame_url_script())

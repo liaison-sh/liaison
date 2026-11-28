@@ -26,7 +26,8 @@ const TAG = `<script src="/${BOOT_SCRIPT_NAME}"></script>`
 // The page's ONE <head> tag: `<head>` or `<head ...>`, never `<header>` or `<head-x>`.
 const HEAD_TAG = /<head(?=[\s>/])[^>]*>/i
 const HEAD_TAGS = /<head(?=[\s>/])[^>]*>/gi
-const COMMENT = /<!--[\s\S]*?-->/g
+/** A comment as HTML allows it: no `--` inside, closed by `-->` (not `--!>`). */
+const WELL_FORMED_COMMENT = /<!--(?!>|->)(?:(?!--)[\s\S])*-->/g
 
 /**
  * `html` with the boot script as the first thing in `<head>`. Idempotent: a
@@ -154,6 +155,20 @@ export function applyMobileCsp(html: string): { html: string; files: ExtractedSc
 }
 
 /**
+ * The page with its well-formed comments removed (`<!--`, no `--` inside,
+ * `-->`), in one pass. Anything else that starts with `<!` (a bogus comment
+ * such as `<!<!---->`, an unclosed `<!--`, `--!>`) is refused rather than read
+ * around: a browser parses those differently from a regex, and a script after
+ * one would run before the policy. Only a leading doctype may remain.
+ */
+export function withoutComments(html: string): string {
+  const bare = html.replace(WELL_FORMED_COMMENT, "")
+  const rest = bare.replace(/^\s*<!doctype[^>]*>/i, "")
+  if (rest.includes("<!") || rest.includes("--!>")) throw new Error("the page has a comment or markup declaration it does not allow")
+  return bare
+}
+
+/**
  * Refuses a made page unless its shape is the one the policy relies on, read
  * with comments removed: exactly one `<head>`, nothing before it but the
  * doctype, `<html>` and white space (a script there would run before the
@@ -162,7 +177,7 @@ export function applyMobileCsp(html: string): { html: string; files: ExtractedSc
  * page (the iOS host, MobilePage.swift) that fails it is not used.
  */
 export function checkMobilePage(html: string): void {
-  const bare = html.replace(COMMENT, "")
+  const bare = withoutComments(html)
   const heads = [...bare.matchAll(HEAD_TAGS)]
   if (heads.length !== 1) throw new Error("the page must have exactly one <head>")
   const head = heads[0]

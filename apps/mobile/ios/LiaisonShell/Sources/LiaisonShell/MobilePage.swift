@@ -67,16 +67,23 @@ public enum MobilePage {
 
     static let bootTag = "<script src=\"/\(bootScriptName)\"></script>"
     static var cspTag: String { "<meta http-equiv=\"Content-Security-Policy\" content=\"\(mobileCsp)\">" }
-    static let comment = regex("<!--[\\s\\S]*?-->")
+    static let wellFormedComment = regex("<!--(?!>|->)(?:(?!--)[\\s\\S])*-->")
+    static let leadingDoctype = regex("^\\s*<!doctype[^>]*>")
     static let beforeHead = regex("^\\s*(?:<!doctype[^>]*>\\s*)?(?:<html(?=[\\s>])[^>]*>\\s*)?$")
 
     /// boot-injection.ts `checkMobilePage`: with comments removed, exactly one
     /// <head>, nothing before it but the doctype, <html> and white space, the
     /// CSP meta and then the boot script first in it, the boot script nowhere else.
     static func check(_ html: String) throws {
-        let bare = comment.stringByReplacingMatches(
+        // Well-formed comments only, one pass; any other "<!" (a bogus comment such as
+        // "<!<!---->", an unclosed "<!--") or "--!>" is refused: boot-injection.ts `withoutComments`.
+        let bare = wellFormedComment.stringByReplacingMatches(
             in: html, range: NSRange(location: 0, length: (html as NSString).length), withTemplate: ""
         )
+        let rest = leadingDoctype.stringByReplacingMatches(
+            in: bare, range: NSRange(location: 0, length: (bare as NSString).length), withTemplate: ""
+        )
+        guard !rest.contains("<!"), !rest.contains("--!>") else { throw PageError.shape }
         let ns = bare as NSString
         let heads = headTag.matches(in: bare, range: NSRange(location: 0, length: ns.length))
         guard heads.count == 1, let head = heads.first else { throw PageError.shape }

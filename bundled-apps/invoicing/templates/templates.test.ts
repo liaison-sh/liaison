@@ -989,7 +989,13 @@ describe("ship to party block", () => {
     // another country must not change a single byte of what the template prints beyond the block.
     const domestic = invoiceTemplate(shipInput())
     const exported = invoiceTemplate(shipInput({ shipping_address: "1 Export Road\nNew York\nUS" }))
-    const shipOnly = new Set(["SHIP TO", "1 Export Road", "New York", "US", "Müller Handel GmbH"])
+    const shipOnly = new Set([
+      "SHIP TO",
+      "1 Export Road",
+      "New York",
+      "United States",
+      "Müller Handel GmbH",
+    ])
     expect(texts(exported).filter((t) => !shipOnly.has(t))).toEqual(
       texts(domestic).filter((t) => !shipOnly.has(t)),
     )
@@ -1024,20 +1030,20 @@ describe("exempt documents print no tax column", () => {
         "Export of goods outside the European Union: VAT-exempt under Article 146 of Directive 2006/112/EC.",
     })
 
-  test("an untaxed export invoice has no Tax % column and no Tax totals row", () => {
+  test("an untaxed export invoice has no VAT % column and no VAT totals row", () => {
     const t = texts(invoiceTemplate(exportInput(0, 0n)))
-    expect(t).not.toContain("Tax %")
-    expect(t.some((x) => x.startsWith("Tax"))).toBe(false)
+    expect(t).not.toContain("VAT %")
+    expect(t.some((x) => x.startsWith("Tax") || x.startsWith("VAT ("))).toBe(false)
     expect(t).not.toContain("0.00%")
     expect(t).toContain("Subtotal")
     expect(t.join("\n")).toContain("VAT-exempt under Article 146")
   })
 
-  test("a domestic invoice keeps its Tax % column and Tax row", () => {
+  test("a domestic invoice keeps its VAT % column and VAT row", () => {
     const t = texts(invoiceTemplate(shortInput()))
-    expect(t).toContain("Tax %")
+    expect(t).toContain("VAT %")
     expect(t).toContain("20.00%")
-    expect(t).toContain("Tax (20.00%)")
+    expect(t).toContain("VAT (20.00%)")
   })
 
   test("an invoice of services alone prints no Incoterm, an invoice of goods does", () => {
@@ -1060,8 +1066,8 @@ describe("exempt documents print no tax column", () => {
 
   test("an exempt invoice that carries tax keeps the figures its total includes", () => {
     const t = texts(invoiceTemplate(exportInput(725, 725n)))
-    expect(t).toContain("Tax %")
-    expect(t).toContain("Tax (7.25%)")
+    expect(t).toContain("VAT %")
+    expect(t).toContain("VAT (7.25%)")
   })
 })
 
@@ -1085,7 +1091,7 @@ describe("S25 identity blocks and mentions", () => {
   test("seller SIREN, legal form, capital, RCS print in the block and the footer on every page", () => {
     const cmds = invoiceTemplate(shortInput({ issuer: frIssuer }))
     const j = all(cmds)
-    expect(j).toContain("SIREN 123456789")
+    expect(j).toContain("SIREN 123 456 789")
     expect(j).toContain("SAS au capital de 10 000 €")
     expect(texts(cmds)).toContain(
       // default_language "fr" and no document.language: the face, footer included, is French.
@@ -1157,7 +1163,7 @@ describe("S25 identity blocks and mentions", () => {
         },
       }),
     )
-    expect(all(withSiren)).toContain("SIREN 987654321")
+    expect(all(withSiren)).toContain("SIREN 987 654 321")
     expect(all(invoiceTemplate(shortInput()))).not.toContain("SIREN")
   })
 
@@ -1215,9 +1221,12 @@ describe("S25 identity blocks and mentions", () => {
         },
       }),
     )
-    const fr = (c: DrawCommand[]) => texts(c).filter((t) => t === "FR").length
-    expect(fr(plain)).toBe(2)
-    expect(fr(cmds)).toBe(fr(plain))
+    // The face is the issuer's default language (en): the country prints by name, the seller's
+    // "1 rue de Test, 75001 Paris" ends with no country, so it gets one line too.
+    const named = (c: DrawCommand[]) => texts(c).filter((t) => t === "France").length
+    expect(named(plain)).toBe(2)
+    expect(named(cmds)).toBe(named(plain))
+    expect(texts(cmds)).not.toContain("FR")
   })
 
   test("VAT-on-debits literal prints under the mention only when set", () => {
@@ -1416,7 +1425,7 @@ describe("document face language, seller identity and VAT in EUR", () => {
       "Issued:",
       "2026-05-15",
       "100.00 EUR",
-      "Tax (20.00%)",
+      "VAT (20.00%)",
       "Total due",
     ]) {
       expect(t).toContain(s)
@@ -1434,7 +1443,7 @@ describe("document face language, seller identity and VAT in EUR", () => {
     const base = frInvoice()
     const en = texts(invoiceTemplate({ ...base, document: { ...base.document, language: "en" } }))
     expect(en).toContain(
-      "Atelier Fictif · SAS, share capital 10 000 · RCS Paris 123 456 782 · SIRET 123 456 782 00017 · VAT FR40123456782",
+      "Atelier Fictif · SAS, share capital EUR 10,000 · RCS Paris 123 456 782 · SIRET 123 456 782 00017 · VAT FR40123456782",
     )
     const de = texts(
       invoiceTemplate({
@@ -1444,7 +1453,7 @@ describe("document face language, seller identity and VAT in EUR", () => {
       }),
     )
     expect(de).toContain(
-      "Atelier Fictif · SAS, Stammkapital 10 000 · SIREN 123 456 782 · USt-IdNr. FR40123456782",
+      "Atelier Fictif · SAS, Stammkapital 10.000 € · SIREN 123 456 782 · USt-IdNr. FR40123456782",
     )
   })
 
@@ -1504,5 +1513,173 @@ describe("document face language, seller identity and VAT in EUR", () => {
     const po = texts(poTemplate(base))
     expect(po).toContain("BON DE COMMANDE")
     expect(po).toContain("FOURNISSEUR")
+  })
+})
+
+// Defects seen on real renders (2026-11-28): each test reproduces one.
+describe("face fixes: country, capital, SIREN, ship to, Incoterm, VAT labels, columns", () => {
+  const seller = {
+    legal_name: "Atelier Fictif",
+    country: "FR",
+    vat_id: "FR40123456782",
+    address: "81 rue Exemple, 75018 Paris, France",
+    iban: null,
+    swift_bic: null,
+    bank_name: null,
+    default_language: "en" as const,
+    siren: "123456782",
+    legal_form: "SAS",
+    share_capital: "26 838,60",
+    rcs_city: "Paris",
+  }
+  const consumer = (address: string, country = "FR") => ({
+    legal_name: "Camille Durand",
+    country,
+    vat_id: null,
+    address,
+    email: "camille@example.fr",
+  })
+  const doc = (
+    language: "en" | "fr" | "de",
+    extra: Partial<DocumentRenderInput["document"]> = {},
+  ): DocumentRenderInput["document"] => ({
+    ...shortInput().document,
+    language,
+    customer_kind: "individual",
+    operation_category: "goods",
+    ...extra,
+  })
+  const render = (i: Partial<DocumentRenderInput>) =>
+    texts(invoiceTemplate(shortInput({ issuer: seller, ...i })))
+
+  test("the country prints once, as its name in the face language, never the bare code", () => {
+    // The seller's address already ends in "France": no "FR" line under it.
+    const en = render({ document: doc("en"), counterparty: consumer("France") })
+    expect(en).not.toContain("FR")
+    expect(en.filter((t) => t === "France")).toHaveLength(1) // the buyer's own line, once
+    // A buyer address without its country gets the name, in the document's language.
+    const fr = render({ document: doc("fr"), counterparty: consumer("12 rue B\n69002 Lyon") })
+    expect(fr).toContain("France")
+    expect(fr).not.toContain("FR")
+    const de = render({
+      document: doc("de"),
+      counterparty: consumer("Hauptstr. 1\n10115 Berlin", "DE"),
+    })
+    expect(de).toContain("Deutschland")
+    const enDe = render({
+      document: doc("en"),
+      counterparty: consumer("Hauptstr. 1\n10115 Berlin", "DE"),
+    })
+    expect(enDe).toContain("Germany")
+    expect(enDe).not.toContain("DE")
+  })
+
+  test("the share capital prints localised, with its currency", () => {
+    const all = (l: "en" | "fr" | "de") => render({ document: doc(l) }).join("\n")
+    expect(all("en")).toContain("SAS, share capital EUR 26,838.60")
+    expect(all("en")).not.toContain("26 838,60")
+    expect(all("fr")).toContain("SAS au capital de 26 838,60 €")
+    expect(all("de")).toContain("SAS, Stammkapital 26.838,60 €")
+    const whole = texts(
+      invoiceTemplate(
+        shortInput({ issuer: { ...seller, share_capital: "10 000 €" }, document: doc("en") }),
+      ),
+    ).join("\n")
+    expect(whole).toContain("SAS, share capital EUR 10,000")
+  })
+
+  test("the SIREN is spaced in the seller block as in the footer", () => {
+    const t = render({ document: doc("en") })
+    expect(t).toContain("SIREN 123 456 782")
+    expect(t).not.toContain("SIREN 123456782")
+  })
+
+  test("a ship to equal to the billing address but for a trailing country line is not repeated", () => {
+    const fr = render({
+      document: doc("fr"),
+      counterparty: {
+        ...consumer("12 rue de la République\n69002 Lyon"),
+        shipping_address: "12 rue de la République\n69002 Lyon\nFR",
+        shipping_name: "Camille Durand",
+      },
+    })
+    expect(fr).not.toContain("ADRESSE DE LIVRAISON")
+    // A real ship to still prints, its country code as a name.
+    const other = render({
+      document: doc("fr"),
+      counterparty: {
+        ...consumer("12 rue de la République\n69002 Lyon"),
+        shipping_address: "3 quai Ouest\n69009 Lyon\nFR",
+      },
+    })
+    expect(other).toContain("ADRESSE DE LIVRAISON")
+    expect(other).toContain("3 quai Ouest")
+    expect(other).not.toContain("FR")
+  })
+
+  test("the Incoterm prints only for B2B cross border goods, or when set to another term", () => {
+    const has = (t: string[]) => t.some((s) => s.startsWith("Incoterm"))
+    // A domestic consumer parcel: none.
+    expect(
+      has(render({ document: doc("fr"), counterparty: consumer("12 rue B\n69002 Lyon") })),
+    ).toBe(false)
+    // A consumer abroad: none either.
+    expect(has(render({ document: doc("en"), counterparty: consumer("1 Main St", "US") }))).toBe(
+      false,
+    )
+    // A business in another country buying goods: the default DAP prints.
+    const b2b = render({
+      document: doc("en", { customer_kind: "business" }),
+      counterparty: { ...consumer("Hauptstr. 1\n10115 Berlin", "DE"), vat_id: "DE123456789" },
+    })
+    expect(has(b2b)).toBe(true)
+    expect(b2b).toContain("DAP")
+    // A domestic business: none.
+    expect(
+      has(
+        render({
+          document: doc("fr", { customer_kind: "business" }),
+          counterparty: { ...consumer("12 rue B\n69002 Lyon"), vat_id: "FR83900000001" },
+        }),
+      ),
+    ).toBe(false)
+    // Someone chose EXW: it prints, even domestic.
+    expect(
+      has(render({ document: doc("fr", { incoterm: "EXW" }), counterparty: consumer("12 rue B") })),
+    ).toBe(true)
+  })
+
+  test("the EN face says VAT throughout", () => {
+    const t = render({ document: doc("en") })
+    expect(t).toContain("VAT %")
+    expect(t).toContain("VAT (20.00%)")
+    expect(t).toContain("Amount excl. VAT")
+    expect(t.some((s) => /^Tax\b/.test(s))).toBe(false)
+  })
+
+  test("the unit price and VAT rate columns keep a clear gap", () => {
+    const cmds = textCmds(
+      invoiceTemplate(
+        shortInput({
+          issuer: seller,
+          document: doc("fr"),
+          line_items: [
+            {
+              position: 1,
+              description: "Night Grid",
+              quantity: "1",
+              unit_price_minor: 123456n,
+              tax_rate_bp: 2000,
+              subtotal_minor: 123456n,
+              tax_minor: 24691n,
+              total_minor: 148147n,
+            },
+          ],
+        }),
+      ),
+    )
+    const price = cmds.find((c) => c.text === "1 234,56")!
+    const rate = cmds.find((c) => c.text === "20,00 %")!
+    expect(rate.x - (price.x + textWidth(price.text, price.size))).toBeGreaterThanOrEqual(18)
   })
 })

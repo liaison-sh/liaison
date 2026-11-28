@@ -212,6 +212,8 @@ function netLineMoney(p: {
   rateBp: number | null
   taxesIncluded: boolean
   currency: string
+  /** Every tax Shopify reported on the line (seller and marketplace), when all amounts are known. */
+  includedTaxMinor?: bigint | null
 }): { unit_price_minor: string; discount_minor: string } {
   const qty = BigInt(Math.max(1, Math.round(p.quantity)))
   const unitGross = majorDecimalToMinor(p.unitAmount, p.currency)
@@ -221,10 +223,27 @@ function netLineMoney(p: {
   if (lineGrossAfter < 0n) lineGrossAfter = 0n
   const deTax = (v: bigint): bigint =>
     p.taxesIncluded && p.rateBp != null ? netOfTax(v, p.rateBp) : v
-  const unitNet = deTax(unitGross)
-  let discountNet = unitNet * qty - deTax(lineGrossAfter)
+  let unitNet = deTax(unitGross)
+  // A tax included line whose tax Shopify reported: its net is the gross less exactly that tax, so
+  // the invoice totals what was paid to the cent (re-deriving it from the rate can miss by one).
+  const knownTax =
+    p.taxesIncluded && p.includedTaxMinor != null && p.includedTaxMinor <= lineGrossAfter
+      ? p.includedTaxMinor
+      : null
+  const netAfter = knownTax != null ? lineGrossAfter - knownTax : deTax(lineGrossAfter)
+  if (knownTax != null) {
+    if (discountGross === 0n && netAfter % qty === 0n) unitNet = netAfter / qty
+    else if (unitNet * qty < netAfter) unitNet = (netAfter + qty - 1n) / qty
+  }
+  let discountNet = unitNet * qty - netAfter
   if (discountNet < 0n) discountNet = 0n
   return { unit_price_minor: unitNet.toString(), discount_minor: discountNet.toString() }
+}
+
+/** Every tax Shopify reported on a line, or null when an amount is missing. */
+function includedTax(t: ReturnType<typeof lineTaxFacts>): bigint | null {
+  if (t.sellerAmountMinor == null) return null
+  return BigInt(t.sellerAmountMinor) + BigInt(t.marketplaceAmountMinor)
 }
 
 function lineTax(t: ReturnType<typeof lineTaxFacts>): SaleLine["tax"] {
@@ -293,6 +312,7 @@ export function saleFromOrder(order: NormalizedOrder, soldAt: string): Sale {
       rateBp: tax.chargedRateBp,
       taxesIncluded,
       currency,
+      includedTaxMinor: includedTax(tax),
     })
     return {
       description: li.title ?? "",
@@ -316,6 +336,7 @@ export function saleFromOrder(order: NormalizedOrder, soldAt: string): Sale {
       rateBp: tax.chargedRateBp,
       taxesIncluded,
       currency,
+      includedTaxMinor: includedTax(tax),
     })
     lines.push({
       description: s.title ? `Shipping (${s.title})` : "Shipping",

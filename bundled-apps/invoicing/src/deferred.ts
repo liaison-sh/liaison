@@ -97,6 +97,8 @@ export const HUMAN_REVIEW_KINDS: ReadonlySet<string> = new Set([
   "tax_check",
   "tax_treatment",
   "tax_rate",
+  // A shop order whose invoices would not total what the buyer paid (shopify-order-paid.ts).
+  "order_totals",
 ])
 
 export function needsHumanReview(blocked_on: Record<string, unknown> | null | undefined): boolean {

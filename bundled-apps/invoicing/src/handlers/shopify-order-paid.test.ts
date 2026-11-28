@@ -2076,6 +2076,8 @@ describe("order paid auto flow stores document_lines NET of tax (own taxesInclud
     const result = await onShopifyOrderCreated(
       {
         ...singleItemEvent,
+        // What a tax exclusive checkout charges: 100.00 plus the 20.00 of tax.
+        totalPrice: { amount: "120.00", currencyCode: "EUR" },
         taxesIncluded: false,
         lineItems: singleItemEvent.lineItems.map((li) => ({
           ...li,
@@ -3817,5 +3819,178 @@ describe("an order placed for a B2B company", () => {
       discount_minor: "0",
       tax_rate_bp: 2000,
     })
+  })
+})
+
+// Shopify prices include VAT: the invoice keeps Shopify's own tax per line and derives the net, so
+// it totals what the buyer paid to the cent (an audit found issued invoices a cent off: VAT was
+// recomputed on a net re-derived from the rate, and no net at 20 % reproduces every gross).
+describe("tax included Shopify orders total what the buyer paid, to the cent", () => {
+  const buyer = {
+    customer: {
+      id: "cust-cent-1",
+      email: "cent@example.com",
+      first_name: "Camille",
+      last_name: "Exemple",
+      country: "FR",
+    },
+    billingAddress: { address1: "1 rue Exemple", zip: "69002", city: "Lyon", country_code: "FR" },
+    shippingAddress: { address1: "1 rue Exemple", zip: "69002", city: "Lyon", country_code: "FR" },
+  }
+  type OrderEvent = Parameters<typeof onShopifyOrderCreated>[0]
+  type EventLine = NonNullable<OrderEvent["lineItems"]>[number]
+  type EventShipping = NonNullable<OrderEvent["shippingLines"]>[number]
+  const order = (
+    id: string,
+    total: string,
+    lineItems: EventLine[],
+    shippingLines: EventShipping[] = [],
+    taxesIncluded = true,
+  ): OrderEvent => ({
+    orderId: id,
+    shopDomain: "shop-1",
+    createdAt: "2026-11-20T10:00:00Z",
+    financialStatus: "paid",
+    totalPrice: { amount: total, currencyCode: "EUR" },
+    taxesIncluded,
+    ...buyer,
+    lineItems,
+    shippingLines,
+  })
+  const item = (
+    id: string,
+    price: string,
+    tax: string,
+    extra: Partial<EventLine> = {},
+  ): EventLine => ({
+    id,
+    title: `Item ${id}`,
+    quantity: 1,
+    priceSet: { amount: price, currencyCode: "EUR" },
+    requiresShipping: true,
+    taxLines: [{ rate: 0.2, amount: tax }],
+    variant: { id: `9${id.replace(/\D/g, "")}` },
+    ...extra,
+  })
+  const totals = (db: MockDb) => {
+    const docs = db.__all("documents") as Array<Record<string, unknown>>
+    let grand = 0n
+    let tax = 0n
+    for (const d of docs) {
+      grand += BigInt(String(d.grand_total_minor))
+      tax += BigInt(String(d.tax_total_minor))
+    }
+    return { grand, tax, docs }
+  }
+
+  test("79.00 incl. 20 %: total 79.00, VAT 13.17", async () => {
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+    })
+    const r = await onShopifyOrderCreated(
+      order("cent-79", "79.00", [item("l1", "79.00", "13.17")]),
+      ctx,
+    )
+    expect(r.status).toBe("ok")
+    expect(totals(db)).toMatchObject({ grand: 7900n, tax: 1317n })
+  })
+
+  test("9.99 incl. 20 % (no net reproduces it at the rate): Shopify's 1.67 is kept, total 9.99", async () => {
+    const p = adaptShopifyOrderCreatedEvent(order("cent-999", "9.99", [item("l1", "9.99", "1.67")]))
+    expect(String(p.line_items[0]!.unit_price_minor)).toBe("832")
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+    })
+    const r = await onShopifyOrderCreated(
+      order("cent-999", "9.99", [item("l1", "9.99", "1.67")]),
+      ctx,
+    )
+    expect(r.status).toBe("ok")
+    const { grand, tax } = totals(db)
+    expect(grand).toBe(999n)
+    expect(tax).toBe(167n)
+    const line = (db.__all("document_lines") as Array<Record<string, unknown>>)[0]!
+    expect(String(line.subtotal_minor)).toBe("832")
+    expect(String(line.tax_minor)).toBe("167")
+  })
+
+  test("several lines, a discount and taxed shipping: the invoices total the order and its VAT", async () => {
+    const event = order(
+      "cent-multi",
+      "112.88",
+      [
+        item("l1", "49.95", "14.98", {
+          quantity: 2,
+          discountAllocations: [{ amount: "10.00", currencyCode: "EUR" }],
+        }),
+        item("l2", "9.99", "1.67"),
+      ],
+      [
+        {
+          title: "Colissimo",
+          priceSet: { amount: "12.99", currencyCode: "EUR" },
+          taxLines: [{ rate: 0.2, amount: "2.17" }],
+        },
+      ],
+    )
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+    })
+    const r = await onShopifyOrderCreated(event, ctx)
+    expect(r.status).toBe("ok")
+    const { grand, tax, docs } = totals(db)
+    expect(docs).toHaveLength(2) // goods; shipping on the services invoice
+    expect(grand).toBe(11288n)
+    expect(tax).toBe(1498n + 167n + 217n)
+    // The discount stays explicit on the line: 2 x unit - discount = the net Shopify implies.
+    const lines = db.__all("document_lines") as Array<Record<string, unknown>>
+    const l1 = lines.find((l) => String(l.description) === "Item l1")!
+    expect(BigInt(String(l1.discount_minor)) > 0n).toBe(true)
+    expect(String(l1.subtotal_minor)).toBe(String(8990 - 1498))
+  })
+
+  test("an order whose invoices would not total what was paid is parked, never issued", async () => {
+    // A shipping charge the buyer did not pay (total 79.00, lines 79.00 + 5.00 shipping).
+    const event = order(
+      "cent-gap",
+      "79.00",
+      [item("l1", "79.00", "13.17")],
+      [
+        {
+          title: "Relais",
+          priceSet: { amount: "5.00", currencyCode: "EUR" },
+          taxLines: [{ rate: 0.2, amount: "0.83" }],
+        },
+      ],
+    )
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+    })
+    const r = await onShopifyOrderCreated(event, ctx)
+    expect(r.status).toBe("deferred")
+    expect(db.__all("documents")).toHaveLength(0)
+    const parks = db.__all("deferred_events") as Array<Record<string, unknown>>
+    expect(parks).toHaveLength(1)
+    expect(parks[0]!.reason).toBe("order_total_mismatch")
+    expect(parks[0]!.blocked_on).toMatchObject({
+      kind: "order_totals",
+      invoice_total_minor: "8400",
+      order_total_minor: "7900",
+    })
+    // Listed for a person, with the override as its way out.
+    const listed = await deferredList(ctx as never)
+    expect(listed.items.map((i) => i.reason)).toContain("order_total_mismatch")
+  })
+
+  test("a tax exclusive order keeps Shopify's tax too and issues at the paid total", async () => {
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+    })
+    const r = await onShopifyOrderCreated(
+      order("cent-excl", "11.99", [item("l1", "9.99", "2.00")], [], false),
+      ctx,
+    )
+    expect(r.status).toBe("ok")
+    expect(totals(db)).toMatchObject({ grand: 1199n, tax: 200n })
   })
 })

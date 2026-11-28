@@ -11,6 +11,7 @@ import {
   createLocalEvent,
   deleteLocalEvent,
   finalizeRemoteDelete,
+  findCalendarsForPollFallback,
   findStalePendingPushes,
   getEventByGoogleId,
   getEventById,
@@ -603,6 +604,46 @@ describe("calendar outbound sync", () => {
         expect(ids).toContain(stale)
         expect(ids).not.toContain(fresh)
         expect(ids).not.toContain(done)
+      })
+    })
+
+    it("the poll fallback threshold takes a calendar marked a moment after the previous 30-minute tick", async () => {
+      // The cron runs every 30 minutes and marks each calendar polled a moment after its tick,
+      // so at the next tick the mark is a fraction of a second short of 30 minutes. The handler
+      // asks for 25 minutes (handlers.ts, POLL_FALLBACK_STALE_MINUTES): a 30-minute threshold
+      // skipped it and polled it only hourly.
+      await withSystemDb("calendar-poll-boundary", async (tx) => {
+        const { calendarId } = await seedCalendar(tx as any)
+        const setPolled = (ago: string) =>
+          tx.execute(drizzleSql`
+            UPDATE app_calendar.calendars SET selected = true,
+              last_polled_at = now() - ${ago}::interval
+            WHERE id = ${calendarId}::uuid`)
+        const found = async (minutes: number) =>
+          (await findCalendarsForPollFallback(tx as any, orgId, minutes)).map((c) => c.id)
+        await setPolled("29 minutes 59.85 seconds")
+        expect(await found(30)).not.toContain(calendarId)
+        expect(await found(25)).toContain(calendarId)
+        await setPolled("1 minute")
+        expect(await found(25)).not.toContain(calendarId)
+      })
+    })
+
+    it("the stale push sweep threshold takes a row last tried a moment after the previous tick", async () => {
+      await withSystemDb("calendar-push-boundary", async (tx) => {
+        const { calendarId, accountId } = await seedCalendar(tx as any)
+        const { eventId } = await createLocalEvent(tx as any, orgId, calendarId, accountId, {
+          title: "boundary",
+          start: { dateTime: "2026-07-06T09:00:00Z" },
+          end: { dateTime: "2026-07-06T09:30:00Z" },
+        })
+        await tx.execute(drizzleSql`
+          UPDATE app_calendar.events SET last_push_attempt_at = now() - interval '29 minutes 59.85 seconds'
+          WHERE id = ${eventId}::uuid`)
+        const ids = async (minutes: number) =>
+          (await findStalePendingPushes(tx as any, orgId, minutes)).map((r) => r.id)
+        expect(await ids(30)).not.toContain(eventId)
+        expect(await ids(25)).toContain(eventId)
       })
     })
 

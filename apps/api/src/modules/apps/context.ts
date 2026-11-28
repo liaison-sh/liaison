@@ -158,8 +158,10 @@ export function createAppContext(
         "~/modules/apps/sandbox/bridge/platform"
       )
       const merged = { ...withoutHostJobFields(payload), orgId }
+      // Added once the caller's transaction has committed, never on a rollback: the worker
+      // reads on another connection and would miss rows written before COMMIT.
       if (!opts) {
-        await enqueueAppJob(appName, jobName, merged)
+        await enqueueAppJob(appName, jobName, merged, { afterCommit: true })
         return
       }
       const delay =
@@ -171,6 +173,7 @@ export function createAppContext(
           ? { jobId: `${orgId}:${opts.jobId}` }
           : {}),
         ...(delay ? { delay } : {}),
+        afterCommit: true,
       })
     },
     resolveContact: async (params: any) => {

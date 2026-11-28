@@ -80,6 +80,14 @@ async function callOnTurn(
   }
 }
 
+/** Whether the one parked card says approving shares the turn's data (rule 8e's line). */
+async function cardSaysItShares(): Promise<boolean> {
+  const rows = (await sql`SELECT metadata FROM kernel.approval_requests
+    WHERE org_id = ${ORG}`) as Array<{ metadata: { taintDisclosedToReaders?: boolean } | null }>
+  expect(rows).toHaveLength(1)
+  return rows[0]?.metadata?.taintDisclosedToReaders === true
+}
+
 async function approvalCount(): Promise<number> {
   const rows = (await sql`SELECT count(*)::int AS n FROM kernel.approval_requests
     WHERE org_id = ${ORG}`) as Array<{ n: number }>
@@ -174,6 +182,7 @@ describe("scope taint: a first-party app's write back into itself (rule 6l)", ()
     })
     expect(r.ran).toBe(false)
     expect(r.blocked || r.refused).toBe(true)
+    if (r.blocked) expect(await cardSaysItShares()).toBe(true)
   })
 
   it("mail read alone, then a create: still parks", async () => {
@@ -189,6 +198,9 @@ describe("scope taint: a first-party app's write back into itself (rule 6l)", ()
     })
     expect(r.ran).toBe(false)
     expect(r.blocked || r.refused).toBe(true)
+    // The guests are on the card; the calendar's own data shares nothing with its readers.
+    expect(r.blocked).toBe(true)
+    expect(await cardSaysItShares()).toBe(false)
   })
 
   it("an unknown taint: judged, parks", async () => {

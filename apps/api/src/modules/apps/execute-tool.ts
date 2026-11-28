@@ -4839,13 +4839,17 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           // A custom app's write that stays in the app (rule 8e): the card says approving
           // shares the data only when some holder of the app's scopes lacks what the turn read.
           // A write back into the data's own app, read by the same people, shares nothing.
+          // Nor does a first-party app's write back into itself on a turn that read only that
+          // app (rule 6l), parked because it is outward (an invitation): the guests it reaches
+          // are on the card, the calendar's readers gain nothing.
           taintDisclosedToReaders =
-            taintTool.taintCardAppReaders === undefined ||
-            (await readersTaintGap({
-              orgId: opts.orgId,
-              readerScopes: taintTool.taintCardAppReaders,
-              taintScopes: knownTaint,
-            })) !== null
+            !returnsToOwnApp(appName, taintTool, knownTaint, undefined) &&
+            (taintTool.taintCardAppReaders === undefined ||
+              (await readersTaintGap({
+                orgId: opts.orgId,
+                readerScopes: taintTool.taintCardAppReaders,
+                taintScopes: knownTaint,
+              })) !== null)
         } else {
           audience = roomGap.audience
           gap = roomGap

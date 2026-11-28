@@ -3245,6 +3245,7 @@
       "neverShown": "Il n'est plus jamais affiché, ni ici ni à l'agent."
     },
     "unsupported": "Ce réglage nécessite une version plus récente de Liaison. Mettez Liaison à jour pour le modifier.",
+    "fallbackOpen": "Ouvrir dans le navigateur",
     "justYou": "Vous seul",
     "justYouHint": "Ne concerne que vous",
     "organization": "Organisation",

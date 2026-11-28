@@ -16,6 +16,9 @@
 //   - `list` / `tree`: rows bound to the app's tools by name.
 //   - `custom`: an export of the app's UI bundle, with the reason a declarative
 //     block cannot do the job.
+//
+// Every block may carry a `fallback` ({ text, href? }): what an older client,
+// one that does not know the block kind or field type, shows in its place.
 import { z } from "zod"
 
 /**
@@ -109,6 +112,23 @@ const SECTION_ID_REGEX = /^[a-z][a-z0-9-]*$/
 /** A tool of the declaring app, by its manifest name (`categories.list`, `settings_get`). */
 const TOOL_REF_REGEX = /^[a-zA-Z][a-zA-Z0-9_.-]*$/
 
+/**
+ * What a client that cannot draw a block shows instead: a line of text and,
+ * optionally, a link on the server. `href` is a path on the server (`/...`) or
+ * an anchor on the app's settings page (`#...`), never a scheme or a host.
+ */
+const fallbackSchema = z
+  .object({
+    text: z.string().min(1).max(280),
+    href: z
+      .string()
+      .max(500)
+      .regex(/^[/#]/, "must start with / or #")
+      .refine((h) => !h.startsWith("//"), "must not name a host")
+      .optional(),
+  })
+  .strict()
+
 const toolRef = z.string().max(128).regex(TOOL_REF_REGEX, "must be a tool name of this app")
 const labelKey = z.string().min(1).max(200)
 
@@ -165,12 +185,18 @@ const fieldShape = {
 const listCreateFieldSchema = z.object(fieldShape).strict()
 
 const fieldBlockSchema = z
-  .object({ block: z.literal("field"), ...fieldShape, source: sourceSchema.optional() })
+  .object({
+    block: z.literal("field"),
+    fallback: fallbackSchema.optional(),
+    ...fieldShape,
+    source: sourceSchema.optional(),
+  })
   .strict()
 
 const connectionsBlockSchema = z
   .object({
     block: z.literal("connections"),
+    fallback: fallbackSchema.optional(),
     /** The manifest `connections` this block shows; absent = all of them. */
     names: z.array(z.string().min(1)).min(1).optional(),
     /**
@@ -196,6 +222,7 @@ const connectionsBlockSchema = z
 const listBlockSchema = z
   .object({
     block: z.literal("list"),
+    fallback: fallbackSchema.optional(),
     /** A heading over the list, saying what its rows are and what Add adds. */
     title: z.string().min(1).optional(),
     titleKey: labelKey.optional(),
@@ -253,6 +280,7 @@ const listBlockSchema = z
 const treeBlockSchema = z
   .object({
     block: z.literal("tree"),
+    fallback: fallbackSchema.optional(),
     ops: z
       .object({
         list: toolRef,
@@ -269,6 +297,7 @@ const treeBlockSchema = z
 const customBlockSchema = z
   .object({
     block: z.literal("custom"),
+    fallback: fallbackSchema.optional(),
     /** Export name in the app's UI bundle. */
     component: z.string().min(1),
     /** Why no declarative block fits; listed in the settings inventory. */
@@ -285,6 +314,7 @@ const customBlockSchema = z
 const appSecretsBlockSchema = z
   .object({
     block: z.literal("appSecrets"),
+    fallback: fallbackSchema.optional(),
     /** The manifest connection whose `appSecretFields` the block shows. */
     connection: z.string().min(1),
   })
@@ -337,6 +367,7 @@ export type SettingsListBlock = z.infer<typeof listBlockSchema>
 export type SettingsTreeBlock = z.infer<typeof treeBlockSchema>
 export type SettingsCustomBlock = z.infer<typeof customBlockSchema>
 export type SettingsAppSecretsBlock = z.infer<typeof appSecretsBlockSchema>
+export type SettingsFallback = z.infer<typeof fallbackSchema>
 
 /** The default scope of an org section that declares none. */
 export const DEFAULT_SETTINGS_ADMIN_SCOPE = "kernel:apps:admin"

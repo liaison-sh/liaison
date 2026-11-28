@@ -213,3 +213,4 @@ Billing is not in the iPhone app -> apps/web/src/framework/bootstrap.ts:767
 iPhone app: payment notice without the Open Billing link -> apps/web/src/modules/threads/PaymentRequiredNotice.tsx:42
 iPhone app has no App store, View in store or Connectors Add -> apps/web/src/framework/bootstrap.ts:866 ; apps/web/src/modules/settings/connectors/ConnectorsPage.tsx:117 ; apps/web/src/modules/settings/app-management/AppManagementControls.tsx:200
 notifications sender: org sender, else email.from; Reply-To the app's, else email.replyTo -> apps/api/src/modules/org/notifications-mail-tool.ts:121
+Older desktop or phone app: an unknown setting shows the app's fallback note with Open in browser, else the update placeholder -> apps/web/src/modules/settings/app-page/SectionView.tsx:143-155 ; apps/web/src/modules/settings/app-page/SettingsFallbackPart.tsx:16-45

@@ -225,7 +225,7 @@ Some apps take a secret you copy from the provider's dashboard, such as the sign
 
 An app's page with changes you have not saved asks before you leave it, and before the desktop app reloads or other tabs close.
 
-In a desktop or phone app older than the server, a setting the app cannot show yet says **This setting needs a newer version of Liaison. Update Liaison to change it.** Update the app, or change it from the browser.
+In a desktop or phone app older than the server, a setting the app cannot show yet shows the app's own note about it with **Open in browser**, which opens that setting on the server in your browser. When the app gives no note, it says **This setting needs a newer version of Liaison. Update Liaison to change it.** Update the app, or change it from the browser.
 
 ### Switch an app's features
 

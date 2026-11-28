@@ -165,3 +165,7 @@ The Sale type and saleProblems -> packages/app-sdk/src/contracts/revenue-stream.
 A contract subscription is delivered from every implementing app of the org with the source app in event.app -> apps/api/src/modules/apps/runtime.ts (contract subscription) ; apps/api/src/infra/events/event-bus.ts (contractChannelsOf)
 A contract subscription needs contract_calls for the contract -> apps/api/src/modules/apps/provider-contracts/validate.ts:127-155
 A multi-provider call names its provider, which must have a row in the caller's binding table -> apps/api/src/modules/apps/provider-contracts/resolve.ts (resolveNamedContractProvider) ; apps/api/src/modules/apps/sandbox/bridge/contracts.ts (multi)
+Every settings block may carry fallback {text 1..280, href starting / or # and not //} -> packages/app-sdk/src/app-settings.ts:115-130 ; packages/app-sdk/src/app-settings.ts:190-317
+SETTINGS_SCHEMA_VERSION, raised when a block kind or field type is added -> packages/app-sdk/src/app-settings.ts:24-28
+A block without a fallback shows the update placeholder -> packages/shared/src/i18n/locales/en/kernel.json:3250
+An older client draws a fallback's text with an Open in browser link to href, or to the app's settings page when href is absent -> apps/web/src/modules/settings/app-page/SettingsFallbackPart.tsx:16-21 ; apps/web/src/modules/settings/app-page/SectionView.tsx:143-155 ; packages/shared/src/i18n/locales/en/kernel.json:3251

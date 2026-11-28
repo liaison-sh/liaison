@@ -3248,6 +3248,7 @@
       "neverShown": "It is never shown again, here or to the agent."
     },
     "unsupported": "This setting needs a newer version of Liaison. Update Liaison to change it.",
+    "fallbackOpen": "Open in browser",
     "justYou": "Just you",
     "justYouHint": "Only affects you",
     "organization": "Organization",

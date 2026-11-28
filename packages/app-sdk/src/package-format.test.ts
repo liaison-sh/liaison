@@ -70,6 +70,17 @@ describe("package-format", () => {
     expect(ok.success).toBe(true)
   })
 
+  it("accepts requires.settingsSchema as a positive integer and refuses anything else", () => {
+    const base = { name: "my-app", version: "1.0.0", packageFormat: 1, license: "MIT", scopes: [] }
+    expect(
+      packageManifestSchema.safeParse({ ...base, requires: { settingsSchema: 2 } }).success,
+    ).toBe(true)
+    for (const requires of [{ settingsSchema: 0 }, { settingsSchema: 1.5 }, { other: 1 }]) {
+      const r = packageManifestSchema.safeParse({ ...base, requires })
+      expect({ requires, ok: r.success }).toEqual({ requires, ok: false })
+    }
+  })
+
   it("rejects an empty host range", () => {
     const bad = packageManifestSchema.safeParse({
       name: "my-app",

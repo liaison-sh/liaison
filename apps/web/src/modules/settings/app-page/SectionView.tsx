@@ -28,8 +28,9 @@ import { ListBlock } from "./ListBlock"
 import { useAppPage } from "./page-context"
 import { labelOf, unitSetTool } from "./page-model"
 import { settingsSectionElementId } from "./reveal-section"
+import { SettingsFallbackPart } from "./SettingsFallbackPart"
 import type { SaveOutcome, UnitSaveOutcome } from "./settings-api"
-import { isSupportedSettingsBlock } from "./supported"
+import { isSupportedSettingsBlock, settingsBlockFallback } from "./supported"
 import { TreeBlock } from "./TreeBlock"
 import type { SettingsBlock, SettingsSection } from "./types"
 import { UnsupportedSettingsPart } from "./UnsupportedSettingsPart"
@@ -140,10 +141,17 @@ export const SectionView: Component<SectionViewProps> = (props) => {
 
   const block = (b: SettingsBlock, index: number) => {
     const blockId = `${props.section.id}-${index}`
-    // A block or field type from a newer server than this build (supported.ts).
+    // A block or field type from a newer server than this build (supported.ts):
+    // its fallback when it gives one, else the update placeholder.
     if (!isSupportedSettingsBlock(b)) {
-      const label = (b as { label?: unknown }).label
-      return <UnsupportedSettingsPart label={typeof label === "string" ? label : undefined} />
+      const raw = (b as { label?: unknown }).label
+      const label = typeof raw === "string" ? raw : undefined
+      const fallback = settingsBlockFallback(b)
+      return fallback ? (
+        <SettingsFallbackPart app={props.app} fallback={fallback} label={label} />
+      ) : (
+        <UnsupportedSettingsPart label={label} />
+      )
     }
     return (
       <Switch fallback={<UnsupportedSettingsPart />}>

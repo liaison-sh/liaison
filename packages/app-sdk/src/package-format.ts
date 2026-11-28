@@ -104,6 +104,12 @@ export const packageManifestSchema = z
     // The host API range this app needs (a semver range such as "^1"); "^1"
     // when absent. The server refuses an app whose range it cannot satisfy.
     host: z.string().min(1, 'host must be a semver range, e.g. "^1"').optional(),
+    // What else of the server the app needs: the settings page format
+    // (SETTINGS_SCHEMA_VERSION). The server refuses an app needing a newer one.
+    requires: z
+      .object({ settingsSchema: z.number().int().min(1).optional() })
+      .strict()
+      .optional(),
     // A security release: once this version is active, a rollback never goes
     // below it. Honoured for first-party (catalog) packages only.
     noRollback: z.boolean().optional(),

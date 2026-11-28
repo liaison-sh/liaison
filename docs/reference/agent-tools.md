@@ -437,8 +437,8 @@ Month and week calendar that syncs both ways with Google Calendar.
 | `activity_read` | The meetings a company's or a contact's people attend, in the 90 days before the cursor, newest first, for their timeline. |  | `calendar:events:read` |
 | `create_event` | Create a new event or meeting on a writable calendar. |  | `calendar:events:write` |
 | `delete_event` | Delete an event or meeting; syncs to Google in the background. |  | `calendar:events:write` |
-| `get_event` | Read the details of one meeting by the eventId list_events or search_events gave: times, description, location, guests and their answers, Meet link, recurrence. |  | `calendar:events:read` |
 | `find_free_slots` | Find free times of a given length when the user and their guests are all free, inside working hours. |  | `calendar:events:read` |
+| `get_event` | Read the details of one meeting by the eventId list_events or search_events gave: times, description, location, guests and their answers, Meet link, recurrence. |  | `calendar:events:read` |
 | `list_accounts` | List connected Google Calendar accounts visible to the caller (their own personal connections plus every org-wide connection) — the generic kernel connections list deliberately excludes org-owned non-kernel connections, so Settings uses this app-specific tool instead (mirrors mail's listAccounts). |  | `calendar:events:read` |
 | `list_calendars` | List the connected Google calendars visible to the caller (personal calendars they own, plus org-wide calendars), each with `selected`: only selected calendars are synced and have events. |  | `calendar:events:read` |
 | `list_events` | List events in a time window, optionally scoped to one calendar. |  | `calendar:events:read` |
@@ -557,14 +557,17 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `credit_note_from_reconcile` | Correct one billed line of an invoice made from planned vs done, after it was issued: a credit note citing the invoice for what the line billed too much (billed minus corrected, at the line's rate), with a corrected activity report. |  | `invoicing:documents:write` |
 | `credit_note_issue` | Issue a credit note from a draft (drafts_create with type='credit_note'). |  | `invoicing:documents:write` |
 | `customer_history` | A customer's past sales with each line's unit price, the latest sale of a product (last_sale), the recurring schedules that bill them and their Shopify orders. |  | `invoicing:documents:read` |
-| `deferred_list` | List parked/deferred auto-flow events for the org: Shopify orders whose invoice did not issue automatically. |  | `invoicing:documents:read` |
+| `deferred_dismiss` | Close a park (a deferred_list item) that must never issue, e.g. | yes | `invoicing:documents:write` |
+| `deferred_list` | List the open parks, newest first: Shopify orders whose invoice did not issue automatically. |  | `invoicing:documents:read` |
 | `deferred_tax_override` | Resolve a TAX REVIEW park (deferred_list items whose reason is shopify_tax_mismatch, tax_on_exempt_treatment, tax_rate_placeholder or buyer_vat_missing; they carry resolution_options) by issuing the order with an explicit tax decision. | yes | `invoicing:documents:write` |
 | `document_attachment_add` | File an activity report or a timesheet on an invoice draft, or on an issued invoice before it is sent, so it goes out with it. |  | `invoicing:documents:write` |
 | `document_send_state` | Whether a payment reminder about an invoice issued by Liaison may still go out, read from the document at send time: stops on paid, credited or voided. |  | `invoicing:documents:read` |
 | `documents_convert_local` | Convert a quote or proforma with no Shopify draft order into an invoice, in one commit. |  | `invoicing:documents:write` |
 | `documents_convert_to_invoice` | Convert a quote or proforma into an invoice. | yes | `invoicing:documents:write` |
+| `documents_correct_issued` | Correct an ISSUED invoice or credit note IN PLACE after a TOOL error: same number and date, no new document, no credit note, no mail. | yes | `invoicing:documents:write` |
+| `documents_correct_issued_preview` | What documents_correct_issued would change, without changing anything: lines, VAT and totals before and after, or why it would be refused. |  | `invoicing:documents:read` |
 | `documents_download_pdf` | Resolve a document's rendered-PDF file id + URL for download. |  | `invoicing:documents:read` |
-| `documents_for_orders` | Resolve the invoicing documents linked to a set of Shopify order ids. |  | `invoicing:documents:read` |
+| `documents_for_orders` | Resolve the invoicing documents linked to Shopify orders. |  | `invoicing:documents:read` |
 | `documents_get` | Get one invoicing document by id, including lines. |  | `invoicing:documents:read` |
 | `documents_issue_preview` | The issuer profiles plus the VAT status of a buyer about to be issued a document: VAT number (as given or found on an earlier document), its VIES check, or why a business buyer without one is refused. |  | `invoicing:settings:read` |
 | `documents_link_shopify_orders` | Link issued invoices and credit notes that name their Shopify order only by number to that order, so the order's reads find them. | yes | `invoicing:documents:write` |
@@ -643,8 +646,8 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `revenue_stream_bind` | Bind a sales app (one implementing revenue-stream@1) so each of its sales gets its invoice, under an issuer profile; or change a bound stream (streamId: mode auto/review/off, mail, label, issuer). | yes | `invoicing:settings:write` |
 | `revenue_stream_sale_issue` | Issue the invoice of one sale of a bound revenue stream (the sale is read again from its app). | yes | `invoicing:documents:write` |
 | `revenue_streams_list` | List the revenue streams: the sales apps whose sales this organization invoices automatically (provider app, issuer profile, mode auto/review/off, issue_from, mail), and the installed apps that could be bound. |  | `invoicing:settings:read` |
-| `sales_catch_up` | Invoice the sales a bound revenue stream's app took between paidFrom and paidTo that have no invoice yet: oldest first, one number each, issued today, then a credit note for each refund. | yes | `invoicing:documents:write` |
-| `sales_catch_up_preview` | Read only: every sale a bound revenue stream's app took between paidFrom and paidTo, oldest first, as the catch-up would invoice it: buyer, country, tax treatment, lines, tax as computed against the tax the source charged, totals, refunds, blockers (address, VAT number to validate, a rate that is not the treatment's, tax gap), the ECB rate a foreign currency would use and the document it already has. |  | `invoicing:documents:read`, `invoicing:settings:read` |
+| `sales_catch_up` | Invoice a bound revenue stream's sales paid between paidFrom and paidTo with no invoice yet: oldest first, one number each, issued today, then a credit note per refund. | yes | `invoicing:documents:write` |
+| `sales_catch_up_preview` | Read only: every sale a bound revenue stream's app took between paidFrom and paidTo, oldest first, as the catch-up would invoice it: buyer, country, tax treatment, lines, computed vs charged tax, totals, refunds, blockers (every reason the issue path would park or refuse it) with run_effect (issues, held, stops_run, excluded), the ECB rate of the sale date, and any document it has. |  | `invoicing:documents:read`, `invoicing:settings:read` |
 | `sales_preview_pdfs` | Render the sales of a bound revenue stream that have no invoice yet as the documents they would become: each runs through the issue path with nothing written, and is rendered unnumbered with a PREVIEW, not an invoice watermark (same lines, rates, VAT mentions and totals as the issue). |  | `invoicing:documents:write`, `invoicing:settings:read` |
 | `settings_hs_code_list` | List the org's HS-code library entries. |  | `invoicing:settings:read` |
 | `settings_issuer_profile_create` | Create an issuer profile. | yes | `invoicing:settings:write` |

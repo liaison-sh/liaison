@@ -761,7 +761,7 @@
       "schema": 131
     },
     "invoicing__deferred_list": {
-      "desc": 1031,
+      "desc": 1015,
       "schema": 15
     },
     "invoicing__deferred_tax_override": {
@@ -777,7 +777,7 @@
       "schema": 19
     },
     "invoicing__documents_for_orders": {
-      "desc": 586,
+      "desc": 503,
       "schema": 27
     },
     "invoicing__documents_get": {
@@ -3156,6 +3156,12 @@
     "C192|link invoice order": "5t",
     "C192|rattacher commande shopify": "15tl",
     "C192|relier facture commande": "15tl",
+    "C193|correct issued invoice": "15tl",
+    "C193|corriger facture émise": "15tl",
+    "C193|rectifier erreur tva": "15t",
+    "C194|dismiss parked order": "15tl",
+    "C194|écarter commande test": "15t",
+    "C194|ignorer commande en attente": "5t",
     "C20|affaire": "",
     "C20|create deal": "5t",
     "C20|new deal": "",

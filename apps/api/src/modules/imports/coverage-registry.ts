@@ -148,6 +148,11 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     reason:
       "a standing e-invoice send authorization: it names a kernel grant a person approves, so it is turned on again, never imported",
   },
+  "app_invoicing.document_corrections": {
+    exempt: "derived",
+    reason:
+      "in-place corrections of issued documents: written by documents_correct_issued with the before and after, never imported (immutable 10 years)",
+  },
   "app_invoicing.einvoice_transmissions": {
     exempt: "sync",
     reason: "e-invoicing and FX sync state",

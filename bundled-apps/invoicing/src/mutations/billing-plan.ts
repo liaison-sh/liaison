@@ -23,7 +23,7 @@ import { type DeductionLine, renderDeductionLines, shortDate } from "../deductio
 import { formatMoneyMinor } from "../money"
 import { recipientOf } from "../recipient"
 import { planTax } from "../tax-plan"
-import { creditedTotalMinor } from "./credit-coverage"
+import { creditedTotalMinor, ISSUED_INVOICE_STATUSES } from "./credit-coverage"
 import { resolveIssuerProfileOrError } from "./db-helpers"
 import { draftsCreate } from "./drafts"
 import { customerLine, dueLine, ISSUE_APPROVAL_EXPIRY_HOURS, monthEnd } from "./from-reconcile"
@@ -38,7 +38,7 @@ type Row = Record<string, unknown>
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 /** Bases that bill from planned vs done: a billing plan on them is refused. */
 const RATE_BASES = new Set(["daily", "hourly", "retainer"])
-const ISSUED = new Set(["issued", "paid", "overdue", "refunded"])
+const ISSUED = ISSUED_INVOICE_STATUSES
 /** A quote a plan can follow: issued to the client, not refused or lapsed. */
 const QUOTE_OK = new Set(["sent", "accepted", "issued", "invoiced", "closed"])
 

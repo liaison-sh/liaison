@@ -253,7 +253,7 @@ async function preflightRecordRefundParams(
   }
 
   // Partial — does not transition status; appends a lifecycle log entry.
-  if (status !== "paid" && status !== "issued") {
+  if (status !== "paid" && status !== "issued" && status !== "fulfilled") {
     return {
       ok: false,
       error: {

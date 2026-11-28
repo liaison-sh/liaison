@@ -1,0 +1,18 @@
+{
+  "entry": "tool:deferred_dismiss",
+  "params": {
+    "deferred_id": "7d000000-0000-4000-8000-00000000c4a1",
+    "reason": "staff test purchase"
+  },
+  "recordedFrom": "hand-written: a contract org with no such park",
+  "expectError": {
+    "reason": "no park has this id, so the dismissal refuses: pins that refusal; the dismissal is proven by handlers/deferred-dismiss.test.ts"
+  },
+  "calls": [
+    {
+      "method": "db_findOne",
+      "args": ["deferred_events", "7d000000-0000-4000-8000-00000000c4a1"],
+      "reply": "null"
+    }
+  ]
+}

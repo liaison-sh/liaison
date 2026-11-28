@@ -291,6 +291,14 @@
         "{\"where\":{\"id\":\"73f67c88-d13c-4a63-9dca-9861522d403e\"},\"limit\":1}"
       ],
       "reply": "[{\"id\":\"73f67c88-d13c-4a63-9dca-9861522d403e\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:41:05.572185+00\",\"updated_at\":\"2026-11-12 10:41:05.709366+00\",\"document_id\":\"e3a1b68c-aff4-4e71-8c63-839798cdc217\",\"received_id\":null,\"kind\":\"issued_pdf\",\"file_id\":\"a6f27d6e-f0d2-4ada-b3fb-28cc198f7422\",\"sha256\":\"6d03b2d2c34d77de7bcc084addf4852c4fafb9e3d8dd740e862eff2849a04ad4\",\"byte_size\":\"34188\",\"recorded_at\":\"2026-01-01 00:00:00+00\",\"recorded_by\":\"00000000-0000-4000-8000-00000000c0df\"}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"event_id\":\"12992208404646\",\"reason\":\"dismissed\"},\"limit\":1}"
+      ],
+      "reply": "[]"
     }
   ]
 }

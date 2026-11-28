@@ -305,7 +305,11 @@ export async function onShopifyOrderCancelled(
         reason: cancelReason,
       },
     })
-    const needsReview = doc.status === "issued" || doc.status === "paid" || doc.status === "overdue"
+    const needsReview =
+      doc.status === "issued" ||
+      doc.status === "fulfilled" ||
+      doc.status === "paid" ||
+      doc.status === "overdue"
     if (needsReview) {
       anyAttention = true
       // Emit the attention-raising event (manifest rule `detail:order_cancelled`

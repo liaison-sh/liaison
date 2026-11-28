@@ -173,6 +173,12 @@ const PUBLIC_ROUTES: Record<string, PublicRoute> = {
     credential: "none",
     reason: "public shell version minimums, no data",
   },
+  // Which web build ids the server ships, for the apps' signed served shell
+  // (modules/client-policy/shell-info-routes.ts): ids, a release name, flags.
+  "GET /api/shell/info": {
+    credential: "none",
+    reason: "public web build ids and the served-shell switch, no data",
+  },
   // The page a connect card's popup ends on: no data, it reads only its own
   // query ("connected" or "failed" and a reason) and closes the window.
   "GET /api/connections/oauth-done": {

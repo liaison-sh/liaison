@@ -302,3 +302,33 @@ describe("merge queue", () => {
     }
   })
 })
+
+// Builder A of the signed web shells (scripts/shell-signing/): it builds with no
+// secret and no write permission, and the one job that may write to a release
+// builds and installs nothing.
+describe("shell-build.yml", () => {
+  const raw = readFileSync(join(WORKFLOW_DIR, "shell-build.yml"), "utf8")
+  const wf = load("shell-build.yml")
+
+  it("reads no secret", () => {
+    expect(raw).not.toMatch(/secrets\./)
+  })
+
+  it("the build job reads only, and the write job runs no bun", () => {
+    expect(wf.jobs.build?.permissions).toEqual({ contents: "read" })
+    expect(wf.jobs.resolve?.permissions).toEqual({ contents: "read" })
+    expect(wf.jobs.attach?.permissions).toEqual({ contents: "write" })
+    for (const step of wf.jobs.attach?.steps ?? []) {
+      expect(step.run ?? "").not.toMatch(/\bbun\b/)
+      if (step.uses) expect(step.uses).toMatch(/^actions\/download-artifact@/)
+    }
+  })
+
+  it("builds both modes from a source archive with the image's own scripts", () => {
+    const run = (wf.jobs.build?.steps ?? []).map((s) => s.run ?? "").join("\n")
+    expect(run).toContain("git -C checkout archive")
+    expect(run).toContain("bun install --frozen-lockfile --ignore-scripts")
+    expect(run).toContain("bun run build && env -u LIAISON_CLOUD_DOMAIN bun run build:native")
+    expect(run).toContain("scripts/shell-signing/build-manifest.ts")
+  })
+})

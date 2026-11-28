@@ -42,6 +42,8 @@ export function bookable(doc: Row, cutover: string | null): string | null {
   }
   if (!onOrAfterCutover(doc.issued_at, cutover)) return "issued before the cut-over date"
   if (!str(doc.legal_original_id) || !str(doc.legal_original_sha256)) return "no legal original"
+  // Corrected in place: the legal original no longer says what the document says; book it by hand.
+  if (str(doc.current_correction_id)) return "corrected in place after issue"
   return null
 }
 

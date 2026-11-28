@@ -796,6 +796,23 @@ function overseasMention(
 }
 
 /**
+ * The carriage of goods exported outside the EU, invoiced on the services invoice of a split
+ * order (its goods travel on the other invoice): a transport service directly linked to the
+ * export of goods, exempt under CGI art. 262 I 1° (the services of the list in art. 73 G of
+ * annex III; BOFiP BOI-TVA-CHAMP-30-30-20-10; Directive 2006/112/EC art. 146 1 e). Its VAT is
+ * the goods' (zero), and the art. 146 export of goods mention is never printed for it.
+ */
+const TRANSPORT_LINKED_TO_EXPORT: MentionEntry = {
+  en: "VAT-exempt transport linked to the export of goods (art. 262 I 1° of the French Tax Code)",
+  fr: "Exonération de TVA, transport lié à l'exportation (article 262 I 1° du CGI)",
+  de: "Steuerfreie Beförderung im Zusammenhang mit der Ausfuhr (Art. 262 I 1° CGI)",
+}
+
+/** The first issue date that words a services invoice per line (download, carriage). Documents
+ *  issued before keep the wording they were issued with, on every re-render. */
+export const CARRIAGE_LINKED_TO_EXPORT_FROM = "2026-11-28"
+
+/**
  * The shipped legal-mention texts per (key, language), dated by legal period: `cgi` applies before
  * the CIBS switch date, `cibs` from it. The accountant's exact CIBS wording is still open, so until
  * it arrives the `cibs` period repeats the CGI text; a new wording is one edit to that period.
@@ -878,6 +895,10 @@ export interface LegalMentionOptions {
   taxTerritory?: string | null
   /** The issuer's tax territory (FR, or a department for a seller established there). */
   issuerTerritory?: string | null
+  /** The kind of each line (`goods`, `software`, `service`, `shipping`; missing is goods). A
+   *  document without goods that carries a shipping line (the services invoice of a split order)
+   *  is worded per line: the carriage of an export gets its transport exemption. */
+  lineKinds?: ReadonlyArray<string | null | undefined> | null
 }
 
 /**
@@ -904,6 +925,25 @@ export function resolveLegalMention(
     // One sentence each, one period between them, whether or not the goods text ends with one.
     if (opts.category === "mixed") return `${goods.replace(/\.\s*$/, "")}. ${services}`
     return services
+  }
+  const issuedOn = ISO_DATE.exec(String(opts.issueDate ?? ""))?.[1] ?? ""
+  const kinds = (opts.lineKinds ?? []).map((k) => k ?? "goods")
+  if (
+    treatment === "eu_export_non_eu" &&
+    issuedOn >= CARRIAGE_LINKED_TO_EXPORT_FROM &&
+    kinds.includes("shipping") &&
+    !kinds.includes("goods")
+  ) {
+    // The services invoice of a split order: each line its own wording, the download its place of
+    // supply outside France, the carriage its exemption as a transport linked to the export.
+    const parts: string[] = []
+    if (kinds.some((k) => k === "software" || k === "service")) {
+      const wording =
+        opts.customerKind === "individual" ? CONSUMER_SERVICES_OUTSIDE_EU : SERVICES_OUTSIDE_EU
+      parts.push(wording[language] ?? wording.en)
+    }
+    parts.push(TRANSPORT_LINKED_TO_EXPORT[language] ?? TRANSPORT_LINKED_TO_EXPORT.en)
+    return parts.map((p, i) => (i < parts.length - 1 ? p.replace(/\.\s*$/, "") : p)).join(". ")
   }
   if (
     treatment === "eu_export_non_eu" &&

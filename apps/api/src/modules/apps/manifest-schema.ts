@@ -743,6 +743,22 @@ const toolSchema = {
     // is read only by the person writing it, and the params through which a call carries the turn.
     sinkReadersSelf: { type: "boolean" },
     contentParams: { type: "array", items: { type: "string", minLength: 1 } },
+    // The write goes back into the app itself (scope-taint.ts, rule 6l); `outwardWhen` names the
+    // parameter values with which a call sends something out of the app (an invitation email).
+    taintReturnsToOwnApp: {
+      type: "object",
+      properties: {
+        outwardWhen: {
+          type: "object",
+          additionalProperties: {
+            type: "array",
+            items: { type: ["string", "number", "boolean"] },
+            minItems: 1,
+          },
+        },
+      },
+      additionalProperties: false,
+    },
     // Names a feature the app declares under top-level `features`.
     feature: { type: "string", minLength: 1 },
     // Loaded with the app on a hard focus: always (`true`), or when the focus verified that

@@ -25,7 +25,10 @@ import { checkRateLimit } from "~/middleware/rate-limiter"
 export const PUBLIC_OAUTH_BODY_MAX_BYTES = 64 * 1024
 /** A JSON-RPC message can carry tool arguments, so the transport gets the webhook ceiling. */
 export const MCP_TRANSPORT_BODY_MAX_BYTES = 10 * 1024 * 1024
-/** GET /api/client-policy per address per minute; the shells read it once per connection. */
+/**
+ * GET /api/client-policy and GET /api/shell/info per address per minute; the
+ * shells read them once per connection.
+ */
 export const CLIENT_POLICY_RATE_LIMIT = 30
 
 interface PublicBudget {
@@ -72,10 +75,10 @@ const BUDGETS: PublicBudget[] = [
     windowSeconds: 60,
   },
   {
-    // The shells' version policy (modules/client-policy); the /api/* ceiling
+    // The shells' version policy and shell info (modules/client-policy); the /api/* ceiling
     // is sized for page loads.
     name: "client-policy",
-    applies: (m, p) => m === "GET" && p === "/api/client-policy",
+    applies: (m, p) => m === "GET" && (p === "/api/client-policy" || p === "/api/shell/info"),
     limit: CLIENT_POLICY_RATE_LIMIT,
     windowSeconds: 60,
   },

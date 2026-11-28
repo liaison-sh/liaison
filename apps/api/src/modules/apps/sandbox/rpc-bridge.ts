@@ -222,7 +222,7 @@ function secretConfigKeyResolver(
  * helpers) are absent, so a rerun can still answer.
  *
  * A new write method goes here in the same change:
- * `tests/security/tool-side-effect-invariant.test.ts` enumerates the bridge and
+ * `tests/security/bridge-read-only-run.test.ts` enumerates the bridge and
  * fails on any method that is neither refused, self-guarding nor a reviewed read.
  *
  * NOT here, and deliberately: `db_insert`, `db_update`, `db_updateMany`,
@@ -383,6 +383,14 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "calendar_notePushFailure",
   "calendar_finalizeRemoteDelete",
   "calendar_restoreRefusedDelete",
+  // Clears the calendar's sync_pending mark (UPDATE ... RETURNING the prior value).
+  "calendar_claimSyncPending",
+  // Deletes long-deselected calendars' events and clears their deselected_at.
+  "calendar_purgeLongDeselectedEvents",
+  // Inserts a sync_log row; flags the account reauth-required on AuthRevoked.
+  "calendar_recordSyncFailure",
+  // Writes the caller's RSVP on the event and enqueues the push to Google.
+  "calendar_respondToEvent",
   // Mail
   "mail_writePage",
   "mail_commercialSent",

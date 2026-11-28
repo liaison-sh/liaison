@@ -4083,7 +4083,9 @@
       "einvoicing_settings_set": "change e-invoicing settings",
       "einvoicing_backfill_identities": "backfill counterparty identities",
       "einvoicing_backfill_legacy_originals": "backfill legacy originals",
-      "documents_link_shopify_orders": "link documents to their Shopify orders"
+      "documents_link_shopify_orders": "link documents to their Shopify orders",
+      "documents_correct_issued": "correct an issued document in place",
+      "deferred_dismiss": "dismiss a parked order"
     },
     "mcp-manager": {
       "add_connection": "connect MCP server"

@@ -49,6 +49,7 @@ import {
   raiseIssueApproval,
   renderDeductionLines,
 } from "./billing-plan"
+import { ISSUED_INVOICE_STATUSES } from "./credit-coverage"
 import { resolveIssuerProfileOrError } from "./db-helpers"
 import { draftsCreate, draftsDiscard } from "./drafts"
 import { notOverLine } from "./from-reconcile"
@@ -67,7 +68,7 @@ function monthEnd(day: string): string {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DAY = /^\d{4}-\d{2}-\d{2}$/
-const ISSUED = new Set(["issued", "paid", "overdue", "refunded"])
+const ISSUED = ISSUED_INVOICE_STATUSES
 
 export interface RetainerDraftInput {
   reconciliationId?: string

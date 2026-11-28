@@ -5,9 +5,10 @@
 // The desktop and phone shells are installed software: an old copy keeps
 // talking to a server that has moved on. This route publishes the oldest shell
 // version per platform the server still supports, so a shell below it can show
-// its own update notice. It carries the three minimums and the settings page
-// format the server's apps are drawn from (SETTINGS_SCHEMA_VERSION), and
-// nothing else.
+// its own update notice. It carries the three minimums, the settings page
+// format the server's apps are drawn from (SETTINGS_SCHEMA_VERSION) and
+// `servedShell`, the operator's switch that asks the apps to keep their bundled
+// web shell (LIAISON_SERVED_SHELL, shell-info-routes.ts), and nothing else.
 //
 // THE HEADER. A shell that got an answer here sends `X-Liaison-Client:
 // <desktop|ios|android>/<semver>` on its later calls. The header is in the CORS
@@ -31,6 +32,7 @@ export interface ClientPolicy {
   android: string
   /** The settings page format this server's manifests use. */
   settingsSchema: number
+  servedShell: boolean
 }
 
 export const clientPolicyRoutes = new Hono<AppEnv>()
@@ -41,6 +43,7 @@ clientPolicyRoutes.get("/", (c) => {
     ios: env.LIAISON_MIN_CLIENT_IOS,
     android: env.LIAISON_MIN_CLIENT_ANDROID,
     settingsSchema: SETTINGS_SCHEMA_VERSION,
+    servedShell: env.LIAISON_SERVED_SHELL,
   }
   c.header("Cache-Control", "public, max-age=300")
   return success(c, policy)

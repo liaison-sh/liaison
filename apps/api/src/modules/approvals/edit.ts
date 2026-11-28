@@ -16,6 +16,7 @@ import { rootLogger } from "~/lib/logger"
 import { isUnsafePathSegment } from "~/lib/safe-path"
 import { decidePostDisclosure } from "~/modules/agent/scopes/post-disclosure"
 import {
+  returnsToOwnApp,
   taintDisclosureLine,
   taintPostDisclosureLine,
   taintSurfaceLabelForTool,
@@ -428,6 +429,12 @@ export async function updatePayload(input: UpdatePayloadArgs): Promise<UpdatePay
         readerScopes: tool.taintCardAppReaders,
         taintScopes: unionTaint,
       })) !== null
+  }
+
+  // A first-party app's write back into itself (scope-taint.ts, rule 6l) carries no line while the
+  // taint is only that app's reads; once the union holds anything else, it says what it shares.
+  if (!disclosedToReaders && turnTaint.length > 0 && tool?.taintReturnsToOwnApp !== undefined) {
+    disclosedToReaders = !returnsToOwnApp(appName, tool, unionTaint, undefined)
   }
 
   // 5. Privileged lock + schema validation + diff + UPDATE.

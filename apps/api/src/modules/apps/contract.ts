@@ -1203,13 +1203,15 @@ export function appIconErrors(manifest: { iconSvg?: unknown; iconName?: unknown 
  * - `sinkReadersSelf` says the acting user alone reads what the tool writes, and
  *   `contentParams` names the only parameters through which a call carries the turn
  *   (scope-taint.ts, rules 6d and 6f): claims about what the handler does that narrow a
- *   scope-taint refusal.
+ *   scope-taint refusal. `taintReturnsToOwnApp` says a write lands back in the app's own data
+ *   (rule 6l), which takes it off the scope-taint judgement on a turn that read only this app.
  * - `humanTurnOnly` and `dmOnly` say where a call may run (execute-tool.ts): product rules
  *   of Liaison's own apps, not a contract a third-party app is offered.
  */
 export const FIRST_PARTY_ONLY_TOOL_KEYS = [
   "sinkReadersSelf",
   "contentParams",
+  "taintReturnsToOwnApp",
   "humanTurnOnly",
   "dmOnly",
 ] as const
@@ -1217,6 +1219,7 @@ export const FIRST_PARTY_ONLY_TOOL_KEYS = [
 const FIRST_PARTY_ONLY_REASON: Record<(typeof FIRST_PARTY_ONLY_TOOL_KEYS)[number], string> = {
   sinkReadersSelf: "it narrows a scope-taint refusal",
   contentParams: "it narrows a scope-taint refusal",
+  taintReturnsToOwnApp: "it narrows a scope-taint refusal",
   humanTurnOnly: "it is a rule of Liaison's own apps",
   dmOnly: "it is a rule of Liaison's own apps",
 }
@@ -1439,6 +1442,19 @@ export function validateAppManifest(manifest: any): ValidationResult {
           if (typeof p !== "string" || !Object.hasOwn(props, p)) {
             errors.push(
               `tools.${toolName}.contentParams: "${String(p)}" is not in params.properties, so no call would carry it`,
+            )
+          }
+        }
+      }
+      // An `outwardWhen` parameter the tool does not take is never set, so every call would pass
+      // as staying inside the app (scope-taint.ts, rule 6l): refused here.
+      const ownApp = tool.taintReturnsToOwnApp as { outwardWhen?: unknown } | undefined
+      if (ownApp?.outwardWhen !== null && typeof ownApp?.outwardWhen === "object") {
+        const props = (tool.params?.properties ?? {}) as Record<string, unknown>
+        for (const p of Object.keys(ownApp.outwardWhen as object)) {
+          if (!Object.hasOwn(props, p)) {
+            errors.push(
+              `tools.${toolName}.taintReturnsToOwnApp.outwardWhen: "${p}" is not in params.properties, so no call would carry it`,
             )
           }
         }

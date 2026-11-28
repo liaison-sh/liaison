@@ -1694,7 +1694,7 @@ describe("order split + tax-inclusive pricing", () => {
     expect(byDesc["Tessera 2"]!.line_kind).toBe("goods")
   })
 
-  test("mixed order → TWO invoices: goods (merchandise + carriage) and services (software only); totals reproduce the Shopify payment", async () => {
+  test("mixed order → TWO invoices: goods (physical merchandise ONLY) and services (software + shipping); totals reproduce the Shopify payment", async () => {
     const { ctx, db } = makeCtx({
       issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
     })
@@ -1710,17 +1710,17 @@ describe("order split + tax-inclusive pricing", () => {
     expect(goods).toBeDefined()
     expect(software).toBeDefined()
 
-    // Goods invoice: the 4 physical merchandise lines and the carriage that moves them, no
-    // software. Net 1048.33, VAT 209.66, total 1257.99.
-    expect(String(goods.subtotal_minor)).toBe("104833")
-    expect(String(goods.tax_total_minor)).toBe("20966")
-    expect(String(goods.grand_total_minor)).toBe("125799")
+    // Goods invoice: ONLY the 4 physical merchandise lines, no carriage, no software. Net
+    // 1023.34, VAT 204.66, total 1228.00. This is the customs value of the shipment.
+    expect(String(goods.subtotal_minor)).toBe("102334")
+    expect(String(goods.tax_total_minor)).toBe("20466")
+    expect(String(goods.grand_total_minor)).toBe("122800")
 
-    // Services invoice: the software license alone. Net 65.83, VAT 13.17, total 79.00, on its
-    // own document customs never sees.
-    expect(String(software.subtotal_minor)).toBe("6583")
-    expect(String(software.tax_total_minor)).toBe("1317")
-    expect(String(software.grand_total_minor)).toBe("7900")
+    // Digital goods and services invoice: the software license + the shipping charge. Net
+    // 90.82, VAT 18.17, total 108.99, on its own document customs never sees.
+    expect(String(software.subtotal_minor)).toBe("9082")
+    expect(String(software.tax_total_minor)).toBe("1817")
+    expect(String(software.grand_total_minor)).toBe("10899")
 
     // The two documents together reproduce the Shopify payment to the cent.
     const combined =
@@ -1734,15 +1734,17 @@ describe("order split + tax-inclusive pricing", () => {
       expect(d.counterparty_country).toBe("FR")
     }
 
-    // Line kinds persisted; the goods document carries the merchandise and the carriage,
-    // the services document the software license only.
+    // Line kinds persisted; the goods document carries ONLY merchandise lines, the services
+    // document the software license AND the carriage.
     const lines = db.__all("document_lines") as Array<Record<string, unknown>>
     expect(lines).toHaveLength(6)
     const softwareLines = lines.filter((l) => l.document_id === software.id)
-    expect(softwareLines.map((l) => l.line_kind)).toEqual(["software"])
+    expect(softwareLines.map((l) => l.line_kind).sort()).toEqual(["shipping", "software"])
     const goodsLines = lines.filter((l) => l.document_id === goods.id)
-    expect(goodsLines).toHaveLength(5)
-    expect(goodsLines.filter((l) => l.line_kind === "shipping")).toHaveLength(1)
+    expect(goodsLines).toHaveLength(4)
+    expect(goodsLines.every((l) => l.line_kind === "goods")).toBe(true)
+    // Carriage is accessory: software + shipping is a supply of services, never mixed.
+    expect(software.operation_category).toBe("services")
     // Two sequential invoice numbers were allocated.
     expect(new Set(docs.map((d) => d.number)).size).toBe(2)
   })
@@ -2158,8 +2160,8 @@ describe("software lines are never customs goods", () => {
 
 // Physical-only order WITH carriage: the goods invoice must still contain ONLY
 // merchandise — the shipping charge is a service and moves to its own document.
-describe("shipping rides with the goods it carries", () => {
-  test("hardware-only order with shipping → ONE goods invoice: merchandise + carriage", async () => {
+describe("shipping never rides on the goods invoice", () => {
+  test("hardware-only order with shipping → goods invoice (merchandise) + services invoice (carriage)", async () => {
     const { ctx, db } = makeCtx({
       issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
     })
@@ -2200,21 +2202,26 @@ describe("shipping rides with the goods it carries", () => {
     )
     expect(result.status).toBe("ok")
     if (result.status !== "ok") throw new Error("unreachable")
-    expect(result.documents).toHaveLength(1)
+    expect(result.documents).toHaveLength(2)
     const docs = db.__all("documents") as Array<Record<string, unknown>>
-    expect(docs).toHaveLength(1)
-    expect(docs[0]!.scope).toBe("goods")
-    expect(String(docs[0]!.grand_total_minor)).toBe("97899")
-    const kinds = (db.__all("document_lines") as Array<Record<string, unknown>>)
-      .map((l) => l.line_kind)
-      .sort()
-    expect(kinds).toEqual(["goods", "shipping"])
+    const goods = docs.find((d) => d.scope === "goods")!
+    const services = docs.find((d) => d.scope === "software")!
+    expect(String(goods.grand_total_minor)).toBe("94900") // merchandise only
+    expect(String(services.grand_total_minor)).toBe("2999") // carriage only
+    // The carriage keeps the VAT of the goods it moves (20 % domestic, as Shopify charged).
+    expect(String(services.tax_total_minor)).toBe("500")
+    const serviceLines = (db.__all("document_lines") as Array<Record<string, unknown>>).filter(
+      (l) => l.document_id === services.id,
+    )
+    expect(serviceLines).toHaveLength(1)
+    expect(serviceLines[0]!.line_kind).toBe("shipping")
   })
 
   // A UK consumer buys a controller and a sound pack, shipped: the goods invoice carries the
-  // carriage (and the Incoterm), the digital invoice only the download, as a supply of services
-  // with the outside-EU consumer mention, never the export of goods mention.
-  test("split order outside the EU: carriage on the goods invoice, the digital one is services with the 259 B mention", async () => {
+  // merchandise alone (the customs document, art. 146 export), the digital goods and services
+  // invoice the download (259 B) and the carriage (transport linked to the export, CGI 262 I 1°),
+  // never the export of goods mention.
+  test("split order outside the EU: carriage on the services invoice, worded per line: 259 B for the download, 262 I 1° for the transport", async () => {
     const { ctx, db, extras } = makeCtx({
       issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
     })
@@ -2301,10 +2308,11 @@ describe("shipping rides with the goods it carries", () => {
         .filter((l) => l.document_id === d.id)
         .map((l) => l.line_kind)
         .sort()
-    expect(kindsOf(goods)).toEqual(["goods", "shipping"])
-    expect(kindsOf(digital)).toEqual(["software"])
-    expect(String(goods.grand_total_minor)).toBe("95800")
-    expect(String(digital.grand_total_minor)).toBe("7900")
+    expect(kindsOf(goods)).toEqual(["goods"])
+    expect(kindsOf(digital)).toEqual(["shipping", "software"])
+    expect(String(goods.grand_total_minor)).toBe("89900")
+    expect(String(digital.grand_total_minor)).toBe("13800")
+    expect(String(digital.tax_total_minor)).toBe("0")
     expect(digital.operation_category).toBe("services")
     const mentionOf = (d: Record<string, unknown>) => {
       const call = extras.renderCalls.find(
@@ -2315,6 +2323,7 @@ describe("shipping rides with the goods it carries", () => {
     }
     const digitalData = mentionOf(digital)!
     expect(digitalData.legal_mention).toContain("259 B")
+    expect(digitalData.legal_mention).toContain("262 I 1°")
     expect(digitalData.legal_mention).not.toContain("146")
     expect(digitalData.document.operation_label).toBe("Provision of services")
     const goodsData = mentionOf(goods)!
@@ -2747,12 +2756,15 @@ describe("tax read from Shopify, not replayed", () => {
     const result = await onShopifyOrderCreated(order3386(), ctx)
     expect(result.status).toBe("ok")
     const docs = db.__all("documents") as Array<Record<string, unknown>>
-    // One goods invoice: the carriage rides with the goods it carries.
-    expect(docs).toHaveLength(1)
+    // The carriage goes on the services invoice, the goods invoice is merchandise only.
+    expect(docs).toHaveLength(2)
     const goods = docs.find((d) => d.scope === "goods")!
-    expect(String(goods.grand_total_minor)).toBe("98200")
+    const services = docs.find((d) => d.scope === "software")!
+    expect(String(goods.grand_total_minor)).toBe("89900")
     expect(String(goods.tax_total_minor)).toBe("0")
-    // What is invoiced = 982.00, the revenue the payout reconciles with.
+    expect(String(services.grand_total_minor)).toBe("8300")
+    expect(String(services.tax_total_minor)).toBe("0")
+    // Sum of what is invoiced = 982.00, the revenue the payout reconciles with.
     expect(goods.tax_treatment).toBe("eu_export_non_eu")
     // Printed under the Italian billing address: IT, never US.
     expect(goods.counterparty_country).toBe("IT")
@@ -4046,7 +4058,7 @@ describe("tax included Shopify orders total what the buyer paid, to the cent", (
     const r = await onShopifyOrderCreated(event, ctx)
     expect(r.status).toBe("ok")
     const { grand, tax, docs } = totals(db)
-    expect(docs).toHaveLength(1) // the goods and their shipping on one invoice
+    expect(docs).toHaveLength(2) // the goods, and their shipping on the services invoice
     expect(grand).toBe(11288n)
     expect(tax).toBe(1498n + 167n + 217n)
     // The discount stays explicit on the line: 2 x unit - discount = the net Shopify implies.

@@ -32,6 +32,8 @@ export const TABLE: Record<string, string> = {
   "invoice:issued:mark_paid": "paid",
   "invoice:issued:mark_refunded": "refunded",
   "invoice:paid:mark_refunded": "refunded",
+  // A fulfilled invoice (paid, its Shopify order shipped) is refunded like a paid one.
+  "invoice:fulfilled:mark_refunded": "refunded",
 
   // Quote
   "quote:draft:send": "sent",

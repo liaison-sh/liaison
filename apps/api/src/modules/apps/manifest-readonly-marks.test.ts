@@ -292,6 +292,7 @@ const READ_ONLY: Record<string, string[]> = {
     // status (a VIES lookup), written nowhere.
     "documents_issue_preview",
     "documents_update_preview",
+    "documents_correct_issued_preview",
     // A saved draft's card read: the document and the total issuing it would write, written nowhere.
     "draft_issue_preview",
     "counterparty_identity_get",

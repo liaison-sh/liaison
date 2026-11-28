@@ -190,6 +190,24 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // An invoice's legal original (fixed at issue) carries these values; changing them needs a
   // credit note and a new invoice, never an in-place edit.
   legal_original_locked: 409,
+  // An in-place correction of an issued document (documents_correct_issued) refused as asked:
+  // not this document, not these lines, or a total change without its reason. Nothing changed.
+  einvoice_transmitted: 409,
+  imported_document: 409,
+  not_correctable_status: 409,
+  not_correctable_type: 409,
+  no_change: 409,
+  total_change_unexplained: 422,
+  total_unchanged: 400,
+  line_tax_off: 422,
+  invalid_lines: 400,
+  invalid_tax_treatment: 400,
+  reason_required: 400,
+  reason_too_long: 400,
+  not_same_order: 409,
+  not_a_shipping_line: 409,
+  last_line: 409,
+  order_total_changed: 409,
   // A date a person stated or typed: not a date, after today, or against the document's number. The
   // message says what to pass; nothing was issued or changed.
   issued_at_invalid: 400,

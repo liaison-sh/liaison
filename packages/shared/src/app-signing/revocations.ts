@@ -8,6 +8,13 @@
  *    older list, so a replayed list cannot un-revoke a version.
  *  - `REVOCATION_FLOOR` compiled into each client release (keys.ts).
  * A revoked or below-floor version never runs in-page.
+ *
+ * The same list carries the shell floors, `{name: "shell:<mode>", below:
+ * "<seq>"}` (shell-statement.ts): a shell build below its mode's floor never runs.
+ * An entry named `shell:<anything else>` is IGNORED, whatever its fields, so a
+ * later release can add a mode or a floor shape without this release refusing
+ * the whole list (and with it every app revocation). The same rule binds every
+ * other client parsing this list (the desktop shell's Rust parser too).
  */
 import { utf8 } from "./encoding"
 import { type AppRevocationEntry, type AppSigningKey, REVOCATION_FLOOR } from "./keys"
@@ -27,13 +34,30 @@ export function revocationBytes(list: RevocationList): Uint8Array {
 
 const isString = (v: unknown): v is string => typeof v === "string" && v.length > 0
 
-function parseEntry(raw: unknown): AppRevocationEntry | null {
+/**
+ * A shell floor (shell-statement.ts): `{name: "shell:desktop" | "shell:native",
+ * below: "<seq>"}`, the seq as a decimal STRING. Released clients parse every
+ * entry's `below` as a string and refuse a whole list with a number in it, so a
+ * numeric floor would cost them the app revocations the same list carries.
+ */
+const KNOWN_SHELL_ENTRIES = new Set(["shell:desktop", "shell:native"])
+
+function isShellEntry(below: unknown, versions: unknown): boolean {
+  return versions === undefined && typeof below === "string" && /^\d{1,15}$/.test(below)
+}
+
+/** An entry, "ignored" for a shell entry this release does not know, or null when malformed. */
+function parseEntry(raw: unknown): AppRevocationEntry | "ignored" | null {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null
   const { name, below, versions, ...rest } = raw as Record<string, unknown>
+  if (isString(name) && name.startsWith("shell:") && !KNOWN_SHELL_ENTRIES.has(name)) {
+    return "ignored"
+  }
   if (Object.keys(rest).length > 0 || !isString(name)) return null
   if (below !== undefined && !isString(below)) return null
   if (versions !== undefined && !(Array.isArray(versions) && versions.every(isString))) return null
   if (below === undefined && versions === undefined) return null
+  if (name.startsWith("shell:") && !isShellEntry(below, versions)) return null
   return {
     name,
     ...(below !== undefined ? { below } : {}),
@@ -42,6 +66,11 @@ function parseEntry(raw: unknown): AppRevocationEntry | null {
 }
 
 export function parseRevocationList(bytes: Uint8Array): RevocationList | null {
+  return parseRevocationListRaw(bytes)?.list ?? null
+}
+
+/** The list, and the JSON value it was read from (unknown shell entries included). */
+function parseRevocationListRaw(bytes: Uint8Array): { list: RevocationList; raw: unknown } | null {
   let raw: unknown
   try {
     raw = JSON.parse(utf8.decode(bytes))
@@ -55,7 +84,8 @@ export function parseRevocationList(bytes: Uint8Array): RevocationList | null {
   if (!Array.isArray(entries)) return null
   const parsed = entries.map(parseEntry)
   if (parsed.some((e) => e === null)) return null
-  return { v: 1, seq, issuedAt, entries: parsed.filter((e): e is AppRevocationEntry => e !== null) }
+  const kept = parsed.filter((e): e is AppRevocationEntry => e !== null && e !== "ignored")
+  return { list: { v: 1, seq, issuedAt, entries: kept }, raw }
 }
 
 export type RevocationVerification =
@@ -69,10 +99,12 @@ export async function verifyRevocationList(
   keys: readonly AppSigningKey[],
 ): Promise<RevocationVerification> {
   if (keys.length === 0) return { ok: false, reason: "no_keys" }
-  const list = parseRevocationList(bytes)
-  if (!list || utf8.decode(bytes) !== canonicalJson(list)) {
+  // Canonical form is checked on the list as published, ignored entries included.
+  const parsed = parseRevocationListRaw(bytes)
+  if (!parsed || utf8.decode(bytes) !== canonicalJson(parsed.raw)) {
     return { ok: false, reason: "malformed_list" }
   }
+  const { list } = parsed
   let unsupported = false
   for (const key of keys) {
     const result = await verifySignedBytes(bytes, sig, key.keyId, [key])

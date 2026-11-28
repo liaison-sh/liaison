@@ -1054,3 +1054,32 @@ export const onAgreementSignedAdvanceHandler = (
   event: Parameters<typeof onAgreementSignedAdvance>[1],
   ctx: Parameters<typeof onAgreementSignedAdvance>[0],
 ) => onAgreementSignedAdvance(ctx, event)
+
+import { deferredDismiss, deferredDismissPreflight } from "./handlers/deferred-dismiss"
+// ── documents_correct_issued (in-place correction of an issued document) + deferred_dismiss ──
+import {
+  correctIssued,
+  correctIssuedPreflight,
+  correctIssuedPreview,
+} from "./mutations/correct-issued"
+
+export const documentsCorrectIssuedHandler = (
+  params: Parameters<typeof correctIssued>[1],
+  ctx: Parameters<typeof correctIssued>[0],
+) => correctIssued(ctx, params)
+export const documentsCorrectIssuedPreflightHandler = (
+  params: Parameters<typeof correctIssuedPreflight>[1],
+  ctx: Parameters<typeof correctIssuedPreflight>[0],
+) => correctIssuedPreflight(ctx, params)
+export const documentsCorrectIssuedPreviewHandler = (
+  params: Parameters<typeof correctIssuedPreview>[1],
+  ctx: Parameters<typeof correctIssuedPreview>[0],
+) => correctIssuedPreview(ctx, params)
+export const deferredDismissHandler = (
+  params: Parameters<typeof deferredDismiss>[1],
+  ctx: Parameters<typeof deferredDismiss>[0],
+) => deferredDismiss(ctx, params)
+export const deferredDismissPreflightHandler = (
+  params: Parameters<typeof deferredDismissPreflight>[1],
+  ctx: Parameters<typeof deferredDismissPreflight>[0],
+) => deferredDismissPreflight(ctx, params)

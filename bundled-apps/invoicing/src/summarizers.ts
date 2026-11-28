@@ -1626,3 +1626,177 @@ export function summarizeMilestoneDraftCreate(
     ],
   })
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// documents_correct_issued / deferred_dismiss
+// ─────────────────────────────────────────────────────────────────────────
+
+interface CorrectionSnapshotContext {
+  number?: string | null
+  currency?: string
+  tax_treatment?: string | null
+  subtotal_minor?: string
+  tax_total_minor?: string
+  grand_total_minor?: string
+  lines?: Array<{
+    position?: number
+    description?: string
+    quantity?: string
+    unit_price_minor?: string
+    tax_rate_bp?: number
+    line_kind?: string
+    tax_minor?: string
+    total_minor?: string
+  }>
+}
+
+interface CorrectionPreviewContext {
+  kind?: "correct" | "move_shipping" | null
+  refusal?: { code?: string; message?: string } | null
+  reason?: string | null
+  total_change_reason?: string | null
+  documents?: Array<{
+    id?: string
+    number?: string | null
+    type?: string
+    currency?: string
+    counterparty_name?: string | null
+    total_changed?: boolean
+    before?: CorrectionSnapshotContext
+    after?: CorrectionSnapshotContext
+  }>
+}
+
+const LINE_KIND_LABEL: Record<string, string> = {
+  goods: "goods",
+  service: "service",
+  software: "digital",
+  shipping: "shipping",
+}
+
+function rateText(bp: unknown): string {
+  const n = typeof bp === "number" ? bp : Number(bp)
+  return Number.isFinite(n) ? `${String(n / 100)} % VAT` : "VAT unknown"
+}
+
+type SnapLine = NonNullable<CorrectionSnapshotContext["lines"]>[number]
+
+function snapLineText(l: SnapLine, currency: string): string {
+  const kind = LINE_KIND_LABEL[String(l.line_kind)] ?? "goods"
+  return `${text(l.description, 50) ?? "(no description)"} (${kind}), ${money(l.total_minor, currency) ?? "unknown"} with ${rateText(l.tax_rate_bp)}`
+}
+
+function sameSnapLine(a: SnapLine, b: SnapLine): boolean {
+  return (
+    a.description === b.description &&
+    a.quantity === b.quantity &&
+    a.unit_price_minor === b.unit_price_minor &&
+    a.tax_rate_bp === b.tax_rate_bp &&
+    a.line_kind === b.line_kind &&
+    a.tax_minor === b.tax_minor
+  )
+}
+
+/** "Line 2: X, now Y", "Removed: X", "Added: Y" for every line that differs. */
+function lineDiff(before: SnapLine[], after: SnapLine[], currency: string): string[] {
+  const out: string[] = []
+  const pos = (l: SnapLine) => Number(l.position ?? 0)
+  for (const b of before) {
+    const a = after.find((x) => pos(x) === pos(b))
+    if (!a) out.push(`Removed: ${snapLineText(b, currency)}`)
+    else if (!sameSnapLine(a, b))
+      out.push(`Line ${pos(b)}: ${snapLineText(b, currency)}, now ${snapLineText(a, currency)}`)
+  }
+  for (const a of after)
+    if (!before.some((b) => pos(b) === pos(a))) out.push(`Added: ${snapLineText(a, currency)}`)
+  return out
+}
+
+export function summarizeCorrectIssued(
+  params: { id?: string; reason?: string; total_change_reason?: string | null },
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
+  const ctx = (meta?.context ?? null) as CorrectionPreviewContext | null
+  const docs = ctx?.documents ?? []
+  const reason = text(ctx?.reason ?? params.reason, 160)
+  const reasonLine = reason ? [`Reason: ${reason}`] : []
+  if (ctx?.refusal) {
+    return done({
+      kind: "documents_correct_issued",
+      title: "Correct an issued document in place: this correction would be refused",
+      lines: [text(ctx.refusal.message, 200) ?? "The correction would be refused", ...reasonLine],
+    })
+  }
+  if (docs.length === 0) {
+    return done({
+      kind: "documents_correct_issued",
+      title: "Correct an issued document in place (same number, no new document, no mail)",
+      lines: [
+        "Document details could not be read; check the document before approving",
+        ...reasonLine,
+      ],
+    })
+  }
+  const names = docs.map((d) => docName(d)).join(" and ")
+  const facts: string[] = []
+  const diffs: string[] = []
+  for (const d of docs) {
+    const currency = d.currency ?? "EUR"
+    const b = d.before ?? {}
+    const a = d.after ?? {}
+    const label = docs.length > 1 ? `${text(d.number, 40) ?? "Document"} ` : ""
+    const from = money(b.grand_total_minor, currency) ?? "unknown"
+    const to = money(a.grand_total_minor, currency) ?? "unknown"
+    facts.push(
+      d.total_changed
+        ? `${label}Total CHANGES: ${from}, now ${to}`
+        : `${label}Total: ${to} (unchanged)`,
+    )
+    if (b.tax_total_minor !== a.tax_total_minor)
+      facts.push(
+        `${label}VAT: ${money(b.tax_total_minor, currency) ?? "unknown"}, now ${money(a.tax_total_minor, currency) ?? "unknown"}`,
+      )
+    if (b.tax_treatment !== a.tax_treatment)
+      facts.push(
+        `${label}Tax treatment: ${shown(b.tax_treatment).replace(/_/g, " ")}, now ${shown(a.tax_treatment).replace(/_/g, " ")}`,
+      )
+    diffs.push(...lineDiff(b.lines ?? [], a.lines ?? [], currency).map((l) => `${label}${l}`))
+  }
+  const customer = text(docs[0]?.counterparty_name, 60)
+  const why = text(ctx?.total_change_reason ?? params.total_change_reason, 140)
+  return done({
+    kind: "documents_correct_issued",
+    title:
+      ctx?.kind === "move_shipping"
+        ? `Move the shipping line between ${names}, corrected in place`
+        : `Correct ${names}${customer ? ` (${customer})` : ""} in place`,
+    subtitle:
+      "Tool error fix: same number and date, no new document, no mail. The previous file stays archived. Needs the issuer admin right and your accountant's agreement.",
+    lines: [...facts, ...reasonLine, ...(why ? [`Why the total changes: ${why}`] : []), ...diffs],
+    links: docs.flatMap((d) => docLink(d.id, `Open ${docName(d)}`) ?? []),
+  })
+}
+
+export function summarizeDeferredDismiss(
+  params: { deferred_id?: string; reason?: string },
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
+  const items = ((meta?.context as { items?: Array<Record<string, unknown>> } | null)?.items ??
+    []) as Array<Record<string, unknown>>
+  const row = items.find((r) => String(r.id) === String(params.deferred_id)) ?? null
+  const order = orderName(row?.order_number)
+  const why = text(params.reason, 160)
+  const parked = text(row?.reason, 120)
+  return done({
+    kind: "deferred_dismiss",
+    title: `Dismiss ${order ? `order ${order}` : "the parked Shopify order"}: it is never invoiced`,
+    subtitle: "Closes the park; nothing is issued or mailed, and the order is not invoiced later",
+    lines: [
+      ...(order ? [`Order: ${order}`] : []),
+      ...(why ? [`Reason: ${why}`] : []),
+      ...(parked ? [`Parked because: ${parked.replace(/_/g, " ")}`] : []),
+    ],
+  })
+}

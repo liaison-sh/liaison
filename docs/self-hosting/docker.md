@@ -58,6 +58,8 @@ To check that the running service is isolated, run `deploy/pdf-render-check.sh` 
 
 Meilisearch runs with its usage analytics off (`MEILI_NO_ANALYTICS`), so the search service sends nothing to its vendor.
 
+The `app` image carries the web app twice: the build browsers and the desktop app use, served at `/`, and the build the phone apps wrap, served under `/native/`. `GET /api/shell/info` names the build id of each. Both builds are reproducible, so an image built from a release has the same build ids as Liaison's signed builds of that release, which lets the desktop and phone apps run the server's own build ([Signed web shells](../app-package-format.md#signed-web-shells)). Set `LIAISON_SERVED_SHELL=false` to keep every app on the build compiled into it.
+
 ### Size the search service
 
 One Meilisearch serves every organization on the server. Two settings in `.env` size it:

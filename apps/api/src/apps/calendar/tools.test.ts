@@ -418,7 +418,7 @@ describe("calendar agent tools", () => {
     const description = (calendarAppManifest as any).tools.update_event.description as string
     expect(description).toContain("COMPLETE guest list")
     expect(description).toContain("omit it to keep the current guests")
-    expect(description).toContain('Guests get no email unless sendUpdates: "all"')
+    expect(description).toContain('To email guests: sendUpdates "all" in this call')
   })
 
   it("search respects the same RLS visibility boundary", async () => {
@@ -1009,7 +1009,37 @@ describe("list_events reads only what the window needs", () => {
     expect(mine).toEqual(["active", "cancelled-in", "moved-in", "plain-in"])
     const master = events.find((e) => e.title === `active ${tag}`)
     expect(master?.googleEventId).toBe(`active${tag}`)
+    // Its one occurrence in this week is cancelled: the series lists no slot here.
+    expect(master?.occurrences).toBeUndefined()
     expect(queries).toBeLessThanOrEqual(3)
+  })
+
+  it("a recurring series lists its occurrences in the window, its cancelled ones left out, for an agent's clash check", async () => {
+    const tag = crypto.randomUUID().slice(0, 8)
+    await seedSeriesFixture(tag)
+    const grants = await grantsForUser(userAId)
+    const events = await withRlsContext(
+      {
+        actorType: "user",
+        userId: userAId,
+        orgId,
+        scopes: ["calendar:calendars:read", "calendar:events:read"],
+        dimensionGrants: grants,
+      },
+      (tx) =>
+        listEventsForCaller(tx, orgId, {
+          timeMin: "2026-10-12T00:00:00Z",
+          timeMax: "2026-10-27T00:00:00Z",
+        }),
+    )
+    const master = events.find((e) => e.title === `active ${tag}`)
+    // Mondays 09:00 Paris: 12 Oct is cancelled, 19 and 26 Oct remain (26 Oct is winter time).
+    expect(
+      (master?.occurrences ?? []).map((o) => (o.start as { dateTime: string }).dateTime),
+    ).toEqual(["2026-10-19T07:00:00.000Z", "2026-10-26T08:00:00.000Z"])
+    expect(master?.occurrencesTruncated).toBeUndefined()
+    // A plain event carries none.
+    expect(events.find((e) => e.title === `plain-in ${tag}`)?.occurrences).toBeUndefined()
   })
 
   it("leaves a series ended by UNTIL out of the SQL read, and keeps one whose last occurrence runs into the window", async () => {

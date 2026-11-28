@@ -228,7 +228,22 @@ async function matchingSales(key: BuyerKey, who: BuyerIdentity): Promise<Candida
     extractRows<Candidate>(
       await tx.execute(sql`
         SELECT 'sale:' || s.id AS key, s.id::text AS sale_id, NULL::text AS legacy_order_id,
-               s.stream, s.source_ref AS ref, s.source_name AS name, s.sold_on::text AS sold_on,
+               -- The stream as the shop's website names it: the bound stream's buyer source key
+               -- (read through to_jsonb, so an install without the column falls back), else
+               -- the provider's name. The shop's sales are always 'shopify'.
+               COALESCE(
+                 CASE WHEN s.stream <> 'shopify' THEN (
+                   SELECT NULLIF(to_jsonb(r) ->> 'buyer_source_key', '')
+                     FROM app_invoicing.revenue_streams r
+                    WHERE r.org_id = s.org_id AND r.provider_app = s.stream
+                      AND (r.issuer_profile_id = s.issuer_profile_id OR r.issuer_profile_id IS NULL)
+                      AND COALESCE(to_jsonb(r) ->> 'buyer_source_key', '') <> ''
+                    ORDER BY (r.issuer_profile_id IS NULL), r.created_at
+                    LIMIT 1) END,
+                 s.stream) AS stream,
+               -- The sale's own id (a Shopify order id, a PaymentIntent): never a Checkout
+               -- Session, which older card payment sales recorded as their source_ref.
+               s.external_id AS ref, s.source_name AS name, s.sold_on::text AS sold_on,
                s.total_minor::text AS total_minor, s.currency, s.state,
                s.buyer_email AS email, s.shopify_customer_id, s.hub_user_id
           FROM app_invoicing.sales s

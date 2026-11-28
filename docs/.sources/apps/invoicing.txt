@@ -245,6 +245,12 @@ link route -> apps/api/src/modules/buyer-invoices/routes.ts:221
 120 requests a minute per key -> apps/api/src/modules/buyer-invoices/routes.ts:45
 audit without the buyer's email -> apps/api/src/modules/buyer-invoices/routes.ts:173
 matching rule: strong id, else email for a sale with none; a conflicting id hides -> apps/api/src/modules/buyer-invoices/match.ts:50
+source.stream is the bound stream's buyerSourceKey, else the app's name; shopify always shopify -> apps/api/src/modules/buyer-invoices/store.ts:243
+source.ref is the sale's own id (PaymentIntent), never the Checkout Session -> apps/api/src/modules/buyer-invoices/store.ts:246; bundled-apps/invoicing/src/sales/issue-sale.ts:255
+buyerSourceKey set with revenue_stream_bind, null back to the app's name -> bundled-apps/invoicing/src/sales/stream-tools.ts:85
+the shop's stream keeps shopify -> bundled-apps/invoicing/src/sales/stream-tools.ts:123
+config apply invoicing.revenueStreams: providerApp, buyerSourceKey -> apps/api/src/cli/config/schema.ts:604
+config apply refuses a stream not bound yet -> apps/api/src/cli/provisioners/invoicing.ts:858
 pending sale has no number and no link -> apps/api/src/modules/buyer-invoices/store.ts:388
 Date of sale printed when it differs from the issue date, invoices only -> bundled-apps/invoicing/templates/shared.ts:963
 sale date stored only when it differs, never on other types -> bundled-apps/invoicing/src/issue.ts:869

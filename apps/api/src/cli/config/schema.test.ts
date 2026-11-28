@@ -488,6 +488,21 @@ describe("invoicing issuer identity + einvoicing sections", () => {
     })
   })
 
+  test("revenueStreams: a buyer source key per bound stream, strict and validated", () => {
+    const ok = validateConfig({
+      ...base,
+      invoicing: { revenueStreams: [{ providerApp: "cardpay", buyerSourceKey: "hub" }] },
+    })
+    expect(ok.ok).toBe(true)
+    for (const entry of [
+      { providerApp: "cardpay", buyerSourceKey: "Hub" },
+      { providerApp: "cardpay" },
+      { providerApp: "cardpay", buyerSourceKey: "hub", streamKey: "x" },
+    ]) {
+      expect(validateConfig({ ...base, invoicing: { revenueStreams: [entry] } }).ok).toBe(false)
+    }
+  })
+
   test("einvoicing.gatemode typo, bad mode value and bad date are refused", () => {
     for (const einvoicing of [
       { gatemode: "enforce" },

@@ -38,6 +38,10 @@ export interface RevenueStream {
   /** Sales paid before this instant are issued only by the catch-up. Null: no bound. */
   issue_from: string | null
   mail: StreamMail
+  /** The `source.stream` the buyer invoices API lists this stream's sales under: the name the
+   *  shop's website gives the stream ("hub"). Null: the provider app's name. Never on the shop's
+   *  stream, whose sales are always `shopify`. */
+  buyer_source_key: string | null
   decided_by: string | null
   decided_at: string | null
 }
@@ -60,6 +64,7 @@ export function toStream(r: Row): RevenueStream {
     mode: mode === "auto" || mode === "off" ? mode : "review",
     issue_from: iso(r.issue_from),
     mail: mail === "thanks" || mail === "invoice_only" ? mail : "none",
+    buyer_source_key: (r.buyer_source_key as string | null | undefined) || null,
     decided_by: (r.decided_by as string | null | undefined) ?? null,
     decided_at: iso(r.decided_at),
   }
@@ -80,6 +85,9 @@ export async function streamById(db: Db, id: string): Promise<RevenueStream | nu
 }
 
 export const SHOPIFY = "shopify"
+
+/** A buyer source key: a short lower-case name ("hub", "web-shop"). */
+export const BUYER_SOURCE_KEY = /^[a-z0-9][a-z0-9_-]{0,39}$/
 
 /** The shop's stream, created on its first sale (see the header). */
 export async function ensureShopifyStream(db: Db): Promise<void> {

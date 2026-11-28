@@ -251,7 +251,8 @@ export async function issueSale(
       issuer_profile_id: stream.issuer_profile_id,
       stream: stream.provider_app,
       external_id: sale.external_id,
-      source_ref: sale.refs?.checkout_session_id ?? sale.external_id,
+      // The buyer's side knows a sale by its own id (a PaymentIntent), never a Checkout Session.
+      source_ref: sale.external_id,
       source_name: sale.refs?.order_name ?? null,
       sold_on: sale.sold_at.slice(0, 10),
       buyer: {

@@ -151,6 +151,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   stream_exists: 409,
   shop_stream_automatic: 409,
   issuer_from_shop_mapping: 409,
+  shop_source_key_fixed: 409,
   // The catch-up: a window that is not one, the shop's stream (caught up by its own order
   // updates), a stream turned off.
   invalid_window: 400,

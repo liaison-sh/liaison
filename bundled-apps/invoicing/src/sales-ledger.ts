@@ -23,7 +23,8 @@ export interface SaleRecord {
   stream: string
   /** Unique within the stream: a Shopify order id, a PaymentIntent id. */
   external_id: string
-  /** What the buyer's side calls the sale (`source.ref` of the API). Defaults to external_id. */
+  /** Defaults to external_id, which the buyer invoices API emits as `source.ref` (a PaymentIntent,
+   *  never a Checkout Session). */
   source_ref?: string | null
   /** The human order name ("#3655"), when the source has one. */
   source_name?: string | null

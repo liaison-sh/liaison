@@ -823,6 +823,56 @@ export const defaultContractProviderCheck: ContractProviderCheck = async (ctx, a
   return { ok: false, reason: `${appName} does not implement e-invoicing (einvoicing-pa@1)` }
 }
 
+type RevenueStreamKeyInput = NonNullable<
+  NonNullable<ProvisioningConfig["invoicing"]>["revenueStreams"]
+>[number]
+
+/** Set a bound revenue stream's buyer source key (the `source.stream` the buyer invoices API
+ *  emits for its sales). The stream must already be bound: binding is a person's decision
+ *  (`revenue_stream_bind`), never config's. The shop's stream keeps `shopify`. */
+async function ensureRevenueStreamKey(
+  ctx: ProvisionContext,
+  cfg: RevenueStreamKeyInput,
+  changed: string[],
+  unchanged: string[],
+): Promise<void> {
+  const label = `invoicing.revenueStreams.${cfg.providerApp}${cfg.sourceRef ? `.${cfg.sourceRef}` : ""}`
+  if (cfg.providerApp === "shopify") {
+    throw new ConfigError(
+      `${label}: the shop's sales are always listed to buyers as shopify; buyerSourceKey is for the other streams`,
+    )
+  }
+  const sourceRef = cfg.sourceRef ?? null
+  const rows = await ctx.priv("cli-invoicing-stream-read", (tx) =>
+    tx.execute(drizzleSql`
+      SELECT id, to_jsonb(r) ->> 'buyer_source_key' AS key
+        FROM ${invRel("revenue_streams")} r
+       WHERE org_id = ${ctx.orgId}::uuid AND provider_app = ${cfg.providerApp}
+         AND source_ref IS NOT DISTINCT FROM ${sourceRef}
+       LIMIT 1
+    `),
+  )
+  const row = extractRows<{ id: string; key: string | null }>(rows)[0]
+  if (!row) {
+    throw new ConfigError(
+      `${label}: no bound revenue stream for ${cfg.providerApp}${sourceRef ? ` (${sourceRef})` : ""}; a person binds it first with revenue_stream_bind`,
+    )
+  }
+  const want = cfg.buyerSourceKey
+  if ((row.key || null) === want) {
+    unchanged.push(label)
+    return
+  }
+  await ctx.priv("cli-invoicing-stream-key", (tx) =>
+    tx.execute(drizzleSql`
+      UPDATE ${invRel("revenue_streams")}
+         SET buyer_source_key = ${want}, updated_at = now()
+       WHERE org_id = ${ctx.orgId}::uuid AND id = ${row.id}::uuid
+    `),
+  )
+  changed.push(label)
+}
+
 /** Upsert the organisation's single `einvoicing_settings` row. A field left out
  *  of the config keeps its stored value; the first write must name a gate mode
  *  (the column has no default, and a guessed mode would silently decide whether
@@ -1101,6 +1151,12 @@ export function createInvoicingProvisioner(
         ].filter((x) => x !== null)
         actions.push(`ensure e-invoicing settings (${parts.join(", ")})`)
       }
+      for (const r of inv.revenueStreams ?? []) {
+        actions.push(
+          `set the buyer source key of the ${r.providerApp}${r.sourceRef ? ` (${r.sourceRef})` : ""} revenue stream to ${r.buyerSourceKey ?? `its app's name (${r.providerApp})`}`,
+        )
+      }
+      changes += (inv.revenueStreams ?? []).length
       return ctx.toolPath ? { actions, changes } : { actions }
     },
 
@@ -1111,6 +1167,7 @@ export function createInvoicingProvisioner(
         (inv.issuerProfiles?.length ?? 0) > 0 ||
         (inv.taxRegimes?.length ?? 0) > 0 ||
         (inv.hsCodes?.length ?? 0) > 0 ||
+        (inv.revenueStreams?.length ?? 0) > 0 ||
         inv.einvoicing !== undefined
       if (!hasWork) return {}
 
@@ -1140,6 +1197,10 @@ export function createInvoicingProvisioner(
       const einvoicing = inv.einvoicing
         ? await ensureEinvoicingSettings(ctx, inv.einvoicing, changed, unchanged, checkProvider)
         : undefined
+
+      for (const r of inv.revenueStreams ?? []) {
+        await ensureRevenueStreamKey(ctx, r, changed, unchanged)
+      }
 
       const section: InvoicingSection = {
         issuerProfiles,

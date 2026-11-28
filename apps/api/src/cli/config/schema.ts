@@ -595,12 +595,35 @@ export const hsCodeSchema = z.object({
   description: z.string().optional(),
 })
 
+// A bound revenue stream's buyer source key: the `source.stream` the buyer
+// invoices API lists its sales under (the name the shop's website gives it,
+// e.g. "hub"). Binding a stream stays a person's decision (revenue_stream_bind):
+// this only names an already-bound stream, found by provider app (and its
+// account, sourceRef). null: back to the provider app's name. Never the shop's
+// stream, which is always "shopify".
+export const revenueStreamKeySchema = z
+  .object({
+    providerApp: z
+      .string()
+      .regex(/^[a-z][a-z0-9-]{0,62}$/, "providerApp must be an installed app's name"),
+    sourceRef: z.string().min(1).nullable().optional(),
+    buyerSourceKey: z
+      .string()
+      .regex(
+        /^[a-z0-9][a-z0-9_-]{0,39}$/,
+        "buyerSourceKey is a short lower-case name (letters, digits, - and _, at most 40)",
+      )
+      .nullable(),
+  })
+  .strict()
+
 const invoicingSchema = z
   .object({
     issuerProfiles: z.array(issuerProfileSchema).optional(),
     taxRegimes: z.array(taxRegimeSchema).optional(),
     hsCodes: z.array(hsCodeSchema).optional(),
     einvoicing: einvoicingSchema.optional(),
+    revenueStreams: z.array(revenueStreamKeySchema).optional(),
   })
   // Strict like the top level: a typo'd key (`einvoice`, `issuerProfile`) is a usage error, never a silent skip.
   .strict()

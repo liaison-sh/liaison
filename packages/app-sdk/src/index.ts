@@ -35,6 +35,7 @@ export {
   isReservedSettingsNamespace,
   RESERVED_SETTINGS_NAMESPACES,
   SETTINGS_FIELD_TYPES,
+  SETTINGS_SCHEMA_VERSION,
   SETTINGS_SECRET_KEY_PATTERN,
   type SettingsAppSecretsBlock,
   type SettingsBlock,

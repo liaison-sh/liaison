@@ -35,6 +35,8 @@ const ANY_MEMBER: Record<string, string> = {
   "GET /healthz": "public route, see route-auth-invariant.test.ts",
   "GET /api/client-policy":
     "public route: the minimum desktop and mobile client versions, read before sign-in",
+  "GET /api/shell/info":
+    "public route: the web build ids this server ships and its served-shell switch, read before sign-in",
   "GET /api/apps/host-api": "the app host API major versions this server supports, no org data",
   "GET /api/connections/oauth-done":
     "the static page an OAuth popup lands on; it carries no data and closes itself",

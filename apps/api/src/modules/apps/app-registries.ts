@@ -321,6 +321,12 @@ export const toolRegistry = createTypedRegistry<
      *  handler restages the row in place, narrowed to holders of the union taint
      *  (scope-taint.ts, rule 8g). Host-only: a manifest cannot declare it. */
     taintEditsPendingApproval?: boolean
+    /** The write goes back into the tool's own app (scope-taint.ts, rule 6l): on a turn whose
+     *  every taint scope is a read scope of this app it is not judged, unless one of
+     *  `outwardWhen`'s parameters holds one of its values in the call (it then sends something
+     *  out of the app: the calendar's invitation email). Copied by runtime.ts for a vouched
+     *  (first-party) app alone; registration refuses any other. */
+    taintReturnsToOwnApp?: { outwardWhen?: Readonly<Record<string, readonly unknown[]>> }
     /** The table this READ tool reads its rows from, schema-qualified exactly like
      *  `writesToTable`. It makes the read an ORIGIN for the same-resource allowance
      *  (A46): a later write that names this table and one of the rows read here is

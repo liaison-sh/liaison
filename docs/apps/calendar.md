@@ -138,7 +138,7 @@ Ask "Open the quarter review" and the agent opens the calendar on that event's d
 |---|---|---|
 | `list_accounts` | List connected Google Calendar accounts | `calendar:events:read` |
 | `list_calendars` | List calendars and whether each is selected for sync | `calendar:events:read` |
-| `list_events` | List events in a time window, with recurring events expanded | `calendar:events:read` |
+| `list_events` | List events in a time window. A recurring series comes once, with each of its occurrences in the window | `calendar:events:read` |
 | `search_events` | Search events by title, description and location | `calendar:events:read` |
 | `find_free_slots` | Find free times of a given length for you and your guests, inside working hours | `calendar:events:read` |
 | `create_event` | Create an event, optionally with a Google Meet link | `calendar:events:write` |
@@ -153,5 +153,11 @@ For this and the following occurrences, the series is split as in Google Calenda
 ### Invitations and deletes from agents
 
 An agent's writes email nobody unless you ask it to invite or notify the guests. Then, and for every event an agent deletes, the change waits for your approval first: nothing reaches Google or the guests before you approve it. Your answer to an invitation (yes, no or maybe) goes to Google, which tells the organizer.
+
+To invite people, the agent makes one request with every guest, so one approval sends every invitation. The approval card names the event, its time and its calendar, and says who Google will email.
+
+An agent that only looked at your calendar can create, move or edit events in it without an approval, when nobody is emailed. Once it has also read other data, such as your mail or a ticket, a change it makes to your calendar waits for your approval, so that data does not reach the calendar, and the people who see it, unless you agree. Adding a guest nobody in your organization knows also waits, since Google shows them the event.
+
+After each change the agent says whether the guests were emailed. A calendar whose Google account is not connected keeps its events in Liaison only: nothing reaches Google or the guests, and the agent says so.
 
 See the [agent tool reference](../reference/agent-tools.md).

@@ -96,7 +96,7 @@ Anyone who may approve a request may edit it, even when the request waits in a c
 2. Change the text. Hours and amounts are edited as you read them: hours in hours and a rate in the currency's units, even when the request stores minutes or cents.
 3. Click **Save** (or **Cancel** to drop the change), then click **Approve**.
 
-When an app raised the request under its own title, such as a document sent for signature, the card keeps that title after you edit it. Its lines are rebuilt from your edit, so the card always shows what will run.
+When an app raised the request under its own title, such as a document sent for signature, the card keeps that title after you edit it. Its lines are rebuilt from your edit, so the card always shows what will run. When an agent edits a pending request after reading more data, the card says so again if people who can see where it is written cannot see that data: a calendar invitation drafted after reading only the calendar carries no such line until the agent's edit brings in other data, such as mail.
 
 A draft from a personal mailbox stays encrypted in the request: only the mailbox's owner sees it on the card and approves it. To edit it, unlock the mailbox on that device: **Edit** opens on the decrypted text, and saving encrypts the new text to the mailbox again, so the request never holds it readable. Until the mailbox is unlocked, the card shows **Unlock** instead of **Edit**. An agent can edit such a draft the same way. When the edit cannot carry every encrypted part of the draft (a reply's subject, for example), it is refused: the agent withdraws the request and drafts a new one.
 

@@ -1068,16 +1068,17 @@ export async function issueOrderFlow(
 
   // Steps 7+8+10+11+12 — build drafts, snapshot lines, issue + PDF + thread post.
   //
-  // SPLIT BY SCOPE: physical goods and their carriage on one document, digital lines on another.
-  // Customs values a shipment from the commercial invoice, which must not carry the software.
-  // The carriage belongs to the goods it moves (the invoice that states the Incoterm): on a
-  // digital invoice it turned the supply into "goods and services" and printed the export of
-  // goods mention on a download. Only an order with no goods at all keeps it on its one invoice.
-  const physical = payload.line_items.filter((li) => (li.line_kind ?? "goods") === "goods")
-  const carriage = payload.line_items.filter((li) => li.line_kind === "shipping")
-  const digital = payload.line_items.filter((li) => li.line_kind === "software")
-  const goodsItems = physical.length > 0 ? [...physical, ...carriage] : []
-  const softwareItems = physical.length > 0 ? digital : [...digital, ...carriage]
+  // SPLIT BY SCOPE: a HARDWARE invoice of the physical goods alone (the commercial invoice
+  // customs values the shipment from) and a "digital goods and services" invoice of everything
+  // else: the software/digital lines AND the carriage. An order of goods alone with a shipping
+  // charge therefore gets two invoices too (the carriage on its own services invoice). The
+  // carriage keeps the VAT of the goods it moves (Shopify's own tax, the order's treatment), and
+  // the services invoice is worded per line (resolveLegalMention: 259 B for a download to a
+  // consumer outside the EU, 262 I 1° for the transport of an export), never art. 146.
+  const goodsItems = payload.line_items.filter((li) => (li.line_kind ?? "goods") === "goods")
+  const softwareItems = payload.line_items.filter(
+    (li) => li.line_kind === "software" || li.line_kind === "shipping",
+  )
 
   const issuerInput: IssueInput["issuer"] = {
     id: issuer.id,

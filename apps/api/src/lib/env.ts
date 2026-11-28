@@ -296,6 +296,11 @@ export const envSchema = z
       unsetIfEmpty,
       z.string().regex(SEMVER, "must be major.minor.patch").default("0.0.0"),
     ),
+    // Whether the desktop and phone apps may run this server's own web build
+    // in place of the one compiled into them, once its signed statement checks
+    // out (GET /api/shell/info, GET /api/client-policy). false keeps every app
+    // on its bundled shell.
+    LIAISON_SERVED_SHELL: envBoolean(true),
     // Extra networks (comma-separated CIDRs) whose direct connections may carry
     // X-Forwarded-For, beyond loopback and the private ranges that are always
     // trusted (lib/request-context.ts). Only needed when a proxy reaches the app

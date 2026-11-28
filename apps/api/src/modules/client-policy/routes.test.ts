@@ -60,7 +60,7 @@ describe("GET /api/client-policy", () => {
     expect(bad.success).toBe(false)
   })
 
-  it("answers without a credential with exactly the three minimums", async () => {
+  it("answers without a credential with exactly the three minimums and the served-shell switch", async () => {
     const res = await app.request("/api/client-policy", {
       headers: { [CLIENT_HEADER]: "desktop/0.1.35" },
     })
@@ -68,11 +68,12 @@ describe("GET /api/client-policy", () => {
     const body = (await res.json()) as { data: Record<string, unknown> }
     // A public answer: the key set is pinned so a later field is a failing test.
     expect(Object.keys(body).sort()).toEqual(["data"])
-    expect(Object.keys(body.data).sort()).toEqual(["android", "desktop", "ios"])
+    expect(Object.keys(body.data).sort()).toEqual(["android", "desktop", "ios", "servedShell"])
     expect(body.data).toEqual({
       desktop: env.LIAISON_MIN_CLIENT_DESKTOP,
       ios: env.LIAISON_MIN_CLIENT_IOS,
       android: env.LIAISON_MIN_CLIENT_ANDROID,
+      servedShell: env.LIAISON_SERVED_SHELL,
     })
   })
 
@@ -83,7 +84,12 @@ describe("GET /api/client-policy", () => {
     const res = await app.request("/api/client-policy")
     expect(res.status).toBe(200)
     const body = (await res.json()) as { data: unknown }
-    expect(body.data).toEqual({ desktop: "0.2.0", ios: "1.0.40", android: "0.1.0" })
+    expect(body.data).toEqual({
+      desktop: "0.2.0",
+      ios: "1.0.40",
+      android: "0.1.0",
+      servedShell: env.LIAISON_SERVED_SHELL,
+    })
   })
 
   it("never uses the client header for access: a garbage value changes nothing", async () => {

@@ -36,6 +36,8 @@
     "lint-button-width.test.ts",
     "api-connector-schema-doc.ts",
     "api-connector-schema-doc.test.ts",
+    // Signed web shells: the build manifest and the statement check.
+    "shell-signing",
     // The push notification matrix runner (S7): a bun script beside the QA
     // scenarios, typechecked with the other scripts.
     "../qa/notifications"

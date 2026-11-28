@@ -317,3 +317,6 @@ Later versions upgrade in place (MEILI_UPGRADE_DB) -> deploy/docker-compose.yml:
 Older than 1.10 or 1.11 stops with a message -> deploy/meilisearch/upgrade.sh:55
 Missing index is created and rebuilt from the database at boot -> apps/api/src/modules/search/drift.ts:141
 Vectors are carried only from the live index -> apps/api/src/modules/search/reindex.ts:728
+The image builds the web app in both modes, the native build served under /native/ -> apps/api/Dockerfile:72 ; apps/api/Dockerfile:135 ; apps/api/src/lib/web-shell-builds.ts:22
+GET /api/shell/info names both build ids -> apps/api/src/modules/client-policy/shell-info-routes.ts:33
+LIAISON_SERVED_SHELL=false keeps the apps on their compiled-in build -> apps/api/src/lib/env.ts:303

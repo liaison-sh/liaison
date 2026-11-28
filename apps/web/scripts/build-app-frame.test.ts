@@ -6,6 +6,7 @@
 
 import { appFrameDocument, appFramePolicy } from "@liaison/shared"
 import { describe, expect, it } from "vitest"
+import { frameDocumentNonce } from "./build-app-frame"
 
 const directive = (policy: string, name: string) =>
   policy
@@ -50,5 +51,16 @@ describe("the mobile frame document", () => {
       if (d.startsWith("script-src")) continue
       expect(rust).toContain(`"${d}"`)
     }
+  })
+})
+
+describe("the frame document's nonce", () => {
+  // Two builds of one commit must emit the same bytes (signed shell builds are
+  // compared file by file), so the nonce comes from the runtime, not from chance.
+  it("is the same for the same runtime and differs for another", () => {
+    const a = frameDocumentNonce("(()=>{})()")
+    expect(a).toMatch(/^[0-9a-f]{36}$/)
+    expect(frameDocumentNonce("(()=>{})()")).toBe(a)
+    expect(frameDocumentNonce("(()=>{1})()")).not.toBe(a)
   })
 })

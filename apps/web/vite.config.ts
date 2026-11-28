@@ -4,7 +4,6 @@ import tailwindcss from "@tailwindcss/vite"
 import { defineConfig } from "vite"
 import solid from "vite-plugin-solid"
 import { devProxyFor } from "./src/lib/dev-proxy"
-import { webBuildId } from "./src/lib/web-build-id-plugin"
 import { helpDocsBundle } from "./src/modules/help/help-docs-plugin"
 import { mailboxWorkerIntegrity } from "./src/modules/mailbox/worker-integrity-plugin"
 
@@ -57,14 +56,7 @@ export default defineConfig(({ mode }) => ({
   },
   // The plugin is typed structurally rather than against rollup's own types, so
   // it is cast in here.
-  // webBuildId runs last: it hashes what the build finally emits (lib/web-build.ts).
-  plugins: [
-    solid(),
-    tailwindcss(),
-    helpDocsBundle(__dirname),
-    mailboxWorkerIntegrity() as never,
-    webBuildId() as never,
-  ],
+  plugins: [solid(), tailwindcss(), helpDocsBundle(__dirname), mailboxWorkerIntegrity() as never],
   resolve: {
     alias: [
       { find: "~", replacement: resolve(__dirname, "src") },

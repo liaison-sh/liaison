@@ -382,8 +382,8 @@ export interface Draft {
 
 /**
  * Document scope — set by the Shopify order-paid auto-flow when it SPLITS a
- * mixed order into two documents: `goods` (physical lines + shipping; the
- * commercial invoice customs sees) and `software` (digital lines only —
+ * mixed order into two documents: `goods` (physical lines only; the
+ * commercial invoice customs sees) and `software` (digital lines and the carriage —
  * customs must never tariff these, so they live on their own document).
  * Null/absent for agent- and manually-created documents (whole-order scope).
  */
@@ -1945,6 +1945,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
         customerKind: (documentInsert.einvoice?.customer_kind as string | null | undefined) ?? null,
         taxTerritory: taxCountry,
         issuerTerritory: issuerTerritoryOf(issuer),
+        lineKinds: snapshotLines.map((l) => l.line_kind ?? null),
       },
     )
     const templateData = buildTemplateData({
@@ -2141,6 +2142,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
         customerKind: (documentInsert.einvoice?.customer_kind as string | null | undefined) ?? null,
         taxTerritory: taxCountry,
         issuerTerritory: issuerTerritoryOf(issuer),
+        lineKinds: snapshotLines.map((l) => l.line_kind ?? null),
       },
     )
     return {

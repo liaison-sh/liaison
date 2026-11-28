@@ -117,3 +117,9 @@ update_event and delete_event take this and the following occurrences -> apps/ap
 Series split: old series ends before the occurrence, a new one starts there -> apps/api/src/apps/calendar/sync.ts:1874
 Split keeps cancellations, edited occurrences take the change -> apps/api/src/apps/calendar/sync.ts:1912
 Split rule arithmetic (UNTIL or shared COUNT) -> packages/shared/src/calendar-recurrence.ts:508
+list_events gives a recurring series its occurrences in the window -> apps/api/src/apps/calendar/tools.ts (listEventsForCaller)
+One request with every guest invites them all (one approval) -> apps/api/src/apps/calendar/app.manifest.json (agentInstructions INVITATIONS)
+Approval card names the event, its time and its calendar, and who is emailed -> apps/api/src/apps/calendar/summarizers.ts ; apps/api/src/apps/calendar/handlers.ts (gateNotifyingWrite, calendarDeleteEvent)
+A write after reading only the calendar runs without approval when nobody is emailed; other data read parks it -> apps/api/src/modules/agent/scopes/scope-taint.ts (rule 6l, returnsToOwnApp) ; apps/api/src/apps/calendar/app.manifest.json (taintReturnsToOwnApp)
+An unknown guest parks the write (Google shows them the event) -> apps/api/src/modules/agent/scopes/known-guests.ts
+The result says whether guests were emailed and whether the calendar reaches Google -> apps/api/src/apps/calendar/handlers.ts (writeOutcome) ; apps/api/src/apps/calendar/sync.ts (calendarReachesGoogle)

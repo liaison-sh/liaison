@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { createApiClient } from "~/lib/api-client"
 import {
@@ -14,7 +15,6 @@ import {
   WEB_BUILD_META_NAME,
   type WebBuildEnv,
 } from "~/lib/web-build"
-import { bakeWebBuildId, computeWebBuildId } from "~/lib/web-build-id-plugin"
 
 function memoryStorage() {
   const map = new Map<string, string>()
@@ -213,55 +213,6 @@ describe("api client feeds the watcher", () => {
     })
     await client.get("/ping")
     expect(observe).toHaveBeenCalledWith("srv-1")
-  })
-})
-
-describe("build id plugin", () => {
-  const bundle = () => ({
-    "assets/index-a.js": {
-      type: "chunk" as const,
-      fileName: "assets/index-a.js",
-      code: "const x=1;",
-    },
-    "index.html": {
-      type: "asset" as const,
-      fileName: "index.html",
-      source: '<html><meta name="liaison-web-build" content="__LIAISON_WEB_BUILD_ID__">' as
-        | string
-        | Uint8Array,
-    },
-  })
-
-  it("derives the id from content and bakes it into index.html, the one file never cached immutably", () => {
-    const b = bundle()
-    const expected = computeWebBuildId(bundle())
-    const { id, patched } = bakeWebBuildId(b)
-    expect(id).toBe(expected)
-    expect(id).toMatch(/^[0-9a-f]{16}$/)
-    expect(patched).toEqual(["index.html"])
-    expect(b["index.html"].source).toBe(`<html><meta name="liaison-web-build" content="${id}">`)
-    expect(b["assets/index-a.js"].code).toBe("const x=1;")
-    // Same content, same id: an unchanged redeploy prompts nobody.
-    expect(computeWebBuildId(bundle())).toBe(expected)
-    const changed = bundle()
-    changed["assets/index-a.js"].code = "const x=2;"
-    expect(computeWebBuildId(changed)).not.toBe(expected)
-    // Vite may hand the page over as bytes.
-    const bytes = bundle()
-    bytes["index.html"].source = new TextEncoder().encode(bundle()["index.html"].source as string)
-    expect(bakeWebBuildId(bytes).patched).toEqual(["index.html"])
-  })
-
-  it("refuses an index.html without the placeholder, and a JS chunk carrying it", () => {
-    const noMeta = bundle()
-    noMeta["index.html"].source = "<html>"
-    expect(() => bakeWebBuildId(noMeta)).toThrow(/placeholder/)
-    // A chunk keeps its hashed name when its source is unchanged, so an id
-    // baked into it would be served stale from the immutable cache after a
-    // deploy, and Reload could never clear the banner.
-    const inChunk = bundle()
-    inChunk["assets/index-a.js"].code = 'const x="__LIAISON_WEB_BUILD_ID__";'
-    expect(() => bakeWebBuildId(inChunk)).toThrow(/chunk assets\/index-a\.js/)
   })
 })
 

@@ -18,6 +18,12 @@
 //     block cannot do the job.
 import { z } from "zod"
 
+/**
+ * The version of the settings page format. Bump when a block kind or field
+ * type is added; apps declare `requires.settingsSchema`.
+ */
+export const SETTINGS_SCHEMA_VERSION = 1
+
 export const APP_KINDS = ["app", "connector"] as const
 export type AppKind = (typeof APP_KINDS)[number]
 

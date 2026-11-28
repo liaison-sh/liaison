@@ -72,6 +72,8 @@ export function parseStatement(bytes: Uint8Array): AppStatement | null {
   }
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null
   const s = raw as Record<string, unknown>
+  // A shell statement (shell-statement.ts) carries `kind`; an app statement never does.
+  if ("kind" in s) return null
   if (!sameKeys(s, TOP_KEYS) || s.v !== 1) return null
   const { keyId, name, version, hostApi, issuedAt, sourceDigest } = s
   if (!nonEmpty(keyId) || !nonEmpty(name) || !nonEmpty(version)) return null

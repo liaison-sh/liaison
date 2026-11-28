@@ -44,13 +44,14 @@ export async function keyIdFor(publicKeyBase64: string): Promise<string> {
   return `app-${(await sha256Hex(raw)).slice(0, 16)}`
 }
 
-interface LoadedKey {
+export interface LoadedKey {
   privateKey: CryptoKey
   publicKey: string
   keyId: string
 }
 
-async function loadPrivateKey(path: string): Promise<LoadedKey> {
+/** An Ed25519 PKCS#8 PEM private key, with its public half and key id. Never printed. */
+export async function loadPrivateKey(path: string): Promise<LoadedKey> {
   const pem = readFileSync(path, "utf8")
   const body = /-----BEGIN PRIVATE KEY-----([\s\S]+?)-----END PRIVATE KEY-----/.exec(pem)?.[1]
   const der = body ? base64ToBytes(body.replace(/\s+/g, "")) : null

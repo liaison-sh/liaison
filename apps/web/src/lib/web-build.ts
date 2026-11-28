@@ -5,7 +5,8 @@
 // A browser tab that loaded the app before a deploy keeps running the old code
 // for as long as it stays open: nothing in it ever asks whether the server now
 // ships something newer. So the build carries its own id (substituted into
-// index.html's `liaison-web-build` meta tag by `web-build-id-plugin.ts`, and
+// index.html's `liaison-web-build` meta tag by `scripts/stamp-build-id.ts`, the
+// last build step, and
 // written beside index.html as `build-id.txt`), and the server stamps every API response
 // with the id of the web build it bundles (`X-Liaison-Web-Build`). The two are
 // compared on the responses the app already receives, and once more when the

@@ -12,9 +12,9 @@
 // `--native` writes into the mobile build (dist-native) instead, and adds the
 // frame document itself, app-frame.html: the phone serves its page from local
 // files, so the document is a file too, the runtime inlined under a nonce fixed
-// at build time and the frame policy as a meta element (`appFrameDocument`,
+// at build time (derived from the runtime, so the build is reproducible) and the frame policy as a meta element (`appFrameDocument`,
 // @liaison/shared).
-import { randomBytes } from "node:crypto"
+import { createHash } from "node:crypto"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
 import { appFrameDocument } from "@liaison/shared"
@@ -38,6 +38,15 @@ export async function bundleAppFrameRuntime(): Promise<string> {
   return result.outputs[0].text()
 }
 
+/**
+ * The nonce of the file frame document. It is fixed in a file anyway (the same
+ * for every load), so deriving it from the runtime it guards costs nothing and
+ * keeps the build reproducible: two builds of one commit emit the same bytes.
+ */
+export function frameDocumentNonce(runtime: string): string {
+  return createHash("sha256").update(`liaison-app-frame\0${runtime}`).digest("hex").slice(0, 36)
+}
+
 export async function buildAppFrameRuntime(
   outDir: string,
   options: { document?: boolean } = {},
@@ -48,7 +57,7 @@ export async function buildAppFrameRuntime(
   await Bun.write(file, text)
   if (options.document) {
     const document = path.join(outDir, APP_FRAME_DOCUMENT_FILE)
-    await Bun.write(document, appFrameDocument(text, randomBytes(18).toString("hex")))
+    await Bun.write(document, appFrameDocument(text, frameDocumentNonce(text)))
     return document
   }
   return file

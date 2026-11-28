@@ -49,7 +49,7 @@ Desktop refuses a withdrawn (revoked or below-floor) version -> apps/desktop/src
 Any failed check runs the app in the sandboxed frame -> apps/web/src/framework/verified-app.ts:67
 The phone app frames every app, Liaison's own included (no desktop verifier) -> apps/web/src/framework/verified-app.ts:72
 A shell with no frame does not load an installed app -> apps/web/src/framework/bootstrap.ts:1519
-The phone app runs only the scripts it ships with (script-src 'self') -> apps/mobile/scripts/boot-injection.ts:75
+The phone app's page runs only its own scripts or the signed served build (script-src 'self') -> apps/mobile/scripts/boot-injection.ts:75 ; apps/mobile/ios/LiaisonShell/Sources/LiaisonShell/ShellStore.swift:633
 Minimum app versions from LIAISON_MIN_CLIENT_* -> apps/api/src/lib/env.ts:91
 Client version notice copy -> packages/shared/src/i18n/locales/en/kernel.json:1936
 App asks the client policy once at start -> apps/web/src/index.tsx:99
@@ -103,3 +103,9 @@ A version that does not start twice is not used again; last working one -> apps/
 Operator switch LIAISON_SERVED_SHELL -> apps/api/src/modules/client-policy/shell-info-routes.ts:39
 No compatibility mode while the server's version runs -> apps/web/src/framework/bootstrap.ts:1694
 Desktop goes back to its installed version at once when the running one is withdrawn or turned off; checks every 15 minutes, on focus, at start -> apps/desktop/src-tauri/src/served_shell.rs:971 ; apps/desktop/src-tauri/src/served_shell.rs:2088 ; apps/desktop/src-tauri/src/served_shell.rs:1848
+iPhone runs the server's signed version: signature, files, bridge range, withdrawn versions -> apps/mobile/ios/LiaisonShell/Sources/LiaisonShell/ShellStore.swift:88 ; apps/mobile/ios/LiaisonShell/Sources/LiaisonShell/ShellUpdater.swift:274
+iPhone re-checks the stored version each time it opens -> apps/mobile/ios/App/App/MainViewController.swift:44 ; apps/mobile/ios/LiaisonShell/Sources/LiaisonShell/ShellStore.swift:686
+iPhone uses a newer version from the next page load only -> apps/mobile/ios/LiaisonShell/Sources/LiaisonShell/ServedShellHost.swift:166 ; apps/mobile/ios/App/App/MainViewController.swift:73
+iPhone leaves a withdrawn or switched-off version at once and reloads; checks at open, on return, every 15 minutes -> apps/mobile/ios/LiaisonShell/Sources/LiaisonShell/ShellStore.swift:664 ; apps/mobile/ios/LiaisonShell/Sources/LiaisonShell/ServedShellHost.swift:258 ; apps/mobile/ios/LiaisonShell/Sources/LiaisonShell/ServedShellHost.swift:33 ; apps/mobile/ios/App/App/MainViewController.swift:125
+iPhone falls back to the last working, else installed, version; withdrawn list older than 3 days -> apps/mobile/ios/LiaisonShell/Sources/LiaisonShell/ShellStore.swift:633 ; apps/mobile/ios/LiaisonShell/Sources/LiaisonShell/ShellStore.swift:182
+iPhone: 45 s of foreground use, twice, then not used again -> apps/mobile/ios/LiaisonShell/Sources/LiaisonShell/ShellStore.swift:179 ; apps/mobile/ios/LiaisonShell/Sources/LiaisonShell/ShellStore.swift:180

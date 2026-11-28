@@ -155,6 +155,8 @@
     "create": "Nouvel événement",
     "help": "Afficher ces raccourcis",
     "escape": "Fermer la carte du nouvel événement",
-    "delete": "Supprimer l’événement ouvert (avec confirmation)"
+    "delete": "Supprimer l’événement ouvert (avec confirmation)",
+    "escapeKey": "Échap",
+    "deleteKey": "Suppr"
   }
 }

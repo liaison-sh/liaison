@@ -155,6 +155,8 @@
     "create": "New event",
     "help": "Show these shortcuts",
     "escape": "Close the new event card",
-    "delete": "Delete the open event (asks first)"
+    "delete": "Delete the open event (asks first)",
+    "escapeKey": "Esc",
+    "deleteKey": "Del"
   }
 }

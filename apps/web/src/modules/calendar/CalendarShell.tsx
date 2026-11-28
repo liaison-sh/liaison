@@ -894,11 +894,15 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
               )}
             </For>
             <dt>
-              <kbd class="rounded border border-border px-1.5 font-mono text-xs">Esc</kbd>
+              <kbd class="rounded border border-border px-1.5 font-mono text-xs">
+                {i18n.t("calendar.shortcuts.escapeKey")}
+              </kbd>
             </dt>
             <dd class="text-text-secondary">{i18n.t("calendar.shortcuts.escape")}</dd>
             <dt>
-              <kbd class="rounded border border-border px-1.5 font-mono text-xs">Del</kbd>
+              <kbd class="rounded border border-border px-1.5 font-mono text-xs">
+                {i18n.t("calendar.shortcuts.deleteKey")}
+              </kbd>
             </dt>
             <dd class="text-text-secondary">{i18n.t("calendar.shortcuts.delete")}</dd>
           </dl>

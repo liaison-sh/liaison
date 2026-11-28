@@ -30,6 +30,12 @@ import {
   serverOriginSettled,
   startBoot,
 } from "./main"
+import { liaisonNativeAvailable, liaisonNativeProxy } from "./native/liaison-native"
+import {
+  createServedShell,
+  reselectThenReload,
+  type ServedShellPlugin,
+} from "./native/served-shell"
 import { installNativeShelf } from "./native/shelf"
 import { createFirstLaunch } from "./onboarding/server-address"
 import { createNativeServers, reconcilePageStorage } from "./servers/server-list"
@@ -54,10 +60,21 @@ if (typeof document !== "undefined") {
   const reload = createBootRestart(globalThis.location)
   // A server change starts the page at a given route (servers/server-list.ts);
   // `replace` so the route left behind is not a Back step into the old server.
-  const restart = (path?: string) => {
+  const servedShell = createServedShell({
+    available: liaisonNativeAvailable,
+    plugin: liaisonNativeProxy<ServedShellPlugin>(),
+  })
+  publishNativeBridge(globalThis, {
+    shellInfo: servedShell.info,
+    shellReady: servedShell.ready,
+    refreshShell: servedShell.reselect,
+  })
+  // A server switch restarts the page on THAT server's build (the host
+  // chooses it first; ios/LiaisonShell).
+  const restart = reselectThenReload(servedShell, (path?: string) => {
     if (path === undefined) globalThis.location.reload()
     else globalThis.location.replace(path)
-  }
+  })
 
   void startBoot({
     queue: deepLinkQueue,

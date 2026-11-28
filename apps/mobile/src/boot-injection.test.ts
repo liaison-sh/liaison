@@ -3,7 +3,13 @@
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { BOOT_SCRIPT_NAME, injectBootScript, pinViewportScale } from "../scripts/boot-injection"
+import {
+  BOOT_SCRIPT_NAME,
+  injectBootScript,
+  inlineScripts,
+  makeMobilePage,
+  pinViewportScale,
+} from "../scripts/boot-injection"
 
 const APP_HTML =
   '<!doctype html><html><head><meta charset="utf-8">' +
@@ -71,5 +77,54 @@ describe("the native viewport", () => {
 
   it("refuses an index.html with no viewport meta", () => {
     expect(() => pinViewportScale("<html><head></head></html>")).toThrow()
+  })
+})
+
+describe("the made page's shape (checkMobilePage)", () => {
+  const viewport = '<meta name="viewport" content="width=device-width">'
+
+  it("accepts the web app's real page and a re-made one", () => {
+    const once = makeMobilePage(
+      readFileSync(resolve(import.meta.dir, "..", "..", "web", "index.html"), "utf8"),
+    )
+    expect(makeMobilePage(once.html).html).toBe(once.html)
+  })
+
+  it("a <header> is not a <head>", () => {
+    expect(() =>
+      makeMobilePage(`<html><header></header><head>${viewport}</head><body></body></html>`),
+    ).toThrow()
+    const page = makeMobilePage(
+      `<html><head>${viewport}</head><body><header>x</header></body></html>`,
+    )
+    expect(page.html).toContain("<header>x</header>")
+  })
+
+  it("refuses a <head> in a comment, two heads, and a script before <head>", () => {
+    for (const html of [
+      `<!-- <head> --><html><head>${viewport}</head></html>`,
+      `<html><head>${viewport}</head><head></head></html>`,
+      `<!doctype html><script src="https://evil.example/x.js"></script><html><head>${viewport}</head></html>`,
+    ]) {
+      expect(() => makeMobilePage(html)).toThrow()
+    }
+  })
+
+  it("refuses a boot tag already elsewhere instead of skipping the injection", () => {
+    const tag = `<script src="/${BOOT_SCRIPT_NAME}"></script>`
+    expect(() =>
+      makeMobilePage(`<html><head>${viewport}</head><body>${tag}</body></html>`),
+    ).toThrow()
+    expect(() => makeMobilePage(`<html><head><!-- ${tag} -->${viewport}</head></html>`)).toThrow()
+  })
+
+  it("keeps data blocks inline with their type and only moves scripts that run", () => {
+    const page = makeMobilePage(
+      `<html><head>${viewport}<script type="application/json">{"a":1}</script><script nomodule>old()</script></head></html>`,
+    )
+    expect(page.html).toContain('<script type="application/json">{"a":1}</script>')
+    expect(page.html).toMatch(/<script nomodule src="\/liaison-inline-[0-9a-f]{12}\.js"><\/script>/)
+    expect(page.files.map((f) => f.content)).toEqual(["old()"])
+    expect(inlineScripts(page.html)).toEqual([])
   })
 })

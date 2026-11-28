@@ -19,7 +19,12 @@ import { getConnectorApps, getTabType, resetRegistry, urlToTabInfo } from "~/fra
 import { loadManifestApps, resetBootstrap } from "~/framework/bootstrap"
 import { compatModeApps } from "~/framework/compat-mode"
 import { appDisplayNames } from "~/lib/capability-copy"
-import { DESKTOP_BRIDGE_KEY, DESKTOP_BRIDGE_VERSION } from "~/lib/desktop-shell-contract"
+import {
+  DESKTOP_BRIDGE_KEY,
+  DESKTOP_BRIDGE_VERSION,
+  type DesktopBridge,
+} from "~/lib/desktop-shell-contract"
+import { loadShellStatus, resetShellStatus } from "~/lib/served-shell"
 import { clearAuth, setTokens } from "~/modules/auth/auth-store"
 
 const loaded = vi.hoisted(() => ({
@@ -111,6 +116,14 @@ function desktopShell(
     verifyFirstPartyApp: verify,
   })
   return verify
+}
+
+/** An app manifest whose settings page uses a block type no build knows. */
+function unknownBlockManifest() {
+  return {
+    ...manifestOf("acme", "AcmeHome"),
+    settings: { sections: [{ id: "s", title: "S", blocks: [{ type: "hologram" }] }] },
+  }
 }
 
 /** The signed manifest the shell answers: same presence as the server's, its own display name. */
@@ -308,6 +321,31 @@ describe("an installed app's UI inside the desktop shell", () => {
     )
   })
 
+  it("an app whose settings use a block this build does not know runs in compatibility mode", async () => {
+    vi.stubGlobal("__LIAISON_SERVER_ADDRESS__", SERVER)
+    vi.stubGlobal("__LIAISON_APP_FRAME_URL__", FRAME)
+    serveManifests([{ name: "acme", component: "AcmeHome", manifest: unknownBlockManifest() }])
+    await load()
+    expect(compatModeApps().map((e) => e.app)).toEqual(["acme"])
+  })
+
+  it("a served desktop shell is the server's own build: the same app never notes compatibility mode", async () => {
+    vi.stubGlobal("__LIAISON_SERVER_ADDRESS__", SERVER)
+    vi.stubGlobal("__LIAISON_APP_FRAME_URL__", FRAME)
+    await loadShellStatus({
+      shellStatus: async () => ({
+        served: true,
+        buildId: "0123456789abcdef",
+        reason: null,
+        pending: false,
+      }),
+    } as unknown as DesktopBridge)
+    serveManifests([{ name: "acme", component: "AcmeHome", manifest: unknownBlockManifest() }])
+    await load()
+    expect(compatModeApps()).toEqual([])
+    resetShellStatus()
+  })
+
   it("a frame URL that is not the shell's own scheme isolates nothing, so the app is not loaded", async () => {
     vi.stubGlobal("__LIAISON_SERVER_ADDRESS__", SERVER)
     vi.stubGlobal("__LIAISON_APP_FRAME_URL__", "https://evil.example.com/frame")
@@ -347,6 +385,33 @@ describe("an installed app's UI inside the mobile shell (D7)", () => {
         expect(fetchMock).toHaveBeenCalledWith(`${SERVER}/api/apps/${app}/1.0.0/ui.js`),
       )
     }
+  })
+})
+
+describe("compatibility mode inside the mobile shell", () => {
+  it("a bundled phone shell notes an app whose settings use a block it does not know", async () => {
+    vi.stubGlobal("__LIAISON_SERVER_ADDRESS__", SERVER)
+    vi.stubGlobal("__LIAISON_NATIVE__", {})
+    serveManifests([{ name: "acme", component: "AcmeHome", manifest: unknownBlockManifest() }])
+    await load()
+    expect(compatModeApps().map((e) => e.app)).toEqual(["acme"])
+  })
+
+  it("a served phone shell is the server's own build: the same app never notes compatibility mode", async () => {
+    vi.stubGlobal("__LIAISON_SERVER_ADDRESS__", SERVER)
+    vi.stubGlobal("__LIAISON_NATIVE__", {
+      shellInfo: async () => ({
+        bridgeVersion: 1,
+        shell: "served:0123456789abcdef",
+        served: true,
+        buildId: "0123456789abcdef",
+      }),
+    })
+    await loadShellStatus(null)
+    serveManifests([{ name: "acme", component: "AcmeHome", manifest: unknownBlockManifest() }])
+    await load()
+    expect(compatModeApps()).toEqual([])
+    resetShellStatus()
   })
 })
 

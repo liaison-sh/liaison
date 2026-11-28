@@ -43,6 +43,7 @@ import { onApiReady } from "~/lib/api-ready"
 import { registerAppDisplayName } from "~/lib/capability-copy"
 import { apiUrl, serverAddressOverride } from "~/lib/env"
 import { appStoreHidden, purchaseSurfacesHidden } from "~/lib/native-bridge"
+import { runningServedShell } from "~/lib/served-shell"
 import { onSessionStart, onSessionTeardown } from "~/lib/session-lifecycle"
 import { scopeRequestsStore } from "~/modules/admin-scope-requests/scope-requests-store"
 import { registerAgentApp } from "~/modules/agent/agent-app"
@@ -1688,6 +1689,9 @@ function manifestVersion(manifest: unknown): string | null {
 function noteCompatFor(name: string, manifest: unknown): void {
   clearCompatMode(name)
   if (!inWrappedShell()) return
+  // A served desktop shell is the server's own build: it knows every block
+  // the server's apps use, so it never runs one in compatibility mode (S2).
+  if (runningServedShell()) return
   if (hasUnsupportedSettings(manifest)) {
     noteCompatMode({ app: name, reason: "settings", serverVersion: manifestVersion(manifest) })
   }

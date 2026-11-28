@@ -13,6 +13,8 @@
 // answered. So publishing merges rather than replaces: a later part never
 // drops an earlier one, and the web app holds the same object throughout.
 
+import type { ShellInfo } from "../native/served-shell"
+
 /** The name apps/web reads. Changing it changes both sides or neither. */
 export const NATIVE_BRIDGE_GLOBAL = "__LIAISON_NATIVE__"
 
@@ -86,6 +88,12 @@ export interface NativeBridge {
   setThreadOnScreen?: (threadId: string | null) => void
   /** Which phone app this is and its version, "1.0.<build>" (native/client-version.ts). */
   clientVersion?: () => Promise<{ platform: "ios" | "android"; version: string } | null>
+  /** The host's bridge version and which shell runs (native/served-shell.ts). */
+  shellInfo?: () => Promise<ShellInfo | null>
+  /** The page painted with this build id (native/served-shell.ts). */
+  shellReady?: (buildId: string | null) => void
+  /** Choose the build again; true when a reload would load another one. */
+  refreshShell?: () => Promise<boolean>
 }
 
 /**

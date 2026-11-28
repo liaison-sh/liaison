@@ -69,6 +69,9 @@ mod driver;
 /// The saved servers, and everything filed under each one.
 mod server_listeners;
 mod servers;
+/// The connected server's own web build, verified against the app-signing
+/// keys, served in the main window instead of the bundled one (S5).
+mod served_shell;
 /// Which permission answers the page may give and which only the shell's own
 /// dialog may (D11).
 mod permission_gate;
@@ -88,7 +91,7 @@ mod verified_apps;
 /// Every command a RELEASE build registers. Pinned as a list so a debug only
 /// command that leaked into the release arm is a failing test rather than a
 /// command shipped to every user.
-pub const RELEASE_COMMANDS: [&str; 94] = [
+pub const RELEASE_COMMANDS: [&str; 97] = [
     "start_session",
     "stop_session",
     "cancel_device_approval",
@@ -183,6 +186,9 @@ pub const RELEASE_COMMANDS: [&str; 94] = [
     "stop_orphan_claude",
     "check_for_updates",
     "verify_first_party_app",
+    "shell_ready",
+    "shell_status",
+    "refresh_shell",
 ];
 
 /// What a debug build adds on top.
@@ -211,6 +217,12 @@ fn redact_link(raw: &str) -> String {
 }
 
 fn main() {
+    // THE MAIN WINDOW'S ASSETS: the bundled web build, or the connected
+    // server's own build once the shell verified it (served_shell.rs). The
+    // resolver goes in front of the generated assets before anything is built.
+    let shell_state = served_shell::ShellState::new();
+    let mut context = tauri::generate_context!();
+    served_shell::install(&mut context, shell_state.clone());
     let builder = tauri::Builder::default();
     // ONE RUNNING COPY, release builds only, and FIRST (the plugin's own
     // documented requirement): a second launch has to be caught before the
@@ -266,6 +278,14 @@ fn main() {
         // and the app keeps its connection and keeps notifying. Quit (the
         // tray's, or Cmd+Q) still quits.
         .on_window_event(|window, event| {
+            // The window coming forward re-reads the served shell's lists, so
+            // a revocation reaches a window left open (served_shell.rs).
+            if let tauri::WindowEvent::Focused(true) = event {
+                if window.label() == tray::MAIN_WINDOW {
+                    use tauri::Manager;
+                    served_shell::on_focus(window.app_handle());
+                }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == tray::MAIN_WINDOW
                     && tray::current_close_decision() == tray::CloseDecision::HideToTray
@@ -288,7 +308,8 @@ fn main() {
         .manage(account::AccountState::default())
         .manage(server_listeners::Listeners::default())
         .manage(claude_auth::ClaudeLogin::default())
-        .manage(verified_apps::VerifiedApps::default());
+        .manage(verified_apps::VerifiedApps::default())
+        .manage(served_shell::Shell(shell_state.clone()));
     // THE MACOS MENU BAR: the standard menus and no Account menu, which the
     // app's own Servers and Claude account UI replaced on every OS. Windows
     // and Linux get no menu (Tauri would draw it as a strip in the window).
@@ -410,6 +431,9 @@ fn main() {
         node_folders::open_folder_in_editor,
         orphan_claude::stop_orphan_claude,
         verified_apps::verify_first_party_app,
+        served_shell::shell_ready,
+        served_shell::shell_status,
+        served_shell::refresh_shell,
     ]);
     #[cfg(debug_assertions)]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -507,6 +531,9 @@ fn main() {
         node_folders::open_folder_in_editor,
         orphan_claude::stop_orphan_claude,
         verified_apps::verify_first_party_app,
+        served_shell::shell_ready,
+        served_shell::shell_status,
+        served_shell::refresh_shell,
         diagnostics::report_webview_diagnostic,
         driver::report_driver_result,
         driver::hide_to_tray,
@@ -534,6 +561,12 @@ fn main() {
             // and built here instead, because an initialization script can
             // only be attached while the webview is being created and it has
             // to run BEFORE the page's own scripts.
+            // Which build the window loads: the current server's verified
+            // build when it has one, else the bundled shell; a refresh of
+            // that server's build runs in the background.
+            served_shell::on_start(app.handle());
+            let served_shell_state = served_shell::shared_state(app.handle())
+                .unwrap_or_else(served_shell::ShellState::new);
             let window_config = app
                 .config()
                 .app
@@ -573,8 +606,29 @@ fn main() {
             let node_on = sidecar::app_config_dir(app.handle())
                 .and_then(|dir| node::current_node_at(&dir))
                 .is_some_and(|node| node.enabled);
+            // THE SERVED SHELL'S DOCUMENT LOADS (served_shell.rs): a main
+            // frame navigation to the app's own origin is what may swap a
+            // staged build in; every response of that origin carries the
+            // pinned CSP while a served build runs (D15). Neither cancels or
+            // changes anything else.
+            let nav_state = served_shell_state.clone();
+            let csp_state = served_shell_state.clone();
+            let csp = tauri::Manager::config(app.handle())
+                .app
+                .security
+                .csp
+                .as_ref()
+                .map(|csp| csp.to_string())
+                .unwrap_or_default();
             let mut window =
                 tauri::WebviewWindowBuilder::from_config(app.handle(), &window_config)?
+                    .on_navigation(move |url| {
+                        served_shell::on_navigation(&nav_state, url);
+                        true
+                    })
+                    .on_web_resource_request(move |_request, response| {
+                        served_shell::add_csp_header(csp_state.status().served, &csp, response);
+                    })
                     .background_throttling(tray::throttling_policy(node_on))
                     .initialization_script(&device_script)
                     .initialization_script(app_frame::app_frame_url_script())
@@ -685,7 +739,7 @@ fn main() {
             updater::check_on_start(app.handle().clone());
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building the Liaison desktop shell")
         .run(|app, event| {
             // The sidecar is a child of this process holding the session's
@@ -1001,6 +1055,7 @@ mod handler_registration_tests {
                 format!("orphan_claude::{command},"),
                 format!("updater::{command},"),
                 format!("verified_apps::{command},"),
+                format!("served_shell::{command},"),
             ];
             assert!(
                 named.iter().any(|name| release_arm.contains(name)),

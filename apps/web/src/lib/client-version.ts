@@ -9,7 +9,8 @@
 // notice (modules/shell/ClientVersionNotice.tsx).
 //
 // Once the server has answered, the app also names itself on its requests:
-// `X-Liaison-Client: <desktop|ios|android>/<version>`, on the API client and
+// `X-Liaison-Client: <desktop|ios|android>/<version>` (the desktop and the
+// iOS app add ` shell=served:<build id>` or ` shell=bundled:<reason>`), on the API client and
 // the websocket ticket exchange. ONLY once it has answered: a server older
 // than the policy does not list that header among the ones its CORS allows,
 // and a request carrying it would be refused before it left the app. The
@@ -22,6 +23,7 @@ import { createSignal } from "solid-js"
 import { getDesktopBridge } from "~/lib/desktop-shell-contract"
 import { apiUrl } from "~/lib/env"
 import { nativeBridge } from "~/lib/native-bridge"
+import { loadShellStatus, shellReport } from "~/lib/served-shell"
 
 export const CLIENT_HEADER = "X-Liaison-Client"
 export const CLIENT_POLICY_PATH = "/client-policy"
@@ -32,6 +34,8 @@ export type ClientPlatform = "desktop" | "ios" | "android"
 export interface ShellClient {
   platform: ClientPlatform
   version: string
+  /** The app's shell: `served:<build id>` or `bundled:<reason>` (lib/served-shell.ts). */
+  shell?: string
 }
 
 const VERSION = /^(\d+)\.(\d+)\.(\d+)$/
@@ -82,7 +86,8 @@ export function createClientPolicy(env: ClientPolicyEnv): ClientPolicy {
       const body = (await response.json()) as { data?: Record<string, unknown> } | null
       const minimum = body?.data?.[client.platform]
       if (typeof minimum !== "string" || parts(minimum) === null) return
-      setHeader(`${client.platform}/${client.version}`)
+      const shell = client.shell !== undefined ? ` shell=${client.shell}` : ""
+      setHeader(`${client.platform}/${client.version}${shell}`)
       if (compareVersions(client.version, minimum) < 0) setBelow(client.platform)
     } catch {
       // No answer (an older server, no network): no header and no notice.
@@ -105,11 +110,18 @@ export async function shellClient(): Promise<ShellClient | null> {
   if (desktop !== null) {
     const appVersion = desktop.appVersion
     if (typeof appVersion !== "function") return null
-    return { platform: "desktop", version: await appVersion() }
+    const version = await appVersion()
+    const shell = shellReport(await loadShellStatus(desktop))
+    return shell === null
+      ? { platform: "desktop", version }
+      : { platform: "desktop", version, shell }
   }
   const phone = nativeBridge()?.clientVersion
   if (typeof phone !== "function") return null
-  return await phone()
+  const client = await phone()
+  if (client === null) return null
+  const shell = shellReport(await loadShellStatus(null))
+  return shell === null ? client : { ...client, shell }
 }
 
 let page: ClientPolicy | null = null

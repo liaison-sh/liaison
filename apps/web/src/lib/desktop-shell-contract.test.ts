@@ -91,6 +91,13 @@ describe("getDesktopBridge", () => {
     expect(getDesktopBridge({ __LIAISON_DESKTOP__: { version: 99 } })).toBeNull()
   })
 
+  it("accepts a bridge whose version the desktop range allows, and no other", () => {
+    // SHELL_BRIDGE_RANGE.desktop is ^1: version 1 is accepted, 2 is not.
+    expect(getDesktopBridge({ __LIAISON_DESKTOP__: stubBridge(1) })).not.toBeNull()
+    expect(getDesktopBridge({ __LIAISON_DESKTOP__: stubBridge(2) })).toBeNull()
+    expect(getDesktopBridge({ __LIAISON_DESKTOP__: { version: "1" } })).toBeNull()
+  })
+
   it("getDesktopBridge returns the bridge for the supported version", () => {
     const bridge = stubBridge(DESKTOP_BRIDGE_VERSION)
     expect(getDesktopBridge({ __LIAISON_DESKTOP__: bridge })).toBe(bridge)

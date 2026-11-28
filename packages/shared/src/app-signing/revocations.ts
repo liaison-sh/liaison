@@ -8,6 +8,9 @@
  *    older list, so a replayed list cannot un-revoke a version.
  *  - `REVOCATION_FLOOR` compiled into each client release (keys.ts).
  * A revoked or below-floor version never runs in-page.
+ *
+ * The same list carries the shell floors, `{name: "shell:<mode>", below:
+ * "<seq>"}` (shell-statement.ts): a shell build below its mode's floor never runs.
  */
 import { utf8 } from "./encoding"
 import { type AppRevocationEntry, type AppSigningKey, REVOCATION_FLOOR } from "./keys"
@@ -27,6 +30,17 @@ export function revocationBytes(list: RevocationList): Uint8Array {
 
 const isString = (v: unknown): v is string => typeof v === "string" && v.length > 0
 
+/**
+ * A shell floor (shell-statement.ts): `{name: "shell:desktop" | "shell:native",
+ * below: "<seq>"}`, the seq as a decimal STRING. Released clients parse every
+ * entry's `below` as a string and refuse a whole list with a number in it, so a
+ * numeric floor would cost them the app revocations the same list carries.
+ */
+function isShellEntry(name: string, below: unknown, versions: unknown): boolean {
+  if (name !== "shell:desktop" && name !== "shell:native") return false
+  return versions === undefined && typeof below === "string" && /^\d{1,15}$/.test(below)
+}
+
 function parseEntry(raw: unknown): AppRevocationEntry | null {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null
   const { name, below, versions, ...rest } = raw as Record<string, unknown>
@@ -34,6 +48,7 @@ function parseEntry(raw: unknown): AppRevocationEntry | null {
   if (below !== undefined && !isString(below)) return null
   if (versions !== undefined && !(Array.isArray(versions) && versions.every(isString))) return null
   if (below === undefined && versions === undefined) return null
+  if (name.startsWith("shell:") && !isShellEntry(name, below, versions)) return null
   return {
     name,
     ...(below !== undefined ? { below } : {}),

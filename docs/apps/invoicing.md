@@ -239,7 +239,8 @@ When an issued invoice or credit note is wrong because of a tool error, not beca
 In-place correction departs from the usual French practice, a credit note and a new invoice. Agree it with your company's accountant before you use it.
 
 - Only a person who holds `invoicing:issuer:admin` decides it. An agent can propose it; the card shows the lines, VAT and totals before and after, and is never approved automatically.
-- It changes the lines (description, quantity, unit price, discount, VAT rate, line kind goods, service, digital or shipping), the tax treatment, and the legal mention printed for it. It changes the buyer's name, VAT number, country or address only when you pass them.
+- It changes the lines (description, quantity, unit price, discount, VAT rate, line kind goods, service, digital or shipping), the tax treatment, and the legal mention printed for it. It changes the buyer's name, VAT number, country, address or kind (business, individual) only when you pass them.
+- The corrected PDF prints the legal mention in force on the day of the correction, while the document keeps its issue date. When only the mention is wrong (for example an older wording of a download sold outside the EU), pass `refresh_legal_mention` with no line change: the card shows the old and the new mention. A document never corrected keeps the wording of its issue date.
 - It never changes the number, the issue date, the issuer or the currency. It creates no document and no number, and it sends no mail.
 - A correction that changes the grand total is refused unless it says why (`total_change_reason`), for example a 0.01 rounding fix or the amount the customer actually paid. A line's VAT can be kept as charged when it is one cent off its rate.
 - `move_shipping` moves one shipping line to another document of the same Shopify order, in one step: the order's combined total does not change.

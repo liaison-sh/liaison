@@ -768,7 +768,7 @@ function overseasMention(
   language: MentionLanguage,
   opts: LegalMentionOptions,
 ): string | null {
-  const issued = ISO_DATE.exec(String(opts.issueDate ?? ""))?.[1] ?? ""
+  const issued = wordingDateOf(opts)
   if (!opts.taxTerritory || issued < OVERSEAS_MENTIONS_FROM) return null
   const buyer = opts.taxTerritory.trim().toUpperCase()
   const sellerZone = frVatZone(opts.issuerTerritory ?? "FR")
@@ -870,6 +870,11 @@ export const FR_LEGAL_MENTIONS: Record<"cgi" | "cibs", Record<string, MentionEnt
 
 const ISO_DATE = /^(\d{4}-\d{2}-\d{2})/
 
+/** The date (YYYY-MM-DD, or "" when unreadable) the dated wordings compare with their start. */
+function wordingDateOf(opts: LegalMentionOptions): string {
+  return ISO_DATE.exec(String(opts.mentionDate ?? opts.issueDate ?? ""))?.[1] ?? ""
+}
+
 /** Which legal period an issue date falls in. A missing or unreadable date is the earlier period. */
 export function legalMentionPeriod(
   issueDate: string | null | undefined,
@@ -886,6 +891,10 @@ export interface LegalMentionOptions {
   category?: OperationCategory | null
   /** The document's issue date (YYYY-MM-DD or a timestamp); selects the legal period. */
   issueDate?: string | null
+  /** The date the dated wordings read (the services, carriage and overseas mentions). Absent, the
+   *  issue date. A document corrected in place passes its correction's date, so the correction
+   *  prints the current wording while the document keeps its issue date and legal period. */
+  mentionDate?: string | null
   cibsSwitchDate?: string | null
   /** The buyer's kind as the document stored it (`documents.customer_kind`): `individual` picks
    *  the consumer wording of services outside the EU. Unknown reads as a business. */
@@ -926,7 +935,7 @@ export function resolveLegalMention(
     if (opts.category === "mixed") return `${goods.replace(/\.\s*$/, "")}. ${services}`
     return services
   }
-  const issuedOn = ISO_DATE.exec(String(opts.issueDate ?? ""))?.[1] ?? ""
+  const issuedOn = wordingDateOf(opts)
   const kinds = (opts.lineKinds ?? []).map((k) => k ?? "goods")
   if (
     treatment === "eu_export_non_eu" &&
@@ -948,11 +957,10 @@ export function resolveLegalMention(
   if (
     treatment === "eu_export_non_eu" &&
     (opts.category === "services" || opts.category === "mixed") &&
-    (ISO_DATE.exec(String(opts.issueDate ?? ""))?.[1] ?? "") >= SERVICES_OUTSIDE_EU_FROM
+    issuedOn >= SERVICES_OUTSIDE_EU_FROM
   ) {
-    const issued = ISO_DATE.exec(String(opts.issueDate ?? ""))?.[1] ?? ""
     const wording =
-      opts.customerKind === "individual" && issued >= CONSUMER_SERVICES_OUTSIDE_EU_FROM
+      opts.customerKind === "individual" && issuedOn >= CONSUMER_SERVICES_OUTSIDE_EU_FROM
         ? CONSUMER_SERVICES_OUTSIDE_EU
         : SERVICES_OUTSIDE_EU
     const services = wording[language] ?? wording.en

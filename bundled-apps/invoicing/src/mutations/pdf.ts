@@ -27,7 +27,7 @@ import {
   recordLegalOriginal,
 } from "../legal-originals/record"
 import { isUuid } from "../reads"
-import { classify, type TaxTreatment } from "../tax"
+import { classify, type MentionLanguage, type TaxTreatment } from "../tax"
 import { dateOnly, FOREIGN_ID_CHARS, findIssuerProfile } from "./db-helpers"
 import { type DocumentType, type MutationResult, type MutationsCtx, toBigInt } from "./shared"
 
@@ -208,6 +208,84 @@ export async function ensureDocumentPdf(
   return { ok: true, pdf_file_id: rendered.file_id }
 }
 
+type MentionIssuer = {
+  country: string
+  default_language: MentionLanguage
+  postcode?: string | null
+}
+type MentionCounterparty = Pick<Counterparty, "country" | "tax_country" | "vat_id">
+
+/** The classification issueDocument made, from the same stored inputs, so a re-render keeps the
+ *  issue-time legal mention (the tax destination, and the VAT id that makes an intra EU sale a
+ *  reverse charge). */
+function classifyStored(
+  issuer: MentionIssuer,
+  counterparty: MentionCounterparty,
+  lines: ReadonlyArray<{ line_kind?: string | null }>,
+) {
+  return classify({
+    issuer_country: issuer.country,
+    issuer_postcode: issuer.postcode ?? null,
+    counterparty_country: taxCountryOf(counterparty),
+    has_vat_id: !!counterparty.vat_id,
+    line_kinds: lines.map((l) => l.line_kind ?? "goods"),
+  })
+}
+
+/** The date a corrected document's dated wordings read: its current correction's date. Null for
+ *  a document never corrected, which keeps the wording of its issue date on every re-render. */
+export async function correctionMentionDate(
+  db: Pick<DocumentRenderCtx["db"], "findMany">,
+  doc: Record<string, unknown>,
+): Promise<string | null> {
+  const id = typeof doc.current_correction_id === "string" ? doc.current_correction_id : null
+  if (!id) return null
+  const row = (
+    (await db.findMany("document_corrections", { where: { id }, limit: 1 })) as Array<
+      Record<string, unknown>
+    >
+  )[0]
+  return row?.corrected_at ? dateOnly(row.corrected_at) : null
+}
+
+/**
+ * The legal mention a render of the stored document prints. A document corrected in place prints
+ * the treatment the correction set (any other re-render keeps the issue-time classification), and
+ * `mentionDate` (its correction's date) drives the dated wordings; the issue date stays the
+ * document's.
+ */
+export async function storedLegalMention(
+  db: DocumentRenderCtx["db"],
+  doc: Record<string, unknown>,
+  issuer: MentionIssuer,
+  counterparty: MentionCounterparty,
+  lines: ReadonlyArray<{ line_kind?: string | null }>,
+  opts: { mentionDate?: string | null } = {},
+): Promise<string> {
+  const treatment: TaxTreatment =
+    doc.current_correction_id && isTaxTreatment(doc.tax_treatment)
+      ? doc.tax_treatment
+      : classifyStored(issuer, counterparty, lines).treatment
+  return documentLegalMention(
+    db,
+    treatment,
+    doc.language === "fr" || doc.language === "en" || doc.language === "de"
+      ? doc.language
+      : issuer.default_language,
+    {
+      category: (doc.operation_category as OperationCategory | null | undefined) ?? null,
+      issueDate: dateOnly(doc.issued_at),
+      mentionDate: opts.mentionDate ?? null,
+      // The stored buyer kind, so a re-render prints the issue-time wording.
+      customerKind: (doc.customer_kind as string | null | undefined) ?? null,
+      taxTerritory: taxCountryOf(counterparty),
+      issuerTerritory: issuerTerritoryOf(issuer),
+      // The stored lines' kinds: the services invoice of a split order is worded per line.
+      lineKinds: lines.map((l) => l.line_kind ?? "goods"),
+    },
+  )
+}
+
 /** Everything a render of the persisted document needs: issuer, lines, the credit note's reference,
  *  the legal mention and the template data (the same for a legal original, a management copy and
  *  a corrected file). */
@@ -265,44 +343,14 @@ async function documentRenderInput(
     shipping_name: (doc.counterparty_shipping_name as string | null) ?? null,
     email: (doc.counterparty_email as string | null) ?? null,
   }
-  const classification = classify({
-    issuer_country: issuer.country,
-    issuer_postcode: (issuer as { postcode?: string | null }).postcode ?? null,
-    // Same inputs issueDocument classified on, so a re-render keeps the issue-time legal mention
-    // (the tax destination, and the VAT id that makes an intra EU sale a reverse charge).
-    counterparty_country: taxCountryOf(counterparty),
-    has_vat_id: !!counterparty.vat_id,
-    line_kinds: lines.map((l) => (l as { line_kind?: string | null }).line_kind ?? "goods"),
-  })
+  const classification = classifyStored(issuer, counterparty, lines)
   const type = String(doc.type) as DocumentType
   // A credit note's reference to the invoice it reverses (number + issue date, and the reason) is
   // printed on the PDF; a re-render rebuilds it exactly as issue time did, from the original row.
   const creditRef = type === "credit_note" ? await creditNoteReference(ctx, doc, refs) : null
-  // A document corrected in place prints the treatment the correction set; any other re-render
-  // keeps the issue-time classification.
-  const treatment =
-    doc.current_correction_id && isTaxTreatment(doc.tax_treatment)
-      ? doc.tax_treatment
-      : classification.treatment
-  const legalMention = await documentLegalMention(
-    ctx.db,
-    treatment,
-    doc.language === "fr" || doc.language === "en" || doc.language === "de"
-      ? doc.language
-      : issuer.default_language,
-    {
-      category: (doc.operation_category as OperationCategory | null | undefined) ?? null,
-      issueDate: dateOnly(doc.issued_at),
-      // The stored buyer kind, so a re-render prints the issue-time wording.
-      customerKind: (doc.customer_kind as string | null | undefined) ?? null,
-      taxTerritory: taxCountryOf(counterparty),
-      issuerTerritory: issuerTerritoryOf(
-        issuer as { country?: string | null; postcode?: string | null },
-      ),
-      // The stored lines' kinds: the services invoice of a split order is worded per line.
-      lineKinds: lines.map((l) => l.line_kind),
-    },
-  )
+  const legalMention = await storedLegalMention(ctx.db, doc, issuer, counterparty, lines, {
+    mentionDate: await correctionMentionDate(ctx.db, doc),
+  })
   const templateData = buildTemplateData({
     type,
     document: { ...(doc as any), id },

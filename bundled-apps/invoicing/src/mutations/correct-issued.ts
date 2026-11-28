@@ -11,7 +11,10 @@
 // accountant in agreement:
 //   - it changes the lines (description, quantity, unit price, discount, VAT rate, line kind, the
 //     line's VAT within one minor unit), the tax treatment (its legal mention follows), and the
-//     buyer's name, VAT number, country or address only when the call passes them;
+//     buyer's name, VAT number, country, address or kind only when the call passes them;
+//   - the corrected file prints the legal mention in force on the CORRECTION's date (the document
+//     keeps its issue date): a wrong wording on an issued document is corrected in place, alone,
+//     with `refresh_legal_mention`. The card shows the old and the new mention;
 //   - it never changes the number, the type, the issue date, the issuer or the currency, creates
 //     no document and no number, and sends no mail;
 //   - a change of the grand total needs its own stated reason (`total_change_reason`);
@@ -31,12 +34,12 @@
 import { operationCategory } from "../einvoicing/classify-operation"
 import { eurMinor } from "../einvoicing/fx"
 import { TERMINAL_SEND_FAILURES } from "../einvoicing/transmit"
-import type { LineKind } from "../issue"
+import { type LineKind, storedTaxCountry } from "../issue"
 import { currencyExponent, documentRollup, lineSubtotal, lineTax, sourceLineTax } from "../money"
 import type { TaxTreatment } from "../tax"
-import { FOREIGN_ID_CHARS } from "./db-helpers"
+import { FOREIGN_ID_CHARS, findIssuerProfile } from "./db-helpers"
 import { ISSUER_ADMIN_SCOPE } from "./issuer-profiles"
-import { renderCorrection } from "./pdf"
+import { correctionMentionDate, renderCorrection, storedLegalMention } from "./pdf"
 import {
   type ErrorEnvelope,
   lineAmountsError,
@@ -70,6 +73,14 @@ const LINE_KIND_ALIASES: Record<string, LineKind> = {
   digital: "software",
   shipping: "shipping",
 }
+
+/** The buyer kinds a correction may set (`documents.customer_kind`). */
+const CUSTOMER_KINDS: ReadonlySet<string> = new Set([
+  "business",
+  "individual",
+  "public_entity",
+  "non_registered_entity",
+])
 
 const CORRECTABLE_TYPES = new Set(["invoice", "credit_note"])
 const NOT_CORRECTABLE_STATUSES = new Set(["draft", "pending_approval", "voided", "cancelled"])
@@ -110,6 +121,11 @@ export interface CorrectIssuedInput {
   counterparty_vat_id?: string | null
   counterparty_country?: string | null
   counterparty_address?: string | null
+  /** The buyer's kind (business, individual, ...): picks the consumer or business wording. */
+  customer_kind?: string | null
+  /** Print the legal mention in force today (the correction's date) instead of the one of the
+   *  issue date. Alone, it corrects only the wording; refused when the mention would not change. */
+  refresh_legal_mention?: boolean | null
   /** Required when the grand total changes: why (e.g. "the shop charged 84.55, the tool billed
    *  74.20 in the wrong currency"). */
   total_change_reason?: string | null
@@ -147,6 +163,9 @@ export interface CorrectionSnapshot {
   counterparty_vat_id: string | null
   counterparty_country: string | null
   counterparty_address?: string | null
+  customer_kind?: string | null
+  /** The legal mention the file prints. */
+  legal_mention?: string
   subtotal_minor: string
   tax_total_minor: string
   grand_total_minor: string
@@ -290,6 +309,7 @@ function snapshotOf(doc: Row, lines: LineRow[], withAddress: boolean): Correctio
     ...(withAddress
       ? { counterparty_address: (doc.counterparty_address as string | null) ?? null }
       : {}),
+    customer_kind: (doc.customer_kind as string | null) ?? null,
     subtotal_minor: toBigInt(doc.subtotal_minor).toString(),
     tax_total_minor: toBigInt(doc.tax_total_minor).toString(),
     grand_total_minor: toBigInt(doc.grand_total_minor).toString(),
@@ -556,6 +576,50 @@ function planItem(
   }
 }
 
+/**
+ * Fill the before and after legal mention of a planned correction. Before: what the current file
+ * prints (the wording of the issue date, or of the previous correction's date). After: what the
+ * corrected file will print, the wording in force today, the correction's date.
+ */
+async function withMentions(
+  ctx: MutationsCtx,
+  item: PlannedCorrection,
+): Promise<{ ok: true; changed: boolean } | ErrorEnvelope> {
+  const issuer = await findIssuerProfile(ctx.db, String(item.doc.issuer_profile_id))
+  if (!issuer) return refuse("issuer_not_found", "the document's issuer profile is missing")
+  const mentionOf = (
+    doc: Row,
+    lines: ReadonlyArray<{ line_kind?: string | null }>,
+    on: string | null,
+  ) =>
+    storedLegalMention(
+      ctx.db,
+      doc,
+      issuer,
+      {
+        country: (doc.counterparty_country as string | null) ?? issuer.country,
+        tax_country: storedTaxCountry(doc),
+        vat_id: (doc.counterparty_vat_id as string | null) ?? null,
+      },
+      lines,
+      { mentionDate: on },
+    )
+  const beforeDoc = item.doc
+  item.before.legal_mention = await mentionOf(
+    beforeDoc,
+    item.oldLines.map(lineOfRow),
+    await correctionMentionDate(ctx.db, beforeDoc),
+  )
+  // The corrected document carries a correction, so it prints its stored treatment.
+  const afterDoc = { ...item.doc, ...item.update, current_correction_id: "planned" }
+  item.after.legal_mention = await mentionOf(
+    afterDoc,
+    item.newLines,
+    new Date().toISOString().slice(0, 10),
+  )
+  return { ok: true, changed: item.before.legal_mention !== item.after.legal_mention }
+}
+
 /** Everything read and checked, nothing written. */
 async function planCorrection(
   ctx: MutationsCtx,
@@ -604,6 +668,15 @@ async function planCorrection(
           ? (v?.replace(/\s+/g, "").toUpperCase() ?? null)
           : v
   }
+  if (input.customer_kind !== undefined) {
+    const k = str(input.customer_kind)
+    if (!k || !CUSTOMER_KINDS.has(k))
+      return refuse(
+        "invalid_params",
+        `customer_kind must be one of ${[...CUSTOMER_KINDS].join(", ")}. Nothing was changed.`,
+      )
+    extra.customer_kind = k
+  }
   // The structured buyer fields the e-invoice carries follow the name and the country.
   if (typeof extra.counterparty_name === "string" && doc.buyer_legal_name != null)
     extra.buyer_legal_name = extra.counterparty_name
@@ -618,10 +691,24 @@ async function planCorrection(
     newLines = built.lines
   }
   const item = planItem(doc, oldRows, newLines, extra, await nextSequence(ctx, String(doc.id)))
+  const mentions = await withMentions(ctx, item)
+  if (!("ok" in mentions)) return mentions
+  const label = String(doc.number ?? doc.id)
+  if (mentions.changed) {
+    if (item.changedFields.length === 0 && input.refresh_legal_mention !== true) {
+      return refuse(
+        "no_change",
+        `the correction changes nothing on ${label} but its legal mention, which would read "${item.after.legal_mention}" instead of "${item.before.legal_mention}": pass refresh_legal_mention: true to correct the mention. Nothing was changed.`,
+      )
+    }
+    item.changedFields.push("legal_mention")
+  }
   if (item.changedFields.length === 0) {
     return refuse(
       "no_change",
-      `the correction changes nothing on ${String(doc.number ?? doc.id)}. Nothing was changed.`,
+      input.refresh_legal_mention === true
+        ? `the legal mention of ${label} is already the current one ("${item.before.legal_mention}") and nothing else changes. Nothing was changed.`
+        : `the correction changes nothing on ${label}. Nothing was changed.`,
     )
   }
   if (item.totalChanged && !totalChangeReason) {
@@ -664,6 +751,8 @@ async function planMove(
   const others = [
     "lines",
     "tax_treatment",
+    "customer_kind",
+    "refresh_legal_mention",
     "counterparty_name",
     "counterparty_vat_id",
     "counterparty_country",
@@ -738,6 +827,11 @@ async function planMove(
   const toAfter = [...toLines, { ...moved, position: nextPos }]
   const a = planItem(from, fromRows, fromAfter, {}, await nextSequence(ctx, String(from.id)))
   const b = planItem(to, toRows, toAfter, {}, await nextSequence(ctx, String(to.id)))
+  for (const item of [a, b]) {
+    const m = await withMentions(ctx, item)
+    if (!("ok" in m)) return m
+    if (m.changed) item.changedFields.push("legal_mention")
+  }
   const before = toBigInt(a.before.grand_total_minor) + toBigInt(b.before.grand_total_minor)
   const after = toBigInt(a.after.grand_total_minor) + toBigInt(b.after.grand_total_minor)
   if (before !== after) {

@@ -581,11 +581,11 @@
           },
           "occurrenceStart": {
             "type": "string",
-            "description": "With scope \"occurrence\" or \"following\": the ORIGINAL start (ISO date-time, or date for an all-day series) of that occurrence."
+            "description": "With scope \"occurrence\" or \"following\": its ORIGINAL start (ISO date-time, or date if all-day)."
           },
           "calendarId": {
             "type": "string",
-            "description": "Only when the eventId is a Google event id present on more than one calendar: the calendar to change it on."
+            "description": "Only when the eventId is on several calendars: which one."
           },
           "conference": {
             "type": "string",
@@ -612,8 +612,7 @@
           },
           "recurrence": {
             "type": "array",
-            "items": { "type": "string" },
-            "description": "The repeat rule as RRULE/EXDATE lines: a one-off event given one becomes a series; on a series, use scope \"following\" or \"series\"."
+            "items": { "type": "string" }
           }
         },
         "required": ["eventId"]

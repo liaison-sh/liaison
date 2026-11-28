@@ -3,10 +3,19 @@
 // The BUILD half of lib/web-build.ts. Nothing in the browser imports this
 // file: `vite.config.ts` does, and it runs in Node during `vite build`.
 //
-// After bundling, it hashes everything the build emitted into one id, writes
-// that id into index.html's `liaison-web-build` meta tag placeholder, and
-// emits it as `build-id.txt` beside index.html. The API server reads that file
-// at startup and stamps it on its responses; the page compares the two.
+// Once the build is written, it hashes everything the build emitted into one
+// id, writes that id into index.html's `liaison-web-build` meta tag
+// placeholder, and writes it as `build-id.txt` beside index.html. The API
+// server reads that file at startup and stamps it on its responses; the page
+// compares the two.
+//
+// At `writeBundle`, not `generateBundle`: Vite rewrites chunks in its own last
+// generateBundle step (the preload dependency map), after every plugin's, so
+// only the written bundle holds the bytes on disk. Hashing those makes the id
+// a function of the files a client downloads, which a signed shell statement
+// (scripts/shell-signing/build-manifest.ts) recomputes from the dist to check
+// it. The files Vite copies from public/ are not in the bundle, so not in the
+// id; the statement lists them by their own hashes.
 //
 // Never into a JS chunk: chunk file names are content hashes fixed before this
 // hook runs, so a chunk that did not change keeps its name while the id inside
@@ -21,6 +30,8 @@
 // does (that chunk would go stale under its unchanged name).
 
 import { createHash } from "node:crypto"
+import { writeFileSync } from "node:fs"
+import { join } from "node:path"
 
 /** The literal lib/web-build.ts carries. Spelled out once per file on purpose. */
 export const WEB_BUILD_ID_TOKEN = "__LIAISON_WEB_BUILD_ID__"
@@ -83,15 +94,25 @@ export function bakeWebBuildId(bundle: Record<string, OutputEntry>): {
   return { id, patched }
 }
 
-interface EmitContext {
-  emitFile(file: { type: "asset"; fileName: string; source: string }): string
-}
-
 interface VitePluginLike {
   name: string
   enforce: "post"
   apply: "build"
-  generateBundle(this: EmitContext, options: unknown, bundle: Record<string, OutputEntry>): void
+  writeBundle(options: { dir?: string }, bundle: Record<string, OutputEntry>): void
+}
+
+/**
+ * Bakes the id into the written build at `dir`: rewrites the patched HTML
+ * pages and writes build-id.txt. Returns the id.
+ */
+export function writeWebBuildId(dir: string, bundle: Record<string, OutputEntry>): string {
+  const { id, patched } = bakeWebBuildId(bundle)
+  for (const fileName of patched) {
+    const entry = bundle[fileName]
+    if (entry?.source !== undefined) writeFileSync(join(dir, fileName), entry.source)
+  }
+  writeFileSync(join(dir, WEB_BUILD_ID_FILE), `${id}\n`)
+  return id
 }
 
 export function webBuildId(): VitePluginLike {
@@ -100,9 +121,9 @@ export function webBuildId(): VitePluginLike {
     // After Vite's own HTML plugin, so index.html is already in the bundle.
     enforce: "post",
     apply: "build",
-    generateBundle(_options, bundle) {
-      const { id } = bakeWebBuildId(bundle)
-      this.emitFile({ type: "asset", fileName: WEB_BUILD_ID_FILE, source: `${id}\n` })
+    writeBundle(options, bundle) {
+      if (!options.dir) throw new Error("web build id: the build has no output directory")
+      writeWebBuildId(options.dir, bundle)
     },
   }
 }

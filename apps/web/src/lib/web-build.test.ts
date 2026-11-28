@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { createApiClient } from "~/lib/api-client"
 import {
@@ -14,7 +18,7 @@ import {
   WEB_BUILD_META_NAME,
   type WebBuildEnv,
 } from "~/lib/web-build"
-import { bakeWebBuildId, computeWebBuildId } from "~/lib/web-build-id-plugin"
+import { bakeWebBuildId, computeWebBuildId, writeWebBuildId } from "~/lib/web-build-id-plugin"
 
 function memoryStorage() {
   const map = new Map<string, string>()
@@ -250,6 +254,23 @@ describe("build id plugin", () => {
     const bytes = bundle()
     bytes["index.html"].source = new TextEncoder().encode(bundle()["index.html"].source as string)
     expect(bakeWebBuildId(bytes).patched).toEqual(["index.html"])
+  })
+
+  it("bakes the id into the written build: index.html on disk and build-id.txt", () => {
+    // The plugin runs at writeBundle, over the bytes Vite wrote (Vite rewrites
+    // chunks after every plugin's generateBundle), so the id is the hash of
+    // what is on disk and can be recomputed from the dist.
+    const dir = mkdtempSync(join(tmpdir(), "web-build-id-"))
+    try {
+      const b = bundle()
+      writeFileSync(join(dir, "index.html"), b["index.html"].source as string)
+      const id = writeWebBuildId(dir, b)
+      expect(id).toBe(computeWebBuildId(bundle()))
+      expect(readFileSync(join(dir, "build-id.txt"), "utf8")).toBe(`${id}\n`)
+      expect(readFileSync(join(dir, "index.html"), "utf8")).toContain(`content="${id}"`)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it("refuses an index.html without the placeholder, and a JS chunk carrying it", () => {

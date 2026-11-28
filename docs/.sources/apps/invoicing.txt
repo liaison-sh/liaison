@@ -290,3 +290,6 @@ Foreign-currency VAT invoice waits for its rate -> bundled-apps/invoicing/src/is
 Catch-up preview runs the issue path, run_effect -> bundled-apps/invoicing/src/sales/catch-up.ts:300
 Held vs stop rule, exclude and reinclude -> bundled-apps/invoicing/src/sales/catch-up.ts:16
 Preview PDFs readable with documents read and settings read, replaced per sale, 7 days -> bundled-apps/invoicing/app.manifest.json:1637
+parked Shopify orders show as pending, same matching rule, no park reason -> apps/api/src/modules/buyer-invoices/store.ts:313
+issued invoice replaces the pending entry -> apps/api/src/modules/buyer-invoices/store.ts:481
+parked order identity from the order payload -> apps/api/src/modules/buyer-invoices/parks.ts:1

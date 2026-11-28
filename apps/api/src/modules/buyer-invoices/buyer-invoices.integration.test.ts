@@ -127,6 +127,43 @@ async function sale(
   return id
 }
 
+/** An open invoicing park of a paid Shopify order (the order payload invoicing stores). */
+async function parkOrder(
+  orgId: string,
+  orderId: string,
+  values: {
+    shop?: string
+    email?: string | null
+    customerId?: string | null
+    total?: string
+    status?: string
+    number?: string
+  },
+): Promise<void> {
+  await insert("app_invoicing.deferred_events", {
+    id: crypto.randomUUID(),
+    org_id: orgId,
+    event_id: orderId,
+    status: values.status ?? "awaiting_data",
+    reason: "einvoice_data_missing",
+    blocked_on: JSON.stringify({ kind: "einvoice_identity", contact_id: crypto.randomUUID() }),
+    retry_count: 0,
+    event_payload_json: JSON.stringify({
+      id: orderId,
+      order_number: values.number ?? null,
+      shop_id: values.shop ?? "atelier-a.example",
+      createdAt: "2026-11-26T08:00:00Z",
+      total_price_minor: values.total ?? "45000",
+      currency: "eur",
+      customer: {
+        id: values.customerId ? `gid://shopify/Customer/${values.customerId}` : null,
+        email: values.email ?? null,
+        contact_id: null,
+      },
+    }),
+  })
+}
+
 function call(path: string, body: unknown, bearer = key) {
   return app.request(`/api/buyer-invoices${path}`, {
     method: "POST",
@@ -228,6 +265,38 @@ beforeAll(async () => {
   })
   ids.otherOrgInvoice = await doc(w.otherOrgId, otherProfile, { number: "O-1", sale_id: other })
 
+  // Paid Shopify orders whose invoice is parked: profile A is the shop's issuer.
+  await sql.unsafe(
+    `UPDATE app_invoicing.issuer_profiles SET shopify_shop_id = 'atelier-a.example' WHERE id = '${profileA}'`,
+  )
+  await sql.unsafe(
+    `UPDATE app_invoicing.issuer_profiles SET shopify_shop_id = 'atelier-b.example' WHERE id = '${profileB}'`,
+  )
+  await parkOrder(w.orgId, "6100000000001", {
+    email: "dee@example.com",
+    customerId: "777",
+    number: "#4100",
+  })
+  // Another buyer's parked order, a resolved park, a zero total, another shop's park.
+  await parkOrder(w.orgId, "6100000000002", { email: "eve@example.com", customerId: "888" })
+  await parkOrder(w.orgId, "6100000000003", {
+    email: "dee@example.com",
+    customerId: "777",
+    status: "resolved",
+  })
+  await parkOrder(w.orgId, "6100000000004", {
+    email: "dee@example.com",
+    customerId: "777",
+    total: "0",
+  })
+  await parkOrder(w.orgId, "6100000000005", {
+    email: "dee@example.com",
+    customerId: "777",
+    shop: "atelier-b.example",
+  })
+  // A guest checkout parked: email only.
+  await parkOrder(w.orgId, "6100000000006", { email: "gus@example.com", number: "#4106" })
+
   const created = await app.request("/api/invoicing/buyer-keys", {
     method: "POST",
     headers: { Authorization: `Bearer ${adminBearer}`, "Content-Type": "application/json" },
@@ -283,6 +352,7 @@ afterAll(async () => {
     for (const t of [
       "app_invoicing.documents",
       "app_invoicing.sales",
+      "app_invoicing.deferred_events",
       "app_invoicing.issuer_profiles",
     ]) {
       await sql.unsafe(`DELETE FROM ${t} WHERE org_id = '${org}'`)
@@ -425,6 +495,64 @@ describe("POST /api/buyer-invoices/list", () => {
     expect(all).not.toContain("B-2026-0001")
     expect(all).not.toContain("O-1")
     expect(numbers(await listOf({ email: "ana@example.com" }, otherKey))).toEqual(["B-2026-0001"])
+  })
+
+  it("a paid order whose invoice is parked shows as pending, and says nothing of the park", async () => {
+    const docs = await listOf({ email: "dee@example.com", shopifyCustomerId: "777" })
+    expect(docs).toEqual([
+      {
+        id: null,
+        kind: "invoice",
+        number: null,
+        issuedAt: null,
+        saleDate: "2026-11-26",
+        totalMinor: 45000,
+        currency: "EUR",
+        status: "pending",
+        parentInvoiceId: null,
+        state: "pending",
+        source: { stream: "shopify", ref: "6100000000001", name: "#4100" },
+      },
+    ])
+    const raw = JSON.stringify(docs)
+    for (const leak of ["einvoice", "awaiting", "blocked", "reason", "contact"]) {
+      expect(raw).not.toContain(leak)
+    }
+    // The other shop's issuer profile sees its own park only.
+    const inB = await listOf({ email: "dee@example.com", shopifyCustomerId: "777" }, otherKey)
+    expect(inB.map((d) => d.source)).toEqual([
+      { stream: "shopify", ref: "6100000000005", name: null },
+    ])
+  })
+
+  it("a parked order follows the matching rule: never another buyer's, never by email alone", async () => {
+    expect(await listOf({ email: "dee@example.com" })).toEqual([])
+    expect(await listOf({ email: "dee@example.com", shopifyCustomerId: "999" })).toEqual([])
+    const eve = JSON.stringify(await listOf({ email: "eve@example.com", shopifyCustomerId: "888" }))
+    expect(eve).toContain("6100000000002")
+    expect(eve).not.toContain("6100000000001")
+    const gus = await listOf({ email: " GUS@example.com" })
+    expect(gus.map((d) => d.source)).toEqual([
+      { stream: "shopify", ref: "6100000000006", name: "#4106" },
+    ])
+    // An email alone never reaches an order placed with a customer account.
+    expect(await listOf({ email: "eve@example.com" })).toEqual([])
+  })
+
+  it("once the parked order's invoice is issued, the document replaces the pending entry", async () => {
+    ids.gusInvoice = await doc(w.orgId, profileA, {
+      number: "INV-2026-0110",
+      shopify_order_id: "6100000000006",
+      shopify_order_number: "#4106",
+      counterparty_email: "gus@example.com",
+    })
+    const docs = await listOf({ email: "gus@example.com" })
+    expect(docs).toHaveLength(1)
+    expect(docs[0]).toMatchObject({
+      id: ids.gusInvoice,
+      state: "issued",
+      source: { stream: "shopify", ref: "6100000000006", name: "#4106" },
+    })
   })
 
   it("pages with a cursor", async () => {

@@ -45,9 +45,15 @@ function testKey() {
   }
 }
 
+// Non-ASCII paths (review P6 #10): "\u00e9" is escaped by neither side, and
+// "\u{1F600}" sorts BEFORE "\uFB01" by UTF-16 code units (the canonical
+// order) but AFTER it by UTF-8 bytes, so a side that sorts keys by bytes
+// fails this vector.
 const FILES = {
   "index.html": '<!doctype html><script>console.log("vector")</script>',
   "assets/app.js": "export const vector = 1\n",
+  "assets/\uFB01-\u00e9t\u00e9.js": 'export const caf\u00e9 = "\u00fc"\n',
+  "assets/\u{1F600}.js": "export const smile = 1\n",
 }
 
 async function build() {

@@ -6,10 +6,12 @@
   },
   "files": {
     "index.html": "<!doctype html><script>console.log(\"vector\")</script>",
-    "assets/app.js": "export const vector = 1\n"
+    "assets/app.js": "export const vector = 1\n",
+    "assets/ﬁ-été.js": "export const café = \"ü\"\n",
+    "assets/😀.js": "export const smile = 1\n"
   },
-  "statement": "{\"bridge\":{\"android\":\"^1\",\"desktop\":\"^1\",\"ios\":\"^1\"},\"buildId\":\"0123456789abcdef\",\"commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"files\":{\"assets/app.js\":\"1cca2573cf0eb753fc18de64557787df3916bb10323ceaf021df77a6992f66de\",\"index.html\":\"9604a468279c05131c6cf7144fbbbb8177d01e9129d18701d70434ce13633d4e\"},\"issuedAt\":\"2026-11-28T00:00:00.000Z\",\"keyId\":\"app-fe812c12f3ab4ce6\",\"kind\":\"shell\",\"liaisonVersion\":\"nightly-20261128\",\"mode\":\"desktop\",\"seq\":999999999,\"settingsSchema\":1,\"v\":1}",
-  "statementSig": "cxU4h5DTqsZavbJg4LFi5bEdYAgJ+Km8N/t8fy/dtts7lWiLxF1cDS+i1KrguNtHsm/3YGoteyod9aIOC441Bg==",
+  "statement": "{\"bridge\":{\"android\":\"^1\",\"desktop\":\"^1\",\"ios\":\"^1\"},\"buildId\":\"0123456789abcdef\",\"commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"files\":{\"assets/app.js\":\"1cca2573cf0eb753fc18de64557787df3916bb10323ceaf021df77a6992f66de\",\"assets/😀.js\":\"39d53b7d32a7bbc40b6b341deebb97578b7bbc79bf025b9072925ab578a50ed3\",\"assets/ﬁ-été.js\":\"8b0073cc20314ef9d7ea862e1cff3ed28c2be05c92cb807286f127ebafeef4a2\",\"index.html\":\"9604a468279c05131c6cf7144fbbbb8177d01e9129d18701d70434ce13633d4e\"},\"issuedAt\":\"2026-11-28T00:00:00.000Z\",\"keyId\":\"app-fe812c12f3ab4ce6\",\"kind\":\"shell\",\"liaisonVersion\":\"nightly-20261128\",\"mode\":\"desktop\",\"seq\":999999999,\"settingsSchema\":1,\"v\":1}",
+  "statementSig": "ymmhxwYJQ4D2s2pESfKH76C4NEAQbPJkc4zisvtHUeyS6HIGDXxF+9yNAOz/+J3GVr7nFCiAd1vshZPTNtYmDA==",
   "revocations": "{\"entries\":[{\"below\":\"0.2.0\",\"name\":\"invoicing\"},{\"below\":\"1000000000\",\"name\":\"shell:desktop\"}],\"issuedAt\":\"2026-11-28T00:00:00.000Z\",\"seq\":7,\"v\":1}",
   "revocationsSig": "DGZWnE8zmMU/xYiUJ7fgV+5GW/XRxS1lyqfW58zj8YuTfwnq4CMXwZaW94NfmV0V/qAU6/uG52zX7obMAWriDw=="
 }

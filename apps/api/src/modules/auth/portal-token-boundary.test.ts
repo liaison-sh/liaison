@@ -221,6 +221,7 @@ const NO_SESSION_ROUTES = new Set([
   "DELETE /mcp/device/:deviceCode",
   "GET /api/connections/callback",
   "GET /api/client-policy",
+  "GET /api/shell/info",
   "GET /api/connections/oauth-done",
   "GET /api/apps/mcp-manager/oauth/callback",
   "GET /api/apps/mcp-manager/oauth/client-metadata.json",

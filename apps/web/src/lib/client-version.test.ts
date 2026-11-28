@@ -168,6 +168,37 @@ describe("the header on the page's requests", () => {
     expect(clientHeaders()).toEqual({ [CLIENT_HEADER]: "ios/1.0.36" })
   })
 
+  it("a phone shell names the shell it runs: served with its build, or bundled with why", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => policyResponse()),
+    )
+    global[NATIVE_BRIDGE_GLOBAL] = {
+      clientVersion: async () => ({ platform: "ios", version: "1.0.50" }),
+      shellInfo: async () => ({
+        bridgeVersion: 1,
+        shell: "served:0123456789abcdef",
+        served: true,
+        buildId: "0123456789abcdef",
+      }),
+    }
+    await startClientPolicy()
+    expect(clientHeaders()).toEqual({
+      [CLIENT_HEADER]: "ios/1.0.50 shell=served:0123456789abcdef",
+    })
+    global[NATIVE_BRIDGE_GLOBAL] = {
+      clientVersion: async () => ({ platform: "ios", version: "1.0.50" }),
+      shellInfo: async () => ({
+        bridgeVersion: 1,
+        shell: "bundled:killed",
+        served: false,
+        reason: "killed",
+      }),
+    }
+    await startClientPolicy()
+    expect(clientHeaders()).toEqual({ [CLIENT_HEADER]: "ios/1.0.50 shell=bundled:killed" })
+  })
+
   it("no header when the policy call fails (an older server)", async () => {
     global[DESKTOP_BRIDGE_KEY] = { version: 1, platform: "macos", appVersion: async () => "0.1.35" }
     const fetchMock = vi.fn(async (url: string) =>

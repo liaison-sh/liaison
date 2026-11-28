@@ -388,6 +388,33 @@ describe("an installed app's UI inside the mobile shell (D7)", () => {
   })
 })
 
+describe("compatibility mode inside the mobile shell", () => {
+  it("a bundled phone shell notes an app whose settings use a block it does not know", async () => {
+    vi.stubGlobal("__LIAISON_SERVER_ADDRESS__", SERVER)
+    vi.stubGlobal("__LIAISON_NATIVE__", {})
+    serveManifests([{ name: "acme", component: "AcmeHome", manifest: unknownBlockManifest() }])
+    await load()
+    expect(compatModeApps().map((e) => e.app)).toEqual(["acme"])
+  })
+
+  it("a served phone shell is the server's own build: the same app never notes compatibility mode", async () => {
+    vi.stubGlobal("__LIAISON_SERVER_ADDRESS__", SERVER)
+    vi.stubGlobal("__LIAISON_NATIVE__", {
+      shellInfo: async () => ({
+        bridgeVersion: 1,
+        shell: "served:0123456789abcdef",
+        served: true,
+        buildId: "0123456789abcdef",
+      }),
+    })
+    await loadShellStatus(null)
+    serveManifests([{ name: "acme", component: "AcmeHome", manifest: unknownBlockManifest() }])
+    await load()
+    expect(compatModeApps()).toEqual([])
+    resetShellStatus()
+  })
+})
+
 describe("controls: where no frame is published, and the browser", () => {
   it("a shell with no frame never imports a server bundle (A7): the app is not loaded", async () => {
     vi.stubGlobal("__LIAISON_SERVER_ADDRESS__", SERVER)

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// THE PAGE'S SIDE OF THE SERVED SHELL (apps/desktop/src-tauri/src/served_shell.rs).
+// THE PAGE'S SIDE OF THE SERVED SHELL (apps/desktop/src-tauri/src/served_shell.rs,
+// and on iOS apps/mobile/ios/LiaisonShell through lib/native-bridge.ts).
 //
-// The desktop app may run the server's own web build in its window, once it
+// The desktop or phone app may run the server's own web build in its window, once it
 // verified Liaison's signature over it, instead of the build compiled into the
 // app. The page then:
 //
@@ -14,7 +15,11 @@
 // - watches for a newer server build while it runs: it asks the shell to
 //   fetch it (`refreshShell`), which then runs at the next load, and reloads
 //   by itself only once nobody has touched the page for 10 minutes and nothing
-//   typed would be lost. No prompt.
+//   typed would be lost. No prompt. A build that must stop at once (revoked,
+//   below the floor, switched off) is left by the host itself, draft or not.
+//
+// The phone's host fetches and stages newer builds on its own; the page only
+// asks it whether the next load would run another build (`refreshShell`).
 
 import { createSignal } from "solid-js"
 import {
@@ -22,6 +27,7 @@ import {
   type DesktopShellStatus,
   getDesktopBridge,
 } from "~/lib/desktop-shell-contract"
+import { nativeRefreshShell, nativeShellInfo } from "~/lib/native-bridge"
 import { isRealBuildId, pageWebBuildId } from "~/lib/web-build"
 
 const [status, setStatus] = createSignal<DesktopShellStatus | null>(null)
@@ -36,11 +42,15 @@ export function runningServedShell(): boolean {
   return status()?.served === true
 }
 
-/** Asks the shell what runs, once per call. Null when it cannot say. Never throws. */
+/**
+ * Asks the shell what runs, once per call: the desktop bridge when there is
+ * one, else the phone's host. Null when it cannot say. Never throws.
+ */
 export async function loadShellStatus(
   bridge: DesktopBridge | null = getDesktopBridge(),
 ): Promise<DesktopShellStatus | null> {
-  if (typeof bridge?.shellStatus !== "function") return null
+  if (bridge === null) return loadNativeShellStatus()
+  if (typeof bridge.shellStatus !== "function") return null
   try {
     const answer = (await bridge.shellStatus()) ?? null
     setStatus(answer)
@@ -48,6 +58,20 @@ export async function loadShellStatus(
   } catch {
     return null
   }
+}
+
+/** The phone host's report, in the desktop's shape (`pending` is the host's own business). */
+async function loadNativeShellStatus(): Promise<DesktopShellStatus | null> {
+  const info = await nativeShellInfo()
+  if (info === null) return null
+  const answer: DesktopShellStatus = {
+    served: info.served === true,
+    buildId: typeof info.buildId === "string" ? info.buildId : null,
+    reason: typeof info.reason === "string" ? info.reason : null,
+    pending: false,
+  }
+  setStatus(answer)
+  return answer
 }
 
 /** Test seam. */
@@ -149,4 +173,30 @@ export function createServedShellUpdater(env: ServedShellUpdaterEnv): ServedShel
     },
     pending: () => pending,
   }
+}
+
+/** What the phone's updater stands on: the host stages, the page only asks. */
+export interface NativeServedShellUpdaterEnv extends Omit<ServedShellUpdaterEnv, "refreshShell"> {
+  /** The host chose again; true when the next document load runs another build. */
+  refresh?: () => Promise<boolean>
+}
+
+/** The phone's pending marker: the host knows which build, the page only that one waits. */
+const NATIVE_STAGED = "staged"
+
+/**
+ * The phone's idle reload (S6 on iOS): the same rule as the desktop's, routed
+ * to the native host. When the server runs another build, the page asks the
+ * host to choose again; when that choice changes the next load, the page
+ * reloads itself once idle for 10 minutes with nothing unsaved, and the host
+ * moves to the staged build on that load.
+ */
+export function createNativeServedShellUpdater(
+  env: NativeServedShellUpdaterEnv,
+): ServedShellUpdater {
+  const refresh = env.refresh ?? nativeRefreshShell
+  return createServedShellUpdater({
+    ...env,
+    refreshShell: async () => ((await refresh()) ? NATIVE_STAGED : null),
+  })
 }

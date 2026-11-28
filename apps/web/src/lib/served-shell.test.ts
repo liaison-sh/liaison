@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { DesktopBridge, DesktopShellStatus } from "~/lib/desktop-shell-contract"
+import { NATIVE_BRIDGE_GLOBAL } from "~/lib/native-bridge"
 import {
+  createNativeServedShellUpdater,
   createServedShellUpdater,
   IDLE_RELOAD_MS,
   loadShellStatus,
@@ -41,6 +43,7 @@ function updater(over: { unsaved?: boolean; serverId?: string | null; pending?: 
 afterEach(() => {
   resetShellStatus()
   resetShellReady()
+  ;(globalThis as Record<string, unknown>)[NATIVE_BRIDGE_GLOBAL] = undefined
 })
 
 describe("the idle reload onto a newer served build", () => {
@@ -148,5 +151,87 @@ describe("what the page tells and learns from the shell", () => {
       "bundled:unknown",
     )
     expect(shellReport(null)).toBeNull()
+  })
+})
+
+describe("the served shell on the phone", () => {
+  const global = globalThis as Record<string, unknown>
+  const SERVED = {
+    bridgeVersion: 1,
+    shell: `served:${PAGE}`,
+    served: true,
+    buildId: PAGE,
+  }
+
+  it("learns from the phone's host whether a served build runs", async () => {
+    global[NATIVE_BRIDGE_GLOBAL] = { shellInfo: async () => SERVED }
+    const status = await loadShellStatus(null)
+    expect(status).toEqual({ served: true, buildId: PAGE, reason: null, pending: false })
+    expect(runningServedShell()).toBe(true)
+    expect(shellReport(status)).toBe(`served:${PAGE}`)
+    global[NATIVE_BRIDGE_GLOBAL] = {
+      shellInfo: async () => ({
+        bridgeVersion: 1,
+        shell: "bundled:no_build",
+        served: false,
+        reason: "no_build",
+      }),
+    }
+    const bundled = await loadShellStatus(null)
+    expect(runningServedShell()).toBe(false)
+    expect(shellReport(bundled)).toBe("bundled:no_build")
+  })
+
+  function phone(over: { unsaved?: boolean; serverId?: string | null; staged?: boolean }) {
+    let clock = 1_000_000
+    const reload = vi.fn()
+    const refresh = vi.fn(async () => over.staged !== false)
+    const u = createNativeServedShellUpdater({
+      pageBuildId: PAGE,
+      fetchServerBuildId: async () => (over.serverId === undefined ? NEWER : over.serverId),
+      refresh,
+      hasUnsavedWork: () => over.unsaved === true,
+      reload,
+      now: () => clock,
+    })
+    return {
+      u,
+      reload,
+      refresh,
+      advance: (ms: number) => {
+        clock += ms
+      },
+    }
+  }
+
+  it("a newer build the host staged reloads once the page is idle and clean", async () => {
+    const t = phone({})
+    await t.u.check()
+    expect(t.refresh).toHaveBeenCalledTimes(1)
+    t.advance(IDLE_RELOAD_MS - 1)
+    expect(t.u.tick()).toBe(false)
+    t.advance(1)
+    expect(t.u.tick()).toBe(true)
+    expect(t.reload).toHaveBeenCalledTimes(1)
+  })
+
+  it("a dirty draft blocks the reload", async () => {
+    const t = phone({ unsaved: true })
+    await t.u.check()
+    t.advance(IDLE_RELOAD_MS * 3)
+    expect(t.u.tick()).toBe(false)
+    expect(t.reload).not.toHaveBeenCalled()
+  })
+
+  it("nothing staged by the host, or the server runs this build: no reload", async () => {
+    const none = phone({ staged: false })
+    await none.u.check()
+    none.advance(IDLE_RELOAD_MS)
+    expect(none.u.tick()).toBe(false)
+    const same = phone({ serverId: PAGE })
+    await same.u.check()
+    expect(same.refresh).not.toHaveBeenCalled()
+    same.advance(IDLE_RELOAD_MS)
+    expect(same.u.tick()).toBe(false)
   })
 })

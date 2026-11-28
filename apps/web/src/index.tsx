@@ -36,7 +36,11 @@ import { startExternalLinkRouting } from "~/modules/desktop/external-links"
 import { startNotificationRouteCapture } from "~/modules/notifications/open-route"
 import { startThemeSync } from "~/modules/shell/theme-store"
 import { addToast } from "~/modules/shell/toast-store"
-import { startServedShellWatch, startWebBuildWatch } from "~/modules/shell/web-update"
+import {
+  startNativeServedShellWatch,
+  startServedShellWatch,
+  startWebBuildWatch,
+} from "~/modules/shell/web-update"
 import { startKeyboardInset } from "~/primitives/keyboardInset"
 import { completeRuntimeInit, initializeAuth, isPublicPagePath } from "~/startup"
 
@@ -135,8 +139,9 @@ render(() => <App />, document.getElementById("app")!)
 // synchronous, so by this line the shell is painted. No-op in a browser,
 // which publishes no bridge at all (lib/native-bridge.ts).
 signalNativeReady()
-// The desktop's served shell (lib/served-shell.ts): the page rendered, so a
-// served build is marked good; then the page learns what runs.
+// The served shell (lib/served-shell.ts): the page rendered, so a served
+// desktop build is marked good (the phone's ready went with signalNativeReady);
+// then the page learns what runs, from the desktop bridge or the phone's host.
 signalShellReady()
 void loadShellStatus().then((status) => {
   if (status?.served !== true) return
@@ -145,6 +150,7 @@ void loadShellStatus().then((status) => {
   clearCompatMode()
   const bridge = getDesktopBridge()
   if (bridge !== null) startServedShellWatch(bridge)
+  else startNativeServedShellWatch()
 })
 
 void completeRuntimeInit()

@@ -5,7 +5,11 @@
 
 import type { DesktopBridge } from "~/lib/desktop-shell-contract"
 import { apiUrl } from "~/lib/env"
-import { createServedShellUpdater, type ServedShellUpdater } from "~/lib/served-shell"
+import {
+  createNativeServedShellUpdater,
+  createServedShellUpdater,
+  type ServedShellUpdater,
+} from "~/lib/served-shell"
 import {
   createWebBuildWatcher,
   insideAppShell,
@@ -62,12 +66,16 @@ export function startWebBuildWatch(): void {
 
 let served: ServedShellUpdater | null = null
 
-/** The server's desktop build id, from its shell info (an API route, so CORS allows it). */
-async function fetchServerDesktopBuild(): Promise<string | null> {
+type ShellMode = "desktop" | "native"
+
+/** The server's build id for `mode`, from its shell info (an API route, so CORS allows it). */
+async function fetchServerShellBuild(mode: ShellMode): Promise<string | null> {
   const res = await fetch(apiUrl("/shell/info"), { cache: "no-store", credentials: "omit" })
   if (!res.ok) return null
-  const body = (await res.json()) as { data?: { desktop?: { buildId?: unknown } } } | null
-  const id = body?.data?.desktop?.buildId
+  const body = (await res.json()) as {
+    data?: Partial<Record<ShellMode, { buildId?: unknown }>>
+  } | null
+  const id = body?.data?.[mode]?.buildId
   return typeof id === "string" ? id : null
 }
 
@@ -82,14 +90,41 @@ export function startServedShellWatch(bridge: DesktopBridge): void {
   if (served !== null || typeof window === "undefined" || import.meta.env.DEV) return
   const pageId = pageWebBuildId()
   if (!isRealBuildId(pageId) || typeof bridge.refreshShell !== "function") return
-  const updater = createServedShellUpdater({
-    pageBuildId: pageId,
-    fetchServerBuildId: fetchServerDesktopBuild,
-    refreshShell: async () => (await bridge.refreshShell?.()) ?? null,
-    hasUnsavedWork: () => pageHasUnsavedWork(inFlightUploadCount),
-    // The page's own reload keeps its tabs (they are restored from storage).
-    reload: () => window.location.reload(),
-  })
+  follow(
+    createServedShellUpdater({
+      pageBuildId: pageId,
+      fetchServerBuildId: () => fetchServerShellBuild("desktop"),
+      refreshShell: async () => (await bridge.refreshShell?.()) ?? null,
+      hasUnsavedWork: () => pageHasUnsavedWork(inFlightUploadCount),
+      // The page's own reload keeps its tabs (they are restored from storage).
+      reload: () => window.location.reload(),
+    }),
+  )
+}
+
+/**
+ * Inside the iOS app when it runs a SERVED build: the same rule, routed to
+ * the native host. The host fetches and stages newer builds itself; the page
+ * asks it to choose again when the server runs another build, and reloads
+ * itself once idle and clean. The host moves the build on that document load
+ * (and leaves a revoked or switched-off build at once, without the page).
+ */
+export function startNativeServedShellWatch(): void {
+  if (served !== null || typeof window === "undefined" || import.meta.env.DEV) return
+  const pageId = pageWebBuildId()
+  if (!isRealBuildId(pageId)) return
+  follow(
+    createNativeServedShellUpdater({
+      pageBuildId: pageId,
+      fetchServerBuildId: () => fetchServerShellBuild("native"),
+      hasUnsavedWork: () => pageHasUnsavedWork(inFlightUploadCount),
+      reload: () => window.location.reload(),
+    }),
+  )
+}
+
+/** Feeds the updater the page's input, focus and a minute timer. */
+function follow(updater: ServedShellUpdater): void {
   served = updater
   const input = () => updater.noteInput()
   for (const event of ["keydown", "pointerdown", "wheel", "touchstart"]) {

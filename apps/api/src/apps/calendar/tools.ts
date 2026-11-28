@@ -151,7 +151,16 @@ export interface CalendarEventDto {
   transparency: string | null
   /** Google's eventType (default, outOfOffice, focusTime, workingLocation, ...), else null. */
   eventType: string | null
+  /** On a recurring master in `list_events`: every start/end of the series inside the window,
+   * edited or cancelled occurrences left out (those come as their own rows), at most
+   * MAX_LISTED_OCCURRENCES. What an agent checks clashes against; the web expander ignores it. */
+  occurrences?: Array<{ start: unknown; end: unknown }>
+  /** True when the window held more occurrences than `occurrences` lists. */
+  occurrencesTruncated?: boolean
 }
+
+/** How many occurrences of one series `list_events` spells out. */
+const MAX_LISTED_OCCURRENCES = 100
 
 export interface CalendarAttendeeDto {
   email: string
@@ -446,7 +455,28 @@ export async function listEventsForCaller(
   )
 
   const results: CalendarEventDto[] = plain.map(rowToDto)
-  for (const master of masters) results.push(rowToDto(master))
+  for (const master of masters) {
+    // The series' occurrences in the window, its exceptions applied (an edited one shows as its
+    // own row, a cancelled one not at all), so an agent sees every slot the series holds.
+    const masterGoogleId = master.google_event_id
+    const own = exceptions.filter(
+      (ex) => typeof masterGoogleId === "string" && ex.recurring_event_id === masterGoogleId,
+    )
+    const slots = expandRecurringEvent(
+      master,
+      own.map((ex) => (ex.deleted_at ? { ...ex, status: "cancelled" } : ex)),
+      windowStart,
+      windowEnd,
+    ).filter((o) => o.eventId === master.id && !o.recurrenceComplex)
+    const dto = rowToDto(master)
+    if (slots.length > 0) {
+      dto.occurrences = slots
+        .slice(0, MAX_LISTED_OCCURRENCES)
+        .map((o) => ({ start: o.start, end: o.end }))
+      if (slots.length > MAX_LISTED_OCCURRENCES) dto.occurrencesTruncated = true
+    }
+    results.push(dto)
+  }
   // An occurrence whose delete is still on its way to Google already reads as cancelled, so
   // the series' expansion drops it instead of showing it again.
   for (const ex of exceptions) {

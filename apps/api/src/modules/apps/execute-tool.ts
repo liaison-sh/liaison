@@ -206,6 +206,7 @@ import {
   personClientWriteUnjudged,
   postDisclosureRelay,
   resultHoldsField,
+  returnsToOwnApp,
   returnsToOwnMcpServer,
   SCOPE_TAINT_BLOCKED_MESSAGE,
   SCOPE_TAINT_NO_DECIDER_MESSAGE,
@@ -4150,6 +4151,8 @@ async function taintJudgedTool<T extends NonNullable<ReturnType<typeof toolRegis
     sinkReadersResource: other?.sinkReadersResource,
     targetRowParam: undefined,
     taintPostAudience: undefined,
+    // Judged as another tool's sink, it no longer writes back into its own app (rule 6l).
+    taintReturnsToOwnApp: undefined,
   }
 }
 
@@ -4541,6 +4544,9 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // A write carrying none of the turn (rule 6f: approval_withdraw with no reason) is not judged.
   // Nor is a call to an MCP server on a turn whose every taint came from that same server (rule
   // 6g, returnsToOwnMcpServer): its arguments go back to where the data came from.
+  // Nor a write of a first-party app back into itself on a turn that read only that app (rule 6l,
+  // returnsToOwnApp: the calendar's create_event after its own list_events), unless the call
+  // sends something out of the app (an invitation email), which is judged as before.
   // An edit of a pending approval's payload (rule 8g) is not judged here either: the edited
   // payload stays pending under the same approval, and the handler narrows that approval to
   // holders of the union taint (or refuses when nobody may then decide it).
@@ -4590,6 +4596,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     !carriesNoTurnContent(taintTool, opts.params) &&
     taintTool.taintUnjudgedWrite !== true &&
     !returnsToOwnMcpServer(opts.toolName, turnTaintScopes) &&
+    !returnsToOwnApp(appName, taintTool, turnTaintScopes, opts.params) &&
     taintTool.taintEditsPendingApproval !== true
   ) {
     const knownTaint =

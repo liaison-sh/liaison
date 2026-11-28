@@ -4,8 +4,10 @@
 // approval and nothing reaches Google before it, and the account's own answer to an invitation
 // (yes, no, maybe) is pushed onto its attendee entry.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { sql as drizzleSql } from "drizzle-orm"
 import { FakeGoogleCalendar } from "~/apps/calendar/__fixtures__/google/fake-google-calendar"
 import { createCalendarSyncHarness } from "~/apps/calendar/__fixtures__/google/sync-harness"
+import { withSystemDb } from "~/db/privileged"
 import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
 import { acquireAppSchemaJsLock, releaseAppSchemaJsLock } from "~/tests/helpers/app-schema-lock"
 
@@ -94,6 +96,39 @@ describe("G12 / D3: invitations", () => {
     expect(google.requestsFor("events.insert")[0]?.query.sendUpdates).toBe("none")
   })
 
+  it("a write result says whether guests were emailed and whether the calendar reaches Google", async () => {
+    const { h, teamId, email } = await connected()
+    h.callAs("agent")
+    // No Google credential behind the account (a seeded calendar): Liaison only, nobody emailed.
+    const local = (await h.tool("create_event", { ...MEETING, calendarId: teamId })) as Record<
+      string,
+      unknown
+    >
+    expect(local).toMatchObject({ google: "not_connected", guestsEmailed: false })
+    expect(String(local.notice)).toContain("Liaison only")
+
+    // The account's Google connection is active: the event syncs, the guests were not emailed.
+    await withSystemDb("calendar-invitations-connection", (tx) =>
+      tx.execute(drizzleSql`INSERT INTO kernel.connected_accounts
+        (org_id, app_name, connection_name, owner_type, owner_id, provider_type, identifier,
+         status, created_by)
+      VALUES (${orgId}::uuid, 'calendar', 'google-calendar', 'user', ${userId}::uuid, 'oauth2',
+        ${email}, 'active', ${userId}::uuid)`),
+    )
+    const synced = (await h.tool("create_event", { ...MEETING, calendarId: teamId })) as Record<
+      string,
+      unknown
+    >
+    expect(synced).toMatchObject({ google: "syncing", guestsEmailed: false })
+    expect(String(synced.notice)).toContain("NOT emailed")
+    const moved = (await h.tool("update_event", {
+      eventId: synced.eventId,
+      start: "2026-12-01T16:00:00.000Z",
+      end: "2026-12-01T17:00:00.000Z",
+    })) as Record<string, unknown>
+    expect(moved).toMatchObject({ google: "syncing", guestsEmailed: false })
+  })
+
   it("an agent's invitation waits for approval; nothing reaches Google before it", async () => {
     const { google, h, teamId } = await connected()
     h.callAs("agent")
@@ -107,6 +142,7 @@ describe("G12 / D3: invitations", () => {
     expect(h.approvals[0]?.tool_name).toBe("calendar:create_event")
     expect(h.approvals[0]?.summary).toContain("Roadmap review")
     expect(h.approvals[0]?.summary_detail?.lines?.join("\n")).toContain("guest.one@partner.test")
+    expect(h.approvals[0]?.summary_detail?.lines?.join("\n")).toMatch(/^Calendar: \S/m)
     await h.drain()
     expect(google.requestsFor("events.insert")).toHaveLength(0)
     expect((await h.events(TEAM)).some((r) => r.title === "Roadmap review")).toBe(false)

@@ -6998,6 +6998,49 @@
           }
         }
       }
+    },
+    "documents_link_shopify_orders": {
+      "description": "Link issued invoices and credit notes that name their Shopify order only by number (no shopify_order_id) to that order, so the order's reads find them. Links only when the issuer profile's shop holds exactly one order with that name and the order's email is the document's buyer email (or its contact's), with no conflicting customer id and no other document on the order. Every other document is reported with its reason. Writes only the order link. dry_run (default true) writes nothing; continue with next_cursor. Gated.",
+      "requiredScopes": [
+        "invoicing:documents:write"
+      ],
+      "searchKeywords": ["rattacher", "relier", "lier", "commande"],
+      "handler": "documentsLinkShopifyOrdersHandler",
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "timeoutMs": 60000,
+      "writesToTable": "app_invoicing.documents",
+      "summarizer": "summarizeLinkShopifyOrders",
+      "approvalCard": {
+        "summary": "Link documents to their Shopify order (dry run: {{params.dry_run}})"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "true (default): report only, write nothing."
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Documents in this call, default 20, at most 40."
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "next_cursor of the previous call."
+          }
+        }
+      }
     }
   },
   "import": {

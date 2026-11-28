@@ -985,6 +985,7 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.30, 0.4.31 (main): automatic discounts, and discounts limited to markets.
     // 0.4.32: the branch's 0.4.30 and main's 0.4.31, merged.
     // 0.4.33: implements revenue-stream@1 (each order's sale: sale_get, sales_list, sale:paid).
+    // 0.4.34: orders_search names the shop it read (`shopDomain`).
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 

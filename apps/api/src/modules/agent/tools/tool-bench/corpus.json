@@ -4129,5 +4129,13 @@
     "say": "réponds peut-être à l'invitation de jeudi",
     "typed": ["répondre à l'invitation", "accepter l'invitation", "refuser l'invitation"],
     "any": ["calendar__respond_to_invitation"]
+  },
+  {
+    "id": "C192",
+    "set": "seed",
+    "lang": "fr",
+    "say": "les anciennes factures n'apparaissent pas sur la commande shopify, rattache-les",
+    "typed": ["rattacher commande shopify", "relier facture commande", "link invoice order"],
+    "any": ["invoicing__documents_link_shopify_orders"]
   }
 ]

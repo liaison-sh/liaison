@@ -96,7 +96,7 @@ export interface ServedShellUpdaterEnv {
   pageBuildId: string
   /** The server's desktop build id (`/api/shell/info`), or null. */
   fetchServerBuildId: () => Promise<string | null>
-  /** The shell's refresh: the build pending for the next load, or null. */
+  /** The shell's refresh: what is pending for the next load (a build id or "bundled"), or null. */
   refreshShell: () => Promise<string | null>
   hasUnsavedWork: () => boolean
   reload: () => void

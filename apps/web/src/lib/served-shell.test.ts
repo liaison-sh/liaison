@@ -84,6 +84,15 @@ describe("the idle reload onto a newer served build", () => {
     expect(none.reload).not.toHaveBeenCalled()
   })
 
+  it("a staged bundled shell reloads the same way, when idle and clean", async () => {
+    const t = updater({ pending: "bundled" })
+    await t.u.check()
+    expect(t.u.pending()).toBe("bundled")
+    t.advance(IDLE_RELOAD_MS)
+    expect(t.u.tick()).toBe(true)
+    expect(t.reload).toHaveBeenCalledTimes(1)
+  })
+
   it("asks the server at most every few minutes", async () => {
     const t = updater({ pending: null })
     await t.u.check()

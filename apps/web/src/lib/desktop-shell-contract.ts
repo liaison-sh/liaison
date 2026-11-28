@@ -1131,11 +1131,14 @@ export interface DesktopBridge {
    * keys, instead of the one compiled into the app.
    *
    * `shellReady` is called once after the page's first render with the page's
-   * build id: a served build that never says so within 20 s, twice, is
+   * build id: a served build that never says so within 45 s, twice, is
    * quarantined and the shell falls back to its last good or bundled build.
    * `shellStatus` says what runs (and why the bundled shell runs, when it
    * does). `refreshShell` asks the shell to fetch the server's newer build
-   * now; it answers the build id that will run at the next load, or null.
+   * now; it answers what will run at the next load: a build id, `"bundled"`
+   * when the bundled shell is staged (the server's build no longer verifies
+   * or is switched off), or null when nothing is staged. A revoked or
+   * switched-off build does not wait for this: the shell reloads at once.
    * All optional: an older shell has none and the page behaves as before.
    */
   shellReady?(buildId: string): Promise<void>

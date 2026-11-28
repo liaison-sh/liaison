@@ -85,11 +85,12 @@ describe("buildShellManifest", () => {
   it("gets another build id when only a public/ file or only the app frame changed", async () => {
     const input = { mode: "desktop" as const, commit: COMMIT, seq: 1, liaisonVersion: "v1.0.0" }
     const base = await buildShellManifest({ ...input, distDir: fixtureDist().dist })
-    for (const change of [
+    const changes: Array<Record<string, string>> = [
       { "liaison-sw.js": "self.onfetch=undefined" },
       { "_app-runtime/solid-js.js": "export const a=1" },
       { "app-frame-runtime.js": "(()=>{1})()" },
-    ]) {
+    ]
+    for (const change of changes) {
       const m = await buildShellManifest({ ...input, distDir: fixtureDist(change).dist })
       expect(m.buildId).not.toBe(base.buildId)
     }

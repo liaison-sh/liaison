@@ -3,7 +3,7 @@
 // The signer takes two builders' manifests and signs only when they agree, and
 // the verifier checks what the downloads host publishes. Throwaway keys only.
 import { afterEach, describe, expect, it } from "bun:test"
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { utf8 } from "../../packages/shared/src/app-signing/encoding"
@@ -21,6 +21,7 @@ import { keyIdFor } from "../app-signing/sign-artifact"
 import {
   manifestFileName,
   parseShellManifest,
+  RESULT_FILE,
   type ShellManifest,
   signShellManifests,
 } from "./sign-statement"
@@ -28,6 +29,7 @@ import { verifyPublishedShell } from "./verify-statement"
 
 const COMMIT = "c".repeat(40)
 const SEQ = 1_764_300_000
+const VERSION = "nightly-20261128"
 const dirs: string[] = []
 afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
@@ -80,15 +82,17 @@ describe("signShellManifests", () => {
   it("signs both modes when the two builders agree, and the output verifies", async () => {
     const { path, keyId } = await keyFile()
     const out = tmp()
-    const signed = await signShellManifests({
+    const { signed, refused } = await signShellManifests({
       a: builderDir(),
       b: builderDir(),
       commit: COMMIT,
       seq: SEQ,
+      liaisonVersion: VERSION,
       keyPath: path,
       out,
       issuedAt: "2026-11-28T00:00:00.000Z",
     })
+    expect(refused).toEqual({})
     expect(signed.map((s) => `${s.mode}/${s.buildId}`)).toEqual([
       "desktop/0123456789abcdef",
       "native/fedcba9876543210",
@@ -101,48 +105,151 @@ describe("signShellManifests", () => {
     expect(utf8.decode(bytes)).toBe(canonicalJson(statement))
   })
 
-  it("refuses when one file differs between the builds, naming it", async () => {
+  it("refuses a mode whose two builds differ, naming the file, and still signs the other", async () => {
     const { path } = await keyFile()
     const b = builderDir({
       native: { files: { "index.html": "a".repeat(64), "build-id.txt": "e".repeat(64) } },
     })
-    await expect(
-      signShellManifests({
-        a: builderDir(),
-        b,
-        commit: COMMIT,
-        seq: SEQ,
-        keyPath: path,
-        out: tmp(),
-      }),
-    ).rejects.toThrow(/native: the two builds differ.*build-id\.txt/)
+    const out = tmp()
+    const r = await signShellManifests({
+      a: builderDir(),
+      b,
+      commit: COMMIT,
+      seq: SEQ,
+      liaisonVersion: VERSION,
+      keyPath: path,
+      out,
+    })
+    expect(r.refused.native).toMatch(/native: the two builds differ.*build-id\.txt/)
+    expect(r.signed.map((s) => s.mode)).toEqual(["desktop"])
+    expect(existsSync(join(out, "native"))).toBe(false)
+    expect(JSON.parse(readFileSync(join(out, RESULT_FILE), "utf8"))).toEqual({
+      refused: r.refused,
+      signed: ["desktop/0123456789abcdef"],
+      skipped: [],
+    })
   })
 
-  it("refuses manifests of another commit or seq than the forge says", async () => {
+  it("refuses manifests of another commit, seq or release name than the signer computed", async () => {
     const { path } = await keyFile()
-    const base = { a: builderDir(), b: builderDir(), keyPath: path, out: tmp() }
-    await expect(signShellManifests({ ...base, commit: "d".repeat(40), seq: SEQ })).rejects.toThrow(
-      /built from/,
-    )
-    await expect(signShellManifests({ ...base, commit: COMMIT, seq: SEQ + 1 })).rejects.toThrow(
-      /seq/,
-    )
+    const base = {
+      a: builderDir(),
+      b: builderDir(),
+      keyPath: path,
+      out: tmp(),
+      commit: COMMIT,
+      seq: SEQ,
+      liaisonVersion: VERSION,
+    }
+    const refusal = async (over: Partial<typeof base>) =>
+      (await signShellManifests({ ...base, ...over })).refused.desktop
+    expect(await refusal({ commit: "d".repeat(40) })).toMatch(/built from/)
+    expect(await refusal({ seq: SEQ + 1 })).toMatch(/seq/)
+    expect(await refusal({ liaisonVersion: "nightly-20261129" })).toMatch(/release/)
   })
 
   it("refuses a manifest file that is not one", async () => {
     const { path } = await keyFile()
     const a = builderDir()
     writeFileSync(join(a, manifestFileName("desktop")), JSON.stringify({ mode: "desktop" }))
-    await expect(
-      signShellManifests({
-        a,
-        b: builderDir(),
-        commit: COMMIT,
-        seq: SEQ,
-        keyPath: path,
-        out: tmp(),
-      }),
-    ).rejects.toThrow(/builder A desktop: not a shell manifest/)
+    const r = await signShellManifests({
+      a,
+      b: builderDir(),
+      commit: COMMIT,
+      seq: SEQ,
+      liaisonVersion: VERSION,
+      keyPath: path,
+      out: tmp(),
+    })
+    expect(r.refused.desktop).toMatch(/builder A desktop: not a shell manifest/)
+    expect(r.signed.map((s) => s.mode)).toEqual(["native"])
+  })
+})
+
+describe("what the host already holds", () => {
+  const ID = "0123456789abcdef"
+  async function first(issuedAt = "2026-11-28T00:00:00.000Z") {
+    const { path } = await keyFile()
+    const out = tmp()
+    const input = {
+      a: builderDir(),
+      b: builderDir(),
+      commit: COMMIT,
+      seq: SEQ,
+      liaisonVersion: VERSION,
+      keyPath: path,
+      issuedAt,
+    }
+    await signShellManifests({ ...input, out })
+    return { input, out }
+  }
+  function hostWith(
+    from: string,
+    files: Array<"statement.json" | "statement.sig">,
+    mode = "desktop",
+  ) {
+    const existing = tmp()
+    const dir = join(existing, mode, ID)
+    mkdirSync(dir, { recursive: true })
+    for (const f of files) writeFileSync(join(dir, f), readFileSync(join(from, mode, ID, f)))
+    return existing
+  }
+
+  it("skips a mode whose statement is already signed, and signs the other", async () => {
+    // A nightly that changed only the phone build: the desktop build id is the
+    // one already published (by an earlier commit), so desktop is skipped.
+    const { input, out } = await first()
+    const existing = hostWith(out, ["statement.json", "statement.sig"])
+    const r = await signShellManifests({
+      ...input,
+      commit: "e".repeat(40),
+      a: builderDir({ desktop: { commit: "e".repeat(40) }, native: { commit: "e".repeat(40) } }),
+      b: builderDir({ desktop: { commit: "e".repeat(40) }, native: { commit: "e".repeat(40) } }),
+      out: tmp(),
+      existing,
+    })
+    expect(r.skipped).toEqual([{ mode: "desktop", buildId: ID }])
+    expect(r.signed.map((s) => s.mode)).toEqual(["native"])
+    expect(r.refused).toEqual({})
+  })
+
+  it("completes a pair cut after statement.json: signs the host's bytes, not a fresh issuedAt", async () => {
+    const { input, out } = await first("2026-11-28T00:00:00.000Z")
+    const existing = hostWith(out, ["statement.json"])
+    const retry = tmp()
+    const r = await signShellManifests({
+      ...input,
+      issuedAt: "2026-11-29T12:00:00.000Z",
+      out: retry,
+      existing,
+    })
+    expect(r.refused).toEqual({})
+    const desktop = r.signed.find((s) => s.mode === "desktop")
+    expect(desktop?.resigned).toBe(true)
+    expect(readFileSync(join(retry, "desktop", ID, "statement.json"))).toEqual(
+      readFileSync(join(out, "desktop", ID, "statement.json")),
+    )
+    // Ed25519 is deterministic: the completed pair is exactly the first one.
+    expect(readFileSync(join(retry, "desktop", ID, "statement.sig"), "utf8")).toBe(
+      readFileSync(join(out, "desktop", ID, "statement.sig"), "utf8"),
+    )
+    expect(r.signed.find((s) => s.mode === "native")?.resigned).toBe(false)
+  })
+
+  it("never signs an unsigned statement.json that says something else", async () => {
+    const { input, out } = await first()
+    const existing = hostWith(out, ["statement.json"])
+    const path = join(existing, "desktop", ID, "statement.json")
+    const forged = JSON.parse(readFileSync(path, "utf8"))
+    // A higher seq would sit above every future floor: never signed.
+    writeFileSync(path, canonicalJson({ ...forged, seq: 9_999_999_999 }))
+    const r = await signShellManifests({ ...input, out: tmp(), existing })
+    expect(r.refused.desktop).toMatch(/says something else/)
+    expect(r.signed.map((s) => s.mode)).toEqual(["native"])
+    writeFileSync(path, `${canonicalJson(forged)} `)
+    expect((await signShellManifests({ ...input, out: tmp(), existing })).refused.desktop).toMatch(
+      /not a shell statement/,
+    )
   })
 })
 
@@ -155,6 +262,7 @@ describe("verifyPublishedShell", () => {
       b: builderDir(),
       commit: COMMIT,
       seq: SEQ,
+      liaisonVersion: VERSION,
       keyPath: path,
       out,
     })
@@ -204,7 +312,7 @@ describe("verifyPublishedShell", () => {
     }
     expect(
       await verifyPublishedShell({ ...base, mode: "desktop", buildId: "fedcba9876543210" }),
-    ).toBe("statement is for native")
+    ).toBe("wrong_build")
     // A signed revocation list with a desktop floor above the statement's seq.
     const list = revocationBytes({
       v: 1,

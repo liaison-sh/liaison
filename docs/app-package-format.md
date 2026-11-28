@@ -510,6 +510,12 @@ reproducible). The revocation list carries a floor per mode,
 runs. A server running a build that has no statement (a fork, a local patch)
 keeps every app on its compiled-in shell.
 
+A client trusts a statement only when it also names the mode and build id of
+the path it was fetched from (`verifyShellStatementFor` in
+`packages/shared/src/app-signing/shell-statement.ts`), so a host serving another
+signed statement at that path is refused. A revocation list entry named
+`shell:<mode>` for a mode the client does not know is ignored.
+
 `bun scripts/shell-signing/verify-statement.ts <desktop|native> <buildId>`
 checks a published statement against the pinned keys and prints `ok` or the
 reason.

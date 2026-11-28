@@ -13,6 +13,7 @@ import {
   shellRevocationFor,
   shellStatementBytes,
   verifyShellStatement,
+  verifyShellStatementFor,
 } from "./shell-statement"
 import { canonicalJson, parseStatement, statementBytes } from "./statement"
 import { createTestSigningKey } from "./testing"
@@ -202,6 +203,22 @@ describe("verifyShellStatement", () => {
         floor: [{ name: "shell:desktop", below: "100" }],
       }),
     ).toMatchObject({ ok: true })
+  })
+})
+
+describe("verifyShellStatementFor", () => {
+  // A statement is fetched from shell/<mode>/<buildId>/; whoever can write the
+  // host could put another validly signed statement there, so a client binds
+  // the statement to the mode and build id it asked for.
+  it("refuses a valid statement for another build id or another mode", async () => {
+    const signer = await createTestSigningKey("k1")
+    const bytes = shellStatementBytes(shellStatement("k1"))
+    const sig = await signer.sign(bytes)
+    const check = (mode: "desktop" | "native", buildId: string) =>
+      verifyShellStatementFor({ mode, buildId }, bytes, sig, [signer.key], NO_REVOCATIONS)
+    expect((await check("desktop", "0123456789abcdef")).ok).toBe(true)
+    expect(await check("desktop", "fedcba9876543210")).toEqual({ ok: false, reason: "wrong_build" })
+    expect(await check("native", "0123456789abcdef")).toEqual({ ok: false, reason: "wrong_build" })
   })
 })
 

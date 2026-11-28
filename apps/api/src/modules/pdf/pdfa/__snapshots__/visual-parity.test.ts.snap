@@ -11,25 +11,22 @@ Date d'émission :
 Échéance :
  
 03/12/2026
-Incoterm :
- 
-DAP
 Opération :
  
 Livraison de biens
 ÉMETTEUR
 Maison Exemple SAS
 1 rue de Test, 75011 Paris
-FR
+France
 TVA : FR40902000009
-SIREN 902000009
+SIREN 902 000 009
 SAS au capital de 10 000 €
 CLIENT
 Client Exemple SAS
 10 rue Domestic, 69002 Lyon
-FR
+France
 TVA : FR83900000001
-SIREN 900000001
+SIREN 900 000 001
 #
  
 Désignation
@@ -87,9 +84,6 @@ AV-2026-0007
 Date d'émission :
  
 03/11/2026
-Incoterm :
- 
-DAP
 Opération :
  
 Livraison de biens
@@ -97,16 +91,16 @@ Avoir sur la facture FA-2026-0042 du 03/11/2026
 ÉMETTEUR
 Maison Exemple SAS
 1 rue de Test, 75011 Paris
-FR
+France
 TVA : FR40902000009
-SIREN 902000009
+SIREN 902 000 009
 SAS au capital de 10 000 €
 CLIENT
 Client Exemple SAS
 10 rue Domestic, 69002 Lyon
-FR
+France
 TVA : FR83900000001
-SIREN 900000001
+SIREN 900 000 001
 #
  
 Désignation

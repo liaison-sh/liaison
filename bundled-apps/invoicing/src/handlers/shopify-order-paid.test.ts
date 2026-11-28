@@ -1693,7 +1693,7 @@ describe("order split + tax-inclusive pricing", () => {
     expect(byDesc["Tessera 2"]!.line_kind).toBe("goods")
   })
 
-  test("mixed order → TWO invoices: goods (physical merchandise ONLY) and services (software + shipping); totals reproduce the Shopify payment", async () => {
+  test("mixed order → TWO invoices: goods (merchandise + carriage) and services (software only); totals reproduce the Shopify payment", async () => {
     const { ctx, db } = makeCtx({
       issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
     })
@@ -1709,18 +1709,17 @@ describe("order split + tax-inclusive pricing", () => {
     expect(goods).toBeDefined()
     expect(software).toBeDefined()
 
-    // Goods invoice: ONLY the 4 physical merchandise lines — no carriage, no
-    // software. Net 1023.34, VAT 204.66, total 1228.00. This is the customs
-    // value of the shipment, nothing else.
-    expect(String(goods.subtotal_minor)).toBe("102334")
-    expect(String(goods.tax_total_minor)).toBe("20466")
-    expect(String(goods.grand_total_minor)).toBe("122800")
+    // Goods invoice: the 4 physical merchandise lines and the carriage that moves them, no
+    // software. Net 1048.33, VAT 209.66, total 1257.99.
+    expect(String(goods.subtotal_minor)).toBe("104833")
+    expect(String(goods.tax_total_minor)).toBe("20966")
+    expect(String(goods.grand_total_minor)).toBe("125799")
 
-    // Services invoice: the software license + the shipping charge. Net 90.82,
-    // VAT 18.17, total 108.99 — on its own document customs never sees.
-    expect(String(software.subtotal_minor)).toBe("9082")
-    expect(String(software.tax_total_minor)).toBe("1817")
-    expect(String(software.grand_total_minor)).toBe("10899")
+    // Services invoice: the software license alone. Net 65.83, VAT 13.17, total 79.00, on its
+    // own document customs never sees.
+    expect(String(software.subtotal_minor)).toBe("6583")
+    expect(String(software.tax_total_minor)).toBe("1317")
+    expect(String(software.grand_total_minor)).toBe("7900")
 
     // The two documents together reproduce the Shopify payment to the cent.
     const combined =
@@ -1734,16 +1733,15 @@ describe("order split + tax-inclusive pricing", () => {
       expect(d.counterparty_country).toBe("FR")
     }
 
-    // Line kinds persisted; the goods document carries ONLY merchandise lines,
-    // the services document carries the software license AND the carriage.
+    // Line kinds persisted; the goods document carries the merchandise and the carriage,
+    // the services document the software license only.
     const lines = db.__all("document_lines") as Array<Record<string, unknown>>
     expect(lines).toHaveLength(6)
     const softwareLines = lines.filter((l) => l.document_id === software.id)
-    expect(softwareLines).toHaveLength(2)
-    expect(softwareLines.map((l) => l.line_kind).sort()).toEqual(["shipping", "software"])
+    expect(softwareLines.map((l) => l.line_kind)).toEqual(["software"])
     const goodsLines = lines.filter((l) => l.document_id === goods.id)
-    expect(goodsLines).toHaveLength(4)
-    expect(goodsLines.every((l) => l.line_kind === "goods")).toBe(true)
+    expect(goodsLines).toHaveLength(5)
+    expect(goodsLines.filter((l) => l.line_kind === "shipping")).toHaveLength(1)
     // Two sequential invoice numbers were allocated.
     expect(new Set(docs.map((d) => d.number)).size).toBe(2)
   })
@@ -2076,6 +2074,8 @@ describe("order paid auto flow stores document_lines NET of tax (own taxesInclud
     const result = await onShopifyOrderCreated(
       {
         ...singleItemEvent,
+        // What a tax exclusive checkout charges: 100.00 plus the 20.00 of tax.
+        totalPrice: { amount: "120.00", currencyCode: "EUR" },
         taxesIncluded: false,
         lineItems: singleItemEvent.lineItems.map((li) => ({
           ...li,
@@ -2157,8 +2157,8 @@ describe("software lines are never customs goods", () => {
 
 // Physical-only order WITH carriage: the goods invoice must still contain ONLY
 // merchandise — the shipping charge is a service and moves to its own document.
-describe("shipping never rides on the goods invoice", () => {
-  test("hardware-only order with shipping → goods invoice (merchandise) + services invoice (carriage)", async () => {
+describe("shipping rides with the goods it carries", () => {
+  test("hardware-only order with shipping → ONE goods invoice: merchandise + carriage", async () => {
     const { ctx, db } = makeCtx({
       issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
     })
@@ -2199,17 +2199,126 @@ describe("shipping never rides on the goods invoice", () => {
     )
     expect(result.status).toBe("ok")
     if (result.status !== "ok") throw new Error("unreachable")
-    expect(result.documents).toHaveLength(2)
+    expect(result.documents).toHaveLength(1)
+    const docs = db.__all("documents") as Array<Record<string, unknown>>
+    expect(docs).toHaveLength(1)
+    expect(docs[0]!.scope).toBe("goods")
+    expect(String(docs[0]!.grand_total_minor)).toBe("97899")
+    const kinds = (db.__all("document_lines") as Array<Record<string, unknown>>)
+      .map((l) => l.line_kind)
+      .sort()
+    expect(kinds).toEqual(["goods", "shipping"])
+  })
+
+  // A UK consumer buys a controller and a sound pack, shipped: the goods invoice carries the
+  // carriage (and the Incoterm), the digital invoice only the download, as a supply of services
+  // with the outside-EU consumer mention, never the export of goods mention.
+  test("split order outside the EU: carriage on the goods invoice, the digital one is services with the 259 B mention", async () => {
+    const { ctx, db, extras } = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+    })
+    const result = await onShopifyOrderCreated(
+      {
+        orderId: "order-uk-split",
+        shopDomain: "shop-1",
+        createdAt: "2026-11-28T09:00:00Z",
+        financialStatus: "paid",
+        totalPrice: { amount: "1037.00", currencyCode: "EUR" },
+        taxesIncluded: true,
+        customer: {
+          id: "c-uk",
+          email: "uk@example.co.uk",
+          first_name: "Alex",
+          last_name: "Example",
+          country: "GB",
+        },
+        billingAddress: {
+          address1: "1 High St",
+          zip: "SW1A 1AA",
+          city: "London",
+          country_code: "GB",
+        },
+        shippingAddress: {
+          address1: "1 High St",
+          zip: "SW1A 1AA",
+          city: "London",
+          country_code: "GB",
+        },
+        lineItems: [
+          {
+            id: "li-ctrl",
+            title: "Controller",
+            quantity: 1,
+            priceSet: { amount: "899.00", currencyCode: "EUR" },
+            requiresShipping: true,
+            taxLines: [],
+            variant: { id: "47748313416011" },
+          },
+          {
+            id: "li-pack",
+            title: "Sound pack",
+            quantity: 1,
+            priceSet: { amount: "79.00", currencyCode: "EUR" },
+            requiresShipping: false,
+            taxLines: [],
+            variant: { id: "57467363623243" },
+          },
+        ],
+        shippingLines: [
+          {
+            title: "DHL Express",
+            priceSet: { amount: "59.00", currencyCode: "EUR" },
+            taxLines: [],
+          },
+        ],
+      },
+      {
+        ...ctx,
+        executeTool: async (name: string, args: unknown) => {
+          if (name === "shopify:variants_get")
+            return {
+              status: "completed",
+              result: {
+                attributes: {
+                  hs_code: "92079000",
+                  country_of_origin: "FR",
+                  customs_description: "Controller",
+                },
+              },
+            } as never
+          return ctx.executeTool(name as never, args as never)
+        },
+      } as typeof ctx,
+    )
+    expect(result.status).toBe("ok")
     const docs = db.__all("documents") as Array<Record<string, unknown>>
     const goods = docs.find((d) => d.scope === "goods")!
-    const services = docs.find((d) => d.scope === "software")!
-    expect(String(goods.grand_total_minor)).toBe("94900") // merchandise only
-    expect(String(services.grand_total_minor)).toBe("2999") // carriage only
-    const serviceLines = (db.__all("document_lines") as Array<Record<string, unknown>>).filter(
-      (l) => l.document_id === services.id,
-    )
-    expect(serviceLines).toHaveLength(1)
-    expect(serviceLines[0]!.line_kind).toBe("shipping")
+    const digital = docs.find((d) => d.scope === "software")!
+    const lines = db.__all("document_lines") as Array<Record<string, unknown>>
+    const kindsOf = (d: Record<string, unknown>) =>
+      lines
+        .filter((l) => l.document_id === d.id)
+        .map((l) => l.line_kind)
+        .sort()
+    expect(kindsOf(goods)).toEqual(["goods", "shipping"])
+    expect(kindsOf(digital)).toEqual(["software"])
+    expect(String(goods.grand_total_minor)).toBe("95800")
+    expect(String(digital.grand_total_minor)).toBe("7900")
+    expect(digital.operation_category).toBe("services")
+    const mentionOf = (d: Record<string, unknown>) => {
+      const call = extras.renderCalls.find(
+        (c) =>
+          (c as { data?: { document?: { number?: unknown } } }).data?.document?.number === d.number,
+      ) as { data: { legal_mention: string; document: { operation_label: string } } } | undefined
+      return call?.data
+    }
+    const digitalData = mentionOf(digital)!
+    expect(digitalData.legal_mention).toContain("259 B")
+    expect(digitalData.legal_mention).not.toContain("146")
+    expect(digitalData.document.operation_label).toBe("Provision of services")
+    const goodsData = mentionOf(goods)!
+    expect(goodsData.legal_mention).toContain("146")
+    expect(goodsData.legal_mention).not.toContain("259 B")
   })
 })
 
@@ -2637,13 +2746,12 @@ describe("tax read from Shopify, not replayed", () => {
     const result = await onShopifyOrderCreated(order3386(), ctx)
     expect(result.status).toBe("ok")
     const docs = db.__all("documents") as Array<Record<string, unknown>>
+    // One goods invoice: the carriage rides with the goods it carries.
+    expect(docs).toHaveLength(1)
     const goods = docs.find((d) => d.scope === "goods")!
-    const services = docs.find((d) => d.scope === "software")!
-    expect(String(goods.grand_total_minor)).toBe("89900")
+    expect(String(goods.grand_total_minor)).toBe("98200")
     expect(String(goods.tax_total_minor)).toBe("0")
-    expect(String(services.grand_total_minor)).toBe("8300")
-    expect(String(services.tax_total_minor)).toBe("0")
-    // Sum of what is invoiced = 982.00, the revenue the payout reconciles with.
+    // What is invoiced = 982.00, the revenue the payout reconciles with.
     expect(goods.tax_treatment).toBe("eu_export_non_eu")
     // Printed under the Italian billing address: IT, never US.
     expect(goods.counterparty_country).toBe("IT")
@@ -3817,5 +3925,178 @@ describe("an order placed for a B2B company", () => {
       discount_minor: "0",
       tax_rate_bp: 2000,
     })
+  })
+})
+
+// Shopify prices include VAT: the invoice keeps Shopify's own tax per line and derives the net, so
+// it totals what the buyer paid to the cent (an audit found issued invoices a cent off: VAT was
+// recomputed on a net re-derived from the rate, and no net at 20 % reproduces every gross).
+describe("tax included Shopify orders total what the buyer paid, to the cent", () => {
+  const buyer = {
+    customer: {
+      id: "cust-cent-1",
+      email: "cent@example.com",
+      first_name: "Camille",
+      last_name: "Exemple",
+      country: "FR",
+    },
+    billingAddress: { address1: "1 rue Exemple", zip: "69002", city: "Lyon", country_code: "FR" },
+    shippingAddress: { address1: "1 rue Exemple", zip: "69002", city: "Lyon", country_code: "FR" },
+  }
+  type OrderEvent = Parameters<typeof onShopifyOrderCreated>[0]
+  type EventLine = NonNullable<OrderEvent["lineItems"]>[number]
+  type EventShipping = NonNullable<OrderEvent["shippingLines"]>[number]
+  const order = (
+    id: string,
+    total: string,
+    lineItems: EventLine[],
+    shippingLines: EventShipping[] = [],
+    taxesIncluded = true,
+  ): OrderEvent => ({
+    orderId: id,
+    shopDomain: "shop-1",
+    createdAt: "2026-11-20T10:00:00Z",
+    financialStatus: "paid",
+    totalPrice: { amount: total, currencyCode: "EUR" },
+    taxesIncluded,
+    ...buyer,
+    lineItems,
+    shippingLines,
+  })
+  const item = (
+    id: string,
+    price: string,
+    tax: string,
+    extra: Partial<EventLine> = {},
+  ): EventLine => ({
+    id,
+    title: `Item ${id}`,
+    quantity: 1,
+    priceSet: { amount: price, currencyCode: "EUR" },
+    requiresShipping: true,
+    taxLines: [{ rate: 0.2, amount: tax }],
+    variant: { id: `9${id.replace(/\D/g, "")}` },
+    ...extra,
+  })
+  const totals = (db: MockDb) => {
+    const docs = db.__all("documents") as Array<Record<string, unknown>>
+    let grand = 0n
+    let tax = 0n
+    for (const d of docs) {
+      grand += BigInt(String(d.grand_total_minor))
+      tax += BigInt(String(d.tax_total_minor))
+    }
+    return { grand, tax, docs }
+  }
+
+  test("79.00 incl. 20 %: total 79.00, VAT 13.17", async () => {
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+    })
+    const r = await onShopifyOrderCreated(
+      order("cent-79", "79.00", [item("l1", "79.00", "13.17")]),
+      ctx,
+    )
+    expect(r.status).toBe("ok")
+    expect(totals(db)).toMatchObject({ grand: 7900n, tax: 1317n })
+  })
+
+  test("9.99 incl. 20 % (no net reproduces it at the rate): Shopify's 1.67 is kept, total 9.99", async () => {
+    const p = adaptShopifyOrderCreatedEvent(order("cent-999", "9.99", [item("l1", "9.99", "1.67")]))
+    expect(String(p.line_items[0]!.unit_price_minor)).toBe("832")
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+    })
+    const r = await onShopifyOrderCreated(
+      order("cent-999", "9.99", [item("l1", "9.99", "1.67")]),
+      ctx,
+    )
+    expect(r.status).toBe("ok")
+    const { grand, tax } = totals(db)
+    expect(grand).toBe(999n)
+    expect(tax).toBe(167n)
+    const line = (db.__all("document_lines") as Array<Record<string, unknown>>)[0]!
+    expect(String(line.subtotal_minor)).toBe("832")
+    expect(String(line.tax_minor)).toBe("167")
+  })
+
+  test("several lines, a discount and taxed shipping: the invoices total the order and its VAT", async () => {
+    const event = order(
+      "cent-multi",
+      "112.88",
+      [
+        item("l1", "49.95", "14.98", {
+          quantity: 2,
+          discountAllocations: [{ amount: "10.00", currencyCode: "EUR" }],
+        }),
+        item("l2", "9.99", "1.67"),
+      ],
+      [
+        {
+          title: "Colissimo",
+          priceSet: { amount: "12.99", currencyCode: "EUR" },
+          taxLines: [{ rate: 0.2, amount: "2.17" }],
+        },
+      ],
+    )
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+    })
+    const r = await onShopifyOrderCreated(event, ctx)
+    expect(r.status).toBe("ok")
+    const { grand, tax, docs } = totals(db)
+    expect(docs).toHaveLength(1) // the goods and their shipping on one invoice
+    expect(grand).toBe(11288n)
+    expect(tax).toBe(1498n + 167n + 217n)
+    // The discount stays explicit on the line: 2 x unit - discount = the net Shopify implies.
+    const lines = db.__all("document_lines") as Array<Record<string, unknown>>
+    const l1 = lines.find((l) => String(l.description) === "Item l1")!
+    expect(BigInt(String(l1.discount_minor)) > 0n).toBe(true)
+    expect(String(l1.subtotal_minor)).toBe(String(8990 - 1498))
+  })
+
+  test("an order whose invoices would not total what was paid is parked, never issued", async () => {
+    // A shipping charge the buyer did not pay (total 79.00, lines 79.00 + 5.00 shipping).
+    const event = order(
+      "cent-gap",
+      "79.00",
+      [item("l1", "79.00", "13.17")],
+      [
+        {
+          title: "Relais",
+          priceSet: { amount: "5.00", currencyCode: "EUR" },
+          taxLines: [{ rate: 0.2, amount: "0.83" }],
+        },
+      ],
+    )
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+    })
+    const r = await onShopifyOrderCreated(event, ctx)
+    expect(r.status).toBe("deferred")
+    expect(db.__all("documents")).toHaveLength(0)
+    const parks = db.__all("deferred_events") as Array<Record<string, unknown>>
+    expect(parks).toHaveLength(1)
+    expect(parks[0]!.reason).toBe("order_total_mismatch")
+    expect(parks[0]!.blocked_on).toMatchObject({
+      kind: "order_totals",
+      invoice_total_minor: "8400",
+      order_total_minor: "7900",
+    })
+    // Listed for a person, with the override as its way out.
+    const listed = await deferredList(ctx as never)
+    expect(listed.items.map((i) => i.reason)).toContain("order_total_mismatch")
+  })
+
+  test("a tax exclusive order keeps Shopify's tax too and issues at the paid total", async () => {
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+    })
+    const r = await onShopifyOrderCreated(
+      order("cent-excl", "11.99", [item("l1", "9.99", "2.00")], [], false),
+      ctx,
+    )
+    expect(r.status).toBe("ok")
+    expect(totals(db)).toMatchObject({ grand: 1199n, tax: 200n })
   })
 })

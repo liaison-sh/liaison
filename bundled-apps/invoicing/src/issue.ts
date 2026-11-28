@@ -2293,6 +2293,8 @@ export function buildTemplateData(params: {
         | undefined) ?? null,
     vat_on_debits: (flat.vat_on_debits ?? stored.vat_on_debits) as boolean | null | undefined,
     buyer_siren: ((flat.buyer_siren ?? stored.buyer_siren) as string | null | undefined) ?? null,
+    customer_kind:
+      ((flat.customer_kind ?? stored.customer_kind) as string | null | undefined) ?? null,
   }
   return {
     document: {
@@ -2312,6 +2314,8 @@ export function buildTemplateData(params: {
       grand_total_minor: document.grand_total_minor.toString(),
       tax_treatment: document.tax_treatment ?? "",
       incoterm: document.incoterm,
+      // The buyer's kind, with the countries, decides whether the default Incoterm prints.
+      customer_kind: snapshot.customer_kind,
       // Settlement state drives "Amount paid" vs "Total due" and whether the banking box shows.
       // On a re-render (ensureDocumentPdf) `document` is the full persisted row, so a Shopify
       // invoice that settled after issue renders paid; at issue time it is set only when the

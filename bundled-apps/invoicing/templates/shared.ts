@@ -16,6 +16,7 @@
 // stays a dumb pdf-lib executor and the unicode round-trip holds.
 
 import { type DrawCommand, PdfBuilder, type PdfPage, rgb } from "@liaison/app-sdk"
+import { countryCodeOf, countryName } from "./countries"
 
 export type DocumentType = "invoice" | "quote" | "proforma" | "purchase_order" | "credit_note"
 
@@ -29,9 +30,9 @@ export interface DocumentData {
    *  would defeat the entire purpose and invite a request for it. A cross
    *  reference was briefly added here on 2026-08-27 and removed the same day for
    *  exactly that reason: whatever links the two halves belongs in OUR UI, never
-   *  on the artifact that leaves the building. `software` renders a "digital delivery only" notice so
-   *  customs never treats the document as a commercial invoice for a shipment;
-   *  `goods` (or null, the default for agent/manual documents) renders normally. */
+   *  on the artifact that leaves the building. For the same reason no scope draws a notice of
+   *  its own (a "digital delivery only" line was dropped with that cross reference): `goods`,
+   *  `software` and null render alike. */
   scope?: "goods" | "software" | null
   number: string
   issued_at: string
@@ -46,6 +47,9 @@ export interface DocumentData {
   grand_total_minor: bigint
   tax_treatment: string
   incoterm: string
+  /** The buyer's kind (documents.customer_kind): `business`, `individual` (a consumer),
+   *  `public_entity` or `non_registered_entity`. Decides, with the countries, whether the default Incoterm prints at all. */
+  customer_kind?: string | null
   /** Payment settlement state (mirrors documents.payment_status: unpaid | partial | paid |
    *  refunded). A "paid" invoice is already settled (the common case for Shopify-synced orders,
    *  paid at checkout): the totals block reads "Amount paid" instead of "Total due" and the
@@ -335,14 +339,14 @@ const LABELS: Record<FaceLanguage, FaceLabels> = {
     colDescription: "Description",
     colQty: "Qty",
     colUnitPrice: "Unit price",
-    colTax: "Tax %",
+    colTax: "VAT %",
     colAmountExclVat: "Amount excl. VAT",
     colAmount: "Amount",
     customsHs: "HS",
     customsOrigin: "Origin",
     discount: "Discount",
     subtotal: "Subtotal",
-    tax: "Tax",
+    tax: "VAT",
     total: "Total",
     totalDue: "Total due",
     paidOn: (d) => `Paid on ${d}`,
@@ -407,9 +411,7 @@ const LABELS: Record<FaceLanguage, FaceLabels> = {
     vatIdLabel: "TVA :",
     vatIdFooter: "TVA",
     shareCapital: (form, capital) =>
-      [form, capital ? `au capital de ${/[€]|eur/i.test(capital) ? capital : `${capital} €`}` : ""]
-        .filter(Boolean)
-        .join(" "),
+      [form, capital ? `au capital de ${capital}` : ""].filter(Boolean).join(" "),
     fxLine: (amount, date, rate, cur) =>
       `TVA en euros : ${amount} (taux BCE du ${date} : 1 EUR = ${rate} ${cur})`,
     colon: (label) => `${label} :`,
@@ -1074,10 +1076,11 @@ export function showsTaxColumns(input: DocumentRenderInput): boolean {
 
 const TABLE_COLS = {
   index: { x: MARGIN_X, width: 22 },
-  description: { x: 72, width: 248 },
-  qty: { rightX: 350 },
-  unitPrice: { rightX: 425 },
-  taxPct: { rightX: 465 },
+  description: { x: 72, width: 236 },
+  qty: { rightX: 335 },
+  // About 20 pt between a unit price and the VAT rate beside it ("8,69" then "20,00 %").
+  unitPrice: { rightX: 400 },
+  taxPct: { rightX: 455 },
   amount: { rightX: MARGIN_X + CONTENT_WIDTH },
 }
 
@@ -1218,6 +1221,8 @@ export function renderDocument(input: DocumentRenderInput): DrawCommand[] {
 }
 
 const LOGO_BOX = { width: 140, height: 48 }
+/** The widest a header meta value runs before it wraps (pt): the meta block stays a column. */
+const META_VALUE_MAX = 150
 
 function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
   const top = state.cursor.y
@@ -1263,10 +1268,7 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
     metaLines.push([L.dateOfSale, faceDate(supplyDate, lang)])
   }
   if (input.document.due_at) metaLines.push([L.due, faceDate(input.document.due_at, lang)])
-  // An Incoterm says who carries goods: a document of services alone has none.
-  if (input.document.operation_category !== "services") {
-    metaLines.push([L.incoterm, input.document.incoterm])
-  }
+  if (showsIncoterm(input)) metaLines.push([L.incoterm, input.document.incoterm])
   // Store order reference — sits in the meta block next to the document number so
   // a reader can go from invoice to order (and back) without opening the admin.
   const operation = input.document.operation_label?.trim()
@@ -1286,11 +1288,18 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
   for (const [label, value] of metaLines) {
     const ctxLabel = ctxOf(state)
     // Labels share a column 70 pt left of the margin; a value wider than that pushes its own
-    // label left so the two never run into each other ("Provision of services").
-    const labelRight = Math.min(rightX - 70, rightX - textWidth(value, 8.5) - 6)
+    // label left so the two never run into each other ("Provision of services"). A value wider
+    // than META_VALUE_MAX wraps onto more lines under itself ("Delivery of goods and provision
+    // of services"), so its label never runs back over the value or off the header.
+    const valueLines = wrapText(value, META_VALUE_MAX, 8.5)
+    const widest = Math.max(0, ...valueLines.map((v) => textWidth(v, 8.5)))
+    const labelRight = Math.min(rightX - 70, rightX - widest - 6)
     drawRight(ctxLabel, L.colon(label), labelRight, { y: ry, size: 8.5, color: GRAY_LABEL })
-    const ctxVal = ctxOf(state)
-    drawRight(ctxVal, value, rightX, { y: ry, size: 8.5, color: GRAY_DARK })
+    for (const [i, v] of valueLines.entries()) {
+      const ctxVal = ctxOf(state)
+      drawRight(ctxVal, v, rightX, { y: ry, size: 8.5, color: GRAY_DARK })
+      if (i < valueLines.length - 1) ry -= 11
+    }
     ry -= 13
   }
 
@@ -1341,25 +1350,75 @@ function formatDateLike(value: string): string {
   return m?.[1] ?? String(value)
 }
 
-/** Two addresses are "the same address" when they differ only in whitespace or case, so a
- *  trivially different spelling of the billing address does not get printed a second time as a
- *  SHIP TO block. Deliberately conservative: anything beyond whitespace/case counts as different
- *  and IS printed, because failing to show a real ship to is the worse error. */
-function sameAddress(a: string | null | undefined, b: string | null | undefined): boolean {
-  const norm = (v: string | null | undefined) =>
-    (v ?? "").replace(/\s+/g, " ").trim().toLocaleLowerCase()
-  return norm(a) === norm(b)
+/** The Incoterm the document states when nothing chose another: every path stores it. */
+const DEFAULT_INCOTERM = "DAP"
+
+/**
+ * Whether the header prints the Incoterm. It says who carries goods across a border between
+ * businesses, so it prints for goods sold to a business in another country, or when someone set
+ * an Incoterm other than the stored default. Never on services alone, never on a domestic or
+ * consumer sale under the default (a French consumer's parcel printed "Incoterm: DAP").
+ */
+export function showsIncoterm(input: DocumentRenderInput): boolean {
+  const doc = input.document
+  const incoterm = (doc.incoterm ?? "").trim()
+  if (incoterm === "" || doc.operation_category === "services") return false
+  if (incoterm.toUpperCase() !== DEFAULT_INCOTERM) return true
+  // A recorded kind decides (a business, a public or non registered entity); without one, a VAT
+  // number makes the buyer a business.
+  const kind = doc.customer_kind?.trim()
+  const business = kind ? kind !== "individual" : !!input.counterparty.vat_id?.trim()
+  if (!business) return false
+  const seller = (input.issuer.country ?? "").trim().toUpperCase()
+  const buyer = (input.counterparty.country ?? "").trim().toUpperCase()
+  return seller !== "" && buyer !== "" && seller !== buyer
 }
 
-/** True when an address's last line is already the country ("...\n69001 Lyon\nFR"), so the
- *  block does not print it a second time. */
-function addressEndsWith(address: string | null | undefined, country: string): boolean {
-  const last = (address ?? "")
+/** An address's non-empty lines, trimmed. */
+function addressLines(address: string | null | undefined): string[] {
+  return (address ?? "")
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l !== "")
-    .at(-1)
-  return !!last && last.toLocaleLowerCase() === country.trim().toLocaleLowerCase()
+}
+
+/** The country an address's last line names, by code or name ("FR", "France", "69002 Lyon,
+ *  France"), or null when it ends with a street or a locality. */
+function trailingCountry(address: string | null | undefined): string | null {
+  const last = addressLines(address).at(-1)
+  if (!last) return null
+  return countryCodeOf(last) ?? countryCodeOf(last.split(",").at(-1))
+}
+
+/** Two addresses are "the same address" when they differ only in whitespace, case, line breaks
+ *  against commas, or a trailing country line one of them carries (Shopify's ship to ends with
+ *  its country code, the billing address does not), so the billing address is not printed a
+ *  second time as a SHIP TO block. Anything else counts as different and IS printed: failing to
+ *  show a real ship to is the worse error. */
+function sameAddress(a: string | null | undefined, b: string | null | undefined): boolean {
+  const norm = (v: string | null | undefined) => {
+    const lines = addressLines(v)
+    const last = lines.at(-1)
+    if (last && countryCodeOf(last)) lines.pop()
+    return lines
+      .join(",")
+      .split(",")
+      .map((p) => p.replace(/\s+/g, " ").trim().toLocaleLowerCase())
+      .filter((p) => p !== "")
+      .join("|")
+  }
+  return norm(a) === norm(b)
+}
+
+/** An address's lines for the face: a last line that is a bare country code ("FR") prints as the
+ *  country's name in the face language. */
+function faceAddressLines(address: string | null | undefined, lang: FaceLanguage): string[] {
+  const lines = addressLines(address)
+  const last = lines.at(-1)
+  if (last && /^[A-Za-z]{2}$/.test(last) && countryCodeOf(last)) {
+    lines[lines.length - 1] = countryName(last, lang)
+  }
+  return lines
 }
 
 function drawParties(state: LayoutState, input: DocumentRenderInput): void {
@@ -1418,19 +1477,22 @@ function drawParties(state: LayoutState, input: DocumentRenderInput): void {
     if (party.address) {
       // Stored addresses are multiline ("street\nzip city\ncountry") — honor
       // the explicit breaks, wrapping each segment independently.
-      const lines = party.address
-        .split(/\r?\n/)
-        .filter((seg) => seg.trim() !== "")
-        .flatMap((seg) => wrapText(seg, width, 9))
+      const lines = faceAddressLines(party.address, state.lang).flatMap((seg) =>
+        wrapText(seg, width, 9),
+      )
       for (const line of lines) {
         const c: DrawCtx = { ...ctxLabel, cursor: { y } }
         draw(c, line, { x, y, size: 9, color: GRAY_MUTED })
         y -= 12
       }
     }
-    if (party.country && !addressEndsWith(party.address, party.country)) {
+    // The country once, by name in the face language, and only when the address does not
+    // already end with it ("..., 75018 Paris, France" then "FR" printed it twice).
+    const country = party.country?.trim() ?? ""
+    const named = trailingCountry(party.address)
+    if (country && named !== (countryCodeOf(country) ?? country.toUpperCase())) {
       const c1: DrawCtx = { ...ctxLabel, cursor: { y } }
-      draw(c1, party.country, { x, y, size: 9, color: GRAY_MUTED })
+      draw(c1, countryName(country, state.lang), { x, y, size: 9, color: GRAY_MUTED })
       y -= 12
     }
     if (party.vat_id) {
@@ -1440,7 +1502,7 @@ function drawParties(state: LayoutState, input: DocumentRenderInput): void {
     }
     if (party.siren) {
       const cs: DrawCtx = { ...ctxLabel, cursor: { y } }
-      draw(cs, `SIREN ${party.siren}`, { x, y, size: 9, color: GRAY_MUTED })
+      draw(cs, `SIREN ${groupFrenchId(party.siren)}`, { x, y, size: 9, color: GRAY_MUTED })
       y -= 12
     }
     if (party.identity) {
@@ -1769,13 +1831,61 @@ function drawNotes(state: LayoutState, input: DocumentRenderInput): void {
 /** Twin of src/tax.ts VAT_ON_DEBITS_TEXT (this bundle is sandbox-isolated from src/). */
 const VAT_ON_DEBITS_TEXT = "Option pour le paiement de la taxe d'après les débits"
 
-/** "SAS au capital de 10 000 €" (fr), "SAS, share capital 10 000" (en), "SAS, Stammkapital 10 000"
- *  (de), in the face language; null when neither form nor capital is set. */
+/** "SAS au capital de 10 000 €" (fr), "SAS, share capital EUR 10,000" (en), "SAS, Stammkapital
+ *  10.000 €" (de), in the face language; null when neither form nor capital is set. */
 function legalFormCapital(issuer: IssuerData, lang: FaceLanguage): string | null {
   const form = issuer.legal_form?.trim() ?? ""
-  const capital = issuer.share_capital?.trim() ?? ""
-  if (!form && !capital) return null
+  const raw = issuer.share_capital?.trim() ?? ""
+  if (!form && !raw) return null
+  const parsed = parseShareCapital(raw)
+  const capital = parsed ? formatShareCapital(parsed, lang) : raw
   return LABELS[lang].shareCapital(form, capital)
+}
+
+const CAPITAL_CURRENCIES: Array<[RegExp, string]> = [
+  [/€|\beur(o|os)?\b/i, "EUR"],
+  [/\$|\busd\b/i, "USD"],
+  [/£|\bgbp\b/i, "GBP"],
+  [/\bchf\b/i, "CHF"],
+]
+
+/**
+ * The share capital as the issuer typed it ("26 838,60", "26,838.60 EUR", "10 000 €", "1.000.000")
+ * read as an amount in cents and a currency (EUR when none is written: the field holds a French
+ * company's capital). Null when it is not a plain amount; it then prints as typed.
+ */
+export function parseShareCapital(raw: string): { cents: bigint; currency: string } | null {
+  if (raw.trim() === "") return null
+  let currency = "EUR"
+  for (const [re, code] of CAPITAL_CURRENCIES) {
+    if (re.test(raw)) {
+      currency = code
+      break
+    }
+  }
+  const number = raw
+    .replace(/€|\$|£|\b(eur(o|os)?|usd|gbp|chf)\b/gi, "")
+    .replace(/[\s\u00a0\u202f']/g, "")
+  if (!/^\d[\d.,]*$/.test(number)) return null
+  // The decimal separator is the last "." or "," followed by one or two digits; every other
+  // separator groups thousands ("26.838,60", "26,838.60", "1.000.000").
+  const m = /^(.*?)[.,](\d{1,2})$/.exec(number)
+  const whole = (m ? m[1] : number) ?? ""
+  const frac = m ? (m[2] ?? "").padEnd(2, "0") : "00"
+  if (!/^\d+([.,]\d{3})*$/.test(whole)) return null
+  return { cents: BigInt(whole.replace(/[.,]/g, "")) * 100n + BigInt(frac), currency }
+}
+
+/** "EUR 26,838.60" (en), "26 838,60 €" (fr), "26.838,60 €" (de); whole amounts drop the cents. */
+function formatShareCapital(c: { cents: bigint; currency: string }, lang: FaceLanguage): string {
+  const major = (c.cents / 100n).toString()
+  const cents = c.cents % 100n
+  const group = (sep: string) => major.replace(/\B(?=(\d{3})+(?!\d))/g, sep)
+  const fraction = (sep: string) =>
+    cents === 0n ? "" : `${sep}${cents.toString().padStart(2, "0")}`
+  if (lang === "en") return `${c.currency} ${group(",")}${fraction(".")}`
+  const unit = c.currency === "EUR" ? "€" : c.currency
+  return `${group(lang === "fr" ? " " : ".")}${fraction(",")} ${unit}`
 }
 
 function drawLegalMention(state: LayoutState, input: DocumentRenderInput): void {

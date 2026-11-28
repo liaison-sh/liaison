@@ -306,3 +306,13 @@ imported, draft, voided, cancelled documents refused -> bundled-apps/invoicing/s
 deferred_dismiss closes a park with a reason, gated; dismissed order never issues later -> bundled-apps/invoicing/src/handlers/deferred-dismiss.ts ; bundled-apps/invoicing/src/handlers/shopify-order-paid.ts (park_dismissed)
 replacement invoice links next to cancelled or credited documents; live invoice listed first -> bundled-apps/invoicing/src/handlers/link-shopify-orders.ts (replacedDocuments) ; bundled-apps/invoicing/src/reads.ts (orderLinkRank)
 fulfilled invoice credited, refunded, cancelled like a paid one -> bundled-apps/invoicing/src/mutations/credit-coverage.ts (ISSUED_INVOICE_STATUSES) ; bundled-apps/invoicing/src/state.ts
+Shopify line keeps Shopify's tax, net = gross less that tax -> bundled-apps/invoicing/src/handlers/shopify-order-paid.ts:1914
+order invoices must total the paid total less marketplace tax, else order_total_mismatch park -> bundled-apps/invoicing/src/handlers/shopify-order-paid.ts:1343
+invoiceability check names einvoice_needs_review and counterparty_territory_set -> bundled-apps/invoicing/src/order-invoiceability.ts:193
+country printed once by name in the face language -> bundled-apps/invoicing/templates/shared.ts:1483
+ship to equal to billing but for a country line is not repeated -> bundled-apps/invoicing/templates/shared.ts:1389
+share capital localised with its currency -> bundled-apps/invoicing/templates/shared.ts:1848
+Incoterm only for B2B cross border goods or a non default term -> bundled-apps/invoicing/templates/shared.ts:1353
+goods invoice carries the shipping, digital invoice digital lines only -> bundled-apps/invoicing/src/handlers/shopify-order-paid.ts:1023
+shipping never makes a supply mixed -> bundled-apps/invoicing/src/einvoicing/classify-operation.ts:25
+long header value wraps under itself -> bundled-apps/invoicing/templates/shared.ts:1294

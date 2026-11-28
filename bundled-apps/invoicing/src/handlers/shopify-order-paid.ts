@@ -472,6 +472,21 @@ export function shopifyTaxMismatches(
   return out
 }
 
+/**
+ * What a shop order's invoices must total: the order's paid total less the tax a marketplace
+ * collected and remits itself. Null when the total cannot be judged: an order with no line, or a
+ * line without Shopify's tax amount (an older event shape, a payload built by hand: its tax is
+ * re-derived from a rate and may legitimately sit a cent off).
+ */
+export function orderPaidTotal(payload: OrderPaidPayload): bigint | null {
+  if (payload.line_items.length === 0) return null
+  if (payload.line_items.some((li) => li.shopify_tax_minor == null || li.shopify_tax_minor === ""))
+    return null
+  let marketplace = 0n
+  for (const li of payload.line_items) marketplace += toBigIntMinor(li.marketplace_tax_minor)
+  return toBigIntMinor(payload.total_price_minor) - marketplace
+}
+
 function marketplaceTaxRef(items: OrderPaidPayload["line_items"]): {
   marketplace_tax_minor?: string
 } {
@@ -1003,15 +1018,16 @@ export async function issueOrderFlow(
 
   // Steps 7+8+10+11+12 — build drafts, snapshot lines, issue + PDF + thread post.
   //
-  // SPLIT BY SCOPE: physical goods on one document, EVERYTHING non-merchandise
-  // (software/digital lines AND carriage) on another. Customs values a shipment
-  // from the commercial invoice's total — a mixed invoice makes them tariff the
-  // software and the freight too. The goods invoice accompanies the parcel and
-  // contains ONLY merchandise value; the services invoice never reaches customs.
-  const goodsItems = payload.line_items.filter((li) => (li.line_kind ?? "goods") === "goods")
-  const softwareItems = payload.line_items.filter(
-    (li) => li.line_kind === "software" || li.line_kind === "shipping",
-  )
+  // SPLIT BY SCOPE: physical goods and their carriage on one document, digital lines on another.
+  // Customs values a shipment from the commercial invoice, which must not carry the software.
+  // The carriage belongs to the goods it moves (the invoice that states the Incoterm): on a
+  // digital invoice it turned the supply into "goods and services" and printed the export of
+  // goods mention on a download. Only an order with no goods at all keeps it on its one invoice.
+  const physical = payload.line_items.filter((li) => (li.line_kind ?? "goods") === "goods")
+  const carriage = payload.line_items.filter((li) => li.line_kind === "shipping")
+  const digital = payload.line_items.filter((li) => li.line_kind === "software")
+  const goodsItems = physical.length > 0 ? [...physical, ...carriage] : []
+  const softwareItems = physical.length > 0 ? digital : [...digital, ...carriage]
 
   const issuerInput: IssueInput["issuer"] = {
     id: issuer.id,
@@ -1118,9 +1134,10 @@ export async function issueOrderFlow(
   const soldAt = src ? src.documentRefs.sold_at : null
   const supplyDate =
     typeof soldAt === "string" && soldAt !== "" ? await supplyDateOf(ctx, issuer, soldAt) : null
-  // A stream sale's lines carry their source's own tax (streamLineSourceTax), unless a person
+  // Every line carries its source's own tax (streamLineSourceTax: a stream sale's, or the tax
+  // Shopify reported for a shop order's line, when within a unit of its rate), unless a person
   // decided the tax (`tax_override`): the invoice then totals exactly what the buyer paid.
-  const useSourceTax = !!src && !payload.tax_override
+  const useSourceTax = !payload.tax_override
   const sourceTaxOf = (li: OrderPaidPayload["line_items"][number]) =>
     useSourceTax ? streamLineSourceTax(li) : null
   const buildIssueInput = (
@@ -1325,6 +1342,22 @@ export async function issueOrderFlow(
         kind: "sale_totals",
         invoice_total_minor: invoiceTotal.toString(),
         source_total_minor: String(payload.total_price_minor),
+      },
+    })
+  }
+  // A shop order's invoices (every split together) must total what the buyer paid, less the tax a
+  // marketplace collected itself (never on our documents). A cent off is not issued silently: the
+  // order waits for a person in the Deferred list (deferred_tax_override decides it).
+  const shopExpected = !src ? orderPaidTotal(payload) : null
+  if (shopExpected != null && !payload.tax_override && invoiceTotal !== shopExpected) {
+    return parkForTaxReview(ctx, parkPayload, orderNumber, src, {
+      status: "awaiting_data",
+      reason: "order_total_mismatch",
+      blocked_on: {
+        kind: "order_totals",
+        invoice_total_minor: invoiceTotal.toString(),
+        order_total_minor: shopExpected.toString(),
+        currency: payload.currency,
       },
     })
   }
@@ -1864,6 +1897,9 @@ function toNetLineMoney(params: {
   rateBp: number | null
   taxesIncluded: boolean
   currency: string
+  /** Every tax Shopify reported on the line (seller and marketplace), when all its amounts are
+   *  known. With tax included prices, the line's net is its gross less exactly this. */
+  includedTaxMinor?: bigint | null
 }): { unit_price_minor: string; discount_minor: string } {
   const { unitAmount, quantity, discountTotals, rateBp, taxesIncluded, currency } = params
   const qty = BigInt(Math.max(1, Math.round(quantity)))
@@ -1879,8 +1915,21 @@ function toNetLineMoney(params: {
   // through unchanged rather than guessing.
   const deTax = (v: bigint): bigint =>
     taxesIncluded && rateBp != null ? netOfTax({ gross_minor: v, tax_rate_bp: rateBp }) : v
-  const unitNet = deTax(unitGross)
-  const netAfter = deTax(lineGrossAfter)
+  let unitNet = deTax(unitGross)
+  // The line's net after discount. When Shopify reported the tax it took out of a tax included
+  // price, the net is the gross less that tax, to the cent: re-deriving it from the rate rounds on
+  // its own and an invoice of 79.00 paid came out at 78.99 (no net at 20 % reproduces every gross).
+  const knownTax =
+    taxesIncluded && params.includedTaxMinor != null && params.includedTaxMinor <= lineGrossAfter
+      ? params.includedTaxMinor
+      : null
+  const netAfter = knownTax != null ? lineGrossAfter - knownTax : deTax(lineGrossAfter)
+  if (knownTax != null) {
+    // Whole units only: the unit price is the shelf net, raised when it would not reach the
+    // line's net, and the discount takes the rest (qty x unit - discount = net, exactly).
+    if (discountGross === 0n && netAfter % qty === 0n) unitNet = netAfter / qty
+    else if (unitNet * qty < netAfter) unitNet = (netAfter + qty - 1n) / qty
+  }
   let discountNet = unitNet * qty - netAfter
   if (discountNet < 0n) discountNet = 0n
   return { unit_price_minor: unitNet.toString(), discount_minor: discountNet.toString() }
@@ -1914,6 +1963,13 @@ export function formatEventShippingAddress(
   if (!base) return null
   const country = a?.country_code?.trim()
   return country ? `${base}\n${country}` : base
+}
+
+/** Every tax Shopify reported on a line (seller and marketplace), or null when an amount is
+ *  missing (an older event shape). */
+function includedTaxOf(tax: ReturnType<typeof shopifyLineTaxFacts>): bigint | null {
+  if (tax.sellerAmountMinor == null) return null
+  return BigInt(tax.sellerAmountMinor) + BigInt(tax.marketplaceAmountMinor)
 }
 
 /** The payload line fields carried from a line's Shopify tax facts. */
@@ -1996,6 +2052,7 @@ export function adaptShopifyOrderCreatedEvent(event: ShopifyOrderCreatedEvent): 
       rateBp: tax.chargedRateBp,
       taxesIncluded,
       currency,
+      includedTaxMinor: includedTaxOf(tax),
     })
     return {
       // gid form so the line's external_id matches the gid-keyed customs overlay
@@ -2024,6 +2081,7 @@ export function adaptShopifyOrderCreatedEvent(event: ShopifyOrderCreatedEvent): 
         rateBp: tax.chargedRateBp,
         taxesIncluded,
         currency,
+        includedTaxMinor: includedTaxOf(tax),
       })
       return {
         id: "",

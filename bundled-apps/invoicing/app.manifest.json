@@ -2061,6 +2061,7 @@
       "deferLoading": true,
       "requiredScopes": ["invoicing:documents:write", "invoicing:settings:read"],
       "handler": "revenueStreamPreviewPdfsHandler",
+      "readOnly": true,
       "timeoutMs": 60000,
       "params": {
         "type": "object",

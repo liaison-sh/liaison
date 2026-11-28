@@ -329,6 +329,9 @@ const READ_ONLY: Record<string, string[]> = {
     "revenue_streams_list",
     // A stream's sales of a window as the catch-up would invoice them; nothing written.
     "sales_catch_up_preview",
+    // Renders each sale as an unnumbered, watermarked preview PDF (as documents_preview_pdf):
+    // the issue path on a context that writes nothing, no document, number or mail.
+    "sales_preview_pdfs",
   ],
   monitoring: ["incidents_list", "incidents_get", "incidents_summary", "webhook_info"],
   stripe: [

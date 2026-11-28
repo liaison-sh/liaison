@@ -26,14 +26,7 @@
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import {
-  applyMobileCsp,
-  BOOT_SCRIPT_NAME,
-  injectBootScript,
-  inlineScripts,
-  MOBILE_CSP,
-  pinViewportScale,
-} from "./boot-injection"
+import { BOOT_SCRIPT_NAME, inlineScripts, MOBILE_CSP, makeMobilePage } from "./boot-injection"
 
 export interface BuildStep {
   name: string
@@ -212,9 +205,7 @@ async function buildBootBundle(dirs: string[]): Promise<void> {
     }
     writeFileSync(path.join(dir, BOOT_SCRIPT_NAME), await result.outputs[0].text())
     const indexHtml = path.join(dir, "index.html")
-    const { html, files } = applyMobileCsp(
-      pinViewportScale(injectBootScript(readFileSync(indexHtml, "utf8"))),
-    )
+    const { html, files } = makeMobilePage(readFileSync(indexHtml, "utf8"))
     for (const file of files) writeFileSync(path.join(dir, file.name), file.content)
     writeFileSync(indexHtml, html)
     console.log(

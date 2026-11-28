@@ -64,12 +64,13 @@ RUN bun install --frozen-lockfile \
       && bun install --frozen-lockfile --ignore-scripts)
 
 # Build the web bundle: the desktop build (served at /) and the native build
-# the phone apps wrap (served under /native/). Both are reproducible, so the
-# build ids here match the ones a signed shell statement names for this commit
-# (scripts/shell-signing/build-manifest.ts).
+# the phone apps wrap (served under /native/). The shell builders run this same
+# script on the same bun (.bun-version, which must name the base image's
+# version above), so the build ids here match the ones a signed shell statement
+# names for this commit (scripts/shell-signing/build-manifest.ts).
 FROM deps AS web-build
 COPY . .
-RUN cd apps/web && bun run build && bun run build:native
+RUN bash scripts/shell-signing/build-web.sh
 # First-party app catalog: one `.liaisonapp` per bundled-apps/<name>/ + a
 # catalog.json index under /app/app-catalog, baked into the runtime image so the
 # Apps UI / `liaison config apply` can install a bundled app with one click.

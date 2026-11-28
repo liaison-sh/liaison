@@ -18,6 +18,11 @@
 // chosen at runtime; `http://localhost:*` / `ws://localhost:*` a local
 // development server. The Capacitor bridge is a document-start script the
 // native side installs, outside the page's policy.
+//
+// The same policy covers a SERVED main page (the server's own web build, run
+// once the native host verified Liaison's signature on it): the host makes the
+// page out of it with a Swift port of these steps
+// (ios/LiaisonShell/Sources/LiaisonShell/MobilePage.swift), pinned below too.
 
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
@@ -76,5 +81,22 @@ describe("the phone main page's policy pin", () => {
     const twice = applyMobileCsp(once.html)
     expect(twice.html).toBe(once.html)
     expect(twice.files).toEqual([])
+  })
+
+  it("a served main page is put under the same policy by the native host", () => {
+    const swift = readFileSync(
+      resolve(
+        import.meta.dir,
+        "..",
+        "ios",
+        "LiaisonShell",
+        "Sources",
+        "LiaisonShell",
+        "MobilePage.swift",
+      ),
+      "utf8",
+    )
+    const parts = [...swift.matchAll(/^ {8}"([^"]+)",$/gm)].map((m) => m[1])
+    expect(parts.join("; ")).toBe(SHIPPED_CSP)
   })
 })

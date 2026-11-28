@@ -522,8 +522,10 @@ an app statement with `kind: "shell"`: the mode, build id, commit, `seq` (the
 commit's committer time in seconds), release name, the bridge version ranges
 the build accepts per platform, the settings schema version, and the sha256 of
 every file of the build. A statement is signed only when two independent builds
-of the commit list the same files with the same hashes (both builds are
-reproducible). The revocation list carries a floor per mode,
+of the commit list the same files with the same hashes. Both builds, and the
+server image, run `scripts/shell-signing/build-web.sh` on the bun in
+`.bun-version`: vite on bun, never on an installed node, and a clean
+environment, so the three agree byte for byte. The revocation list carries a floor per mode,
 `{"name":"shell:desktop","below":"<seq>"}`: a shell statement below it never
 runs. A server running a build that has no statement (a fork, a local patch)
 keeps every app on its compiled-in shell.

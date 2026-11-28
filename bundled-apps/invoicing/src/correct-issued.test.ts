@@ -16,6 +16,7 @@ import {
 import type { MutationsCtx } from "./mutations/shared"
 import { documentsDownloadPdf, type ReadsCtx } from "./reads"
 import { summarizeCorrectIssued } from "./summarizers"
+import { resolveLegalMention } from "./tax"
 import { createMockDb, type MockDb } from "./test-db"
 import { testTime } from "./test-time"
 
@@ -619,5 +620,168 @@ describe("documents_correct_issued", () => {
       context: await correctIssuedPreview(h.ctx, { ...params, reason: "x" }),
     })
     expect(refused.title).toContain("refused")
+  })
+})
+
+/** The services invoice of a split order to a consumer outside the EU, issued before the per-line
+ *  wording existed: it printed the goods export mention (Art. 146). */
+function servicesDoc(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return docRow({
+    counterparty_country: "US",
+    counterparty_address: "1 Main Street, Austin TX",
+    subtotal_minor: "10900",
+    tax_total_minor: "0",
+    grand_total_minor: "10900",
+    tax_treatment: "eu_export_non_eu",
+    operation_category: "services",
+    customer_kind: "individual",
+    regime: "e_reporting",
+    ...over,
+  })
+}
+const servicesLines = () => [
+  lineRow(DOC_A, {
+    description: "Sound pack (download)",
+    line_kind: "software",
+    tax_rate_bp: 0,
+    unit_price_minor: "8900",
+    subtotal_minor: "8900",
+    tax_minor: "0",
+    total_minor: "8900",
+    hs_code: null,
+    country_of_origin: null,
+    customs_description: null,
+  }),
+  lineRow(DOC_A, {
+    position: 2,
+    description: "Shipping",
+    line_kind: "shipping",
+    tax_rate_bp: 0,
+    unit_price_minor: "2000",
+    subtotal_minor: "2000",
+    tax_minor: "0",
+    total_minor: "2000",
+    hs_code: null,
+    country_of_origin: null,
+    customs_description: null,
+  }),
+]
+const mentionOf = (r: Record<string, unknown> | undefined) =>
+  String((r?.data as Record<string, unknown> | undefined)?.legal_mention ?? "")
+
+describe("documents_correct_issued: the legal mention of the correction's date", () => {
+  test("the wording rules read mentionDate when given; the issue date otherwise", () => {
+    const opts = {
+      category: "services" as const,
+      issueDate: "2026-11-10",
+      customerKind: "individual",
+      lineKinds: ["software", "shipping"],
+    }
+    expect(resolveLegalMention("eu_export_non_eu", "en", opts)).toContain("Article 146")
+    const now = resolveLegalMention("eu_export_non_eu", "fr", {
+      ...opts,
+      mentionDate: "2026-11-28",
+    })
+    expect(now).toContain("TVA non applicable, art. 259 B du CGI")
+    expect(now).toContain("transport lié à l'exportation (article 262 I 1° du CGI)")
+    expect(now).not.toContain("262 I du CGI)")
+  })
+
+  test("refresh_legal_mention alone corrects the wording of an older services invoice; the issue date stays", async () => {
+    const h = harness({ seed: { documents: [servicesDoc()], document_lines: servicesLines() } })
+    const params = {
+      id: DOC_A,
+      reason: "the services invoice printed the goods export mention",
+      refresh_legal_mention: true,
+    }
+    const preview = await correctIssuedPreview(h.ctx, params)
+    expect(preview.refusal).toBeNull()
+    expect(preview.documents[0]?.changed_fields).toEqual(["legal_mention"])
+    expect(preview.documents[0]?.before.legal_mention).toContain("Article 146")
+    expect(preview.documents[0]?.after.legal_mention).toContain("259 B")
+    const card = await summarizeCorrectIssued(params, undefined, { context: preview })
+    const text = card.lines.join("\n")
+    expect(text).toContain("Legal mention:")
+    expect(text).toContain("Article 146")
+    expect(text).toContain("259 B")
+    expect(text).toContain("Total: 109.00 EUR (unchanged)")
+
+    const r = await correctIssued(h.ctx, params)
+    expect(r.status).toBe("completed")
+    const rendered = mentionOf(h.renders.at(-1))
+    expect(rendered).toContain("VAT not applicable, art. 259 B of the French Tax Code")
+    expect(rendered).toContain("art. 262 I 1° of the French Tax Code")
+    expect(rendered).not.toContain("Article 146")
+    const d = doc(h.db)
+    expect(d.issued_at).toBe("2026-11-10")
+    expect(d.number).toBe("INV-2026-0101")
+    expect(linesOf(h.db)).toHaveLength(2)
+    const c = h.db.__all("document_corrections")[0]
+    expect(c?.changed_fields).toEqual(["legal_mention"])
+  })
+
+  test("a mention-only change without refresh_legal_mention is refused and says how; a current mention refuses the refresh", async () => {
+    const h = harness({ seed: { documents: [servicesDoc()], document_lines: servicesLines() } })
+    const r = await correctIssuedPreflight(h.ctx, {
+      id: DOC_A,
+      reason: "the services invoice printed the goods export mention",
+    })
+    expect("error" in r && r.error.code).toBe("no_change")
+    expect("error" in r && r.error.message).toContain("refresh_legal_mention")
+    const current = harness({ seed: { documents: [docRow()], document_lines: [lineRow(DOC_A)] } })
+    const same = await correctIssuedPreflight(current.ctx, {
+      id: DOC_A,
+      reason: "refresh the mention of this OSS invoice",
+      refresh_legal_mention: true,
+    })
+    expect("error" in same && same.error.code).toBe("no_change")
+    expect("error" in same && same.error.message).toContain("already the current one")
+  })
+
+  test("a treatment change from ambiguous to export on an older download prints 259 B, not the goods export", async () => {
+    const h = harness({
+      seed: {
+        documents: [servicesDoc({ tax_treatment: "ambiguous", customer_kind: null })],
+        document_lines: [servicesLines()[0]!],
+      },
+    })
+    const r = await correctIssued(h.ctx, {
+      id: DOC_A,
+      reason: "the tool left the treatment ambiguous on a download sold outside the EU",
+      tax_treatment: "eu_export_non_eu",
+      customer_kind: "individual",
+    })
+    expect(r.status).toBe("completed")
+    const d = doc(h.db)
+    expect(d.tax_treatment).toBe("eu_export_non_eu")
+    expect(d.customer_kind).toBe("individual")
+    expect(d.issued_at).toBe("2026-11-10")
+    const rendered = mentionOf(h.renders.at(-1))
+    expect(rendered).toBe("VAT not applicable, art. 259 B of the French Tax Code")
+  })
+
+  test("an uncorrected document keeps the wording of its issue date on every re-render", async () => {
+    const { storedLegalMention, correctionMentionDate } = await import("./mutations/pdf")
+    const h = harness({ seed: { documents: [servicesDoc()], document_lines: servicesLines() } })
+    const d = doc(h.db)
+    expect(await correctionMentionDate(h.db as never, d)).toBeNull()
+    const m = await storedLegalMention(
+      h.db as never,
+      d,
+      { country: "FR", default_language: "en" },
+      { country: "US", tax_country: null, vat_id: null },
+      linesOf(h.db) as never,
+    )
+    expect(m).toContain("Article 146")
+  })
+
+  test("customer_kind is checked", async () => {
+    const h = harness({ seed: { documents: [servicesDoc()], document_lines: servicesLines() } })
+    const r = await correctIssuedPreflight(h.ctx, {
+      id: DOC_A,
+      reason: "the buyer kind was missing on this invoice",
+      customer_kind: "robot",
+    })
+    expect("error" in r && r.error.code).toBe("invalid_params")
   })
 })

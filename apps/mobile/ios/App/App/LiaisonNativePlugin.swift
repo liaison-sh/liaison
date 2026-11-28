@@ -1,5 +1,6 @@
 import AuthenticationServices
 import Capacitor
+import LiaisonShell
 import UIKit
 
 /// The app's own native plugin (JS: apps/mobile/src/native/liaison-native.ts).
@@ -22,7 +23,10 @@ public class LiaisonNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticati
         CAPPluginMethod(name: "receiptQueueAppend", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "debugConsumeForcedRegisterFailure", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setThreadOnScreen", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "setBackdrop", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "setBackdrop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "shellInfo", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "shellReady", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "shellReselect", returnType: CAPPluginReturnPromise)
     ]
 
     /// Held until it completes: a session nobody retains is deallocated and
@@ -64,6 +68,32 @@ public class LiaisonNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticati
             (self?.bridge?.viewController as? MainViewController)?.paintBehindThePage(theme: theme)
             call.resolve()
         }
+    }
+
+    // MARK: Served shell (LiaisonShell package, MainViewController)
+
+    /// The host's bridge version and which shell the page runs:
+    /// `{bridgeVersion, shell: "served:<id>" | "bundled:<reason>", served, buildId?, reason?}`.
+    @objc func shellInfo(_ call: CAPPluginCall) {
+        call.resolve(ServedShellHost.shared.info)
+    }
+
+    /// The page painted (apps/web `signalNativeReady`): a served build that
+    /// says so becomes this server's last good build.
+    @objc func shellReady(_ call: CAPPluginCall) {
+        ServedShellHost.shared.ready(buildId: call.getString("buildId"))
+        DispatchQueue.main.async { [weak self] in
+            (self?.bridge?.viewController as? MainViewController)?.shellSignalledReady()
+            call.resolve()
+        }
+    }
+
+    /// Chooses the build for the server now current, before the page reloads
+    /// itself (a server switch, an idle refresh). Only records the choice:
+    /// the router moves on the next main-frame document load, never under
+    /// the running page. `{changed}`: whether that load runs another build.
+    @objc func shellReselect(_ call: CAPPluginCall) {
+        call.resolve(["changed": ServedShellHost.shared.reselect()])
     }
 
     // MARK: APNs environment

@@ -1635,6 +1635,8 @@ interface CorrectionSnapshotContext {
   number?: string | null
   currency?: string
   tax_treatment?: string | null
+  customer_kind?: string | null
+  legal_mention?: string
   subtotal_minor?: string
   tax_total_minor?: string
   grand_total_minor?: string
@@ -1760,6 +1762,14 @@ export function summarizeCorrectIssued(
     if (b.tax_treatment !== a.tax_treatment)
       facts.push(
         `${label}Tax treatment: ${shown(b.tax_treatment).replace(/_/g, " ")}, now ${shown(a.tax_treatment).replace(/_/g, " ")}`,
+      )
+    if (b.customer_kind !== a.customer_kind)
+      facts.push(
+        `${label}Buyer kind: ${shown(b.customer_kind).replace(/_/g, " ")}, now ${shown(a.customer_kind).replace(/_/g, " ")}`,
+      )
+    if (a.legal_mention !== undefined && b.legal_mention !== a.legal_mention)
+      facts.push(
+        `${label}Legal mention: "${text(b.legal_mention, 320) || "(none)"}", now "${text(a.legal_mention, 320) || "(none)"}"`,
       )
     diffs.push(...lineDiff(b.lines ?? [], a.lines ?? [], currency).map((l) => `${label}${l}`))
   }

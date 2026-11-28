@@ -320,7 +320,7 @@
       },
       {
         "tools": ["documents_correct_issued"],
-        "text": "`documents_correct_issued`: ONLY for an issued invoice or credit note that is wrong because of a TOOL error (the wrong currency amount, a VAT rate or treatment the tool should not have applied, a cent of per-line rounding, shipping on the wrong document of a split order), when the person asks for it to be corrected in place; a real change of the sale (a return, a discount, another price) is a credit note. Pass the FULL corrected line set in `lines`, each line with its `tax_rate_bp`; `tax_minor` only to keep a one-unit rounding as charged; `line_kind` goods, service, digital or shipping. Keep the paid amount unless the person says otherwise: a changed grand total is refused without `total_change_reason`. To move shipping between the goods and digital invoices of one order, call it on the document that carries the line with `move_shipping` {to_document_id, position} and nothing else. Run documents_get first and cite the before and after amounts. The card goes to a person holding invoicing:issuer:admin; say that the company's accountant should agree. It never changes the number, date, issuer or currency, creates no document and sends no mail. A document sent to the e-invoicing platform is refused: issue a credit note there."
+        "text": "`documents_correct_issued`: ONLY for an issued invoice or credit note that is wrong because of a TOOL error (the wrong currency amount, a VAT rate or treatment the tool should not have applied, a cent of per-line rounding, shipping on the wrong document of a split order), when the person asks for it to be corrected in place; a real change of the sale (a return, a discount, another price) is a credit note. Pass the FULL corrected line set in `lines`, each line with its `tax_rate_bp`; `tax_minor` only to keep a one-unit rounding as charged; `line_kind` goods, service, digital or shipping. Keep the paid amount unless the person says otherwise: a changed grand total is refused without `total_change_reason`. To move shipping between the goods and digital invoices of one order, call it on the document that carries the line with `move_shipping` {to_document_id, position} and nothing else. The corrected file prints the legal mention in force on the correction's date; when only the mention is wrong (an older wording, the buyer kind), pass `refresh_legal_mention` true (with `customer_kind` or `tax_treatment` when those are wrong) and no `lines`. Run documents_get first and cite the before and after amounts. The card goes to a person holding invoicing:issuer:admin; say that the company's accountant should agree. It never changes the number, date, issuer or currency, creates no document and sends no mail. A document sent to the e-invoicing platform is refused: issue a credit note there."
       },
       {
         "tools": ["deferred_dismiss"],
@@ -332,7 +332,7 @@
       }
     ]
   },
-  "version": "0.48.1",
+  "version": "0.48.2",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -7178,7 +7178,7 @@
       }
     },
     "documents_correct_issued": {
-      "description": "Correct an ISSUED invoice or credit note IN PLACE after a TOOL error: same number and date, no new document, no credit note, no mail. Changes lines, VAT rates, tax treatment (its legal mention follows) and, only when passed, the buyer's name, VAT number, country or address. A changed grand total needs total_change_reason. The previous file stays archived with a correction record. Refused once sent to the e-invoicing platform. Only a person holding invoicing:issuer:admin decides it. GATED: report it as pending.",
+      "description": "Correct an ISSUED invoice or credit note IN PLACE after a TOOL error: same number and date, no new document, no credit note, no mail. Changes lines, VAT rates, tax treatment (its legal mention follows) and, only when passed, the buyer's name, VAT id, country, address or kind. refresh_legal_mention alone fixes only the legal mention (today's wording). A changed grand total needs total_change_reason. The previous file stays archived with a correction record. Refused once sent to the e-invoicing platform. Only a person holding invoicing:issuer:admin decides it. GATED: report it as pending.",
       "searchKeywords": [
         "corriger",
         "rectifier",
@@ -7211,6 +7211,8 @@
           "counterparty_vat_id": "counterparty_vat_id",
           "counterparty_country": "counterparty_country",
           "counterparty_address": "counterparty_address",
+          "customer_kind": "customer_kind",
+          "refresh_legal_mention": "refresh_legal_mention",
           "total_change_reason": "total_change_reason",
           "move_shipping": "move_shipping"
         }
@@ -7339,6 +7341,27 @@
               "string",
               "null"
             ]
+          },
+          "customer_kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "business",
+              "individual",
+              "public_entity",
+              "non_registered_entity",
+              null
+            ],
+            "description": "The buyer's kind: individual picks the consumer wording."
+          },
+          "refresh_legal_mention": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Print the legal mention in force today (the correction's date). Alone, it corrects only the wording."
           },
           "total_change_reason": {
             "type": [
@@ -7504,6 +7527,27 @@
               "string",
               "null"
             ]
+          },
+          "customer_kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "business",
+              "individual",
+              "public_entity",
+              "non_registered_entity",
+              null
+            ],
+            "description": "The buyer's kind: individual picks the consumer wording."
+          },
+          "refresh_legal_mention": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Print the legal mention in force today (the correction's date). Alone, it corrects only the wording."
           },
           "total_change_reason": {
             "type": [

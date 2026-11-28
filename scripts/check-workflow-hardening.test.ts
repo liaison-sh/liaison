@@ -22,7 +22,7 @@ type Job = {
   "runs-on"?: string
   uses?: string
   permissions?: Record<string, string>
-  steps?: Array<{ uses?: string; run?: string }>
+  steps?: Array<{ uses?: string; run?: string; with?: Record<string, unknown> }>
 }
 type Workflow = {
   on?: Record<string, unknown>
@@ -324,11 +324,38 @@ describe("shell-build.yml", () => {
     }
   })
 
-  it("builds both modes from a source archive with the image's own scripts", () => {
+  it("builds both modes from a source archive with the image's own build script", () => {
     const run = (wf.jobs.build?.steps ?? []).map((s) => s.run ?? "").join("\n")
     expect(run).toContain("git -C checkout archive")
     expect(run).toContain("bun install --frozen-lockfile --ignore-scripts")
-    expect(run).toContain("bun run build && env -u LIAISON_CLOUD_DOMAIN bun run build:native")
+    expect(run).toContain("bash scripts/shell-signing/build-web.sh")
+    expect(run).not.toMatch(/bun run build/)
     expect(run).toContain("scripts/shell-signing/build-manifest.ts")
+  })
+
+  // A signed shell is served only when the server's own build has the signed
+  // build id, so the image and the builders must build the same bytes: one
+  // script, one bun.
+  it("builds on the image's bun, through the image's script", () => {
+    const pinned = readFileSync(join(ROOT, ".bun-version"), "utf8").trim()
+    expect(pinned).toMatch(/^\d+\.\d+\.\d+$/)
+    const dockerfile = readFileSync(join(ROOT, "apps/api/Dockerfile"), "utf8")
+    const bases = [...dockerfile.matchAll(/^FROM oven\/bun:([^@\s]+)/gm)].map((m) => m[1])
+    expect(bases.length).toBeGreaterThan(0)
+    for (const tag of bases) expect(tag).toBe(pinned)
+    expect(dockerfile).toMatch(/^RUN bash scripts\/shell-signing\/build-web\.sh$/m)
+    expect(dockerfile).not.toMatch(/bun run build/)
+    const setup = (wf.jobs.build?.steps ?? []).find((s) => s.uses?.startsWith("oven-sh/setup-bun@"))
+    expect(setup?.with).toEqual({ "bun-version-file": "checkout/.bun-version" })
+    const web = JSON.parse(readFileSync(join(ROOT, "apps/web/package.json"), "utf8")) as {
+      scripts: Record<string, string>
+    }
+    for (const name of ["build", "build:native"]) {
+      expect(web.scripts[name]).toMatch(/^bun --bun vite build\b/)
+    }
+    // Tailwind's automatic source detection reads .gitignore, which the Docker
+    // context leaves out: the web CSS names its sources instead.
+    const theme = readFileSync(join(ROOT, "apps/web/src/styles/theme.css"), "utf8")
+    expect(theme).toContain('@import "tailwindcss" source(none);')
   })
 })

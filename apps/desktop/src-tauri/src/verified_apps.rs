@@ -55,7 +55,7 @@ pub fn app_url_base() -> &'static str {
 /// Bundles of the last few versions of each app stay; older ones are deleted.
 pub const KEEP_VERSIONS: usize = 3;
 
-const REVOCATIONS_URL: &str = "https://downloads.liaison.sh/apps/revocations.json";
+pub(crate) const REVOCATIONS_URL: &str = "https://downloads.liaison.sh/apps/revocations.json";
 const REVOCATIONS_EVERY: Duration = Duration::from_secs(3600);
 const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_UI_BYTES: usize = 16 * 1024 * 1024;
@@ -280,7 +280,7 @@ pub struct VerifiedApps {
     verified: Mutex<HashSet<String>>,
 }
 
-fn cache_for<R: Runtime>(app: &AppHandle<R>) -> Option<VerifiedCache> {
+pub(crate) fn cache_for<R: Runtime>(app: &AppHandle<R>) -> Option<VerifiedCache> {
     let dir = app.path().app_data_dir().ok()?.join("verified-apps");
     Some(VerifiedCache::new(dir))
 }

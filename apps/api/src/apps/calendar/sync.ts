@@ -1274,7 +1274,7 @@ async function upsertEventsFromGoogle(
         (id, org_id, calendar_id, google_event_id, etag, title, description, location, start, "end",
          all_day, status, attendees, recurrence, recurring_event_id, original_start_time,
          extended_props, hangout_link, google_updated_at, updated_at, calaccess,
-         organizer_self, guests_can_modify, event_type, color_id, transparency)
+         organizer_self, guests_can_modify, event_type, event_color, transparency)
       VALUES ${sql.join(tuples, sql.raw(", "))}
       ON CONFLICT (org_id, calendar_id, google_event_id) WHERE google_event_id IS NOT NULL DO UPDATE SET
         etag = EXCLUDED.etag, title = EXCLUDED.title, description = EXCLUDED.description,
@@ -1286,7 +1286,7 @@ async function upsertEventsFromGoogle(
         google_updated_at = EXCLUDED.google_updated_at,
         updated_at = COALESCE(EXCLUDED.google_updated_at, now()), pending_push = 'none',
         organizer_self = EXCLUDED.organizer_self, guests_can_modify = EXCLUDED.guests_can_modify,
-        event_type = EXCLUDED.event_type, color_id = EXCLUDED.color_id,
+        event_type = EXCLUDED.event_type, event_color = EXCLUDED.event_color,
         transparency = EXCLUDED.transparency,
         attendees_base = NULL, push_base = NULL, push_error = NULL, push_notice = NULL,
         conference_request = NULL

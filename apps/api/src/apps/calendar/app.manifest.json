@@ -228,7 +228,7 @@
           "required": false,
           "description": "Google's eventType, as sent and nothing else (default, outOfOffice, focusTime, ...). Also added by migration 0267 where the table already exists; NULL until the next sync."
         },
-        "colorId": {
+        "eventColor": {
           "type": "string",
           "required": false,
           "description": "Google's per-event colour id (\"1\"..\"11\") as sent; NULL when the event uses its calendar's colour, or until the next sync."

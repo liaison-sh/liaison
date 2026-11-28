@@ -206,7 +206,7 @@ export interface RawEventRow {
   guests_can_modify?: boolean | null
   push_error?: string | null
   push_notice?: string | null
-  color_id?: string | null
+  event_color?: string | null
   transparency?: string | null
   event_type?: string | null
 }
@@ -327,7 +327,7 @@ function rowToDto(row: RawEventRow): CalendarEventDto {
     attendeesEditable: row.organizer_self !== false || row.guests_can_modify === true,
     pushError: row.push_error ?? null,
     pushNotice: row.push_notice ?? null,
-    colorId: row.color_id ?? null,
+    colorId: row.event_color ?? null,
     transparency: row.transparency ?? null,
     eventType: row.event_type ?? null,
   }
@@ -343,7 +343,7 @@ const UNTIL_DATE_PATTERN = "UNTIL=([0-9]{8})"
 
 const EVENT_COLUMNS = `id, calendar_id, google_event_id, title, description, location, start, "end", all_day,
   recurrence, recurring_event_id, original_start_time, status, hangout_link, attendees,
-  organizer_self, guests_can_modify, push_error, push_notice, color_id, transparency, event_type`
+  organizer_self, guests_can_modify, push_error, push_notice, event_color, transparency, event_type`
 
 /**
  * listEventsForCaller — the RAW rows the window needs, with their full field set: plain events

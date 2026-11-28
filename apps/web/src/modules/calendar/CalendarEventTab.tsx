@@ -168,8 +168,9 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
   )
   const isRecurringMaster = () => isMasterEvent(event())
   const attendeesEditable = () => event()?.attendeesEditable !== false
-  /** A repeat rule this editor cannot show is kept as it is, never rewritten. */
-  const repeatEditable = () => isNew() || (isRecurringMaster() && initialRepeat !== null)
+  /** A repeat rule this editor cannot show is kept as it is, never rewritten. A one-off event
+   * can be given one (it becomes a series); an edited occurrence of a series cannot. */
+  const repeatEditable = () => isNew() || (!event()?.recurringEventId && initialRepeat !== null)
   /** Guests get Google's email: ticked by the person, or by default when guests were added. */
   const notify = () => notifyChoice() ?? (attendeesChanged() && attendees().length > 0)
   const sendUpdates = () =>

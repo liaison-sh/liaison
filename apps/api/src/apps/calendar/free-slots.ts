@@ -215,7 +215,11 @@ export function busyFromEvents(
       push(e, ...span(e, e.start, e.end))
       continue
     }
-    const skip = replaced.get(e.eventId) ?? new Set<number>()
+    // A series not on Google yet: its occurrence rows carry its uuid without dashes.
+    const skip =
+      replaced.get(e.eventId) ??
+      replaced.get(e.eventId.replace(/-/g, "").toLowerCase()) ??
+      new Set<number>()
     const { complex, occurrences } = expandRecurrence(e, windowStart, windowEnd)
     if (complex) {
       push(e, ...span(e, e.start, e.end))

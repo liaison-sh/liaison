@@ -233,6 +233,36 @@ describe("expandEvents on Google-shaped series", () => {
     expect(result.find((o) => o.eventId === "exc-moved-in")).toBeDefined()
   })
 
+  it("joins an occurrence edited before its series reached Google (keyed on the uuid without dashes)", () => {
+    const master = evt({
+      eventId: "0a1b2c3d-0000-4000-8000-00000000abcd",
+      googleEventId: null,
+      title: "Local weekly",
+      recurrence: ["RRULE:FREQ=WEEKLY;COUNT=3"],
+      start: { dateTime: "2026-12-07T09:00:00.000Z" },
+      end: { dateTime: "2026-12-07T09:30:00.000Z" },
+    })
+    const moved = evt({
+      eventId: "row-moved",
+      title: "Local weekly",
+      recurringEventId: "0a1b2c3d00004000800000000000abcd",
+      originalStartTime: { dateTime: "2026-12-14T09:00:00.000Z" },
+      start: { dateTime: "2026-12-14T11:00:00.000Z" },
+      end: { dateTime: "2026-12-14T11:30:00.000Z" },
+    })
+    const result = expandEvents(
+      [master, moved],
+      new Date("2026-12-01T00:00:00Z"),
+      new Date("2027-01-01T00:00:00Z"),
+    )
+    const starts = result.map((o) => (o.start as { dateTime: string }).dateTime).sort()
+    expect(starts).toEqual([
+      "2026-12-07T09:00:00.000Z",
+      "2026-12-14T11:00:00.000Z",
+      "2026-12-21T09:00:00.000Z",
+    ])
+  })
+
   it("matches a summer exception of a series that started in winter (wall-clock time across DST)", () => {
     const master = evt({
       eventId: "row-uuid-dst",

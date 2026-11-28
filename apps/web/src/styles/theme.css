@@ -1,5 +1,13 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
-@import "tailwindcss";
+/* Explicit sources only, no automatic detection. Detection scans the web app's
+ * folder minus what .gitignore names, so a tree without .gitignore (the image's
+ * Docker context drops it) also scanned dist/ while building dist-native/ and
+ * emitted other CSS: the web build must be the same bytes wherever it runs
+ * (scripts/shell-signing/build-web.sh). */
+@import "tailwindcss" source(none);
+@source "../";
+@source "../../index.html";
+@source "../../public/privacy.html";
 
 /* Phase 16 — make Tailwind v4 scan first-party plugin UIs under
  * `bundled-apps/` so classes used in Shopify/Invoicing/etc. UI components

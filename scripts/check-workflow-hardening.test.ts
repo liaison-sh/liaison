@@ -353,5 +353,9 @@ describe("shell-build.yml", () => {
     for (const name of ["build", "build:native"]) {
       expect(web.scripts[name]).toMatch(/^bun --bun vite build\b/)
     }
+    // Tailwind's automatic source detection reads .gitignore, which the Docker
+    // context leaves out: the web CSS names its sources instead.
+    const theme = readFileSync(join(ROOT, "apps/web/src/styles/theme.css"), "utf8")
+    expect(theme).toContain('@import "tailwindcss" source(none);')
   })
 })

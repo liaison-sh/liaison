@@ -87,6 +87,7 @@ export function writeAppBundle(docsDir: string, out: string): number {
     nav: { landing: LANDING, sections: NAV },
     allowMissing: true,
     warnBroken: true,
+    trustRepoLinks: true,
   })
   const { index, pages } = appBundle(rendered, NAV)
   rmSync(out, { recursive: true, force: true })

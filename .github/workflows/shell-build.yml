@@ -3,7 +3,7 @@
 # One of the two independent builds behind a signed web shell
 # (packages/shared/src/app-signing/shell-statement.ts). For a commit it builds
 # apps/web in both modes from a source archive of that commit, exactly as the
-# image does (`bun run build`, `bun run build:native`, no VITE_* settings), and
+# image does (scripts/shell-signing/build-web.sh, on the bun in .bun-version), and
 # publishes the two file manifests (scripts/shell-signing/build-manifest.ts):
 # as the `shell-manifests` artifact of the run, and on the GitHub release of the
 # tag when there is one. A signer builds a statement only when this build and a
@@ -109,7 +109,8 @@ jobs:
           path: checkout
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: "1.4.x"
+          # The image's bun, exactly: a shell build on another bun has other bytes.
+          bun-version-file: checkout/.bun-version
       - name: Build both modes from a source archive
         env:
           SHA: ${{ needs.resolve.outputs.sha }}
@@ -123,7 +124,7 @@ jobs:
           git -C checkout archive --format=tar "$SHA" | tar -x -C "$src"
           cd "$src"
           bun install --frozen-lockfile --ignore-scripts
-          (cd apps/web && env -u LIAISON_CLOUD_DOMAIN bun run build && env -u LIAISON_CLOUD_DOMAIN bun run build:native)
+          bash scripts/shell-signing/build-web.sh
           for mode in desktop native; do
             dist=apps/web/dist; [ "$mode" = native ] && dist=apps/web/dist-native
             bun scripts/shell-signing/build-manifest.ts "$mode" "$dist" \

@@ -11,7 +11,12 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # `tray-icon`: the menu bar / notification area icon that keeps the app
 # reachable once its window is closed to the tray (tray.rs).
-tauri = { version = "2", features = ["tray-icon"] }
+#
+# PINNED EXACTLY: the served shell (served_shell.rs) installs its asset
+# resolver with `Context::set_assets`, which tauri documents as not part of
+# its stable API. A tauri bump re-checks that seam (the resolver's CSP test)
+# and moves this pin in the same change.
+tauri = { version = "=2.12.1", features = ["tray-icon"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-deep-link = "2"
@@ -86,6 +91,9 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "bitflags", "block2", "UNUserNotificationCenter", "UNNotificationSettings", "UNNotification", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationSound", "UNNotificationTrigger"] }
 
 [dev-dependencies]
+# `test`: the mock runtime, to resolve a served index.html through tauri's own
+# asset path (CSP injection included) in served_shell's tests.
+tauri = { version = "=2.12.1", features = ["tray-icon", "test"] }
 tokio = { version = "1", features = ["rt-multi-thread", "time", "net", "io-util"] }
 
 [profile.release]

@@ -69,6 +69,9 @@ mod driver;
 /// The saved servers, and everything filed under each one.
 mod server_listeners;
 mod servers;
+/// The connected server's own web build, verified against the app-signing
+/// keys, served in the main window instead of the bundled one (S5).
+mod served_shell;
 /// Which permission answers the page may give and which only the shell's own
 /// dialog may (D11).
 mod permission_gate;
@@ -88,7 +91,7 @@ mod verified_apps;
 /// Every command a RELEASE build registers. Pinned as a list so a debug only
 /// command that leaked into the release arm is a failing test rather than a
 /// command shipped to every user.
-pub const RELEASE_COMMANDS: [&str; 94] = [
+pub const RELEASE_COMMANDS: [&str; 97] = [
     "start_session",
     "stop_session",
     "cancel_device_approval",
@@ -183,6 +186,9 @@ pub const RELEASE_COMMANDS: [&str; 94] = [
     "stop_orphan_claude",
     "check_for_updates",
     "verify_first_party_app",
+    "shell_ready",
+    "shell_status",
+    "refresh_shell",
 ];
 
 /// What a debug build adds on top.
@@ -211,6 +217,12 @@ fn redact_link(raw: &str) -> String {
 }
 
 fn main() {
+    // THE MAIN WINDOW'S ASSETS: the bundled web build, or the connected
+    // server's own build once the shell verified it (served_shell.rs). The
+    // resolver goes in front of the generated assets before anything is built.
+    let shell_state = served_shell::ShellState::new();
+    let mut context = tauri::generate_context!();
+    served_shell::install(&mut context, shell_state.clone());
     let builder = tauri::Builder::default();
     // ONE RUNNING COPY, release builds only, and FIRST (the plugin's own
     // documented requirement): a second launch has to be caught before the
@@ -288,7 +300,8 @@ fn main() {
         .manage(account::AccountState::default())
         .manage(server_listeners::Listeners::default())
         .manage(claude_auth::ClaudeLogin::default())
-        .manage(verified_apps::VerifiedApps::default());
+        .manage(verified_apps::VerifiedApps::default())
+        .manage(served_shell::Shell(shell_state.clone()));
     // THE MACOS MENU BAR: the standard menus and no Account menu, which the
     // app's own Servers and Claude account UI replaced on every OS. Windows
     // and Linux get no menu (Tauri would draw it as a strip in the window).
@@ -410,6 +423,9 @@ fn main() {
         node_folders::open_folder_in_editor,
         orphan_claude::stop_orphan_claude,
         verified_apps::verify_first_party_app,
+        served_shell::shell_ready,
+        served_shell::shell_status,
+        served_shell::refresh_shell,
     ]);
     #[cfg(debug_assertions)]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -507,6 +523,9 @@ fn main() {
         node_folders::open_folder_in_editor,
         orphan_claude::stop_orphan_claude,
         verified_apps::verify_first_party_app,
+        served_shell::shell_ready,
+        served_shell::shell_status,
+        served_shell::refresh_shell,
         diagnostics::report_webview_diagnostic,
         driver::report_driver_result,
         driver::hide_to_tray,
@@ -534,6 +553,10 @@ fn main() {
             // and built here instead, because an initialization script can
             // only be attached while the webview is being created and it has
             // to run BEFORE the page's own scripts.
+            // Which build the window loads: the current server's verified
+            // build when it has one, else the bundled shell; a refresh of
+            // that server's build runs in the background.
+            served_shell::on_start(app.handle());
             let window_config = app
                 .config()
                 .app
@@ -685,7 +708,7 @@ fn main() {
             updater::check_on_start(app.handle().clone());
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building the Liaison desktop shell")
         .run(|app, event| {
             // The sidecar is a child of this process holding the session's
@@ -1001,6 +1024,7 @@ mod handler_registration_tests {
                 format!("orphan_claude::{command},"),
                 format!("updater::{command},"),
                 format!("verified_apps::{command},"),
+                format!("served_shell::{command},"),
             ];
             assert!(
                 named.iter().any(|name| release_arm.contains(name)),

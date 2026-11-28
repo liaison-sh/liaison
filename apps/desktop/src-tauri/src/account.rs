@@ -371,6 +371,9 @@ fn switch_to<R: Runtime>(
     // page is about to present that server's single use refresh token.
     crate::server_listeners::release(app, target);
     servers::switch_current_at(&dir, target)?;
+    // The page reloads next: that load runs the target's own verified build
+    // (or the bundled shell), never the one of the server being left.
+    crate::served_shell::on_switch(app, Some(target));
     // Its page shows what it notified; the fallback banner has nothing to add.
     crate::desktop_notifications::forget_server_notices(target);
     let storage = servers::take_page_storage_at(&dir, target);
@@ -446,6 +449,9 @@ pub async fn remove_server<R: Runtime>(
     }
     crate::server_listeners::release(&app, &address);
     let removed = servers::remove_server_at(&dir, &address)?;
+    if was_current {
+        crate::served_shell::on_switch(&app, removed.now_current.as_deref());
+    }
     crate::notification_device::forget_credential_at(&dir, &address);
     crate::node::forget_and_release(&dir, &address);
     if let Some(token) = removed.refresh_token.as_deref() {

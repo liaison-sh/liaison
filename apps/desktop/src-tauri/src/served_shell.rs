@@ -1629,3 +1629,5 @@ pub async fn refresh_shell<R: Runtime>(app: AppHandle<R>) -> Option<String> {
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod csp_tests;

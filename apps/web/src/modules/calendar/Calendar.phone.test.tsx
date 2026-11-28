@@ -39,6 +39,7 @@ vi.mock("~/modules/calendar/calendar-store", () => ({
 vi.mock("~/modules/calendar/QuickCreate", () => ({ QuickCreate: () => null }))
 
 import {
+  AgendaView,
   dayKey,
   groupOccurrencesByDay,
   occurrenceStart,
@@ -198,5 +199,35 @@ describe("CalendarShell at phone width", () => {
     setShellTier("phone")
     render(() => <CalendarShell initialView="month" testId="calendar-month-tab" />)
     expect(screen.getByTestId("calendar-agenda-empty")).toBeInTheDocument()
+  })
+
+  it("opens at the focused day, not at the top of its week", async () => {
+    const monday = new Date(2026, 8, 14)
+    const saturday = new Date(2026, 8, 19)
+    const at = (day: number, id: string) =>
+      occ({
+        eventId: id,
+        start: { dateTime: new Date(2026, 8, day, 9, 0).toISOString() },
+        end: { dateTime: new Date(2026, 8, day, 9, 30).toISOString() },
+      })
+    render(() => (
+      <AgendaView
+        occurrences={[at(14, "mon"), at(16, "wed"), at(19, "sat"), at(20, "sun")]}
+        calendarColors={{}}
+        focusedDate={saturday}
+        stripDays={[monday]}
+        locale="en"
+        allDayLabel="All day"
+        emptyLabel="Nothing"
+        onSelectEvent={() => {}}
+        onSelectDay={() => {}}
+      />
+    ))
+    const list = screen.getByTestId("calendar-agenda-list")
+    const section = screen.getByTestId("calendar-agenda-day-2026-09-19")
+    list.getBoundingClientRect = () => ({ top: 100 }) as DOMRect
+    section.getBoundingClientRect = () => ({ top: 460 }) as DOMRect
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+    expect(list.scrollTop).toBe(360)
   })
 })

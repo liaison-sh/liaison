@@ -227,3 +227,4 @@ agent cannot stage a fulfillment the order already has -> bundled-apps/shopify/s
 The store reports each new order as a revenue-stream@1 sale, kept as the webhook delivered it -> bundled-apps/shopify/src/sales.ts:1-12 ; bundled-apps/shopify/src/webhooks.ts (recordSaleSnapshot)
 A customer's deletion deletes the orders kept for them -> bundled-apps/shopify/src/sales.ts (forgetSaleSnapshotsOf) ; bundled-apps/shopify/src/webhooks.ts (customersDeleteHandler)
 orders_search names the shop it read (shopDomain) -> bundled-apps/shopify/src/reads.ts:758
+line amount excl. VAT = price less Shopify's reported tax (tax included) -> bundled-apps/shopify/src/lib/sale.ts:233

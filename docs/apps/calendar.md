@@ -46,6 +46,7 @@ The view keeps itself up to date: an event that changes in Google, or that an ag
 - An event with its own colour in Google shows in that colour; the others take their calendar's. A meeting you declined is faded and struck through.
 - A day with more all-day events than fit in the band shows **+N more**: click it to open that day.
 - An event that crosses midnight but lasts less than a day is drawn in the hours of both days.
+- On a phone the calendar is an agenda, one heading per day, and it opens at today.
 - The mini month follows the day you are looking at and marks every day that has an event, recurring ones included. "Today" moves on by itself at midnight.
 
 ### Keyboard shortcuts
@@ -65,21 +66,23 @@ An event with a Meet link shows **Join with Google Meet**.
 
 ### Guests and invitations
 
-Type a name or an address under **Attendees**: teammates and contacts are suggested, and any email address works. Only the organizer can change an event's guest list.
+Type a name or an address under **Attendees**: teammates and contacts are suggested, those whose first name, last name or address starts with what you typed first, and any email address works. Only the organizer can change an event's guest list.
 
 Guests are emailed only when **Send invitations: Google emails the guests** is ticked. It is ticked for you when you add guests; untick it to save without emailing anyone. When you delete an event with guests, **Email the guests that it is cancelled** sends Google's cancellation.
 
-When someone invited you, **Going?** shows **Yes**, **Maybe** and **No**. Your answer goes to Google, which tells the organizer. Events you declined show struck through and faded in the calendar.
+When someone invited you, **Going?** shows **Yes**, **Maybe** and **No**, also on a shared calendar where you are one of the guests. Your answer goes to Google, which tells the organizer. Events you declined show struck through and faded in the calendar.
 
 ### Recurring events
 
 Clicking an occurrence of a recurring event opens it at that occurrence. **Save** and **Delete** then ask which occurrences they apply to: **This event**, **This and following events** or **All events**. **This and following events** ends the series before that occurrence and starts a new one with your change, as in Google Calendar. A change to the repeat rule applies to **This and following events** or **All events** only. A repeat rule this editor cannot show (for example "the last Friday of the month") is kept as it is.
 
+To make a one-off event repeat, open it and choose a **Recurrence**: it becomes a recurring event (**Weekly** starts on its own weekday). One occurrence can be moved or changed even before the series has reached Google, or on a calendar with no Google account: Liaison keeps the change and sends it to Google after the series.
+
 ### Find a time with your guests
 
 Once an event has attendees, click **Find a time** in its tab. Liaison lists free times of the event's length over the next week, inside working hours, when you and every guest are free. Click one to set the event's **Start** and **End**.
 
-The first time, the times only count your own calendar, and Liaison asks you to **Allow** it to see your guests' free/busy. Allow takes you to Google's consent screen once; after that your guests' busy times are included. A guest whose calendar Google does not show you is named under the times.
+The first time, the times only count your own calendar, and Liaison asks you to **Allow** it to see your guests' free/busy. Allow takes you to Google's consent screen once; after that your guests' busy times are included. A guest whose calendar Google does not show you is named under the times. For guests who are your teammates, the events Liaison already holds that they attend count as busy too (only the busy times, from calendars you can see), with or without Google's free/busy.
 
 ### When the event also changed in Google
 
@@ -94,7 +97,7 @@ Times are sent with the calendar's time zone, so a weekly meeting at 09:00 stays
 - **Resize:** drag the bottom edge of an event.
 - Press Esc while dragging to cancel. After a move, **Undo** in the note puts the event back.
 
-Drags snap to a quarter hour. An all-day event moves to another day in **Month** and keeps its length in days. Dropping an occurrence of a recurring event asks which occurrences move: **This event**, **This and following events** or **All events**.
+Drags snap to a quarter hour. An all-day event moves to another day in **Month** (drag its band) and keeps its length in days. Dropping an occurrence of a recurring event asks which occurrences move: **This event**, **This and following events** or **All events**.
 
 ## Away days from your calendar
 

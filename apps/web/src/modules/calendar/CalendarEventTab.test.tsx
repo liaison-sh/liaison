@@ -233,6 +233,20 @@ describe("event tab: existing event", () => {
     expect(params("update_event").recurrence).toEqual(["RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH"])
   })
 
+  it("a one-off event can be made to repeat: weekly starts on its own weekday", async () => {
+    openTab("evt-1")
+    fireEvent.change(screen.getByTestId("event-recurrence-select"), {
+      target: { value: "weekly" },
+    })
+    // 6 October 2026 is a Tuesday.
+    expect(screen.getByTestId("event-repeat-day-TU").getAttribute("aria-pressed")).toBe("true")
+    fireEvent.click(screen.getByTestId("event-save"))
+    await waitFor(() => expect(state.api.post).toHaveBeenCalled())
+    const sent = params("update_event")
+    expect(sent).toMatchObject({ eventId: "evt-1", recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TU"] })
+    expect("scope" in sent).toBe(false)
+  })
+
   it("a rule the editor cannot show is kept, with the note", () => {
     setCalendarStore("events", [
       { ...timed, recurrence: ["RRULE:FREQ=MONTHLY;BYSETPOS=-1;BYDAY=FR"] },

@@ -12,7 +12,7 @@
 // The grouping is exported as a pure function because that is the part worth
 // pinning: it is the SAME `expandEvents` output the month and week views lay
 // out, regrouped, never a second source of events.
-import { type Component, createMemo, For, Show } from "solid-js"
+import { type Component, createEffect, createMemo, For, Show } from "solid-js"
 import type { CalendarEventPoint, ExpandedOccurrence } from "./rrule-expand"
 
 export interface AgendaDay {
@@ -99,6 +99,32 @@ export interface AgendaViewProps {
 export const AgendaView: Component<AgendaViewProps> = (props) => {
   const days = createMemo(() => groupOccurrencesByDay(props.occurrences))
 
+  // The agenda opens at the focused day (today when it opens), not at the top of its week: the
+  // first day from it on is scrolled to the top of the list, once per focused day, so a refetch
+  // never pulls the list back while the person scrolls.
+  let list: HTMLDivElement | undefined
+  let scrolledFor: string | null = null
+  createEffect(() => {
+    const target = dayKey(props.focusedDate)
+    const all = days()
+    if (!list || all.length === 0 || scrolledFor === target) return
+    scrolledFor = target
+    const day = all.find((d) => d.key >= target)
+    const container = list
+    requestAnimationFrame(() => {
+      if (!day) {
+        container.scrollTop = container.scrollHeight
+        return
+      }
+      const section = container.querySelector<HTMLElement>(
+        `[data-testid="calendar-agenda-day-${day.key}"]`,
+      )
+      if (!section) return
+      container.scrollTop +=
+        section.getBoundingClientRect().top - container.getBoundingClientRect().top
+    })
+  })
+
   return (
     <div data-testid="calendar-agenda" class="flex min-h-0 flex-1 flex-col">
       {/* Day strip: what the grid's "tap a day" used to be. */}
@@ -134,7 +160,11 @@ export const AgendaView: Component<AgendaViewProps> = (props) => {
       {/* The right gutter keeps the sticky day headings off the scroll
           indicator: on the phone it is drawn over the content at the right
           edge, and a heading running to that edge painted over it. */}
-      <div data-testid="calendar-agenda-list" class="min-h-0 flex-1 overflow-y-auto pb-8 pr-2">
+      <div
+        ref={list}
+        data-testid="calendar-agenda-list"
+        class="min-h-0 flex-1 overflow-y-auto pb-8 pr-2"
+      >
         <Show
           when={days().length > 0}
           fallback={

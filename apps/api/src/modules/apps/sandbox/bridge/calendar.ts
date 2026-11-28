@@ -158,6 +158,46 @@ export function createCalendarMethods(
     })
   }
 
+  /** The signed-in person's own address (lowercase), or null (a system caller). */
+  let callerEmailCache: Promise<string | null> | undefined
+  function callerEmail(): Promise<string | null> {
+    callerEmailCache ??= (async () => {
+      const caller = personId(userId)
+      if (!caller) return null
+      const { withPrivilegedDb } = await import("~/db/privileged")
+      const { sql } = await import("drizzle-orm")
+      const { schemaRef } = await import("~/db/schema-ref")
+      return withPrivilegedDb(orgId, "calendar-caller-email", async (tx) => {
+        const result = (await tx.execute(
+          sql`SELECT email FROM ${sql.raw(schemaRef("kernel"))}.users WHERE id = ${caller}::uuid`,
+        )) as unknown as { rows?: unknown[] } | unknown[]
+        const rows = (Array.isArray(result) ? result : (result.rows ?? [])) as Array<{
+          email: string | null
+        }>
+        return rows[0]?.email ? rows[0].email.trim().toLowerCase() : null
+      })
+    })()
+    return callerEmailCache
+  }
+
+  /** The caller's own guest entry reads as `self`, as Google marks the account's: on a calendar
+   * Google does not flag (a Liaison-only one, a team calendar) the person still sees their own
+   * invitation and can answer it. Per viewer, never stored. */
+  async function markCallerSelf<T>(events: T): Promise<T> {
+    const email = await callerEmail()
+    if (!email) return events
+    const mark = (e: unknown) => {
+      const ev = e as { attendees?: Array<{ email?: string; self?: boolean }> } | null
+      if (!ev || !Array.isArray(ev.attendees) || ev.attendees.some((a) => a.self === true)) return
+      for (const a of ev.attendees) {
+        if (typeof a.email === "string" && a.email.trim().toLowerCase() === email) a.self = true
+      }
+    }
+    if (Array.isArray(events)) for (const e of events) mark(e)
+    else mark(events)
+    return events
+  }
+
   async function accountEmailOf(accountId: string): Promise<string | null> {
     const { getAccountById } = await import("~/apps/calendar/sync")
     const account = await getAccountById(txDb, orgId, accountId)
@@ -488,7 +528,7 @@ export function createCalendarMethods(
         timeMax: string
       }
       const rows = await listEventsForCaller(txDb, orgId, params)
-      return JSON.stringify(rows)
+      return JSON.stringify(await markCallerSelf(rows))
     },
 
     calendar_getEventForCaller: async (eventId: string): Promise<string> => {
@@ -497,7 +537,7 @@ export function createCalendarMethods(
         throw new Error("forbidden: missing scope calendar:events:read")
       }
       const { getEventForCaller } = await import("~/apps/calendar/tools")
-      return JSON.stringify(await getEventForCaller(txDb, orgId, eventId))
+      return JSON.stringify(await markCallerSelf(await getEventForCaller(txDb, orgId, eventId)))
     },
 
     /**
@@ -511,7 +551,12 @@ export function createCalendarMethods(
       if (!hasScope("calendar:events:read", callerScopes ?? [])) {
         throw new Error("forbidden: missing scope calendar:events:read")
       }
-      const params = JSON.parse(paramsJson) as { timeMin: string; timeMax: string }
+      const params = JSON.parse(paramsJson) as {
+        timeMin: string
+        timeMax: string
+        /** Guests to look up among the organization's people (their events Liaison holds). */
+        attendees?: string[]
+      }
       const caller = personId(userId)
       const { withPrivilegedDb } = await import("~/db/privileged")
       const { sql } = await import("drizzle-orm")
@@ -555,8 +600,39 @@ export function createCalendarMethods(
         const { FREE_BUSY_SCOPE } = await import("~/apps/calendar/free-slots")
         hasFreeBusyScope = grant === "unknown" ? null : grant.includes(FREE_BUSY_SCOPE)
       }
+      // Guests who are people of this organization: the events Liaison already holds for them
+      // (on calendars the caller sees) count as busy too, besides Google's free/busy.
+      const guestEmails = (Array.isArray(params.attendees) ? params.attendees : [])
+        .filter((a): a is string => typeof a === "string" && a.includes("@"))
+        .map((a) => a.trim().toLowerCase())
+        .filter((a) => !selfEmails.has(a))
+        .slice(0, 50)
+      const members =
+        guestEmails.length > 0
+          ? await withPrivilegedDb(orgId, "calendar-free-busy-members", async (tx) => {
+              const result = (await tx.execute(
+                sql`SELECT lower(email) AS email FROM ${sql.raw(schemaRef("kernel"))}.users
+                    WHERE org_id = ${orgId}::uuid AND status = 'active'
+                      AND lower(email) IN (${sql.join(
+                        guestEmails.map((e) => sql`${e}`),
+                        sql.raw(", "),
+                      )})`,
+              )) as unknown as { rows?: unknown[] } | unknown[]
+              return (
+                (Array.isArray(result) ? result : (result.rows ?? [])) as Array<{ email: string }>
+              ).map((r) => r.email)
+            })
+          : []
+      const { teammateBusyEventsForCaller } = await import("~/apps/calendar/tools")
+      const teammates = await teammateBusyEventsForCaller(
+        txDb,
+        orgId,
+        { timeMin: params.timeMin, timeMax: params.timeMax },
+        members,
+      )
       return JSON.stringify({
         events: own.events,
+        teammates,
         selfEmails: [...selfEmails],
         timeZone: profile?.timezone ?? own.primaryTimeZone ?? null,
         account: account ? { identifier: account.identifier, hasFreeBusyScope } : null,
@@ -872,11 +948,16 @@ export function createCalendarMethods(
       const attendees = Array.isArray(row.attendees)
         ? (row.attendees as Array<Record<string, unknown>>)
         : []
-      const isSelf = (a: Record<string, unknown>) =>
+      const isAccount = (a: Record<string, unknown>) =>
         a.self === true ||
         (accountEmail !== null &&
           typeof a.email === "string" &&
           a.email.toLowerCase() === accountEmail.toLowerCase())
+      // Else the signed-in person's own entry (a calendar Google does not flag for them).
+      const own = attendees.some(isAccount) ? null : await callerEmail()
+      const isCaller = (a: Record<string, unknown>) =>
+        own !== null && typeof a.email === "string" && a.email.trim().toLowerCase() === own
+      const isSelf = (a: Record<string, unknown>) => isAccount(a) || isCaller(a)
       if (!attendees.some(isSelf)) {
         throw Object.assign(
           new Error(
@@ -885,8 +966,14 @@ export function createCalendarMethods(
           { status: 422, code: "not_a_guest" },
         )
       }
+      // Only the account's entry is stored as `self` (what Google means by it); a person's own
+      // entry on a shared calendar keeps no flag, so it does not read as every viewer's.
       const next = attendees.map((a) =>
-        isSelf(a) ? { ...a, self: true, responseStatus: response } : a,
+        isAccount(a)
+          ? { ...a, self: true, responseStatus: response }
+          : isCaller(a)
+            ? { ...a, responseStatus: response }
+            : a,
       )
       const { syncVersion } = await updateLocalEvent(txDb, orgId, row.id, {
         attendees: next,
@@ -942,9 +1029,18 @@ export function createCalendarMethods(
 
     calendar_applyPushResult: async (eventId: string, resultJson: string): Promise<string> => {
       requireApp("calendar", "calendar_applyPushResult")
-      const { applyPushResult } = await import("~/apps/calendar/sync")
+      const { applyPushResult, pendingOccurrencesOf } = await import("~/apps/calendar/sync")
       const result = JSON.parse(resultJson)
       const applied = await applyPushResult(txDb, orgId, eventId, result)
+      // A series that just reached Google: the occurrences edited before it did push now.
+      for (const pending of await pendingOccurrencesOf(txDb, orgId, eventId)) {
+        await enqueue(
+          "calendar",
+          "calendar-push",
+          { orgId, eventId: pending.id },
+          { jobId: `calendar-push:${pending.id}:v${pending.version}:after-series` },
+        )
+      }
       await announceEventsChanged({ eventId })
       return JSON.stringify(applied)
     },

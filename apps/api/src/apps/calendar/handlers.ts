@@ -571,6 +571,8 @@ interface EventRowShape {
   id: string
   calendar_id: string
   google_event_id: string | null
+  /** An occurrence row's series: the master's Google id (or the id its create will give it). */
+  recurring_event_id?: string | null
   etag: string | null
   title: string | null
   description: string | null
@@ -740,7 +742,19 @@ export async function calendarPush(payload: unknown, ctx: CalendarCtx): Promise<
   }
 }
 
+/** Whether an occurrence row's series is a local one Google does not have yet: its push waits
+ * (the series' own push queues it once the series is on Google). Its key is then the uuid hex
+ * of the master row, which still has no Google id. */
+async function seriesNotOnGoogleYet(row: EventRowShape, ctx: CalendarCtx): Promise<boolean> {
+  const key = row.recurring_event_id
+  if (!key || !/^[0-9a-f]{32}$/.test(key)) return false
+  const masterId = `${key.slice(0, 8)}-${key.slice(8, 12)}-${key.slice(12, 16)}-${key.slice(16, 20)}-${key.slice(20)}`
+  const master = JSON.parse(await ctx.calendar_getEvent(masterId)) as EventRowShape | null
+  return master !== null && master.calendar_id === row.calendar_id && !master.google_event_id
+}
+
 async function pushRow(row: EventRowShape, ctx: CalendarCtx, authRetry: boolean): Promise<void> {
+  if (await seriesNotOnGoogleYet(row, ctx)) return
   const calendarJson = await ctx.calendar_getCalendar(row.calendar_id)
   const calendar = JSON.parse(calendarJson) as {
     google_calendar_id: string
@@ -1650,6 +1664,9 @@ const FREE_BUSY_MAX_DAYS = 62
 
 interface FreeBusyContext {
   events: BusyEventLike[]
+  /** Guests who are people of the organization, with the events Liaison holds that they attend
+   * (on calendars the caller sees). Only their busy times are used. */
+  teammates?: Array<{ email: string; events: BusyEventLike[] }>
   selfEmails: string[]
   timeZone: string | null
   account: { identifier: string; hasFreeBusyScope: boolean | null } | null
@@ -1711,7 +1728,7 @@ export async function calendarFindFreeSlots(params: unknown, ctx: CalendarCtx): 
   ].slice(0, FREE_BUSY_MAX_ATTENDEES)
   const window = { timeMin: windowStart.toISOString(), timeMax: windowEnd.toISOString() }
   const context = JSON.parse(
-    await ctx.calendar_freeBusyContext(JSON.stringify(window)),
+    await ctx.calendar_freeBusyContext(JSON.stringify({ ...window, attendees })),
   ) as FreeBusyContext
   const requestedZone = typeof p.timeZone === "string" ? p.timeZone : null
   const timeZone = isValidTimeZone(requestedZone)
@@ -1727,6 +1744,16 @@ export async function calendarFindFreeSlots(params: unknown, ctx: CalendarCtx): 
     timeZone,
     selfEmails,
   )
+
+  // Teammates: their events on the calendars Liaison holds are busy times already known here,
+  // whether or not Google's free/busy can be asked about them.
+  const held = new Set<string>()
+  for (const t of context.teammates ?? []) {
+    const email = t.email.toLowerCase()
+    if (selfEmails.has(email)) continue
+    held.add(email)
+    busy.push(...busyFromEvents(t.events, windowStart, windowEnd, timeZone, new Set([email])))
+  }
 
   const others = attendees.filter((a) => !selfEmails.has(a))
   const availability: AttendeeAvailability[] = []
@@ -1779,6 +1806,17 @@ export async function calendarFindFreeSlots(params: unknown, ctx: CalendarCtx): 
       for (const email of others) availability.push({ email, status: "needs_consent" })
     }
   }
+
+  // A teammate Google could not be asked about still counts as checked: their busy times on the
+  // calendars Liaison holds were used.
+  for (const a of availability) {
+    if (a.status !== "checked" && held.has(a.email)) {
+      a.status = "checked"
+      a.reason = "calendars in Liaison"
+    }
+  }
+  const unchecked = availability.filter((a) => a.status !== "checked")
+  if (consentNeeded && unchecked.length === 0) consentNeeded = false
 
   const maxResults = Math.min(Math.max(Number(p.maxResults ?? 10) || 10, 1), 50)
   const slots = findFreeSlots({

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { render, screen } from "@solidjs/testing-library"
-import { describe, expect, it } from "vitest"
+import { fireEvent, render, screen } from "@solidjs/testing-library"
+import { describe, expect, it, vi } from "vitest"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
 import { startOfWeek, weekStartsOn } from "./date-utils"
 import { MonthView } from "./MonthView"
@@ -54,6 +54,52 @@ describe("MonthView", () => {
     const bands = screen.getAllByTestId("calendar-span-band")
     expect(bands).toHaveLength(1)
     expect(bands[0]!.textContent).toBe("Offsite")
+  })
+
+  it("an all-day band drags like a chip: dropped on a day, the grabbed day lands there", () => {
+    const onMove = vi.fn()
+    render(() => (
+      <MonthView
+        year={2026}
+        month={6}
+        occurrences={[
+          occ({
+            eventId: "span",
+            title: "Offsite",
+            allDay: true,
+            start: { date: "2026-07-13" },
+            end: { date: "2026-07-16" },
+          }),
+        ]}
+        calendarColors={{}}
+        canDrag={() => true}
+        onMoveEventToDay={onMove}
+      />
+    ))
+    const band = screen.getByTestId("calendar-span-band")
+    expect(band.getAttribute("draggable")).toBe("true")
+    band.getBoundingClientRect = () => ({ width: 300 }) as DOMRect
+    const store = new Map<string, string>()
+    const dataTransfer = {
+      types: ["application/x-liaison-calendar-event"],
+      setData: (k: string, v: string) => store.set(k, v),
+      getData: (k: string) => store.get(k) ?? "",
+      effectAllowed: "",
+    }
+    // Grabbed on its second day (Tuesday 14 of a three-day band), dropped on Thursday 23.
+    const start = new Event("dragstart", { bubbles: true }) as DragEvent
+    Object.defineProperty(start, "offsetX", { value: 150 })
+    Object.defineProperty(start, "dataTransfer", { value: dataTransfer })
+    band.dispatchEvent(start)
+    const cell = screen
+      .getAllByTestId("calendar-day-cell")
+      .find((c) => c.getAttribute("data-date") === "2026-07-23")!
+    fireEvent.drop(cell, { dataTransfer })
+    expect(onMove).toHaveBeenCalledTimes(1)
+    const [id, day, occurrence] = onMove.mock.calls[0]!
+    expect(id).toBe("span")
+    expect((day as Date).getDate()).toBe(22)
+    expect(occurrence).toEqual({ date: "2026-07-13" })
   })
 
   it("shows an overflow indicator when a day exceeds the visible chip budget", () => {

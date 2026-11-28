@@ -278,3 +278,6 @@ documents_link_shopify_orders links a document named by order number to its orde
 Link only on one exact order name in the issuer's shop and the buyer's email, everything else reported -> bundled-apps/invoicing/src/handlers/link-shopify-orders.ts:287-329
 Writes only shopify_order_id and a lifecycle entry; dry_run is the default -> bundled-apps/invoicing/src/handlers/link-shopify-orders.ts:1-30
 An imported document's all-digits number is looked up as #<number>, other imported numbers not eligible -> bundled-apps/invoicing/src/handlers/link-shopify-orders.ts:279-288
+parked Shopify orders show as pending, same matching rule, no park reason -> apps/api/src/modules/buyer-invoices/store.ts:313
+issued invoice replaces the pending entry -> apps/api/src/modules/buyer-invoices/store.ts:481
+parked order identity from the order payload -> apps/api/src/modules/buyer-invoices/parks.ts:1

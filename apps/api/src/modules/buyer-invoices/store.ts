@@ -15,6 +15,7 @@ import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { base32Token } from "~/lib/random-token"
 import { type BuyerIdentity, saleMatches } from "./match"
+import { type ParkedSale, type ParkRow, parkedSales } from "./parks"
 
 const K = () => sql.raw(schemaRef("kernel"))
 
@@ -291,6 +292,65 @@ async function matchingSales(key: BuyerKey, who: BuyerIdentity): Promise<Candida
   )
 }
 
+/** The statuses of a park that still waits to issue (invoicing's OPEN_DEFERRED_STATUSES). A
+ *  resolved, given-up or any other status is never shown: an allowlist, so a status added later
+ *  (an exclusion) stays out until it is named here. */
+const OPEN_PARK_STATUSES = [
+  "awaiting_config",
+  "awaiting_data",
+  "awaiting_dependency",
+  "render_failed",
+  "email_failed",
+] as const
+const OPEN_PARK_SQL = sql.raw(OPEN_PARK_STATUSES.map((s) => `'${s}'`).join(", "))
+
+/**
+ * The paid Shopify orders of this key's issuer profile (the shop it is mapped to) whose invoice
+ * waits on an open park and that could match `who`: no numbered invoice yet, and no sale row
+ * that says it will never be invoiced (void, excluded). Every open park of a candidate order is
+ * read, so `parkedSales` builds one identity over all of them; `saleMatches` then decides.
+ */
+async function parkedOrders(key: BuyerKey, who: BuyerIdentity): Promise<ParkedSale[]> {
+  const email = who.email ?? ""
+  const shopify = who.shopifyCustomerId ?? ""
+  if (email === "" && shopify === "") return []
+  const rows = await withPrivilegedDb(key.orgId, "buyer-invoices-parks", async (tx) =>
+    extractRows<ParkRow>(
+      await tx.execute(sql`
+        SELECT e.event_id AS order_id, e.event_payload_json AS payload, e.created_at
+          FROM app_invoicing.deferred_events e
+          JOIN app_invoicing.issuer_profiles p
+            ON p.org_id = e.org_id AND p.id = ${key.issuerProfileId}::uuid
+           AND p.shopify_shop_id IS NOT NULL
+           AND p.shopify_shop_id = e.event_payload_json ->> 'shop_id'
+         WHERE e.org_id = ${key.orgId}::uuid
+           AND e.status IN (${OPEN_PARK_SQL})
+           AND e.event_id ~ '^[0-9]{1,20}$'
+           AND e.event_id IN (
+             SELECT m.event_id FROM app_invoicing.deferred_events m
+              WHERE m.org_id = ${key.orgId}::uuid
+                AND m.status IN (${OPEN_PARK_SQL})
+                AND ((${email} <> ''
+                      AND lower(btrim(m.event_payload_json -> 'customer' ->> 'email')) = ${email})
+                  OR (${shopify} <> ''
+                      AND regexp_replace(COALESCE(m.event_payload_json -> 'customer' ->> 'id', ''),
+                                         '^gid://shopify/Customer/', '') = ${shopify})))
+           AND NOT EXISTS (
+             SELECT 1 FROM app_invoicing.documents d
+              WHERE d.org_id = e.org_id AND d.issuer_profile_id = p.id
+                AND d.type = 'invoice' AND d.number IS NOT NULL
+                AND d.shopify_order_id = e.event_id)
+           AND NOT EXISTS (
+             SELECT 1 FROM app_invoicing.sales s
+              WHERE s.org_id = e.org_id AND s.issuer_profile_id = p.id
+                AND (s.external_id = e.event_id OR s.source_ref = e.event_id)
+                AND s.state NOT IN ('pending', 'issued'))
+         ORDER BY e.created_at DESC`),
+    ),
+  )
+  return parkedSales(rows).filter((s) => saleMatches(who, s.identity))
+}
+
 interface DocRow {
   id: string
   type: "invoice" | "credit_note"
@@ -365,7 +425,8 @@ function creditNoteStatus(d: DocRow): BuyerDocumentEntry["status"] {
     : "issued"
 }
 
-/** The entries a buyer sees: issued documents of its matching sales, then pending sales. Newest
+/** The entries a buyer sees: issued documents of its matching sales, then pending sales (recorded
+ *  ones, and paid Shopify orders whose invoice is parked). Newest
  *  sale date first, then issue date; ties by number, so pages are stable. */
 export async function listBuyerDocuments(
   key: BuyerKey,
@@ -410,6 +471,27 @@ export async function listBuyerDocuments(
       parentInvoiceId: null,
       state: "pending",
       source: { stream: s.stream, ref: s.ref, name: s.name },
+    })
+  }
+  // Paid Shopify orders parked before their invoice. A sale that already shows (an issued
+  // document or a recorded sale under the same reference) is never doubled: once the invoice is
+  // issued, the pending entry gives way to it.
+  const shown = new Set(out.map((e) => `${e.source.stream}:${e.source.ref}`))
+  for (const s of sales) shown.add(`${s.stream}:${s.ref}`)
+  for (const p of await parkedOrders(key, who)) {
+    if (shown.has(`shopify:${p.orderId}`)) continue
+    out.push({
+      id: null,
+      kind: "invoice",
+      number: null,
+      issuedAt: null,
+      saleDate: p.soldOn,
+      totalMinor: minorNumber(p.totalMinor),
+      currency: p.currency,
+      status: "pending",
+      parentInvoiceId: null,
+      state: "pending",
+      source: { stream: "shopify", ref: p.orderId, name: p.name },
     })
   }
   out.sort(

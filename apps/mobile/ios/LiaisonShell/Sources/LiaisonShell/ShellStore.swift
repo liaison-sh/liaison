@@ -116,10 +116,42 @@ public struct ShellPointer: Codable, Equatable {
     public var misses: Int = 0
     /// Whether the miss of the launch now pending was already counted (by the ready timer).
     public var pendingCounted: Bool = false
+    /// Foreground seconds the pending attempt has run so far: a launch that
+    /// never confirmed counts as a miss at the next launch only when it ran
+    /// the whole ready window in front (review P7 #3).
+    public var pendingActive: Double = 0
     /// The server's own kill switch (`servedShell: false` in /api/shell/info), as last read.
     public var serverOff: Bool = false
 
     public init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case current, lastGood, quarantined, pending, misses, pendingCounted, pendingActive, serverOff
+    }
+
+    /// Every field optional on disk, so a pointer written by an older build keeps its builds.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        current = try c.decodeIfPresent(String.self, forKey: .current)
+        lastGood = try c.decodeIfPresent(String.self, forKey: .lastGood)
+        quarantined = try c.decodeIfPresent([String].self, forKey: .quarantined) ?? []
+        pending = try c.decodeIfPresent(String.self, forKey: .pending)
+        misses = try c.decodeIfPresent(Int.self, forKey: .misses) ?? 0
+        pendingCounted = try c.decodeIfPresent(Bool.self, forKey: .pendingCounted) ?? false
+        pendingActive = try c.decodeIfPresent(Double.self, forKey: .pendingActive) ?? 0
+        serverOff = try c.decodeIfPresent(Bool.self, forKey: .serverOff) ?? false
+    }
+}
+
+/// The fleet flags as kept on disk.
+public enum StoredFlags: Equatable {
+    /// None ever read: on.
+    case none
+    case verified(FleetFlags)
+    /// Kept flags no pinned key verifies any more (a key rotation dropped
+    /// their key, or the file was altered): OFF until new flags verify, and a
+    /// newer document must still beat their `seq`.
+    case unverifiable(seq: Int64)
 }
 
 public enum Selection: Equatable {
@@ -141,7 +173,10 @@ public enum Selection: Equatable {
 }
 
 public final class ShellStore {
-    public static let readyWithin: TimeInterval = 20
+    /// The ready window, in foreground seconds (D9a): above the page's 30 s
+    /// bounded session restore (apps/web auth-store.ts RESTORE_TIMEOUT_MS) plus
+    /// 10 s, pinned by apps/mobile/shell-page-parity.test.ts.
+    public static let readyWithin: TimeInterval = 45
     public static let missesToQuarantine = 2
     /// A revocation list older than this means the bundled shell (A1, S5).
     public static let revocationsMaxAge: TimeInterval = 72 * 3600
@@ -149,6 +184,10 @@ public final class ShellStore {
     public let snapshots: URL
     public let state: URL
     let fm = FileManager.default
+    /// Every write of the store (pointers, flags, lists, builds, gc) runs under
+    /// this one lock: the launch, the page's calls and the background refresh
+    /// never interleave a read-modify-write (review P7 #10, P6 #4).
+    let mutex = NSRecursiveLock()
 
     public init(snapshots: URL, state: URL) {
         self.snapshots = snapshots
@@ -197,7 +236,21 @@ public final class ShellStore {
 
     public func save(_ pointer: ShellPointer, for origin: String) {
         guard let data = try? JSONEncoder().encode(pointer) else { return }
-        try? writeAtomically(data, to: pointerURL(origin))
+        mutex.locked { try? writeAtomically(data, to: pointerURL(origin)) }
+    }
+
+    /// One locked read-modify-write of a server's pointer, saved when `body`
+    /// changed it. Answers what `body` answered.
+    @discardableResult
+    public func updatePointer<T>(_ address: String, _ body: (inout ShellPointer) -> T) -> T {
+        mutex.locked {
+            let origin = ShellStore.origin(of: address) ?? address
+            let before = pointer(for: origin)
+            var pointer = before
+            let out = body(&pointer)
+            if pointer != before { save(pointer, for: origin) }
+            return out
+        }
     }
 
     func recordDir(_ buildId: String) -> URL {
@@ -237,24 +290,52 @@ public final class ShellStore {
         try? writeAtomically(data, to: state.appendingPathComponent(name))
     }
 
-    /// The fleet flags last accepted, re-verified; nil when none (on).
-    public func flags(keys: [PinnedKey]) -> FleetFlags? {
-        guard let stored = readSigned("flags.json") else { return nil }
-        return FleetFlags.verify(Data(stored.doc.utf8), sig: stored.sig, keys: keys)
+    /// The fleet flags last accepted, re-verified against the keys pinned now.
+    public func storedFlags(keys: [PinnedKey]) -> StoredFlags {
+        guard let data = try? Data(contentsOf: state.appendingPathComponent("flags.json")) else { return .none }
+        guard let stored = try? JSONDecoder().decode(SignedDoc.self, from: data) else { return .unverifiable(seq: 0) }
+        if let flags = FleetFlags.verify(Data(stored.doc.utf8), sig: stored.sig, keys: keys) { return .verified(flags) }
+        return .unverifiable(seq: FleetFlags.parse(Data(stored.doc.utf8))?.seq ?? 0)
     }
 
-    /// Keeps newly read flags when they verify and do not go back in `seq`;
-    /// answers the flags now in force.
+    /// The fleet flags last accepted, when they still verify.
+    public func flags(keys: [PinnedKey]) -> FleetFlags? {
+        if case let .verified(flags) = storedFlags(keys: keys) { return flags }
+        return nil
+    }
+
+    /// Whether the fleet lets this host serve a native shell: on when no
+    /// flags were ever read, OFF when the kept flags no longer verify.
+    public func fleetEnabled(keys: [PinnedKey]) -> Bool {
+        switch storedFlags(keys: keys) {
+        case .none: return true
+        case let .verified(flags): return flags.native
+        case .unverifiable: return false
+        }
+    }
+
+    /// Keeps newly read flags when they verify and do not go back in `seq`
+    /// (not even behind kept flags that no longer verify); answers the
+    /// flags now in force.
     @discardableResult
     public func offerFlags(_ bytes: Data, sig: String, keys: [PinnedKey]) -> FleetFlags? {
-        let stored = flags(keys: keys)
-        guard let flags = FleetFlags.verify(bytes, sig: sig, keys: keys),
-              let text = String(data: bytes, encoding: .utf8) else {
-            return stored
+        mutex.locked {
+            let stored = storedFlags(keys: keys)
+            var held: FleetFlags?
+            var heldSeq: Int64?
+            switch stored {
+            case .none: break
+            case let .verified(flags): held = flags; heldSeq = flags.seq
+            case let .unverifiable(seq): heldSeq = seq
+            }
+            guard let flags = FleetFlags.verify(bytes, sig: sig, keys: keys),
+                  let text = String(data: bytes, encoding: .utf8) else {
+                return held
+            }
+            if let heldSeq = heldSeq, flags.seq < heldSeq { return held }
+            writeSigned("flags.json", SignedDoc(doc: text, sig: sig.trimmingCharacters(in: .whitespacesAndNewlines)))
+            return flags
         }
-        if let stored = stored, flags.seq < stored.seq { return stored }
-        writeSigned("flags.json", SignedDoc(doc: text, sig: sig.trimmingCharacters(in: .whitespacesAndNewlines)))
-        return flags
     }
 
     /// The revocation list last accepted, re-verified, and when it was fetched.
@@ -271,16 +352,22 @@ public final class ShellStore {
     /// refused and does not refresh the age of the one held.
     @discardableResult
     public func offerRevocations(_ bytes: Data, sig: String, keys: [PinnedKey], now: Date) -> Bool {
-        guard let list = Revocations.verify(bytes, sig: sig, keys: keys),
-              let text = String(data: bytes, encoding: .utf8) else {
-            return false
+        mutex.locked {
+            guard let list = Revocations.verify(bytes, sig: sig, keys: keys),
+                  let text = String(data: bytes, encoding: .utf8) else {
+                return false
+            }
+            // The kept list's seq, verified or not: never go back behind it.
+            if let kept = readSigned("revocations.json"),
+               let keptSeq = Revocations.parse(Data(kept.doc.utf8))?.seq, list.seq < keptSeq {
+                return false
+            }
+            writeSigned("revocations.json", SignedDoc(
+                doc: text, sig: sig.trimmingCharacters(in: .whitespacesAndNewlines),
+                fetchedAt: now.timeIntervalSince1970
+            ))
+            return true
         }
-        if let held = revocations(keys: keys), list.seq < held.list.seq { return false }
-        writeSigned("revocations.json", SignedDoc(
-            doc: text, sig: sig.trimmingCharacters(in: .whitespacesAndNewlines),
-            fetchedAt: now.timeIntervalSince1970
-        ))
-        return true
     }
 
     // MARK: Build folders
@@ -332,8 +419,34 @@ public final class ShellStore {
 
     /// The files the phone's page adds to a build: the derived index.html, the
     /// scripts moved out of it, and the bundle's overlay.
+    /// How a file system that ignores case and Unicode form (the simulator's
+    /// volume, APFS normalization) sees a path.
+    static func folded(_ path: String) -> String {
+        path.precomposedStringWithCanonicalMapping.folding(options: [.caseInsensitive], locale: nil)
+            .precomposedStringWithCanonicalMapping
+    }
+
+    /// Refuses a statement two of whose paths are one file once case and
+    /// Unicode form are ignored, or that names a file this binary adds (every
+    /// overlay name, whether this bundle has it or not, and the derived
+    /// script names) (review P7 #7).
+    public func checkNames(_ statement: ShellStatement, overlay: [String: Data]) -> Result<Void, Refusal> {
+        var seen = Set<String>()
+        for path in statement.files.keys where !seen.insert(ShellStore.folded(path)).inserted {
+            return .failure(.overlayConflict)
+        }
+        let reserved = Set((MobilePage.overlayNames + Array(overlay.keys)).map(ShellStore.folded))
+        for path in statement.files.keys {
+            let name = ShellStore.folded(path)
+            if reserved.contains(name) || (!name.contains("/") && name.hasPrefix("liaison-inline-")) {
+                return .failure(.overlayConflict)
+            }
+        }
+        return .success(())
+    }
+
     func derived(index: Data, statement: ShellStatement, overlay: [String: Data]) -> Result<[String: Data], Refusal> {
-        for name in overlay.keys where statement.files[name] != nil { return .failure(.overlayConflict) }
+        if case let .failure(refusal) = checkNames(statement, overlay: overlay) { return .failure(refusal) }
         guard let html = String(data: index, encoding: .utf8), let page = try? MobilePage.make(html) else {
             return .failure(.page)
         }
@@ -352,6 +465,13 @@ public final class ShellStore {
     /// complete, then made read-only. Answers the build's folder.
     public func install(statementBytes: Data, sig: String, statement: ShellStatement,
                         files: [String: Data], overlay: [String: Data]) -> Result<URL, Refusal> {
+        mutex.locked {
+            installLocked(statementBytes: statementBytes, sig: sig, statement: statement, files: files, overlay: overlay)
+        }
+    }
+
+    func installLocked(statementBytes: Data, sig: String, statement: ShellStatement,
+                       files: [String: Data], overlay: [String: Data]) -> Result<URL, Refusal> {
         guard ShellStore.isBuildId(statement.buildId) else { return .failure(.malformedStatement) }
         for (path, hash) in statement.files {
             guard let data = files[path] else { return .failure(.missingFile) }
@@ -381,12 +501,10 @@ public final class ShellStore {
                 .write(to: recordTmp.appendingPathComponent("statement.sig"))
             try index.write(to: recordTmp.appendingPathComponent("index.original.html"))
             let record = recordDir(statement.buildId)
-            removeTree(record)
-            try fm.moveItem(at: recordTmp, to: record)
+            try swapIn(recordTmp, at: record, token: token)
             let dir = buildDir(statement.buildId)
-            removeTree(dir)
-            try fm.moveItem(at: tmp, to: dir)
-            lock(dir)
+            lock(tmp)
+            try swapIn(tmp, at: dir, token: token)
             var noBackup = URLResourceValues()
             noBackup.isExcludedFromBackup = true
             var root = snapshots
@@ -399,11 +517,33 @@ public final class ShellStore {
         }
     }
 
+    /// Moves `fresh` to `target`, a folder already there moved aside first and
+    /// removed after, so `target` is missing only between two renames.
+    func swapIn(_ fresh: URL, at target: URL, token: String) throws {
+        if fm.fileExists(atPath: target.path) {
+            let aside = target.deletingLastPathComponent().appendingPathComponent(".old-\(token)-\(target.lastPathComponent)")
+            try fm.moveItem(at: target, to: aside)
+            do {
+                try fm.moveItem(at: fresh, to: target)
+            } catch {
+                try? fm.moveItem(at: aside, to: target)
+                throw error
+            }
+            removeTree(aside)
+        } else {
+            try fm.moveItem(at: fresh, to: target)
+        }
+    }
+
     /// The launch check of a stored build (D17): its statement against `trust`
     /// and the build id, every signed file re-hashed, the folder holding
     /// nothing else, and the derived files re-derived (rewritten when this
     /// binary derives them differently: a new boot bundle or policy).
     public func verifyStored(_ buildId: String, trust: Trust, overlay: [String: Data]) -> Result<URL, Refusal> {
+        mutex.locked { verifyStoredLocked(buildId, trust: trust, overlay: overlay) }
+    }
+
+    func verifyStoredLocked(_ buildId: String, trust: Trust, overlay: [String: Data]) -> Result<URL, Refusal> {
         guard let record = record(buildId) else { return .failure(.cache) }
         let statement: ShellStatement
         switch ShellVerifier.verify(record.statement, sig: record.sig, trust: trust, buildId: buildId) {
@@ -450,6 +590,10 @@ public final class ShellStore {
     /// Drops every stored build no server's pointer names any more, and
     /// leftovers of an interrupted install.
     public func gc() {
+        mutex.locked { gcLocked() }
+    }
+
+    func gcLocked() {
         var keep = Set<String>()
         let servers = state.appendingPathComponent("servers", isDirectory: true)
         for url in (try? fm.contentsOfDirectory(at: servers, includingPropertiesForKeys: nil)) ?? [] {
@@ -467,61 +611,126 @@ public final class ShellStore {
 
     // MARK: Launch selection and ready bookkeeping (D9, D16, D17, S8)
 
-    /// The build the page loads for the server at `address`: the staged build,
-    /// else the last good one, each re-verified now; anything wrong (no
-    /// server, a kill switch, a stale revocation list, a quarantined or
-    /// failing build) means the bundled shell. Records the chosen build as
-    /// pending until it signals ready; a pending build the last run never
-    /// confirmed counts as one miss.
-    public func select(address: String?, keys: [PinnedKey], floor: [RevocationEntry], bridgeVersion: Int,
-                       overlay: [String: Data], now: Date = Date()) -> Selection {
-        guard let address = address, let origin = ShellStore.origin(of: address) else {
-            return .bundled(reason: .noServer)
-        }
-        if let flags = flags(keys: keys), !flags.native { return .bundled(reason: .fleetOff) }
-        var pointer = pointer(for: origin)
-        if pointer.serverOff { return .bundled(reason: .serverOff) }
-        guard let held = revocations(keys: keys) else { return .bundled(reason: .revocationsStale) }
+    /// The trust a statement is checked against now, or why there is none
+    /// (no server, a kill switch, no fresh revocation list).
+    public func trust(address: String?, keys: [PinnedKey], floor: [RevocationEntry], bridgeVersion: Int,
+                      now: Date = Date()) -> Result<(origin: String, trust: Trust), Refusal> {
+        guard let address = address, let origin = ShellStore.origin(of: address) else { return .failure(.noServer) }
+        if !fleetEnabled(keys: keys) { return .failure(.fleetOff) }
+        if pointer(for: origin).serverOff { return .failure(.serverOff) }
+        guard let held = revocations(keys: keys) else { return .failure(.revocationsStale) }
         let age = now.timeIntervalSince(held.fetchedAt)
         if age > ShellStore.revocationsMaxAge || age < -ShellStore.revocationsMaxAge {
-            return .bundled(reason: .revocationsStale)
+            return .failure(.revocationsStale)
         }
-        if let pending = pointer.pending, !pointer.pendingCounted {
-            pointer.misses += 1
-            pointer.pendingCounted = true
-            if pointer.misses >= ShellStore.missesToQuarantine { quarantine(pending, in: &pointer) }
-        }
-        let trust = Trust(keys: keys, floor: floor, list: held.list, bridgeVersion: bridgeVersion)
-        var reason: Refusal = .noBuild
-        var seen = Set<String>()
-        for candidate in [pointer.current, pointer.lastGood].compactMap({ $0 }) where seen.insert(candidate).inserted {
-            if pointer.quarantined.contains(candidate) {
-                if reason == .noBuild { reason = .quarantined }
-                continue
+        return .success((origin, Trust(keys: keys, floor: floor, list: held.list, bridgeVersion: bridgeVersion)))
+    }
+
+    /// The build the page would load for the server at `address`: the staged
+    /// build, else the last good one, each re-verified now; anything wrong (no
+    /// server, a kill switch, a stale revocation list, a quarantined or
+    /// failing build) means the bundled shell. Records nothing about ready.
+    public func choose(address: String?, keys: [PinnedKey], floor: [RevocationEntry], bridgeVersion: Int,
+                       overlay: [String: Data], now: Date = Date()) -> Selection {
+        mutex.locked {
+            let origin: String
+            let trust: Trust
+            switch self.trust(address: address, keys: keys, floor: floor, bridgeVersion: bridgeVersion, now: now) {
+            case let .failure(refusal): return .bundled(reason: refusal)
+            case let .success(value): (origin, trust) = (value.origin, value.trust)
             }
-            switch verifyStored(candidate, trust: trust, overlay: overlay) {
-            case let .success(root):
-                if pointer.pending != candidate {
-                    pointer.pending = candidate
-                    pointer.misses = 0
+            let pointer = pointer(for: origin)
+            var reason: Refusal = .noBuild
+            var seen = Set<String>()
+            for candidate in [pointer.current, pointer.lastGood].compactMap({ $0 }) where seen.insert(candidate).inserted {
+                if pointer.quarantined.contains(candidate) {
+                    if reason == .noBuild { reason = .quarantined }
+                    continue
                 }
+                switch verifyStoredLocked(candidate, trust: trust, overlay: overlay) {
+                case let .success(root): return .served(buildId: candidate, root: root)
+                case let .failure(refusal):
+                    if reason == .noBuild || reason == .quarantined { reason = refusal }
+                }
+            }
+            return .bundled(reason: reason)
+        }
+    }
+
+    /// Why the RUNNING build `buildId` of `address` must stop at once (D16a:
+    /// the fleet or the server switched it off, or its statement no longer
+    /// verifies: revoked, below the floor, its key gone), or nil. A stale
+    /// list or a newer build alone waits for the next document load.
+    public func mustLeave(address: String, buildId: String, keys: [PinnedKey], floor: [RevocationEntry],
+                          bridgeVersion: Int) -> Refusal? {
+        if !fleetEnabled(keys: keys) { return .fleetOff }
+        guard let origin = ShellStore.origin(of: address) else { return .noServer }
+        if pointer(for: origin).serverOff { return .serverOff }
+        guard let record = record(buildId) else { return nil }
+        let trust = Trust(keys: keys, floor: floor, list: revocations(keys: keys)?.list, bridgeVersion: bridgeVersion)
+        switch ShellVerifier.verify(record.statement, sig: record.sig, trust: trust, buildId: buildId) {
+        case .success: return nil
+        case let .failure(refusal):
+            switch refusal {
+            case .revoked, .belowFloor, .unknownKey, .badSignature, .noKeys, .malformedStatement, .wrongBuild:
+                return refusal
+            default: return nil
+            }
+        }
+    }
+
+    /// The choice made as the app starts: the attempt the last run left
+    /// unconfirmed counts as one miss only when it ran the whole ready window
+    /// in the foreground (review P7 #3), then `choose`, and the chosen build
+    /// becomes the attempt now running.
+    public func select(address: String?, keys: [PinnedKey], floor: [RevocationEntry], bridgeVersion: Int,
+                       overlay: [String: Data], now: Date = Date()) -> Selection {
+        mutex.locked {
+            if let address = address, ShellStore.origin(of: address) != nil {
+                updatePointer(address) { pointer in
+                    if let pending = pointer.pending, !pointer.pendingCounted,
+                       pointer.pendingActive >= ShellStore.readyWithin {
+                        pointer.misses += 1
+                        pointer.pendingCounted = true
+                        if pointer.misses >= ShellStore.missesToQuarantine { quarantine(pending, in: &pointer) }
+                    }
+                    pointer.pendingActive = 0
+                }
+            }
+            let chosen = choose(address: address, keys: keys, floor: floor, bridgeVersion: bridgeVersion,
+                                overlay: overlay, now: now)
+            if let address = address { beginAttempt(address: address, selection: chosen) }
+            return chosen
+        }
+    }
+
+    /// The page is about to load `selection` for `address` (a launch, a
+    /// document load): a served build not yet proven on this install waits
+    /// for its ready signal from now.
+    public func beginAttempt(address: String, selection: Selection) {
+        guard ShellStore.origin(of: address) != nil else { return }
+        updatePointer(address) { pointer in
+            guard let id = selection.buildId, pointer.lastGood != id else {
+                pointer.pending = nil
+                pointer.misses = 0
                 pointer.pendingCounted = false
-                if pointer.lastGood == candidate {
-                    // Already proven on this install: nothing to wait for.
-                    pointer.pending = nil
-                    pointer.misses = 0
-                }
-                save(pointer, for: origin)
-                return .served(buildId: candidate, root: root)
-            case let .failure(refusal):
-                if reason == .noBuild || reason == .quarantined { reason = refusal }
+                pointer.pendingActive = 0
+                return
             }
+            if pointer.pending != id {
+                pointer.pending = id
+                pointer.misses = 0
+            }
+            pointer.pendingCounted = false
+            pointer.pendingActive = 0
         }
-        pointer.pending = nil
-        pointer.misses = 0
-        pointer.pendingCounted = false
-        save(pointer, for: origin)
-        return .bundled(reason: reason)
+    }
+
+    /// The foreground time the attempt of `buildId` has run so far.
+    public func noteProgress(address: String, buildId: String, activeSeconds: Double) {
+        updatePointer(address) { pointer in
+            if pointer.pending == buildId { pointer.pendingActive = activeSeconds }
+        }
     }
 
     func quarantine(_ buildId: String, in pointer: inout ShellPointer) {
@@ -530,39 +739,50 @@ public final class ShellStore {
         pointer.pending = nil
         pointer.misses = 0
         pointer.pendingCounted = false
+        pointer.pendingActive = 0
     }
 
     /// The page of `buildId` signalled ready: it becomes the server's last good build.
     @discardableResult
     public func noteReady(address: String?, buildId: String) -> Bool {
-        guard let address = address, let origin = ShellStore.origin(of: address) else { return false }
-        var pointer = pointer(for: origin)
-        guard pointer.pending == buildId || pointer.lastGood == buildId else { return false }
-        pointer.lastGood = buildId
-        pointer.pending = nil
-        pointer.misses = 0
-        pointer.pendingCounted = false
-        save(pointer, for: origin)
-        return true
+        guard let address = address, ShellStore.origin(of: address) != nil else { return false }
+        return updatePointer(address) { pointer -> Bool in
+            guard pointer.pending == buildId || pointer.lastGood == buildId else { return false }
+            pointer.lastGood = buildId
+            pointer.pending = nil
+            pointer.misses = 0
+            pointer.pendingCounted = false
+            pointer.pendingActive = 0
+            return true
+        }
     }
 
     public enum Miss: Equatable { case retry, quarantined, ignored }
 
-    /// `buildId` did not signal ready in time: the first miss reloads it once,
-    /// the second quarantines it on this install (S8).
+    /// `buildId` did not signal ready within the window: the first miss
+    /// reloads it once, the second quarantines it on this install (S8).
     public func noteMissed(address: String?, buildId: String) -> Miss {
-        guard let address = address, let origin = ShellStore.origin(of: address) else { return .ignored }
-        var pointer = pointer(for: origin)
-        guard pointer.pending == buildId else { return .ignored }
-        if !pointer.pendingCounted { pointer.misses += 1 }
-        pointer.pendingCounted = false
-        if pointer.misses >= ShellStore.missesToQuarantine {
-            quarantine(buildId, in: &pointer)
-            save(pointer, for: origin)
-            return .quarantined
+        guard let address = address, ShellStore.origin(of: address) != nil else { return .ignored }
+        return updatePointer(address) { pointer -> Miss in
+            guard pointer.pending == buildId else { return .ignored }
+            if !pointer.pendingCounted { pointer.misses += 1 }
+            pointer.pendingCounted = false
+            pointer.pendingActive = 0
+            if pointer.misses >= ShellStore.missesToQuarantine {
+                quarantine(buildId, in: &pointer)
+                return .quarantined
+            }
+            // The reload that follows is a new attempt: its miss is not counted yet.
+            return .retry
         }
-        // The reload that follows is a new attempt: its miss is not counted yet.
-        save(pointer, for: origin)
-        return .retry
+    }
+}
+
+extension NSLocking {
+    /// `withLock`, which needs iOS 16; this app supports iOS 15.
+    func locked<T>(_ body: () throws -> T) rethrows -> T {
+        lock()
+        defer { unlock() }
+        return try body()
     }
 }

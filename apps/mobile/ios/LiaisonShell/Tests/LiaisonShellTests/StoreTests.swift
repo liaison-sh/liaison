@@ -238,13 +238,35 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(select(), .bundled(reason: .quarantined))
     }
 
-    func testALaunchKilledBeforeReadyCountsAsAMiss() async {
+    func testALaunchKilledAfterAFullForegroundWindowCountsAsAMiss() async {
         let build = Build()
         serve(http, build, signer: signer)
         _ = await updater().refresh(address: server)
         XCTAssertEqual(select().buildId, build.buildId)
+        store.noteProgress(address: server, buildId: build.buildId, activeSeconds: ShellStore.readyWithin)
         XCTAssertEqual(select().buildId, build.buildId) // first unconfirmed launch counted
+        XCTAssertEqual(store.pointer(for: origin).misses, 1)
+        store.noteProgress(address: server, buildId: build.buildId, activeSeconds: ShellStore.readyWithin + 1)
         XCTAssertEqual(select(), .bundled(reason: .quarantined)) // second
+    }
+
+    func testALaunchSwipedAwayOrSuspendedBeforeTheWindowIsNotAMiss() async {
+        let build = Build()
+        serve(http, build, signer: signer)
+        _ = await updater().refresh(address: server)
+        for _ in 0..<5 {
+            XCTAssertEqual(select().buildId, build.buildId)
+            // Killed in the background after 10 s in front: never charged.
+            store.noteProgress(address: server, buildId: build.buildId, activeSeconds: 10)
+        }
+        XCTAssertEqual(store.pointer(for: origin).misses, 0)
+        XCTAssertEqual(store.pointer(for: origin).pendingActive, 10)
+        XCTAssertEqual(select().buildId, build.buildId)
+        XCTAssertEqual(store.pointer(for: origin).pendingActive, 0, "a cold launch starts the window again")
+    }
+
+    func testTheReadyWindowIs45Seconds() {
+        XCTAssertEqual(ShellStore.readyWithin, 45)
     }
 
     func testAQuarantinedBuildFallsBackToTheLastGood() async {

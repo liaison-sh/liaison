@@ -85,16 +85,31 @@ func flagsDoc(_ signer: Signer, seq: Int64, native: Bool) -> (Data, String) {
 final class FakeHTTP: ShellHTTP {
     var responses: [String: Result<Data, FetchError>] = [:]
     var requested: [String] = []
+    /// Seconds every request takes (cancellable), for deadline tests.
+    var delay: TimeInterval = 0
+    private(set) var inFlight = 0
+    private(set) var maxInFlight = 0
     private let lock = NSLock()
 
-    func get(_ url: URL, limit: Int) async -> Result<Data, FetchError> {
+    func get(_ url: URL, limit: Int, budget: ByteBudget?) async -> Result<Data, FetchError> {
         let response = lock.locked { () -> Result<Data, FetchError> in
             requested.append(url.absoluteString)
+            inFlight += 1
+            maxInFlight = max(maxInFlight, inFlight)
             return responses[url.absoluteString] ?? .failure(.notFound)
         }
-        if case let .success(data) = response, data.count > limit { return .failure(.tooLarge) }
+        defer { lock.locked { inFlight -= 1 } }
+        if delay > 0 {
+            do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) } catch { return .failure(.transport) }
+        }
+        if case let .success(data) = response {
+            if data.count > limit { return .failure(.tooLarge) }
+            if let budget = budget, !budget.take(data.count) { return .failure(.tooLarge) }
+        }
         return response
     }
+
+    var requestedCount: Int { lock.locked { requested.count } }
 
     func set(_ url: String, _ data: Data) { responses[url] = .success(data) }
     func set(_ url: String, _ text: String) { responses[url] = .success(Data(text.utf8)) }

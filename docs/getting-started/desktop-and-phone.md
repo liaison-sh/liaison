@@ -86,7 +86,17 @@ In the desktop and phone apps, an app your organization installed runs in a sand
 Apps that come with Liaison come from your server too, at the version it runs:
 
 - The desktop app checks that an app is exactly what Liaison released before it runs it in its own page. It downloads the app from your server, checks Liaison's signature with the keys built into the desktop app, and refuses a version Liaison withdrew. If any check fails, or your server runs a version Liaison did not sign, the app still works: it runs in the sandboxed frame.
-- The phone app runs every app in the sandboxed frame, Liaison's own included. It only runs scripts it ships with.
+- The phone app runs every app in the sandboxed frame, Liaison's own included. Its own page runs only scripts it ships with or the Liaison-signed version of your server (see below); apps in the frame never reach the phone's features.
+
+## The iPhone app runs your server's own version
+
+The iPhone and iPad app can run the version of Liaison your server runs, instead of the one it was installed with. It asks your server which version it runs, checks that Liaison signed it (Liaison's signature with the keys built into the app, every file, that the version suits this app and was not withdrawn), keeps the checked files, and checks them again each time it opens.
+
+- A newer version is used from the next time the page loads: when you open the app, switch server or the page reloads. It never asks.
+- When Liaison withdraws the version the app is running, or it is turned off for your server or for every server, the app goes back to the version it was installed with at once and reloads, even if you are typing. It checks when it opens, when it comes back to the screen, and every 15 minutes while it is open.
+- When any check fails, your server runs a version Liaison did not sign, or the app cannot reach the list of withdrawn versions for 3 days, it runs the last version that worked, else the one it was installed with.
+- A version that does not start within 45 seconds of use, twice, is not used again on this phone. Time with the app in the background does not count.
+- A server operator can turn this off with `LIAISON_SERVED_SHELL=false` (see [Environment variables](../reference/env.md)).
 
 ## When some apps run in compatibility mode
 

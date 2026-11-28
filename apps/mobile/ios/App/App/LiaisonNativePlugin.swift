@@ -89,13 +89,11 @@ public class LiaisonNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticati
     }
 
     /// Chooses the build for the server now current, before the page reloads
-    /// itself (a server switch, an idle refresh). `{changed}`: whether the
-    /// reload will load another build.
+    /// itself (a server switch, an idle refresh). Only records the choice:
+    /// the router moves on the next main-frame document load, never under
+    /// the running page. `{changed}`: whether that load runs another build.
     @objc func shellReselect(_ call: CAPPluginCall) {
-        DispatchQueue.main.async { [weak self] in
-            let changed = (self?.bridge?.viewController as? MainViewController)?.reselectShell() ?? false
-            call.resolve(["changed": changed])
-        }
+        call.resolve(["changed": ServedShellHost.shared.reselect()])
     }
 
     // MARK: APNs environment

@@ -89,7 +89,7 @@ describe("the main page runs only the bundled or a Liaison-signed shell", () => 
     const controller = read("App/App/MainViewController.swift")
     expect(controller).toContain("override func instanceDescriptor()")
     expect(controller).toContain("ServedShellHost.shared.launch()")
-    expect(controller).toContain("descriptor.appLocation = bundled")
+    expect(controller).toContain("descriptor.appLocation = bundledRoot")
     // Capacitor's own persisted path (no verification, no fallback) is never used.
     expect(controller).not.toMatch(/persistServerBasePath|KeyValueStore/)
   })
@@ -107,6 +107,16 @@ describe("the main page runs only the bundled or a Liaison-signed shell", () => 
     expect(page).toContain('public static let bootScriptName = "liaison-mobile-boot.js"')
     const parts = [...page.matchAll(/^ {8}"([^"]+)",$/gm)].map((m) => m[1])
     expect(parts.join("; ")).toBe(MOBILE_CSP)
+  })
+
+  it("only the host moves the page's folder, and only on a main-frame document load or a security leave", () => {
+    const controller = read("App/App/MainViewController.swift")
+    // Capacitor's WebView.setServerBasePath sets the router's base path: ignored.
+    expect(controller).toContain("if !base.offer(newValue)")
+    expect(controller).toContain("action.targetFrame?.isMainFrame == true")
+    expect(controller).toContain("ServedShellHost.shared.promote()")
+    const plugin = read("App/App/LiaisonNativePlugin.swift")
+    expect(plugin).toContain('call.resolve(["changed": ServedShellHost.shared.reselect()])')
   })
 
   it("installed apps' frames still never reach the bridge", () => {

@@ -11,10 +11,11 @@
 //  - `shellInfo()`: the host's NATIVE_BRIDGE_VERSION and which shell runs,
 //    `served:<buildId>` or `bundled:<reason>`;
 //  - `shellReady(buildId)`: the page painted; a served build that says so
-//    within 20 s becomes this server's last good build, one that never does
-//    is quarantined after its second try;
+//    within 45 s of foreground time becomes this server's last good build,
+//    one that never does is quarantined after its second try;
 //  - `refreshShell()`: choose again for the current server (a newer build may
-//    be staged); true when a reload would load another build.
+//    be staged); true when the next document load would run another build.
+//    The host moves the build only on such a load, never under this page.
 //
 // Without the plugin (Android, a test page) every member answers as the
 // bundled shell does and nothing throws.

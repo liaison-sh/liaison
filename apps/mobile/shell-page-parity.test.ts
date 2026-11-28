@@ -27,4 +27,21 @@ describe("served shell page parity", () => {
     const parts = [...swift.matchAll(/^ {8}"([^"]+)",$/gm)].map((m) => m[1])
     expect(parts.join("; ")).toBe(MOBILE_CSP)
   })
+
+  it("the iOS ready window covers the page's bounded session restore plus 10 s (D9a)", () => {
+    const store = readFileSync(
+      path.join(import.meta.dir, "ios/LiaisonShell/Sources/LiaisonShell/ShellStore.swift"),
+      "utf8",
+    )
+    const window = /public static let readyWithin: TimeInterval = (\d+)/.exec(store)
+    const auth = readFileSync(
+      path.join(import.meta.dir, "../web/src/modules/auth/auth-store.ts"),
+      "utf8",
+    )
+    const restore = /^const RESTORE_TIMEOUT_MS = ([\d_]+)/m.exec(auth)
+    expect(window).not.toBeNull()
+    expect(restore).not.toBeNull()
+    const restoreMs = Number((restore?.[1] ?? "").replaceAll("_", ""))
+    expect(Number(window?.[1]) * 1000).toBeGreaterThanOrEqual(restoreMs + 10_000)
+  })
 })

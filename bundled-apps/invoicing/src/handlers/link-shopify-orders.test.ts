@@ -347,3 +347,116 @@ describe("linkShopifyOrders", () => {
     expect(second.next_cursor).toBeNull()
   })
 })
+
+describe("linkShopifyOrders: an imported document numbered as its order", () => {
+  /** Imported from an earlier tool: its number is the order name, no order number recorded. */
+  function imported(over: Record<string, unknown> = {}): Record<string, unknown> {
+    return legacyDoc({
+      id: "imp-1",
+      number: "1001",
+      shopify_order_number: null,
+      legal_original_id: "lo-1",
+      external_refs: { import_source: "earlier-tool:1001" },
+      ...over,
+    })
+  }
+
+  function rowOf(res: Record<string, unknown>, id: string): Record<string, unknown> | undefined {
+    return (res.results as Array<Record<string, unknown>>).find((r) => r.document_id === id)
+  }
+
+  test("links on #<number> and records the order number, with its own basis", async () => {
+    const before = imported()
+    const { ctx, db, calls } = makeCtx({
+      docs: [before],
+      orders: { "#1001": [hit("#1001", "5550001", "buyer@example.test")] },
+    })
+    const res = await linkShopifyOrders(ctx, { dry_run: false })
+    const r = rowOf(res, "imp-1")
+    expect(r?.outcome).toBe("linked")
+    expect(r?.basis).toBe("number_as_order_name")
+    expect(r?.order_name).toBe("#1001")
+    expect(calls.find((c) => c.target === "shopify:orders_search")?.args.query).toBe("name:#1001")
+    const after = row(db, "imp-1")
+    expect(after.shopify_order_id).toBe("5550001")
+    expect(after.shopify_order_number).toBe("#1001")
+    for (const k of [
+      "number",
+      "status",
+      "counterparty_email",
+      "total_ttc",
+      "lines",
+      "legal_original_id",
+    ]) {
+      expect(after[k]).toEqual(before[k])
+    }
+    const log = after.lifecycle_log as Array<Record<string, unknown>>
+    expect(log[log.length - 1]?.basis).toBe("number_as_order_name")
+  })
+
+  test("a document with an order number keeps the order_number basis", async () => {
+    const { ctx } = makeCtx({
+      docs: [legacyDoc()],
+      orders: { "#1001": [hit("#1001", "5550001", "buyer@example.test")] },
+    })
+    const res = await linkShopifyOrders(ctx, {})
+    expect(rowOf(res, "doc-1")?.basis).toBe("order_number")
+  })
+
+  test("every safety check still applies on the number basis", async () => {
+    const { ctx, db } = makeCtx({
+      docs: [
+        imported(),
+        imported({ id: "imp-2", number: "1002" }),
+        imported({ id: "imp-3", number: "1003" }),
+      ],
+      orders: {
+        "#1001": [hit("#1001", "5550001", "someone-else@example.test")],
+        "#1002": [
+          hit("#1002", "5550002", "buyer@example.test"),
+          hit("#1002", "5550003", "buyer@example.test"),
+        ],
+      },
+    })
+    const res = await linkShopifyOrders(ctx, { dry_run: false })
+    expect(outcomeOf(res, "imp-1")).toBe("email_mismatch")
+    expect(outcomeOf(res, "imp-2")).toBe("order_ambiguous")
+    expect(outcomeOf(res, "imp-3")).toBe("order_not_found")
+    for (const id of ["imp-1", "imp-2", "imp-3"]) {
+      expect(row(db, id).shopify_order_id).toBeNull()
+      expect(row(db, id).shopify_order_number).toBeNull()
+    }
+  })
+
+  test("a non-numeric imported number is reported not_eligible, never searched", async () => {
+    const { ctx, calls } = makeCtx({
+      docs: [
+        imported({ id: "imp-a", number: "Repair 12" }),
+        imported({ id: "imp-b", number: "CREDIT-4" }),
+        imported({ id: "imp-c", number: "1001 - Partial 1 of 2" }),
+        imported({ id: "imp-d", number: "1001-2" }),
+      ],
+      orders: { "#1001": [hit("#1001", "5550001", "buyer@example.test")] },
+    })
+    const res = await linkShopifyOrders(ctx, { dry_run: false })
+    for (const id of ["imp-a", "imp-b", "imp-c", "imp-d"]) {
+      expect(outcomeOf(res, id)).toBe("not_eligible")
+    }
+    expect(calls.filter((c) => c.target === "shopify:orders_search")).toHaveLength(0)
+  })
+
+  test("only an imported document with a legal original may use its number", async () => {
+    const { ctx, calls } = makeCtx({
+      docs: [
+        // An invoice numbered by this app, not imported.
+        imported({ id: "own-1", external_refs: {} }),
+        // Imported, but its legal original is not recorded yet.
+        imported({ id: "imp-x", legal_original_id: null }),
+      ],
+      orders: { "#1001": [hit("#1001", "5550001", "buyer@example.test")] },
+    })
+    const res = await linkShopifyOrders(ctx, { dry_run: false })
+    expect(res.results).toEqual([])
+    expect(calls).toHaveLength(0)
+  })
+})

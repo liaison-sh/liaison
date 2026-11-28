@@ -169,8 +169,11 @@ fn a_correctly_signed_build_is_fetched_kept_by_hash_and_pointed_at() {
 fn assert_refused(f: &Fixture, fake: &Fake, trust: Trust<'_>, refusal: Refusal) {
     let before = f.store.pointer(SERVER);
     assert_eq!(refresh_with(f, fake, trust), Err(refusal));
+    // Only the refusal itself is noted (the reason a window with no kept
+    // build runs bundled); the builds it points at do not move.
     let after = Pointer {
         served_shell: before.served_shell.or(Some(true)),
+        refused: Some(refusal.code().to_string()),
         ..before
     };
     assert_eq!(
@@ -1443,5 +1446,31 @@ fn the_start_read_runs_its_deadline_inside_the_runtime() {
             tokio::time::sleep(Duration::from_secs(5)).await;
         }),
         None
+    );
+}
+
+// Walk W4 (2026-11-28): a server whose build has no statement was reported
+// `shell=bundled:no_build`, hiding why. The refusal of the server's build is
+// kept on its pointer and named by the selection until a build is accepted.
+#[test]
+fn a_refused_first_build_is_the_reason_the_window_runs_bundled() {
+    let f = fixture("refused-reason");
+    let mut fake = Fake::serving(&f, &statement_value(&f.key, &f.files));
+    let statement = format!("{DL}/shell/desktop/{BUILD}/statement.json");
+    let kept = fake.answers.remove(&statement).unwrap();
+    assert_eq!(
+        refresh_with(&f, &fake, trust(&f.key)),
+        Err(Refusal::NoStatement)
+    );
+    match select(&f.store, SERVER, &local(&f.key)) {
+        Active::Bundled(reason) => assert_eq!(reason, "no_statement"),
+        Active::Served(_) => panic!("served a refused build"),
+    }
+    fake.answers.insert(statement, kept);
+    refresh_with(&f, &fake, trust(&f.key)).unwrap();
+    assert_eq!(f.store.pointer(SERVER).refused, None);
+    assert_eq!(
+        select(&f.store, SERVER, &local(&f.key)).build_id(),
+        Some(BUILD)
     );
 }

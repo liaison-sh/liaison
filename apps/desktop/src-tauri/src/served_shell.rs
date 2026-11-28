@@ -495,6 +495,10 @@ pub struct Pointer {
     pub quarantined: Vec<String>,
     pub misses: BTreeMap<String, u32>,
     pub served_shell: Option<bool>,
+    /// Why the server's build was last refused while no build of it is
+    /// kept (`shell=bundled:<reason>`); cleared when a build is accepted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refused: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -929,7 +933,7 @@ pub fn select(store: &ShellStore, address: &str, local: &Local<'_>) -> Active {
         return Active::Bundled("server_off".into());
     }
     let Some(current) = pointer.current.clone() else {
-        return Active::Bundled("no_build".into());
+        return Active::Bundled(pointer.refused.unwrap_or_else(|| "no_build".into()));
     };
     if !local.revocations_fresh {
         return Active::Bundled(Refusal::RevocationsStale.code().into());
@@ -1363,13 +1367,28 @@ pub async fn refresh_pointer<F: Fetcher>(
     if pointer.quarantined.contains(&build_id) {
         return Ok(pointer);
     }
-    let trust = trust.ok_or(Refusal::RevocationsStale)?;
+    // A refusal is kept on the pointer: with no build kept, it is the reason
+    // the window runs bundled (`shell=bundled:<reason>`).
+    let note_refusal = |refusal: Refusal| {
+        let _ = store.update_pointer(server, |pointer| {
+            let code = Some(refusal.code().to_string());
+            let changed = pointer.refused != code;
+            pointer.refused = code;
+            changed
+        });
+        refusal
+    };
+    let trust = trust
+        .ok_or(Refusal::RevocationsStale)
+        .map_err(note_refusal)?;
     let stored_ok = pointer.current.as_deref() == Some(build_id.as_str())
         && load_build(store, &build_id, trust).is_ok();
     if stored_ok {
         return Ok(pointer);
     }
-    fetch_build(fetcher, store, downloads, server, &build_id, trust).await?;
+    fetch_build(fetcher, store, downloads, server, &build_id, trust)
+        .await
+        .map_err(note_refusal)?;
     // The fetch took a while: the pointer is read again and only `current`
     // and this build's misses move, so a quarantine or a last good build
     // recorded meanwhile is kept (review P6 #4).
@@ -1380,6 +1399,7 @@ pub async fn refresh_pointer<F: Fetcher>(
             }
             pointer.current = Some(build_id.clone());
             pointer.misses.remove(&build_id);
+            pointer.refused = None;
             true
         })
         .map_err(|_| Refusal::Cache)?;

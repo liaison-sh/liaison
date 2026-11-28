@@ -447,6 +447,47 @@ describe("onSaleEvent", () => {
     expect(await docs(db)).toEqual([])
   })
 
+  test("an inclusive line issues with the source's own tax, so the invoice totals what was paid", async () => {
+    // Paid 0.99 including 20 %: Stripe's tax 0.17, net 0.82. 0.82 at 20 % recomputes to 0.16
+    // (0.98 in all), and no net in cents gives 0.99: the tax charged is the line's tax.
+    const { ctx, db } = makeCtx({
+      streams: [stream()],
+      sales: {
+        "hubshop:pi_1": sale({
+          buyer: {
+            email: "a@example.fr",
+            name: "Alice",
+            kind: "individual",
+            billing: { country: "FR" },
+            tax_evidence: { billing_country: "FR", card_country: "FR" },
+          },
+          lines: [
+            {
+              description: "Preset",
+              quantity: "1",
+              unit_price_minor: "825",
+              discount_minor: "743",
+              kind: "service",
+              tax: { rate_bp: 2000, amount_minor: "17", reported_by_source: true },
+            },
+          ],
+          totals: { total_minor: "99", subtotal_minor: "82", tax_minor: "17" },
+        }),
+      },
+    })
+    expect((await onSaleEvent(event("hubshop", "pi_1"), ctx)).status).toBe("ok")
+    const [doc] = await docs(db)
+    expect(doc).toMatchObject({
+      subtotal_minor: "82",
+      tax_total_minor: "17",
+      grand_total_minor: "99",
+    })
+    const lines = (await db.findMany("document_lines", { limit: 5 })) as Array<
+      Record<string, unknown>
+    >
+    expect(lines[0]).toMatchObject({ tax_rate_bp: 2000, tax_minor: "17", total_minor: "99" })
+  })
+
   test("a review stream asks a person; the approval re-reads the sale and issues it", async () => {
     const s = { "hubshop:pi_1": sale() }
     const first = makeCtx({ streams: [stream({ mode: "review" })], sales: s })

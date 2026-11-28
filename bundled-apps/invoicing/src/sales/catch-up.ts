@@ -24,7 +24,11 @@ import {
   saleProblems,
 } from "@liaison/app-sdk/contracts"
 import { cachedRate, type FxFetchCtx, fetchEcbRate } from "../einvoicing/fx"
-import { findIssuerById, streamRateMismatches } from "../handlers/shopify-order-paid"
+import {
+  findIssuerById,
+  streamLineSourceTax,
+  streamRateMismatches,
+} from "../handlers/shopify-order-paid"
 import { counterpartyCompletenessError } from "../issue"
 import { lineSubtotal, lineTax } from "../money"
 import type { MutationsCtx } from "../mutations/shared"
@@ -149,7 +153,8 @@ async function previewOne(
     const rate =
       typeof li.tax_rate_bp === "number" ? li.tax_rate_bp : classification.default_rate_bp
     net += sub
-    computedTax += lineTax({ subtotal_minor: sub, tax_rate_bp: rate })
+    // As the issue does: the line's own tax when within a unit of its rate (streamLineSourceTax).
+    computedTax += streamLineSourceTax(li) ?? lineTax({ subtotal_minor: sub, tax_rate_bp: rate })
     reportedTax += BigInt(String(li.shopify_tax_minor ?? "0"))
   }
   const blockers: string[] = []

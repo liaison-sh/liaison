@@ -48,7 +48,14 @@ import {
 } from "../issue"
 import { civilDateOf, type IssueDateParts, issueDateParts } from "../issue-date"
 import { deliveryFileId } from "../legal-originals/delivery"
-import { formatMoneyMinor, lineSubtotal, lineTax, majorDecimalToMinor, netOfTax } from "../money"
+import {
+  formatMoneyMinor,
+  lineSubtotal,
+  lineTax,
+  majorDecimalToMinor,
+  netOfTax,
+  sourceLineTax,
+} from "../money"
 import { isFullyCredited } from "../mutations"
 import { isUniqueViolation } from "../mutations/quote-proforma-po"
 import { supplyDateOf } from "../sale-tax"
@@ -373,6 +380,7 @@ function toBigIntMinor(v: bigint | number | string | null | undefined): bigint {
 function computeInvoiceTotal(
   lineItems: OrderPaidPayload["line_items"],
   defaultTaxRateBp: number,
+  withSourceTax = false,
 ): bigint {
   let grand = 0n
   for (const li of lineItems) {
@@ -382,9 +390,28 @@ function computeInvoiceTotal(
         unit_price_minor: toBigIntMinor(li.unit_price_minor),
       }) - toBigIntMinor(li.discount_minor)
     const rate = typeof li.tax_rate_bp === "number" ? li.tax_rate_bp : defaultTaxRateBp
-    grand += subtotal + lineTax({ subtotal_minor: subtotal, tax_rate_bp: rate })
+    const source = withSourceTax ? streamLineSourceTax(li) : null
+    grand += subtotal + (source ?? lineTax({ subtotal_minor: subtotal, tax_rate_bp: rate }))
   }
   return grand
+}
+
+/**
+ * A revenue-stream sale line's own tax (`sourceLineTax`): the tax its source charged at the
+ * line's rate, when it is within one unit of the line at that rate. The invoice then carries it,
+ * so a tax-inclusive sale totals exactly what was paid. The shop's orders keep the computed tax.
+ */
+export function streamLineSourceTax(li: OrderPaidPayload["line_items"][number]): bigint | null {
+  if (
+    typeof li.tax_rate_bp !== "number" ||
+    li.shopify_tax_minor == null ||
+    li.shopify_tax_minor === ""
+  )
+    return null
+  const subtotal =
+    lineSubtotal({ quantity: li.quantity, unit_price_minor: toBigIntMinor(li.unit_price_minor) }) -
+    toBigIntMinor(li.discount_minor)
+  return sourceLineTax(subtotal, li.tax_rate_bp, toBigIntMinor(li.shopify_tax_minor))
 }
 
 export interface ShopifyTaxMismatch {
@@ -1077,6 +1104,11 @@ export async function issueOrderFlow(
   const soldAt = src ? src.documentRefs.sold_at : null
   const supplyDate =
     typeof soldAt === "string" && soldAt !== "" ? await supplyDateOf(ctx, issuer, soldAt) : null
+  // A stream sale's lines carry their source's own tax (streamLineSourceTax), unless a person
+  // decided the tax (`tax_override`): the invoice then totals exactly what the buyer paid.
+  const useSourceTax = !!src && !payload.tax_override
+  const sourceTaxOf = (li: OrderPaidPayload["line_items"][number]) =>
+    useSourceTax ? streamLineSourceTax(li) : null
   const buildIssueInput = (
     scope: "goods" | "software",
     items: OrderPaidPayload["line_items"],
@@ -1141,6 +1173,7 @@ export async function issueOrderFlow(
         discount_minor: toBigIntMinor(li.discount_minor),
         line_kind: li.line_kind ?? "goods",
         ...(typeof li.tax_rate_bp === "number" ? { tax_rate_bp_override: li.tax_rate_bp } : {}),
+        ...(sourceTaxOf(li) != null ? { tax_minor_source: sourceTaxOf(li) as bigint } : {}),
         // Shipping lines carry no product reference — never a shippable product
         // for boxtal, never a customs overlay key.
         product_source: src || li.line_kind === "shipping" ? null : "shopify",
@@ -1265,7 +1298,11 @@ export async function issueOrderFlow(
   // Step 9 — the invoice's total against the source's. A revenue-stream sale's invoice must total
   // exactly what the buyer paid (the lines were read from the source just now): a single minor
   // unit of difference refuses it, so a person looks. The shop's orders keep their own checks.
-  const invoiceTotal = computeInvoiceTotal(payload.line_items, classification.default_rate_bp)
+  const invoiceTotal = computeInvoiceTotal(
+    payload.line_items,
+    classification.default_rate_bp,
+    useSourceTax,
+  )
   if (src && !payload.tax_override && invoiceTotal !== toBigIntMinor(payload.total_price_minor)) {
     return parkForTaxReview(ctx, parkPayload, orderNumber, src, {
       status: "awaiting_data",

@@ -59,7 +59,7 @@ import { FacturxBuildError, type FacturxInput } from "./facturx/cii"
 import { facturxEligible, facturxInputFrom } from "./facturx/input"
 import { DEFAULT_ZONE, issuerTimezoneUnset, type TimeSurface } from "./issue-date"
 import { hasLegalOriginal, recordLegalOriginal } from "./legal-originals/record"
-import { documentRollup, lineAmounts } from "./money"
+import { documentRollup, lineAmounts, sourceLineTax } from "./money"
 import { numberingSequence } from "./numbering"
 import { dueOn, paymentTermsOf } from "./payment-terms"
 import type { PlaceOfSupply } from "./sale-tax"
@@ -323,6 +323,12 @@ export interface DraftLine {
    * classifier. Reverse-charge and zero-tax lines pass `0` here.
    */
   tax_rate_bp_override?: number
+  /**
+   * The tax the line's source charged (a sale's own tax amount, `sourceLineTax`): the line's tax
+   * as charged when it is within one minor unit of the line at its rate, so a tax-inclusive sale
+   * invoices exactly what was paid. Further off, the issue is refused (the caller checks first).
+   */
+  tax_minor_source?: bigint
   /** Inline customs facts (export lines). An explicit value wins over the product overlay at issue. */
   hs_code?: string | null
   customs_description?: string | null
@@ -1544,6 +1550,8 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   // discoverable `customs_fetch_failed` lifecycle entries below so a rate-limit
   // or upstream error is never silently swallowed into "no customs".
   const customsFetchFailures: CustomsFetchFailure[] = []
+  // The lines whose tax is their source's own (`tax_minor_source`): the rollup sums it as is.
+  const fixedTaxLines = new Set<number>()
   for (const [lineIndex, dl] of draft.lines.entries()) {
     const lineKind: LineKind = dl.line_kind ?? "goods"
     // Inline customs facts win — the agent can assign HS code / origin / goods description directly on
@@ -1562,10 +1570,22 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     const discount_minor = dl.discount_minor ?? 0n
     // Discount is subtracted from the line subtotal and rendered explicitly on
     // the document — never folded into the unit price.
-    const { subtotal_minor, tax_minor, total_minor } = lineAmounts(
+    const computed = lineAmounts(
       { quantity: dl.quantity, unit_price_minor: dl.unit_price_minor, discount_minor },
       tax_rate_bp,
     )
+    const { subtotal_minor } = computed
+    let { tax_minor, total_minor } = computed
+    if (dl.tax_minor_source != null) {
+      const fixed = sourceLineTax(subtotal_minor, tax_rate_bp, dl.tax_minor_source)
+      if (fixed == null)
+        throw new Error(
+          `line "${dl.description}": the source's tax ${dl.tax_minor_source} is not the line's at ${tax_rate_bp} bp`,
+        )
+      tax_minor = fixed
+      total_minor = subtotal_minor + fixed
+      fixedTaxLines.add(snapshotLines.length)
+    }
     snapshotLines.push({
       // Agent create-and-issue items carry no `position` (only DB-loaded draft lines do); fall back
       // to the loop index so the NOT-NULL `document_lines.position` is always set (was: a null
@@ -1589,7 +1609,11 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   }
 
   // 3) Money rollup via D5.
-  const rollup = documentRollup(snapshotLines)
+  const rollup = documentRollup(
+    snapshotLines.map((l, i) =>
+      fixedTaxLines.has(i) ? { ...l, tax_minor_fixed: l.tax_minor } : l,
+    ),
+  )
   const expected = input.expected_total_minor
   if (expected !== undefined && expected !== null && expected !== "") {
     if (BigInt(expected) !== rollup.grand_total_minor)

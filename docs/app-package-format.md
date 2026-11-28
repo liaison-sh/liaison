@@ -493,7 +493,8 @@ The same key signs builds of the web app itself, so a desktop or phone app can
 run the build its server ships instead of the one compiled into it. A server
 image carries two builds: the desktop build at `/` and the native build (the
 one the phone apps wrap) under `/native/`. `GET /api/shell/info` names their
-build ids (the 16-hex `build-id.txt` of each), and `servedShell`, the server's
+build ids (the 16-hex `build-id.txt` of each, a hash of every file that build
+serves, the service worker and the app frame included), and `servedShell`, the server's
 switch for this (`LIAISON_SERVED_SHELL`, default `true`).
 
 For each build id there is one statement, published at

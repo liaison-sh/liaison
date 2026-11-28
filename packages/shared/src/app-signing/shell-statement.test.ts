@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import { utf8 } from "./encoding"
-import { parseRevocationList, type RevocationList, revocationBytes } from "./revocations"
+import {
+  parseRevocationList,
+  type RevocationList,
+  revocationBytes,
+  verifyRevocationList,
+} from "./revocations"
 import {
   parseShellStatement,
   type ShellStatement,
@@ -9,7 +14,7 @@ import {
   shellStatementBytes,
   verifyShellStatement,
 } from "./shell-statement"
-import { parseStatement, statementBytes } from "./statement"
+import { canonicalJson, parseStatement, statementBytes } from "./statement"
 import { createTestSigningKey } from "./testing"
 
 function shellStatement(keyId: string, over: Partial<ShellStatement> = {}): ShellStatement {
@@ -215,7 +220,7 @@ describe("shell revocation entries", () => {
     expect(parseRevocationList(revocationBytes(list))).toEqual(list)
   })
 
-  it("refuse a shell entry with a non-numeric floor, a version list, or an unknown mode", () => {
+  it("refuse a known mode's entry with a non-numeric floor or a version list", () => {
     const parse = (entry: unknown) =>
       parseRevocationList(
         utf8.encode(JSON.stringify({ v: 1, seq: 1, issuedAt: "x", entries: [entry] })),
@@ -224,7 +229,36 @@ describe("shell revocation entries", () => {
     expect(parse({ name: "shell:desktop", below: 12 })).toBeNull()
     expect(parse({ name: "shell:desktop", versions: ["1"] })).toBeNull()
     expect(parse({ name: "shell:desktop", below: "12", versions: ["1"] })).toBeNull()
-    expect(parse({ name: "shell:web", below: "12" })).toBeNull()
+  })
+
+  it("ignore a shell entry this release does not know, keeping the rest of the list", async () => {
+    // Forward compatible: a future mode (or a future floor shape) must not cost
+    // this release the app revocations and shell floors the same list carries.
+    const raw = {
+      v: 1,
+      seq: 3,
+      issuedAt: "2026-11-28T00:00:00.000Z",
+      entries: [
+        { name: "invoicing", below: "0.19.0" },
+        { name: "shell:web", below: "12" },
+        { name: "shell:tv", below: 12, extra: true },
+        { name: "shell:native", below: "1000" },
+      ],
+    }
+    const list = parseRevocationList(utf8.encode(JSON.stringify(raw)))
+    expect(list?.entries).toEqual([
+      { name: "invoicing", below: "0.19.0" },
+      { name: "shell:native", below: "1000" },
+    ])
+    // The signature covers the list as published, unknown entries included.
+    const key = await createTestSigningKey()
+    const bytes = utf8.encode(canonicalJson(raw))
+    const verified = await verifyRevocationList(bytes, await key.sign(bytes), [key.key])
+    expect(verified.ok).toBe(true)
+    if (verified.ok) expect(verified.list.entries).toHaveLength(2)
+    // Still strict elsewhere: a non-shell entry with an unknown key breaks the list.
+    raw.entries.push({ name: "invoicing", below: "1", extra: true } as never)
+    expect(parseRevocationList(utf8.encode(JSON.stringify(raw)))).toBeNull()
   })
 
   it("shellRevocationFor compares the seq numerically, per mode", () => {

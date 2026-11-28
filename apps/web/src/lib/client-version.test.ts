@@ -127,6 +127,35 @@ describe("the header on the page's requests", () => {
     expect(sentHeaders(fetchMock, 1)[CLIENT_HEADER]).toBe("desktop/0.1.35")
   })
 
+  it("a desktop shell names the shell it runs: served with its build, or bundled with why", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => policyResponse()),
+    )
+    const status = { served: true, buildId: "0123456789abcdef", reason: null, pending: false }
+    global[DESKTOP_BRIDGE_KEY] = {
+      version: 1,
+      appVersion: async () => "0.1.48",
+      shellStatus: async () => status,
+    }
+    await startClientPolicy()
+    expect(clientHeaders()).toEqual({
+      [CLIENT_HEADER]: "desktop/0.1.48 shell=served:0123456789abcdef",
+    })
+    global[DESKTOP_BRIDGE_KEY] = {
+      version: 1,
+      appVersion: async () => "0.1.48",
+      shellStatus: async () => ({
+        served: false,
+        buildId: null,
+        reason: "no_build",
+        pending: false,
+      }),
+    }
+    await startClientPolicy()
+    expect(clientHeaders()).toEqual({ [CLIENT_HEADER]: "desktop/0.1.48 shell=bundled:no_build" })
+  })
+
   it("a phone shell reports its own platform and version", async () => {
     global[NATIVE_BRIDGE_GLOBAL] = {
       clientVersion: async () => ({ platform: "ios", version: "1.0.36" }),

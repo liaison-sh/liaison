@@ -170,7 +170,9 @@ export async function ensureDocumentPdf(
   const legalMention = await documentLegalMention(
     ctx.db,
     classification.treatment,
-    issuer.default_language,
+    doc.language === "fr" || doc.language === "en" || doc.language === "de"
+      ? doc.language
+      : issuer.default_language,
     {
       category: (doc.operation_category as OperationCategory | null | undefined) ?? null,
       issueDate: dateOnly(doc.issued_at),

@@ -86,6 +86,22 @@ export interface DocumentData {
    *  mention on EVERY document type, line breaks preserved and long lines
    *  wrapped. Absent/blank renders nothing at all, never an empty label. */
   notes?: string | null
+  /** The language of the document face. Effective language: this, else the issuer's
+   *  default_language, else English. Every fixed label, date and amount on the face follows it;
+   *  data (descriptions, names, addresses, the legal mention) arrives already in it. */
+  language?: FaceLanguage | null
+  /** Foreign-currency document with VAT: the VAT total converted to EUR, printed under the
+   *  totals (CGI art. 242 nonies A). `rate` is EUR -> document currency as given, `rate_date`
+   *  YYYY-MM-DD, `tax_total_eur_minor` EUR cents as a decimal string (negative on a credit note). */
+  fx?: FxData | null
+}
+
+export type FaceLanguage = "en" | "fr" | "de"
+
+export interface FxData {
+  rate: string
+  rate_date: string
+  tax_total_eur_minor: string
 }
 
 export interface IssuerData {
@@ -105,6 +121,8 @@ export interface IssuerData {
   legal_form?: string | null
   share_capital?: string | null
   rcs_city?: string | null
+  /** SIRET of the issuing establishment (14 digits), printed in the footer as "SIRET 123 456 789 00012". */
+  siret?: string | null
 }
 
 export interface CounterpartyData {
@@ -238,12 +256,276 @@ export function formatQty(q: string): string {
   return q.replace(/\.?0+$/, "")
 }
 
-const TITLES: Record<DocumentType, string> = {
-  invoice: "INVOICE",
-  quote: "QUOTE",
-  proforma: "PROFORMA INVOICE",
-  purchase_order: "PURCHASE ORDER",
-  credit_note: "CREDIT NOTE",
+// ── Face language ────────────────────────────────────────────────────────
+//
+// Every fixed string drawn on the page comes from this one table. A French buyer gets a French
+// face (Loi Toubon); the data itself (descriptions, names, the legal mention) arrives already in
+// the right language and is never translated here.
+
+interface FaceLabels {
+  titles: Record<DocumentType, string>
+  from: string
+  billTo: string
+  vendor: string
+  shipTo: string
+  issued: string
+  dateOfSale: string
+  due: string
+  incoterm: string
+  operation: string
+  order: string
+  poNumber: string
+  customerRef: string
+  creditNoteFor: (number: string, date: string | null) => string
+  reason: string
+  colDescription: string
+  colQty: string
+  colUnitPrice: string
+  colTax: string
+  colAmountExclVat: string
+  colAmount: string
+  customsHs: string
+  customsOrigin: string
+  discount: string
+  subtotal: string
+  tax: string
+  total: string
+  totalDue: string
+  paidOn: (date: string) => string
+  paid: string
+  notes: string
+  paymentDetails: string
+  iban: string
+  swiftBic: string
+  bank: string
+  page: (n: number, total: number) => string
+  /** The party-block VAT id label, colon included ("VAT:", "TVA :"). */
+  vatIdLabel: string
+  /** The footer VAT id prefix, no colon ("VAT", "TVA"). */
+  vatIdFooter: string
+  shareCapital: (form: string, capital: string) => string
+  fxLine: (amount: string, date: string, rate: string, currency: string) => string
+  /** "Issued" + ":" in the face's typography ("Issued:", "Date d'émission :"). */
+  colon: (label: string) => string
+}
+
+const LABELS: Record<FaceLanguage, FaceLabels> = {
+  en: {
+    titles: {
+      invoice: "INVOICE",
+      quote: "QUOTE",
+      proforma: "PROFORMA INVOICE",
+      purchase_order: "PURCHASE ORDER",
+      credit_note: "CREDIT NOTE",
+    },
+    from: "FROM",
+    billTo: "BILL TO",
+    vendor: "VENDOR",
+    shipTo: "SHIP TO",
+    issued: "Issued",
+    dateOfSale: "Date of sale",
+    due: "Due",
+    incoterm: "Incoterm",
+    operation: "Operation",
+    order: "Order",
+    poNumber: "PO number",
+    customerRef: "Customer ref",
+    creditNoteFor: (n, d) => `Credit note for invoice ${n}${d ? ` of ${d}` : ""}`,
+    reason: "Reason",
+    colDescription: "Description",
+    colQty: "Qty",
+    colUnitPrice: "Unit price",
+    colTax: "Tax %",
+    colAmountExclVat: "Amount excl. VAT",
+    colAmount: "Amount",
+    customsHs: "HS",
+    customsOrigin: "Origin",
+    discount: "Discount",
+    subtotal: "Subtotal",
+    tax: "Tax",
+    total: "Total",
+    totalDue: "Total due",
+    paidOn: (d) => `Paid on ${d}`,
+    paid: "Paid",
+    notes: "Notes",
+    paymentDetails: "Payment details",
+    iban: "IBAN",
+    swiftBic: "SWIFT/BIC",
+    bank: "Bank",
+    page: (n, t) => `Page ${n} of ${t}`,
+    vatIdLabel: "VAT:",
+    vatIdFooter: "VAT",
+    shareCapital: (form, capital) =>
+      [form, capital ? `share capital ${capital}` : ""].filter(Boolean).join(", "),
+    fxLine: (amount, date, rate, cur) =>
+      `VAT in EUR: ${amount} (ECB rate of ${date}: 1 EUR = ${rate} ${cur})`,
+    colon: (label) => `${label}:`,
+  },
+  fr: {
+    titles: {
+      invoice: "FACTURE",
+      quote: "DEVIS",
+      proforma: "FACTURE PRO FORMA",
+      purchase_order: "BON DE COMMANDE",
+      credit_note: "AVOIR",
+    },
+    from: "ÉMETTEUR",
+    billTo: "CLIENT",
+    vendor: "FOURNISSEUR",
+    shipTo: "ADRESSE DE LIVRAISON",
+    issued: "Date d'émission",
+    dateOfSale: "Date de vente",
+    due: "Échéance",
+    incoterm: "Incoterm",
+    operation: "Opération",
+    order: "Commande",
+    poNumber: "N° de bon de commande",
+    customerRef: "Réf. client",
+    creditNoteFor: (n, d) => `Avoir sur la facture ${n}${d ? ` du ${d}` : ""}`,
+    reason: "Motif",
+    colDescription: "Désignation",
+    colQty: "Qté",
+    colUnitPrice: "Prix unitaire",
+    colTax: "TVA %",
+    colAmountExclVat: "Montant HT",
+    colAmount: "Montant",
+    customsHs: "SH",
+    customsOrigin: "Origine",
+    discount: "Remise",
+    subtotal: "Total HT",
+    tax: "TVA",
+    total: "Total",
+    totalDue: "Net à payer",
+    paidOn: (d) => `Réglé le ${d}`,
+    paid: "Réglé",
+    notes: "Notes",
+    paymentDetails: "Coordonnées bancaires",
+    iban: "IBAN",
+    swiftBic: "SWIFT/BIC",
+    bank: "Banque",
+    page: (n, t) => `Page ${n} sur ${t}`,
+    vatIdLabel: "TVA :",
+    vatIdFooter: "TVA",
+    shareCapital: (form, capital) =>
+      [form, capital ? `au capital de ${/[€]|eur/i.test(capital) ? capital : `${capital} €`}` : ""]
+        .filter(Boolean)
+        .join(" "),
+    fxLine: (amount, date, rate, cur) =>
+      `TVA en euros : ${amount} (taux BCE du ${date} : 1 EUR = ${rate} ${cur})`,
+    colon: (label) => `${label} :`,
+  },
+  de: {
+    titles: {
+      invoice: "RECHNUNG",
+      quote: "ANGEBOT",
+      proforma: "PROFORMA-RECHNUNG",
+      purchase_order: "BESTELLUNG",
+      credit_note: "GUTSCHRIFT",
+    },
+    from: "VON",
+    billTo: "AN",
+    vendor: "LIEFERANT",
+    shipTo: "LIEFERADRESSE",
+    issued: "Datum",
+    dateOfSale: "Leistungsdatum",
+    due: "Fällig",
+    incoterm: "Incoterm",
+    operation: "Vorgang",
+    order: "Bestellung",
+    poNumber: "Bestellnummer",
+    customerRef: "Kundenreferenz",
+    creditNoteFor: (n, d) => `Gutschrift zur Rechnung ${n}${d ? ` vom ${d}` : ""}`,
+    reason: "Grund",
+    colDescription: "Beschreibung",
+    colQty: "Menge",
+    colUnitPrice: "Einzelpreis",
+    colTax: "USt. %",
+    colAmountExclVat: "Netto",
+    colAmount: "Betrag",
+    customsHs: "HS",
+    customsOrigin: "Ursprung",
+    discount: "Rabatt",
+    subtotal: "Nettobetrag",
+    tax: "USt.",
+    total: "Gesamt",
+    totalDue: "Zu zahlen",
+    paidOn: (d) => `Bezahlt am ${d}`,
+    paid: "Bezahlt",
+    notes: "Anmerkungen",
+    paymentDetails: "Bankverbindung",
+    iban: "IBAN",
+    swiftBic: "SWIFT/BIC",
+    bank: "Bank",
+    page: (n, t) => `Seite ${n} von ${t}`,
+    vatIdLabel: "USt-IdNr.:",
+    vatIdFooter: "USt-IdNr.",
+    shareCapital: (form, capital) =>
+      [form, capital ? `Stammkapital ${capital}` : ""].filter(Boolean).join(", "),
+    fxLine: (amount, date, rate, cur) =>
+      `USt. in EUR: ${amount} (EZB-Kurs vom ${date}: 1 EUR = ${rate} ${cur})`,
+    colon: (label) => `${label}:`,
+  },
+}
+
+function isFaceLanguage(v: unknown): v is FaceLanguage {
+  return v === "en" || v === "fr" || v === "de"
+}
+
+/** document.language, else the issuer's default language, else English. */
+export function faceLanguage(input: DocumentRenderInput): FaceLanguage {
+  if (isFaceLanguage(input.document.language)) return input.document.language
+  if (isFaceLanguage(input.issuer.default_language)) return input.issuer.default_language
+  return "en"
+}
+
+/** A date on the face: en keeps YYYY-MM-DD, fr prints DD/MM/YYYY, de DD.MM.YYYY. */
+function faceDate(value: string, lang: FaceLanguage): string {
+  const iso = formatDateLike(value)
+  if (lang === "en") return iso
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  if (!m) return iso
+  return lang === "fr" ? `${m[3]}/${m[2]}/${m[1]}` : `${m[3]}.${m[2]}.${m[1]}`
+}
+
+/** The number part of an amount, no currency: "1234.56" (en), "1 234,56" (fr), "1.234,56" (de). */
+function faceAmount(minor: bigint | string | number, currency: string, lang: FaceLanguage): string {
+  if (lang === "en") return formatMoney(minor, currency).replace(` ${currency}`, "")
+  const m = typeof minor === "bigint" ? minor : BigInt(minor)
+  const negative = m < 0n
+  const abs = negative ? -m : m
+  const exp = currencyExponent(currency)
+  const scale = 10n ** BigInt(exp)
+  const thousands = lang === "fr" ? " " : "."
+  const major = (abs / scale).toString().replace(/\B(?=(\d{3})+(?!\d))/g, thousands)
+  const cents = exp === 0 ? "" : `,${(abs % scale).toString().padStart(exp, "0")}`
+  return `${negative ? "-" : ""}${major}${cents}`
+}
+
+/** An amount with its currency: "1234.56 EUR" (en, unchanged), "1 234,56 €" (fr), "1.234,56 €" (de). */
+function faceMoney(minor: bigint | string | number, currency: string, lang: FaceLanguage): string {
+  if (lang === "en") return formatMoney(minor, currency)
+  const unit = currency.toUpperCase() === "EUR" ? "€" : currency
+  return `${faceAmount(minor, currency, lang)} ${unit}`
+}
+
+/** A plain decimal (a rate, a quantity) with a comma decimal on fr/de. */
+function faceDecimal(value: string, lang: FaceLanguage): string {
+  return lang === "en" ? value : value.replace(".", ",")
+}
+
+/** "20.00%" (en, unchanged), "20,00 %" (fr), "20,00 %" (de). */
+function facePercent(bp: number, lang: FaceLanguage): string {
+  const v = (bp / 100).toFixed(2)
+  return lang === "en" ? `${v}%` : `${faceDecimal(v, lang)} %`
+}
+
+/** A 9-digit SIREN as "123 456 789", a 14-digit SIRET as "123 456 789 00012"; anything else as given. */
+function groupFrenchId(value: string): string {
+  const digits = value.replace(/\s+/g, "")
+  if (/^\d{9}$/.test(digits)) return digits.replace(/^(\d{3})(\d{3})(\d{3})$/, "$1 $2 $3")
+  if (/^\d{14}$/.test(digits))
+    return digits.replace(/^(\d{3})(\d{3})(\d{3})(\d{5})$/, "$1 $2 $3 $4")
+  return value.trim()
 }
 
 const PAGE_WIDTH = 595 // A4
@@ -693,6 +975,9 @@ interface LayoutState {
   /** False on an exempt document that carries no tax: the "Tax %" column and the Tax totals row
    *  are left out entirely (see `showsTaxColumns`). */
   showTax: boolean
+  /** The face language and its labels (see `faceLanguage`). */
+  lang: FaceLanguage
+  L: FaceLabels
 }
 
 function draw(
@@ -811,27 +1096,27 @@ function drawTableHeader(state: LayoutState): void {
   const ctx = ctxOf(state)
   const labelY = headerTop - 13
   draw(ctx, "#", { x: TABLE_COLS.index.x, y: labelY, size: 8.5, bold: true, color: GRAY_DARK })
-  draw(ctx, "Description", {
+  draw(ctx, state.L.colDescription, {
     x: TABLE_COLS.description.x,
     y: labelY,
     size: 8.5,
     bold: true,
     color: GRAY_DARK,
   })
-  drawRight(ctx, "Qty", TABLE_COLS.qty.rightX, {
+  drawRight(ctx, state.L.colQty, TABLE_COLS.qty.rightX, {
     y: labelY,
     size: 8.5,
     bold: true,
     color: GRAY_DARK,
   })
-  drawRight(ctx, "Unit price", TABLE_COLS.unitPrice.rightX, {
+  drawRight(ctx, state.L.colUnitPrice, TABLE_COLS.unitPrice.rightX, {
     y: labelY,
     size: 8.5,
     bold: true,
     color: GRAY_DARK,
   })
   if (state.showTax) {
-    drawRight(ctx, "Tax %", TABLE_COLS.taxPct.rightX, {
+    drawRight(ctx, state.L.colTax, TABLE_COLS.taxPct.rightX, {
       y: labelY,
       size: 8.5,
       bold: true,
@@ -839,12 +1124,17 @@ function drawTableHeader(state: LayoutState): void {
     })
   }
   // The column holds each line excluding VAT; the VAT is in the totals below.
-  drawRight(ctx, state.showTax ? "Amount excl. VAT" : "Amount", TABLE_COLS.amount.rightX, {
-    y: labelY,
-    size: 8.5,
-    bold: true,
-    color: GRAY_DARK,
-  })
+  drawRight(
+    ctx,
+    state.showTax ? state.L.colAmountExclVat : state.L.colAmount,
+    TABLE_COLS.amount.rightX,
+    {
+      y: labelY,
+      size: 8.5,
+      bold: true,
+      color: GRAY_DARK,
+    },
+  )
   state.cursor.y = headerTop - 18 - 8
 }
 
@@ -885,7 +1175,9 @@ function drawWrappedParagraph(
  */
 export function renderDocument(input: DocumentRenderInput): DrawCommand[] {
   const pdf = new PdfBuilder()
-  const title = TITLES[input.document.type]
+  const lang = faceLanguage(input)
+  const L = LABELS[lang]
+  const title = L.titles[input.document.type]
   pdf.setMetadata({ title, producer: "Liaison Invoicing", creator: "Liaison Invoicing" })
 
   const font = pdf.embedFont("Helvetica")
@@ -909,6 +1201,8 @@ export function renderDocument(input: DocumentRenderInput): DrawCommand[] {
     pages: [firstPage],
     imageRef,
     showTax: showsTaxColumns(input),
+    lang,
+    L,
   }
 
   drawHeader(state, input)
@@ -949,7 +1243,8 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
   }
 
   // Right-aligned title block.
-  const titleText = TITLES[input.document.type]
+  const { L, lang } = state
+  const titleText = L.titles[input.document.type]
   let ry = top - 8
   const ctx1 = ctxOf(state)
   drawRight(ctx1, titleText, rightX, { y: ry, size: 20, bold: true, color: GRAY_DARK })
@@ -958,42 +1253,42 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
   drawRight(ctx2, input.document.number, rightX, { y: ry, size: 10.5, color: GRAY_LABEL })
   ry -= 18
 
-  const metaLines: Array<[string, string]> = [["Issued", formatDateLike(input.document.issued_at)]]
+  const metaLines: Array<[string, string]> = [[L.issued, faceDate(input.document.issued_at, lang)]]
   const supplyDate = input.document.supply_date?.trim()
   if (
     input.document.type === "invoice" &&
     supplyDate &&
     supplyDate.slice(0, 10) !== String(input.document.issued_at ?? "").slice(0, 10)
   ) {
-    metaLines.push(["Date of sale", formatDateLike(supplyDate)])
+    metaLines.push([L.dateOfSale, faceDate(supplyDate, lang)])
   }
-  if (input.document.due_at) metaLines.push(["Due", formatDateLike(input.document.due_at)])
+  if (input.document.due_at) metaLines.push([L.due, faceDate(input.document.due_at, lang)])
   // An Incoterm says who carries goods: a document of services alone has none.
   if (input.document.operation_category !== "services") {
-    metaLines.push(["Incoterm", input.document.incoterm])
+    metaLines.push([L.incoterm, input.document.incoterm])
   }
   // Store order reference — sits in the meta block next to the document number so
   // a reader can go from invoice to order (and back) without opening the admin.
   const operation = input.document.operation_label?.trim()
-  if (operation) metaLines.push(["Operation", operation])
+  if (operation) metaLines.push([L.operation, operation])
   const orderNumber = input.document.shopify_order_number?.trim()
-  if (orderNumber) metaLines.push(["Order", orderNumber])
+  if (orderNumber) metaLines.push([L.order, orderNumber])
   // Customer's purchase order reference — sits directly under the Order line.
   // Not meaningful on a purchase_order document (this document already IS a
   // purchase order), so it is deliberately excluded there even if carried.
   const poNumber =
     input.document.type !== "purchase_order" ? input.document.po_number?.trim() : undefined
-  if (poNumber) metaLines.push(["PO number", poNumber])
+  if (poNumber) metaLines.push([L.poNumber, poNumber])
   // The issuer's own reference for the customer (a CRM record id), so the PDF can be matched to
   // the customer's record in that other system.
   const customerRef = input.document.customer_reference?.trim()
-  if (customerRef) metaLines.push(["Customer ref", customerRef])
+  if (customerRef) metaLines.push([L.customerRef, customerRef])
   for (const [label, value] of metaLines) {
     const ctxLabel = ctxOf(state)
     // Labels share a column 70 pt left of the margin; a value wider than that pushes its own
     // label left so the two never run into each other ("Provision of services").
     const labelRight = Math.min(rightX - 70, rightX - textWidth(value, 8.5) - 6)
-    drawRight(ctxLabel, `${label}:`, labelRight, { y: ry, size: 8.5, color: GRAY_LABEL })
+    drawRight(ctxLabel, L.colon(label), labelRight, { y: ry, size: 8.5, color: GRAY_LABEL })
     const ctxVal = ctxOf(state)
     drawRight(ctxVal, value, rightX, { y: ry, size: 8.5, color: GRAY_DARK })
     ry -= 13
@@ -1006,11 +1301,12 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
     const ctxRef = ctxOf(state)
     drawRight(
       ctxRef,
-      `Credit note for invoice ${input.document.original_invoice_number}${
+      L.creditNoteFor(
+        input.document.original_invoice_number,
         input.document.original_invoice_date
-          ? ` of ${formatDateLike(input.document.original_invoice_date)}`
-          : ""
-      }`,
+          ? faceDate(input.document.original_invoice_date, lang)
+          : null,
+      ),
       rightX,
       {
         y: ry,
@@ -1022,7 +1318,7 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
     ry -= 13
     if (input.document.reason) {
       const ctxReason = ctxOf(state)
-      drawRight(ctxReason, `Reason: ${input.document.reason}`, rightX, {
+      drawRight(ctxReason, `${L.colon(L.reason)} ${input.document.reason}`, rightX, {
         y: ry,
         size: 8.5,
         color: GRAY_LABEL,
@@ -1086,8 +1382,9 @@ function drawParties(state: LayoutState, input: DocumentRenderInput): void {
   const rightColWidth = PAGE_WIDTH - MARGIN_X - rightX
 
   const isPO = input.document.type === "purchase_order"
-  const fromLabel = "FROM"
-  const toLabel = isPO ? "VENDOR" : "BILL TO"
+  const { L } = state
+  const fromLabel = L.from
+  const toLabel = isPO ? L.vendor : L.billTo
 
   const drawParty = (
     x: number,
@@ -1138,7 +1435,7 @@ function drawParties(state: LayoutState, input: DocumentRenderInput): void {
     }
     if (party.vat_id) {
       const c2: DrawCtx = { ...ctxLabel, cursor: { y } }
-      draw(c2, `VAT: ${party.vat_id}`, { x, y, size: 9, color: GRAY_MUTED })
+      draw(c2, `${L.vatIdLabel} ${party.vat_id}`, { x, y, size: 9, color: GRAY_MUTED })
       y -= 12
     }
     if (party.siren) {
@@ -1168,7 +1465,7 @@ function drawParties(state: LayoutState, input: DocumentRenderInput): void {
     vat_id: input.issuer.vat_id,
     address: input.issuer.address,
     siren: input.issuer.siren?.trim() || null,
-    identity: legalFormCapital(input.issuer),
+    identity: legalFormCapital(input.issuer, state.lang),
   })
   const rightEnd = drawParty(rightX, rightColWidth, toLabel, {
     legal_name: input.counterparty.legal_name,
@@ -1184,7 +1481,7 @@ function drawParties(state: LayoutState, input: DocumentRenderInput): void {
     ? drawParty(
         rightX,
         rightColWidth,
-        "SHIP TO",
+        L.shipTo,
         {
           legal_name: input.counterparty.shipping_name?.trim() || input.counterparty.legal_name,
           address: shipAddress,
@@ -1216,6 +1513,8 @@ function toBigIntLoose(v: bigint | string | number | null | undefined): bigint {
 
 function drawItemsTable(state: LayoutState, input: DocumentRenderInput): void {
   drawTableHeader(state)
+  const { L, lang } = state
+  const currency = input.document.currency
 
   for (const line of input.line_items) {
     const wrapped = wrapText(line.description, TABLE_COLS.description.width, 9)
@@ -1223,8 +1522,8 @@ function drawItemsTable(state: LayoutState, input: DocumentRenderInput): void {
     const customsLines = hasCustoms
       ? wrapText(
           [
-            line.hs_code ? `HS ${line.hs_code}` : "",
-            line.country_of_origin ? `Origin ${line.country_of_origin}` : "",
+            line.hs_code ? `${L.customsHs} ${line.hs_code}` : "",
+            line.country_of_origin ? `${L.customsOrigin} ${line.country_of_origin}` : "",
             line.customs_description ?? "",
           ]
             .filter(Boolean)
@@ -1253,31 +1552,26 @@ function drawItemsTable(state: LayoutState, input: DocumentRenderInput): void {
       cursor: { y: rowTopY },
     }
     draw(ctxIndex, String(line.position), { x: TABLE_COLS.index.x, y: rowTopY, size: 9 })
-    drawRight(ctxIndex, formatQty(line.quantity), TABLE_COLS.qty.rightX, { y: rowTopY, size: 9 })
+    drawRight(ctxIndex, faceDecimal(formatQty(line.quantity), lang), TABLE_COLS.qty.rightX, {
+      y: rowTopY,
+      size: 9,
+    })
     drawRight(
       ctxIndex,
-      formatMoney(line.unit_price_minor, input.document.currency).replace(
-        ` ${input.document.currency}`,
-        "",
-      ),
+      faceAmount(line.unit_price_minor, currency, lang),
       TABLE_COLS.unitPrice.rightX,
       { y: rowTopY, size: 9 },
     )
     if (state.showTax) {
-      drawRight(ctxIndex, `${(line.tax_rate_bp / 100).toFixed(2)}%`, TABLE_COLS.taxPct.rightX, {
+      drawRight(ctxIndex, facePercent(line.tax_rate_bp, lang), TABLE_COLS.taxPct.rightX, {
         y: rowTopY,
         size: 9,
       })
     }
-    drawRight(
-      ctxIndex,
-      formatMoney(line.subtotal_minor, input.document.currency).replace(
-        ` ${input.document.currency}`,
-        "",
-      ),
-      TABLE_COLS.amount.rightX,
-      { y: rowTopY, size: 9 },
-    )
+    drawRight(ctxIndex, faceAmount(line.subtotal_minor, currency, lang), TABLE_COLS.amount.rightX, {
+      y: rowTopY,
+      size: 9,
+    })
     // First description line, drawn at the row's top (same page reserved above).
     if (wrapped[0] !== undefined) {
       draw(ctxIndex, wrapped[0], { x: TABLE_COLS.description.x, y: rowTopY, size: 9 })
@@ -1302,14 +1596,13 @@ function drawItemsTable(state: LayoutState, input: DocumentRenderInput): void {
       if (ensureSpace(state, ROW_LEADING)) drawTableHeader(state)
       const dy = state.cursor.y
       const cD = ctxOf(state)
-      draw(cD, "Discount", { x: TABLE_COLS.description.x, y: dy, size: 8.5, color: GRAY_LABEL })
+      draw(cD, L.discount, { x: TABLE_COLS.description.x, y: dy, size: 8.5, color: GRAY_LABEL })
       const cDv = ctxOf(state)
-      drawRight(
-        cDv,
-        `-${formatMoney(discountMinor, input.document.currency).replace(` ${input.document.currency}`, "")}`,
-        TABLE_COLS.unitPrice.rightX,
-        { y: dy, size: 8.5, color: GRAY_LABEL },
-      )
+      drawRight(cDv, `-${faceAmount(discountMinor, currency, lang)}`, TABLE_COLS.unitPrice.rightX, {
+        y: dy,
+        size: 8.5,
+        color: GRAY_LABEL,
+      })
       state.cursor.y -= ROW_LEADING
     }
 
@@ -1340,6 +1633,8 @@ function drawTotals(state: LayoutState, input: DocumentRenderInput): void {
   state.cursor.y -= 4
   const rightX = MARGIN_X + CONTENT_WIDTH
   const labelX = rightX - 200
+  const { L, lang } = state
+  const currency = input.document.currency
 
   const uniformTaxBp =
     input.line_items.length > 0 &&
@@ -1355,11 +1650,11 @@ function drawTotals(state: LayoutState, input: DocumentRenderInput): void {
     state.cursor.y -= (opts.size ?? 10) + 6
   }
 
-  row("Subtotal", formatMoney(input.document.subtotal_minor, input.document.currency))
+  row(L.subtotal, faceMoney(input.document.subtotal_minor, currency, lang))
   if (state.showTax) {
     row(
-      uniformTaxBp !== undefined ? `Tax (${(uniformTaxBp / 100).toFixed(2)}%)` : "Tax",
-      formatMoney(input.document.tax_total_minor, input.document.currency),
+      uniformTaxBp !== undefined ? `${L.tax} (${facePercent(uniformTaxBp, lang)})` : L.tax,
+      faceMoney(input.document.tax_total_minor, currency, lang),
     )
   }
 
@@ -1382,22 +1677,46 @@ function drawTotals(state: LayoutState, input: DocumentRenderInput): void {
   // single document can state the amount the customer paid. The unpaid/partial case keeps
   // "Total due".
   const isPaid = input.document.payment_status === "paid"
-  row(
-    isPaid ? "Total" : "Total due",
-    formatMoney(input.document.grand_total_minor, input.document.currency),
-    { bold: true, size: 11 },
-  )
+  row(isPaid ? L.total : L.totalDue, faceMoney(input.document.grand_total_minor, currency, lang), {
+    bold: true,
+    size: 11,
+  })
   if (isPaid) {
     const ctxPaid = ctxOf(state)
     drawRight(
       ctxPaid,
-      input.document.paid_at ? `Paid on ${formatDateLike(input.document.paid_at)}` : "Paid",
+      input.document.paid_at ? L.paidOn(faceDate(input.document.paid_at, lang)) : L.paid,
       rightX,
       { size: 8.5, color: GRAY_LABEL },
     )
     state.cursor.y -= 8.5 + 4
   }
+  const fx = fxLine(input, lang)
+  if (fx) {
+    // The VAT total in euros on a foreign-currency invoice (CGI art. 242 nonies A), right under
+    // the totals it converts.
+    for (const line of wrapText(fx, CONTENT_WIDTH, 8.5)) {
+      ensureSpace(state, 12)
+      drawRight(ctxOf(state), line, rightX, { size: 8.5, color: GRAY_LABEL })
+      state.cursor.y -= 8.5 + 4
+    }
+  }
   state.cursor.y -= 10
+}
+
+/** The "VAT in EUR" line of a foreign-currency document, or null when `fx` is absent or invalid. */
+function fxLine(input: DocumentRenderInput, lang: FaceLanguage): string | null {
+  const fx = input.document.fx
+  if (!fx || typeof fx !== "object") return null
+  const minor = String(fx.tax_total_eur_minor ?? "").trim()
+  const rate = String(fx.rate ?? "").trim()
+  if (!/^-?\d+$/.test(minor) || !rate) return null
+  return LABELS[lang].fxLine(
+    faceMoney(minor, "EUR", lang),
+    faceDate(String(fx.rate_date ?? ""), lang),
+    faceDecimal(rate, lang),
+    input.document.currency,
+  )
 }
 
 /** Hard cap on the notes lines actually drawn. `notes` is capped at 2000 characters at the
@@ -1433,7 +1752,7 @@ function drawNotes(state: LayoutState, input: DocumentRenderInput): void {
   // Keep the label with at least its first line: a "Notes" heading stranded alone at the foot
   // of page 1 reads as a rendering bug.
   ensureSpace(state, 12 + 12)
-  draw(ctxOf(state), "Notes", { x: MARGIN_X, size: 9, bold: true, color: GRAY_DARK })
+  draw(ctxOf(state), state.L.notes, { x: MARGIN_X, size: 9, bold: true, color: GRAY_DARK })
   state.cursor.y -= 13
   for (const line of clamped) {
     if (line === "") {
@@ -1450,18 +1769,13 @@ function drawNotes(state: LayoutState, input: DocumentRenderInput): void {
 /** Twin of src/tax.ts VAT_ON_DEBITS_TEXT (this bundle is sandbox-isolated from src/). */
 const VAT_ON_DEBITS_TEXT = "Option pour le paiement de la taxe d'après les débits"
 
-/** "SAS au capital de 10 000 €" (French issuer) or "SAS, share capital 10 000" (others); null when neither is set. */
-function legalFormCapital(issuer: IssuerData): string | null {
+/** "SAS au capital de 10 000 €" (fr), "SAS, share capital 10 000" (en), "SAS, Stammkapital 10 000"
+ *  (de), in the face language; null when neither form nor capital is set. */
+function legalFormCapital(issuer: IssuerData, lang: FaceLanguage): string | null {
   const form = issuer.legal_form?.trim() ?? ""
   const capital = issuer.share_capital?.trim() ?? ""
   if (!form && !capital) return null
-  const fr = issuer.default_language === "fr"
-  const capitalText = capital
-    ? fr
-      ? `au capital de ${/[€]|eur/i.test(capital) ? capital : `${capital} €`}`
-      : `share capital ${capital}`
-    : ""
-  return [form, capitalText].filter(Boolean).join(fr ? " " : ", ")
+  return LABELS[lang].shareCapital(form, capital)
 }
 
 function drawLegalMention(state: LayoutState, input: DocumentRenderInput): void {
@@ -1488,9 +1802,10 @@ function drawPaymentDetails(state: LayoutState, input: DocumentRenderInput): voi
   // already-paid invoice is what the field report flagged. Suppress the box once paid.
   if (input.document.payment_status === "paid") return
 
-  const lines: string[] = [`IBAN: ${input.issuer.iban}`]
-  if (input.issuer.swift_bic) lines.push(`SWIFT/BIC: ${input.issuer.swift_bic}`)
-  if (input.issuer.bank_name) lines.push(`Bank: ${input.issuer.bank_name}`)
+  const { L } = state
+  const lines: string[] = [`${L.colon(L.iban)} ${input.issuer.iban}`]
+  if (input.issuer.swift_bic) lines.push(`${L.colon(L.swiftBic)} ${input.issuer.swift_bic}`)
+  if (input.issuer.bank_name) lines.push(`${L.colon(L.bank)} ${input.issuer.bank_name}`)
 
   const boxHeight = 22 + lines.length * 12
   ensureSpace(state, boxHeight + 10)
@@ -1512,7 +1827,7 @@ function drawPaymentDetails(state: LayoutState, input: DocumentRenderInput): voi
     oblique: state.oblique,
     cursor: { y },
   }
-  draw(ctxTitle, "Payment details", { x: MARGIN_X + 10, y, size: 9, bold: true, color: GRAY_DARK })
+  draw(ctxTitle, L.paymentDetails, { x: MARGIN_X + 10, y, size: 9, bold: true, color: GRAY_DARK })
   y -= 14
   for (const line of lines) {
     const c: DrawCtx = { ...ctxTitle, cursor: { y } }
@@ -1534,18 +1849,39 @@ const FOOTER_MIN_SIZE = 5.5
 const SPECIMEN_Y = 58
 const SPECIMEN_SIZE = 7.5
 
-/** The Specimen line in the issuer's language (English when that one is missing), or null. */
-function specimenLine(input: DocumentRenderInput): string | null {
+/** The Specimen line in the face language (English when that one is missing), or null. */
+function specimenLine(input: DocumentRenderInput, lang: FaceLanguage): string | null {
   const s = input.specimen
   if (!s || typeof s !== "object") return null
-  const text = s[input.issuer.default_language] ?? s.en
+  const text = s[lang] ?? s.en
   return typeof text === "string" && text.trim() ? text.trim() : null
+}
+
+/** The seller identity line of the footer: name · legal form and capital · RCS (or SIREN) ·
+ *  SIRET · VAT id, each part only when set, in the face language. */
+function footerIdentity(issuer: IssuerData, lang: FaceLanguage): string {
+  const L = LABELS[lang]
+  const siren = issuer.siren?.trim() ? groupFrenchId(issuer.siren) : ""
+  const city = issuer.rcs_city?.trim() ?? ""
+  const registry = city ? `RCS ${city}${siren ? ` ${siren}` : ""}` : siren ? `SIREN ${siren}` : ""
+  const siret = issuer.siret?.trim() ? `SIRET ${groupFrenchId(issuer.siret)}` : ""
+  return [
+    issuer.legal_name,
+    legalFormCapital(issuer, lang),
+    registry,
+    siret,
+    issuer.vat_id ? `${L.vatIdFooter} ${issuer.vat_id}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ")
 }
 
 function drawFooters(state: LayoutState, input: DocumentRenderInput): void {
   const total = state.pages.length
   const footerY = 40
-  const specimen = specimenLine(input)
+  const specimen = specimenLine(input, state.lang)
+  const { L } = state
+  const leftText = footerIdentity(input.issuer, state.lang)
   for (const [i, page] of state.pages.entries()) {
     const ctx: DrawCtx = {
       pdf: state.pdf,
@@ -1555,18 +1891,7 @@ function drawFooters(state: LayoutState, input: DocumentRenderInput): void {
       oblique: state.oblique,
       cursor: { y: footerY },
     }
-    const rcs = input.issuer.rcs_city?.trim()
-      ? `RCS ${input.issuer.rcs_city.trim()}${input.issuer.siren?.trim() ? ` ${input.issuer.siren.trim()}` : ""}`
-      : ""
-    const leftText = [
-      input.issuer.legal_name,
-      legalFormCapital(input.issuer),
-      rcs,
-      input.issuer.vat_id ? `VAT ${input.issuer.vat_id}` : "",
-    ]
-      .filter(Boolean)
-      .join(" · ")
-    const rightText = `Page ${i + 1} of ${total}`
+    const rightText = L.page(i + 1, total)
     // The identity text wraps into the space left of the page number (never reaching it), the
     // last line on the footer baseline and earlier lines stacked above it inside the bottom
     // margin; past FOOTER_MAX_LINES it shrinks until it fits.

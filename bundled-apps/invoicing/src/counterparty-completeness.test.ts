@@ -17,6 +17,7 @@
 // reintroduces a stub anywhere in that chain fails here.
 
 import { describe, expect, test } from "bun:test"
+import { FR_LEGAL_MENTIONS } from "./einvoicing/test-fixtures"
 import {
   type Counterparty,
   CounterpartyIncompleteError,
@@ -70,6 +71,7 @@ const sampleItems = [
 
 function seedIssuerRow(): Record<string, unknown> {
   return {
+    ...FR_LEGAL_MENTIONS,
     id: issuer.id,
     legal_name: issuer.legal_name,
     country: issuer.country,

@@ -2,7 +2,9 @@
 //
 // The retainer schedule the terms suites change: its row, the tools' ctx, and a month as its invoice
 // prices it.
+
 import { setSystemTime } from "bun:test"
+import { FR_LEGAL_MENTIONS } from "./einvoicing/test-fixtures"
 // The mutations module first: it settles the import order the retainer module relies on.
 import "./mutations"
 import { retainerPlan } from "./mutations/retainer"
@@ -25,6 +27,7 @@ export const SCHEDULE = "7a1d2c3e-0000-4000-8000-0000000000f1"
 export const AGREEMENT = "7a1d2c3e-0000-4000-8000-0000000000b1"
 export const AGREEMENT_2 = "7a1d2c3e-0000-4000-8000-0000000000b2"
 export const ISSUER = {
+  ...FR_LEGAL_MENTIONS,
   id: "iss-1",
   legal_name: "Maison Studio SAS",
   country: "FR",

@@ -13,6 +13,7 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { counterpartyIdentitySet } from "./einvoicing/identity-tools"
+import { FR_LEGAL_MENTIONS } from "./einvoicing/test-fixtures"
 import { issueTogether } from "./issue"
 import { issueDateParts } from "./issue-date"
 import {
@@ -113,6 +114,7 @@ function enforceManifestConstraints(db: MockDb): void {
 }
 
 const ISSUER = {
+  ...FR_LEGAL_MENTIONS,
   id: "iss-1",
   legal_name: "Maison Studio SAS",
   country: "FR",

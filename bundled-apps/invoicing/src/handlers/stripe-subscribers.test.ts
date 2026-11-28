@@ -54,7 +54,7 @@ describe("Stripe invoices handled by invoicing", () => {
 
   test("an e-invoice its issuer cannot sign waits on the issuer, never on the buyer, and raises one item for the people who edit the issuer", async () => {
     // The issuer profile has a one-line address and no SIREN; the e-invoicing gate enforces.
-    const db = stripeDb()
+    const db = stripeDb("liaison", { siren: null })
     await seedConfirmedIdentity(db, {
       contact_id: CONTACT,
       siren: "900000001",
@@ -89,7 +89,7 @@ describe("Stripe invoices handled by invoicing", () => {
     )
     expect(items).toHaveLength(1)
     expect(String((items[0]?.data as { text?: string } | undefined)?.text)).toContain(
-      "Stripe invoice ST-0001 cannot be issued as an e-invoice: your company's SIREN, street address, postcode and city are missing.",
+      "Stripe invoice ST-0001 cannot be issued: your company's SIREN, street address, postcode and city are missing.",
     )
     // A second invoice waits on the same issuer: no second item.
     await onStripeInvoiceFinalized({ data: business("in_2") }, ctx)

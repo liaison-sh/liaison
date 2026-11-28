@@ -144,6 +144,7 @@ import {
 import {
   type CatchUpCtx,
   type CatchUpInput,
+  type CatchUpRunInput,
   type PreviewPdfsInput,
   revenueStreamCatchUp,
   revenueStreamCatchUpPreview,
@@ -194,7 +195,7 @@ export const revenueStreamCatchUpPreviewHandler = (params: CatchUpInput, ctx: Ca
   revenueStreamCatchUpPreview(ctx, params ?? {})
 export const revenueStreamPreviewPdfsHandler = (params: PreviewPdfsInput, ctx: CatchUpCtx) =>
   revenueStreamPreviewPdfs(ctx, params ?? {})
-export const revenueStreamCatchUpHandler = (params: CatchUpInput, ctx: CatchUpCtx) =>
+export const revenueStreamCatchUpHandler = (params: CatchUpRunInput, ctx: CatchUpCtx) =>
   revenueStreamCatchUp(ctx, params ?? {})
 export const revenueStreamsListHandler = (_params: unknown, ctx: StreamToolsCtx) =>
   revenueStreamsList(ctx)

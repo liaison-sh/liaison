@@ -30,7 +30,7 @@
 
 import type { CrossAppExecuteTool } from "../cross-app"
 import { park, resolveOpenParks } from "../deferred"
-import { type FxFetchCtx, FxRateUnavailableError, fxIssueDate, warmFxRate } from "../einvoicing/fx"
+import { type FxFetchCtx, FxRateUnavailableError, fxRateDate, warmFxRate } from "../einvoicing/fx"
 import { EINVOICE_IDENTITY_PARK_KIND, raiseIdentityAttention } from "../einvoicing/gate"
 import { ensureDerivedIdentity } from "../einvoicing/identity-derive"
 import { checkEinvoiceGate } from "../einvoicing/issue-gate"
@@ -44,6 +44,7 @@ import {
   issueDocument,
   type LineKind,
   type PreviewedDocument,
+  type PreviewParent,
   previewDocument,
 } from "../issue"
 import { civilDateOf, type IssueDateParts, issueDateParts } from "../issue-date"
@@ -320,7 +321,13 @@ export interface OrderPaidCtx extends IssueCtx {
   resolveContact(params: { email?: string; name?: string; externalId?: string }): Promise<unknown>
   /** Set only by a sale preview (sales/sale-preview.ts): at the issue step the flow renders each
    *  document as `previewDocument` would, and returns them instead of issuing anything. */
-  preview?: { filename(scope: "goods" | "software"): string } | null
+  preview?: {
+    filename(scope: "goods" | "software"): string
+    /** False: run every check of the issue, render nothing (the catch-up preview's blockers). */
+    render?: boolean
+    /** The file parent each preview PDF is stored under. */
+    parent?(scope: "goods" | "software"): PreviewParent
+  } | null
 }
 
 export interface IssuedDocumentRef {
@@ -1353,8 +1360,16 @@ export async function issueOrderFlow(
 
   const issued: IssuedDocumentRef[] = []
   // The ECB rate of a foreign-currency order, fetched once here (issueDocument only reads the
-  // cache); every split and every other order issued today reuses it.
-  await warmFxRate(ctx as OrderPaidCtx & FxFetchCtx, payload.currency, fxIssueDate(when.issued_at))
+  // cache): the rate of the day its tax became chargeable, the sale's own date when it states an
+  // earlier one (`fxRateDate`), so a sale invoiced later is priced at its sale-date rate.
+  await warmFxRate(
+    ctx as OrderPaidCtx & FxFetchCtx,
+    payload.currency,
+    fxRateDate({
+      issued_at: when.issued_at,
+      source: supplyDate ? { supply_date: supplyDate } : null,
+    }),
+  )
   if (ctx.preview) {
     // A preview: the very inputs the issue below would take, rendered unnumbered, nothing written.
     const documents: PreviewedDocument[] = []
@@ -1364,6 +1379,10 @@ export async function issueOrderFlow(
           ctx,
           buildIssueInput(split.scope, split.items, when, paidAt),
           ctx.preview.filename(split.scope),
+          {
+            render: ctx.preview.render !== false,
+            parent: ctx.preview.parent?.(split.scope) ?? null,
+          },
         ),
       )
     }

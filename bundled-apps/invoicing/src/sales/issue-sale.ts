@@ -29,7 +29,7 @@ import {
   type StreamSaleSource,
 } from "../handlers/shopify-order-paid"
 import { claimOps, saleDocument } from "../handlers/stripe-sale"
-import { attachDocumentsToSale, recordSale } from "../sales-ledger"
+import { attachDocumentsToSale, recordSale, saleExclusion } from "../sales-ledger"
 import { orderPaidPayloadFromSale } from "./sale-payload"
 import {
   ensureShopifyStream,
@@ -80,7 +80,8 @@ export async function readSale(
   return { ok: true, sale: env.result.sale as Sale }
 }
 
-const streamParkId = (stream: RevenueStream, externalId: string) => `rs:${stream.id}:${externalId}`
+export const streamParkId = (stream: RevenueStream, externalId: string) =>
+  `rs:${stream.id}:${externalId}`
 
 /** The names a Stripe sale is known by (payment intent, charge, checkout session). */
 export function stripeSaleNames(sale: Sale): string[] {
@@ -283,9 +284,31 @@ export type SaleEventResult =
   | OrderPaidResult
   | {
       status: "skipped"
-      reason: "no_stream" | "stream_off" | "before_stream" | "sale_not_found" | "not_an_event"
+      reason:
+        | "no_stream"
+        | "stream_off"
+        | "before_stream"
+        | "sale_not_found"
+        | "not_an_event"
+        | "sale_excluded"
     }
   | { status: "error"; reason: "sale_unreadable"; detail?: string }
+
+/** True when a person excluded this sale from invoicing (a catch-up's `exclude`). */
+export async function isExcludedSale(
+  ctx: SaleCtx,
+  stream: RevenueStream,
+  externalId: string,
+): Promise<boolean> {
+  if (stream.provider_app === SHOPIFY || !stream.issuer_profile_id) return false
+  return (
+    (await saleExclusion(ctx.db, {
+      issuer_profile_id: stream.issuer_profile_id,
+      stream: stream.provider_app,
+      external_id: externalId,
+    })) !== null
+  )
+}
 
 /**
  * `contract:revenue-stream@1/sale:paid`: a provider says a sale was paid. Invoicing issues it only
@@ -315,6 +338,8 @@ export async function onSaleEvent(
   if (stream.issue_from && Date.parse(read.sale.sold_at) < Date.parse(stream.issue_from)) {
     return { status: "skipped", reason: "before_stream" }
   }
+  if (await isExcludedSale(ctx, stream, read.sale.external_id))
+    return { status: "skipped", reason: "sale_excluded" }
   return issueSale(stream, read.sale, ctx)
 }
 
@@ -332,6 +357,9 @@ export async function rerunStreamSale(
   const externalId = typeof payload?.external_id === "string" ? payload.external_id : ""
   if (!stream || !externalId) return { status: "skipped", reason: "no_stream" }
   if (stream.mode === "off") return { status: "skipped", reason: "stream_off" }
+  // A park or an approval of a sale a person since excluded never issues it.
+  if (await isExcludedSale(ctx, stream, externalId))
+    return { status: "skipped", reason: "sale_excluded" }
   const read = await readSale(ctx, stream.provider_app, externalId)
   if (!read.ok) {
     return read.reason === "not_found"

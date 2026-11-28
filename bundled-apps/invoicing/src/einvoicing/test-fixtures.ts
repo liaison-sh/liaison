@@ -5,9 +5,18 @@ import type { BuyerSnapshot } from "./gate"
 /** Fictional Luhn-valid SIRENs. */
 export const FICTIONAL_SIRENS = ["900000001", "902000009", "903000008"] as const
 
+/** The identity mentions every French issuer's invoice prints (C. com. R123-237/238), for issuer
+ *  fixtures: without them a French issuer issues no invoice or credit note. */
+export const FR_LEGAL_MENTIONS = {
+  siren: FICTIONAL_SIRENS[1],
+  legal_form: "SAS",
+  share_capital: "10 000",
+  rcs_city: "Paris",
+} as const
+
 /** The seller identity a French e-invoice (Factur-X) needs, for issuer fixtures. */
 export const FR_SELLER_IDENTITY = {
-  siren: FICTIONAL_SIRENS[1],
+  ...FR_LEGAL_MENTIONS,
   routing_address: FICTIONAL_SIRENS[1],
   address_line1: "1 rue de Test",
   postcode: "75001",

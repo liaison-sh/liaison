@@ -27,6 +27,7 @@ import { deriveKind } from "./identity-derive"
 import {
   mergeEinvoicingWarnings,
   type SellerIncompleteError,
+  sellerGapBlocks,
   sellerGapFor,
   sellerWarning,
 } from "./seller"
@@ -271,7 +272,7 @@ export async function checkEinvoiceGate(
   // warn issues with a plain PDF and says which issuer fields are missing. It is checked first:
   // the issuer blocks every e-invoice of the organization, whatever the buyer.
   const seller = sellerGapFor(s.type, prepared.evaluation, s.issuer)
-  if (seller && prepared.mode === "enforce")
+  if (seller && sellerGapBlocks(seller, prepared.mode))
     return {
       ok: false,
       error: { status: "error", error: { ...seller, status: 422 } },

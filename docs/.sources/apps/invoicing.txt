@@ -278,3 +278,15 @@ documents_link_shopify_orders links a document named by order number to its orde
 Link only on one exact order name in the issuer's shop and the buyer's email, everything else reported -> bundled-apps/invoicing/src/handlers/link-shopify-orders.ts:287-329
 Writes only shopify_order_id and a lifecycle entry; dry_run is the default -> bundled-apps/invoicing/src/handlers/link-shopify-orders.ts:1-30
 An imported document's all-digits number is looked up as #<number>, other imported numbers not eligible -> bundled-apps/invoicing/src/handlers/link-shopify-orders.ts:279-288
+French identity mentions required to issue for a FR issuer, every mode -> bundled-apps/invoicing/src/einvoicing/seller.ts:81
+Sole trader needs SIREN and legal form only -> bundled-apps/invoicing/src/einvoicing/seller.ts:72
+SIREN from the French VAT number counts -> bundled-apps/invoicing/src/einvoicing/seller.ts:55
+Mention fields need only settings:write -> bundled-apps/invoicing/src/mutations/issuer-profiles.ts:57
+SIRET, Legal form, Share capital, RCS city fields -> bundled-apps/invoicing/src/ui/settings.tsx:507
+Footer prints legal form, capital, RCS, SIRET, VAT -> bundled-apps/invoicing/templates/shared.ts:1879
+Buyer in France gets a French document, kept at re-render -> bundled-apps/invoicing/src/issue.ts:2192
+VAT in EUR on a foreign-currency invoice, rate of the chargeable day -> bundled-apps/invoicing/src/einvoicing/fx.ts:232
+Foreign-currency VAT invoice waits for its rate -> bundled-apps/invoicing/src/issue.ts:1666
+Catch-up preview runs the issue path, run_effect -> bundled-apps/invoicing/src/sales/catch-up.ts:300
+Held vs stop rule, exclude and reinclude -> bundled-apps/invoicing/src/sales/catch-up.ts:16
+Preview PDFs readable with documents read and settings read, replaced per sale, 7 days -> bundled-apps/invoicing/app.manifest.json:1637

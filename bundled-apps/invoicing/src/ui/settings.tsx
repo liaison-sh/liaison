@@ -34,6 +34,11 @@ export interface IssuerProfileDraft {
   address?: string | null
   /** The company's SIREN and structured address: a French e-invoice states them. */
   siren?: string | null
+  /** The French identity mentions printed on every document (and required to issue there). */
+  siret?: string | null
+  legal_form?: string | null
+  share_capital?: string | null
+  rcs_city?: string | null
   address_line1?: string | null
   address_line2?: string | null
   postcode?: string | null
@@ -148,6 +153,10 @@ const ISSUER_SAVE_FIELDS = [
   "email_templates",
   "shopify_shop_id",
   "siren",
+  "siret",
+  "legal_form",
+  "share_capital",
+  "rcs_city",
   "address_line1",
   "address_line2",
   "postcode",
@@ -489,6 +498,52 @@ export const InvoicingIssuerProfiles: Component = () => {
                       value={d().siren ?? ""}
                       placeholder={tr("9 digits")}
                       onInput={(e) => setEditing({ ...d(), siren: e.currentTarget.value || null })}
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("SIRET")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-siret"
+                      value={d().siret ?? ""}
+                      placeholder={tr("14 digits")}
+                      onInput={(e) => setEditing({ ...d(), siret: e.currentTarget.value || null })}
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("Legal form")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-legal_form"
+                      value={d().legal_form ?? ""}
+                      placeholder={tr("SAS, SARL, EI...")}
+                      onInput={(e) =>
+                        setEditing({ ...d(), legal_form: e.currentTarget.value || null })
+                      }
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("Share capital")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-share_capital"
+                      value={d().share_capital ?? ""}
+                      placeholder={tr("10 000")}
+                      onInput={(e) =>
+                        setEditing({ ...d(), share_capital: e.currentTarget.value || null })
+                      }
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("RCS city")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-rcs_city"
+                      value={d().rcs_city ?? ""}
+                      placeholder={tr("Paris")}
+                      onInput={(e) =>
+                        setEditing({ ...d(), rcs_city: e.currentTarget.value || null })
+                      }
                       class={cx(inputClass, "flex-1 [color-scheme:dark]")}
                     />
                   </label>

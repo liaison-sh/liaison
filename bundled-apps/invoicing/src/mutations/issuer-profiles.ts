@@ -3,7 +3,7 @@
 // Invoicing mutations: Settings issuer-profile CRUD.
 
 import { readMinorAmount } from "@liaison/app-sdk"
-import { isValidSiren } from "../einvoicing/identity"
+import { isValidSiren, isValidSiret } from "../einvoicing/identity"
 import { checkIssuerTimezone, normalizeIssuerTimezone } from "../issue-date"
 import { restageForTerms } from "./issue-fingerprint"
 import {
@@ -52,6 +52,12 @@ const ISSUER_WRITE_COLUMNS = [
   "email_templates",
   "shopify_shop_id",
   "siren",
+  // The French identity mentions printed on every document (C. com. R123-237/238): not bank or
+  // control fields, so invoicing:settings:write is enough to set them.
+  "siret",
+  "legal_form",
+  "share_capital",
+  "rcs_city",
   "address_line1",
   "address_line2",
   "postcode",
@@ -68,6 +74,11 @@ function pickIssuerWrite(input: Record<string, unknown>): Record<string, unknown
   }
   // A SIREN is stored as its 9 digits; a country code upper case.
   if (typeof out.siren === "string") out.siren = out.siren.replace(/\s+/g, "")
+  if (typeof out.siret === "string") out.siret = out.siret.replace(/\s+/g, "")
+  for (const c of ["legal_form", "share_capital", "rcs_city"] as const) {
+    const v = out[c]
+    if (typeof v === "string") out[c] = v.trim() === "" ? null : v.trim()
+  }
   if (typeof out.country_code === "string") out.country_code = out.country_code.trim().toUpperCase()
   // `UTC` in a write is someone's choice; the column default is what no write ever touched.
   if (typeof out.timezone === "string") out.timezone = normalizeIssuerTimezone(out.timezone)
@@ -95,6 +106,26 @@ async function checkWrittenFields(
         message: /^\d{9}$/.test(siren)
           ? `${siren} is not a valid SIREN: its check digit does not match. Check the company's 9-digit number on its registration certificate.`
           : "A SIREN is the company's 9-digit number (for example 123 456 789).",
+      },
+    }
+  }
+  const siret = typeof input.siret === "string" ? input.siret.replace(/\s+/g, "") : ""
+  if (siret !== "" && !isValidSiret(siret)) {
+    return {
+      status: "error",
+      error: {
+        code: "invalid_params",
+        message:
+          "A SIRET is the establishment's 14-digit number (the company's SIREN followed by 5 digits), and its check digit must match.",
+      },
+    }
+  }
+  if (siret !== "" && siren !== "" && siret.slice(0, 9) !== siren) {
+    return {
+      status: "error",
+      error: {
+        code: "invalid_params",
+        message: `SIRET ${siret} does not start with the SIREN ${siren}: an establishment's SIRET begins with its company's SIREN.`,
       },
     }
   }

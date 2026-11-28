@@ -7,6 +7,7 @@
 
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test"
 import { harness as runHarness, schedule as runSchedule } from "./__fixtures__/recurring-draft"
+import { FR_LEGAL_MENTIONS } from "./einvoicing/test-fixtures"
 import { draftsDiscard, invoiceIssue, type MutationsCtx } from "./mutations"
 import { advanceDraftCreate } from "./mutations/advances"
 import { reconcileDraftDiscard, retainerDraftFromReconcile } from "./mutations/retainer"
@@ -32,6 +33,7 @@ import { previewTotals } from "./tools/preview-totals"
 type Row = Record<string, unknown>
 
 const ISSUER = {
+  ...FR_LEGAL_MENTIONS,
   id: "iss-1",
   legal_name: "Maison Studio SAS",
   country: "FR",

@@ -1088,7 +1088,8 @@ describe("S25 identity blocks and mentions", () => {
     expect(j).toContain("SIREN 123456789")
     expect(j).toContain("SAS au capital de 10 000 €")
     expect(texts(cmds)).toContain(
-      "Atelier Exemple · SAS au capital de 10 000 € · RCS Paris 123456789 · VAT FR40123456789",
+      // default_language "fr" and no document.language: the face, footer included, is French.
+      "Atelier Exemple · SAS au capital de 10 000 € · RCS Paris 123 456 789 · TVA FR40123456789",
     )
   })
 
@@ -1104,7 +1105,7 @@ describe("S25 identity blocks and mentions", () => {
     // Preconditions: one line would overflow the 250pt seller column, and the footer would run
     // past the page number on the right.
     expect(textWidth(identity, 9)).toBeGreaterThan(250)
-    const footerFull = `${longIssuer.legal_name} · ${identity} · RCS Boulogne-sur-Mer 123456789 · VAT FR40123456789`
+    const footerFull = `${longIssuer.legal_name} · ${identity} · RCS Boulogne-sur-Mer 123 456 789 · TVA FR40123456789`
     expect(textWidth(footerFull, 7.5)).toBeGreaterThan(495 - textWidth("Page 1 of 2", 7.5))
 
     const cmds = invoiceTemplate({ ...longInput(), issuer: longIssuer })
@@ -1118,7 +1119,7 @@ describe("S25 identity blocks and mentions", () => {
 
     for (let p = 0; p < pageCount(cmds); p++) {
       const footer = textCmds(cmds).filter((c) => c.page === p && c.size === 7.5 && c.y < 70)
-      const pageNo = footer.find((c) => /^Page \d+ of \d+$/.test(c.text))
+      const pageNo = footer.find((c) => /^Page \d+ sur \d+$/.test(c.text))
       expect(pageNo).toBeDefined()
       const left = footer.filter((c) => c !== pageNo)
       expect(left.length).toBeGreaterThan(0)
@@ -1278,5 +1279,230 @@ describe("preview watermark", () => {
     expect(pages).toBeGreaterThan(1)
     expect(new Set(marks.map((m) => m.page)).size).toBe(pages)
     expect(texts(invoiceTemplate(long))).not.toContain("PREVIEW, not an invoice")
+  })
+})
+
+describe("document face language, seller identity and VAT in EUR", () => {
+  const all = (cmds: DrawCommand[]) => texts(cmds).join("\n")
+  const frIdentity = {
+    legal_name: "Atelier Fictif",
+    country: "FR",
+    vat_id: "FR40123456782",
+    address: "1 rue de Test, 75001 Paris",
+    iban: "FR7630006000011234567890189",
+    swift_bic: "BNPAFRPP",
+    bank_name: "Banque Test",
+    default_language: "en" as const,
+    siren: "123456782",
+    siret: "12345678200017",
+    legal_form: "SAS",
+    share_capital: "10 000",
+    rcs_city: "Paris",
+  }
+  function frInvoice(
+    overrides: Partial<DocumentRenderInput["document"]> = {},
+  ): DocumentRenderInput {
+    const base = shortInput()
+    return {
+      ...base,
+      issuer: frIdentity,
+      document: {
+        ...base.document,
+        language: "fr",
+        subtotal_minor: 123456n,
+        tax_total_minor: 24691n,
+        grand_total_minor: 148147n,
+        operation_label: "Livraison de biens",
+        po_number: "PO-7",
+        ...overrides,
+      },
+      line_items: [
+        {
+          position: 1,
+          description: "Widget A",
+          quantity: "1.5",
+          unit_price_minor: 82304n,
+          tax_rate_bp: 2000,
+          subtotal_minor: 123456n,
+          tax_minor: 24691n,
+          total_minor: 148147n,
+        },
+      ],
+    }
+  }
+
+  test("a fr invoice prints FACTURE with French labels, dates and amounts", () => {
+    const cmds = invoiceTemplate(frInvoice())
+    const t = texts(cmds)
+    for (const s of [
+      "FACTURE",
+      "ÉMETTEUR",
+      "CLIENT",
+      "Date d'émission :",
+      "15/05/2026",
+      "Échéance :",
+      "14/06/2026",
+      "Opération :",
+      "N° de bon de commande :",
+      "Désignation",
+      "Qté",
+      "Prix unitaire",
+      "TVA %",
+      "Montant HT",
+      "1,5",
+      "823,04",
+      "1 234,56",
+      "20,00 %",
+      "Total HT",
+      "1 234,56 €",
+      "TVA (20,00 %)",
+      "246,91 €",
+      "Net à payer",
+      "1 481,47 €",
+      "Coordonnées bancaires",
+      "IBAN : FR7630006000011234567890189",
+      "Banque : Banque Test",
+      "TVA : FR40123456782",
+      "Page 1 sur 1",
+    ]) {
+      expect(t).toContain(s)
+    }
+    const j = all(cmds)
+    for (const en of ["INVOICE", "BILL TO", "Issued", "Subtotal", "Total due", "Payment details"]) {
+      expect(j).not.toContain(en)
+    }
+    const meta = cmds.find((c) => c.op === "setMetadata") as { title?: string } | undefined
+    expect(meta?.title).toBe("FACTURE")
+  })
+
+  test("a paid fr invoice reads Total and Réglé le with a French date", () => {
+    const t = texts(invoiceTemplate(frInvoice({ payment_status: "paid", paid_at: "2026-05-20" })))
+    expect(t).toContain("Total")
+    expect(t).toContain("Réglé le 20/05/2026")
+  })
+
+  test("the language falls back to the issuer's default language, then English", () => {
+    const base = shortInput()
+    const viaIssuer = invoiceTemplate({
+      ...base,
+      issuer: { ...base.issuer, default_language: "de" },
+    })
+    expect(texts(viaIssuer)).toContain("RECHNUNG")
+    expect(texts(viaIssuer)).toContain("Seite 1 von 1")
+    expect(texts(viaIssuer)).toContain("100,00 €")
+    const override = invoiceTemplate({
+      ...base,
+      issuer: { ...base.issuer, default_language: "fr" },
+      document: { ...base.document, language: "en" },
+    })
+    expect(texts(override)).toContain("INVOICE")
+  })
+
+  test("an en invoice renders byte-identical whether language is absent, null or en", () => {
+    const base = shortInput()
+    const plain = JSON.stringify(invoiceTemplate(base), (_k, v) =>
+      typeof v === "bigint" ? v.toString() : v,
+    )
+    for (const language of [null, "en" as const]) {
+      const again = JSON.stringify(
+        invoiceTemplate({ ...base, document: { ...base.document, language } }),
+        (_k, v) => (typeof v === "bigint" ? v.toString() : v),
+      )
+      expect(again).toBe(plain)
+    }
+    const t = texts(invoiceTemplate(base))
+    for (const s of [
+      "INVOICE",
+      "Issued:",
+      "2026-05-15",
+      "100.00 EUR",
+      "Tax (20.00%)",
+      "Total due",
+    ]) {
+      expect(t).toContain(s)
+    }
+  })
+
+  test("the fr footer prints form and capital, RCS, SIRET and the TVA id in full", () => {
+    const t = texts(invoiceTemplate(frInvoice()))
+    expect(t).toContain(
+      "Atelier Fictif · SAS au capital de 10 000 € · RCS Paris 123 456 782 · SIRET 123 456 782 00017 · TVA FR40123456782",
+    )
+  })
+
+  test("the en and de footers localise the capital and VAT labels; SIREN stands in without an RCS city", () => {
+    const base = frInvoice()
+    const en = texts(invoiceTemplate({ ...base, document: { ...base.document, language: "en" } }))
+    expect(en).toContain(
+      "Atelier Fictif · SAS, share capital 10 000 · RCS Paris 123 456 782 · SIRET 123 456 782 00017 · VAT FR40123456782",
+    )
+    const de = texts(
+      invoiceTemplate({
+        ...base,
+        issuer: { ...frIdentity, rcs_city: null, siret: null },
+        document: { ...base.document, language: "de" },
+      }),
+    )
+    expect(de).toContain(
+      "Atelier Fictif · SAS, Stammkapital 10 000 · SIREN 123 456 782 · USt-IdNr. FR40123456782",
+    )
+  })
+
+  test("a USD document with fx prints the VAT total in EUR under the totals; without fx nothing", () => {
+    const fx = { rate: "1.0975", rate_date: "2026-11-26", tax_total_eur_minor: "453" }
+    const usd = (language: "en" | "fr" | "de", withFx: boolean) =>
+      textCmds(
+        invoiceTemplate(
+          frInvoice({ currency: "USD", language, tax_total_minor: 497n, fx: withFx ? fx : null }),
+        ),
+      )
+    const fr = usd("fr", true)
+    const frLine = "TVA en euros : 4,53 € (taux BCE du 26/11/2026 : 1 EUR = 1,0975 USD)"
+    const line = fr.find((c) => c.text === frLine)
+    expect(line).toBeDefined()
+    const total = fr.find((c) => c.text === "Net à payer")
+    expect(total && line && line.y < total.y).toBe(true)
+    expect(usd("en", true).map((c) => c.text)).toContain(
+      "VAT in EUR: 4.53 EUR (ECB rate of 2026-11-26: 1 EUR = 1.0975 USD)",
+    )
+    expect(usd("de", true).map((c) => c.text)).toContain(
+      "USt. in EUR: 4,53 € (EZB-Kurs vom 26.11.2026: 1 EUR = 1,0975 USD)",
+    )
+    for (const lang of ["en", "fr", "de"] as const) {
+      expect(usd(lang, false).some((c) => /EUR:|euros :|in EUR/.test(c.text))).toBe(false)
+    }
+  })
+
+  test("a fr credit note says AVOIR, references the invoice in French and signs the EUR VAT", () => {
+    const cmds = creditNoteTemplate(
+      frInvoice({
+        type: "credit_note",
+        number: "AV-2026-0001",
+        original_invoice_number: "FA-2026-0042",
+        original_invoice_date: "2026-05-15",
+        reason: "Retour",
+        currency: "USD",
+        subtotal_minor: -2000n,
+        tax_total_minor: -400n,
+        grand_total_minor: -2400n,
+        fx: { rate: "1.0975", rate_date: "2026-11-26", tax_total_eur_minor: "-364" },
+      }),
+    )
+    const t = texts(cmds)
+    expect(t).toContain("AVOIR")
+    expect(t).toContain("Avoir sur la facture FA-2026-0042 du 15/05/2026")
+    expect(t).toContain("Motif : Retour")
+    expect(t).toContain("-24,00 USD")
+    expect(t).toContain("TVA en euros : -3,64 € (taux BCE du 26/11/2026 : 1 EUR = 1,0975 USD)")
+    expect(all(cmds)).not.toContain("CREDIT NOTE")
+  })
+
+  test("every document kind has a French title", () => {
+    const base = frInvoice()
+    expect(texts(quoteTemplate(base))).toContain("DEVIS")
+    expect(texts(proformaTemplate(base))).toContain("FACTURE PRO FORMA")
+    const po = texts(poTemplate(base))
+    expect(po).toContain("BON DE COMMANDE")
+    expect(po).toContain("FOURNISSEUR")
   })
 })

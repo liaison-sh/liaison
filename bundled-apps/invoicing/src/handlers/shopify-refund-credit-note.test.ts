@@ -12,6 +12,7 @@ import {
   ISSUER_ROW,
   issuePipelineCtx,
   lineRow,
+  usdRateToday,
 } from "../__tests__/credit-note-fixtures"
 import { FR_SELLER_IDENTITY } from "../einvoicing/test-fixtures"
 import { createMockDb, type MockDb } from "../test-db"
@@ -61,6 +62,7 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({
             id: "00000000-0000-4000-8000-000000000901",
@@ -150,6 +152,7 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({
             id: "00000000-0000-4000-8000-000000000901",
@@ -260,6 +263,7 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({ id: "00000000-0000-4000-8000-000000000901", grand_total_minor: "89900" }),
         ],
@@ -325,6 +329,7 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({ id: "00000000-0000-4000-8000-000000000901", grand_total_minor: "89900" }),
         ],
@@ -362,6 +367,7 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({ id: "00000000-0000-4000-8000-000000000920", grand_total_minor: "9000" }),
         ],
@@ -413,6 +419,7 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({ id: "00000000-0000-4000-8000-000000000901", grand_total_minor: "89900" }),
         ],
@@ -439,6 +446,7 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           // A 100.00 invoice already FULLY credit noted (its own credit note below).
           invoiceRow({ id: INVOICE_ID, grand_total_minor: "10000", payment_status: "unpaid" }),
@@ -503,6 +511,7 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({ id: "00000000-0000-4000-8000-000000000901", grand_total_minor: "89900" }),
         ],
@@ -532,6 +541,7 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({ id: "00000000-0000-4000-8000-000000000920", grand_total_minor: "12000" }),
         ],
@@ -580,6 +590,7 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({ id: "00000000-0000-4000-8000-000000000921", grand_total_minor: "23000" }),
         ],
@@ -648,6 +659,7 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({ id: "00000000-0000-4000-8000-000000000922", grand_total_minor: "60000" }),
         ],
@@ -697,6 +709,7 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
       return createMockDb({
         seed: {
           issuer_profiles: [ISSUER_ROW],
+          fx_rates: [usdRateToday()],
           documents: [
             invoiceRow({
               id: GOODS_ID,
@@ -855,6 +868,7 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
       return createMockDb({
         seed: {
           issuer_profiles: [ISSUER_ROW],
+          fx_rates: [usdRateToday()],
           documents: [
             invoiceRow({
               id: GOODS_ID,
@@ -983,6 +997,7 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({
             id: DOC,

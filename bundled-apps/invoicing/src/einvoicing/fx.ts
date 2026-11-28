@@ -219,9 +219,25 @@ export async function warmFxRate(
   }
 }
 
-/** The day whose rate a document snapshots: its issue date, else today (as `issueDocument`). */
+/** A document's issue day: its issue date, else today (as `issueDocument`). */
 export function fxIssueDate(issuedAt: string | null | undefined, now: Date = new Date()): string {
   return (issuedAt ?? now.toISOString()).slice(0, 10)
+}
+
+/**
+ * The day whose ECB rate a document snapshots: the day its tax became chargeable (VAT Directive
+ * art. 91(2)). For an invoice that states an earlier date of sale or supply (a paid sale invoiced
+ * later: the payment day, CGI art. 269-2 c), that date; else its issue day.
+ */
+export function fxRateDate(
+  doc: { issued_at?: string | null; source?: { supply_date?: string | null } | null },
+  now: Date = new Date(),
+): string {
+  const issued = fxIssueDate(doc.issued_at, now)
+  const supply = doc.source?.supply_date
+  return typeof supply === "string" && /^\d{4}-\d{2}-\d{2}$/.test(supply) && supply < issued
+    ? supply
+    : issued
 }
 
 /**

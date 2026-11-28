@@ -49,7 +49,8 @@ const DEFERRED_REASONS: Record<string, string> = {
   issue_interrupted: "Its PDF was not made when it was issued: it is made again",
   awaiting_fx_rate: "Waiting for the day's exchange rate",
   awaiting_customs_dependency: "Waiting for the customs data",
-  issuer_incomplete: "Waiting for your company's SIREN and address in Settings",
+  issuer_incomplete:
+    "Waiting for your company's legal details (SIREN, legal form, capital, RCS, address) in Settings",
 }
 
 export function deferredReason(item: Pick<DeferredItem, "reason" | "status">): string {

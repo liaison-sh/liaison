@@ -32,7 +32,7 @@ import type { CrossAppExecuteTool } from "./cross-app"
 import type { CustomerKind, Regime } from "./einvoicing/classify"
 import { classifyRegime } from "./einvoicing/classify"
 import type { OperationCategory, PaymentState } from "./einvoicing/classify-operation"
-import { cachedRate, FxRateUnavailableError, fxIssueDate } from "./einvoicing/fx"
+import { cachedRate, FxRateUnavailableError, fxRateDate } from "./einvoicing/fx"
 import {
   type DeliveryAddress,
   EinvoiceGateRefusal,
@@ -49,8 +49,10 @@ import {
 } from "./einvoicing/issue-gate"
 import { documentLegalMention } from "./einvoicing/mentions"
 import {
+  issuerSiren,
   mergeEinvoicingWarnings,
   SellerIncompleteRefusal,
+  sellerGapBlocks,
   sellerGapFor,
   sellerWarning,
 } from "./einvoicing/seller"
@@ -559,6 +561,16 @@ export interface PreparedIssue {
   previewData(): Promise<{ template_kind: string; data: ReturnType<typeof buildTemplateData> }>
 }
 
+/** The file parent of a preview PDF: a `sale_preview` row, inserted by the host with the file, so
+ *  a person who may read the issuer's settings and its documents can open it (never a buyer). */
+export interface PreviewParent {
+  entityType: "sale_preview"
+  commitRow: {
+    values: Record<string, string | number | boolean | null>
+    fileIdColumn: string
+  }
+}
+
 /** What a preview of a document renders: watermarked, unnumbered, never a legal document. */
 export const PREVIEW_WATERMARK = "PREVIEW, not an invoice"
 
@@ -596,21 +608,31 @@ export async function previewDocument(
   ctx: IssueCtx,
   input: IssueInput,
   filename: string,
+  opts: {
+    /** False: every check and the template data, no PDF (`pdf_file_id` null). */
+    render?: boolean
+    /** Where the preview file is attached (a `sale_preview` row the host inserts with it). */
+    parent?: PreviewParent | null
+  } = {},
 ): Promise<PreviewedDocument> {
   const prepared = await prepareIssue(ctx, input)
   const { template_kind, data } = await prepared.previewData()
   let pdfFileId: string | null = null
   let renderError: string | null = null
-  try {
-    const rendered = (await ctx.pdf.render({
-      template_kind,
-      filename,
-      data: { ...data, preview: PREVIEW_WATERMARK },
-    })) as { file_id: string } | { error: { code?: string; message?: string } }
-    if ("error" in rendered) renderError = rendered.error.code ?? rendered.error.message ?? "error"
-    else pdfFileId = rendered.file_id
-  } catch (err) {
-    renderError = err instanceof Error ? err.message : String(err)
+  if (opts.render !== false) {
+    try {
+      const rendered = (await ctx.pdf.render({
+        template_kind,
+        filename,
+        data: { ...data, preview: PREVIEW_WATERMARK },
+        ...(opts.parent ? { parent: opts.parent } : {}),
+      })) as { file_id: string } | { error: { code?: string; message?: string } }
+      if ("error" in rendered)
+        renderError = rendered.error.code ?? rendered.error.message ?? "error"
+      else pdfFileId = rendered.file_id
+    } catch (err) {
+      renderError = err instanceof Error ? err.message : String(err)
+    }
   }
   const d = data.document
   return {
@@ -835,6 +857,9 @@ export interface DocumentInsert {
    * po_number. A plain column with no external_refs mirror.
    */
   notes: string | null
+  /** The language of the document face (`documentLanguage`); absent on documents issued before
+   *  it was stored, which render in their issuer's default language. */
+  language?: "en" | "fr" | "de" | null
   /** Credit notes only: the original invoice, as a real column. */
   original_document_id?: string | null
   /** The client company the document is made out to, stamped here at issue from the
@@ -968,6 +993,7 @@ function serialiseDocumentInsert(row: DocumentInsert): Record<string, unknown> {
     shopify_draft_order_name: row.shopify_draft_order_name,
     po_number: row.po_number,
     notes: row.notes,
+    ...(row.language ? { language: row.language } : {}),
     ...(row.original_document_id ? { original_document_id: row.original_document_id } : {}),
     ...(row.regime ? { regime: row.regime, regime_reasons: row.regime_reasons ?? [] } : {}),
     ...(row.internal_cancellation !== undefined
@@ -1511,7 +1537,8 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   //     Factur-X is refused here, before numbering, in enforce mode. In warn mode it is issued
   //     with a plain PDF (no Factur-X is attempted) and the warning names the issuer fields.
   const sellerGap = sellerGapFor(type, gate.evaluation, issuer)
-  if (sellerGap && gate.mode === "enforce") throw new SellerIncompleteRefusal(sellerGap)
+  if (sellerGap && sellerGapBlocks(sellerGap, gate.mode))
+    throw new SellerIncompleteRefusal(sellerGap)
   const einvoicingWarning =
     mergeEinvoicingWarnings(
       gateRefusal ? gateWarning(gateRefusal) : null,
@@ -1619,7 +1646,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     if (BigInt(expected) !== rollup.grand_total_minor)
       throw new AmountChangedRefusal(BigInt(expected), rollup.grand_total_minor)
   }
-  const fxDate = fxIssueDate(draft.issued_at)
+  const fxDate = fxRateDate(draft)
   const fxSnapshot =
     draft.currency && draft.currency !== "EUR"
       ? await cachedRate(ctx.db, draft.currency, fxDate)
@@ -1629,12 +1656,15 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   // before numbering, so nothing is persisted and the call can simply be retried. The issuing
   // path warmed the cache just before; only an unreachable ECB lands here. Every other document
   // (EUR, out of the e-invoicing regime, an internal cancellation) issues without a rate.
+  // A euro-area issuer's foreign-currency invoice with VAT prints that VAT in EUR (Directive
+  // art. 230), whatever its e-invoicing regime: without the rate it waits the same way.
   if (
     draft.currency &&
     draft.currency !== "EUR" &&
     !fxSnapshot &&
     (type === "invoice" || type === "credit_note") &&
-    gate.evaluation.regime === "e_invoice" &&
+    (gate.evaluation.regime === "e_invoice" ||
+      vatInEurRequired(issuer, draft.currency, rollup.tax_total_minor)) &&
     !gate.evaluation.internalCancellation
   ) {
     throw new FxRateUnavailableError(draft.currency, fxDate)
@@ -1726,6 +1756,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     po_number: readRefString(draft.external_refs, "po_number"),
     // Plain column, straight off the draft: notes has no external_refs mirror.
     notes: draft.notes ?? null,
+    language: documentLanguage(issuer, counterparty),
     ...(gate
       ? {
           einvoice: regimeSnapshot({
@@ -1898,7 +1929,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     const legalMention = await documentLegalMention(
       ctx.db,
       classification.treatment,
-      issuer.default_language,
+      documentInsert.language ?? issuer.default_language,
       {
         category:
           (documentInsert.einvoice?.operation_category as OperationCategory | null | undefined) ??
@@ -2092,7 +2123,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     const legalMention = await documentLegalMention(
       ctx.db,
       classification.treatment,
-      issuer.default_language,
+      documentInsert.language ?? issuer.default_language,
       {
         category:
           (documentInsert.einvoice?.operation_category as OperationCategory | null | undefined) ??
@@ -2154,6 +2185,62 @@ function titleFor(type: DocumentType): string {
   }
 }
 
+/**
+ * The language a document is written in: French for a buyer in France (Loi n° 94-665, art. 2:
+ * invoices and receipts given in France are in French), the issuer's default language otherwise.
+ */
+export function documentLanguage(
+  issuer: Pick<IssuerProfile, "default_language">,
+  counterparty: Pick<Counterparty, "country">,
+): "en" | "fr" | "de" {
+  const country = String(counterparty.country ?? "")
+    .trim()
+    .toUpperCase()
+  if (country === "FR" || country === "FRANCE") return "fr"
+  return issuer.default_language ?? "en"
+}
+
+/** The euro-area member states: their VAT is payable in euros, so an invoice in another currency
+ *  states its VAT in EUR too (VAT Directive art. 230, art. 91; CGI ann. II art. 242 nonies A). */
+const EURO_AREA: ReadonlySet<string> = new Set([
+  "AT",
+  "BE",
+  "BG",
+  "CY",
+  "DE",
+  "EE",
+  "ES",
+  "FI",
+  "FR",
+  "GR",
+  "EL",
+  "HR",
+  "IE",
+  "IT",
+  "LT",
+  "LU",
+  "LV",
+  "MT",
+  "NL",
+  "PT",
+  "SI",
+  "SK",
+])
+
+/** True when `issuer` must print a foreign-currency document's VAT total in EUR. */
+export function vatInEurRequired(
+  issuer: Pick<IssuerProfile, "country" | "country_code">,
+  currency: string | null | undefined,
+  taxTotalMinor: bigint,
+): boolean {
+  if (!currency || currency.toUpperCase() === "EUR" || taxTotalMinor === 0n) return false
+  return EURO_AREA.has(
+    String(issuer.country_code || issuer.country || "")
+      .trim()
+      .toUpperCase(),
+  )
+}
+
 export function buildTemplateData(params: {
   type: DocumentType
   document: DocumentRow
@@ -2177,6 +2264,27 @@ export function buildTemplateData(params: {
   const stored = document as unknown as Record<string, unknown>
   const saleDate = dayOf(stored.supply_date) ?? dayOf(document.source?.supply_date)
   const flat = (document.einvoice ?? stored) as Record<string, unknown>
+  // The face language: stored at issue; a document issued before it was stored keeps the issuer's.
+  const language =
+    document.language === "fr" || document.language === "en" || document.language === "de"
+      ? document.language
+      : issuer.default_language
+  // The VAT total in EUR of a foreign-currency document, from the issue-time ECB snapshot.
+  const fxRate =
+    typeof (flat.fx_rate ?? stored.fx_rate) === "string"
+      ? String(flat.fx_rate ?? stored.fx_rate)
+      : null
+  const fxDate = dayOf(flat.fx_rate_date ?? stored.fx_rate_date)
+  const taxEur = flat.tax_total_eur_minor ?? stored.tax_total_eur_minor
+  const fx =
+    document.currency !== "EUR" &&
+    BigInt(document.tax_total_minor.toString()) !== 0n &&
+    fxRate &&
+    fxDate &&
+    taxEur != null &&
+    taxEur !== ""
+      ? { rate: fxRate, rate_date: fxDate, tax_total_eur_minor: String(taxEur) }
+      : null
   const snapshot = {
     operation_category:
       ((flat.operation_category ?? stored.operation_category) as
@@ -2195,6 +2303,8 @@ export function buildTemplateData(params: {
       // The sale date: the stored column on a re-render, the issue-time source at issue. Only
       // set when there is one, so a document without a sale date renders as it always did.
       ...(saleDate ? { supply_date: saleDate } : {}),
+      language,
+      ...(fx ? { fx } : {}),
       due_at: document.due_at,
       currency: document.currency,
       subtotal_minor: document.subtotal_minor.toString(),
@@ -2213,7 +2323,7 @@ export function buildTemplateData(params: {
       reason: params.reason ?? null,
       // The stored e-invoicing snapshot: at issue time it rides on `document.einvoice`, on a
       // re-render it is the persisted columns. Never recomputed from current data.
-      operation_label: operationLabel(snapshot.operation_category, issuer.default_language),
+      operation_label: operationLabel(snapshot.operation_category, language),
       operation_category: snapshot.operation_category ?? null,
       vat_on_debits: snapshot.vat_on_debits === true,
       // The human Shopify order reference, rendered as an "Order" line in the
@@ -2245,7 +2355,9 @@ export function buildTemplateData(params: {
       bank_name: issuer.bank_name,
       default_language: issuer.default_language,
       logo_file_id: issuer.logo_file_id ?? null,
-      siren: issuer.siren ?? null,
+      // The stored SIREN, else the one the French VAT number carries: printed either way.
+      siren: issuerSiren(issuer),
+      siret: issuer.siret?.replace(/\s+/g, "") || null,
       legal_form: issuer.legal_form ?? null,
       share_capital: issuer.share_capital ?? null,
       rcs_city: issuer.rcs_city ?? null,

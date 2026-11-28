@@ -319,6 +319,37 @@ describe("an installed app's UI inside the desktop shell", () => {
   })
 })
 
+describe("compatibility mode in a wrapped shell (settings a newer server declares)", () => {
+  const withSettings = (blocks: unknown[]) => ({
+    ...manifestOf("acme", "AcmeHome"),
+    settings: { sections: [{ id: "future", title: "Future", scope: "org", blocks }] },
+  })
+
+  it("an unknown block with a fallback is drawn from it: no compatibility mode", async () => {
+    vi.stubGlobal("__LIAISON_SERVER_ADDRESS__", SERVER)
+    vi.stubGlobal("__LIAISON_APP_FRAME_URL__", FRAME)
+    serveManifests([
+      {
+        name: "acme",
+        component: "AcmeHome",
+        manifest: withSettings([{ block: "gallery", fallback: { text: "Set it on the web." } }]),
+      },
+    ])
+    await load()
+    expect(compatModeApps()).toEqual([])
+  })
+
+  it("an unknown block without a fallback notes the app", async () => {
+    vi.stubGlobal("__LIAISON_SERVER_ADDRESS__", SERVER)
+    vi.stubGlobal("__LIAISON_APP_FRAME_URL__", FRAME)
+    serveManifests([
+      { name: "acme", component: "AcmeHome", manifest: withSettings([{ block: "gallery" }]) },
+    ])
+    await load()
+    expect(compatModeApps().map((e) => e.app)).toEqual(["acme"])
+  })
+})
+
 describe("an installed app's UI inside the mobile shell (D7)", () => {
   // The phone's shell publishes its bridge (`__LIAISON_NATIVE__`) and ships the
   // frame document beside the page (`app-frame.html`, scripts/build-app-frame.ts).

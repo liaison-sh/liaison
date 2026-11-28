@@ -11,10 +11,7 @@
   "calls": [
     {
       "method": "db_findOne",
-      "args": [
-        "deferred_events",
-        "7d000000-0000-4000-8000-00000000c4a1"
-      ],
+      "args": ["deferred_events", "7d000000-0000-4000-8000-00000000c4a1"],
       "reply": "null"
     }
   ]

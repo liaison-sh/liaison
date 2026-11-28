@@ -296,7 +296,6 @@ async function documentRenderInput(
   )
   const templateData = buildTemplateData({
     type,
-    // biome-ignore lint/suspicious/noExplicitAny: persisted row → DocumentRow (string money; buildTemplateData calls .toString()).
     document: { ...(doc as any), id },
     issuer,
     counterparty,

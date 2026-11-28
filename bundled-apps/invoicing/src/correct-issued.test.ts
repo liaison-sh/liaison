@@ -358,7 +358,9 @@ describe("documents_correct_issued", () => {
       reason: "the tool added DE VAT on a sale outside the EU",
       tax_treatment: "eu_export_non_eu",
       counterparty_country: "US",
-      lines: [{ description: "Synth module", quantity: 1, unit_price_minor: 11900, tax_rate_bp: 0 }],
+      lines: [
+        { description: "Synth module", quantity: 1, unit_price_minor: 11900, tax_rate_bp: 0 },
+      ],
       // The paid amount stays: 119.00 with no VAT.
       number: "INV-HACK",
       issued_at: "2026-01-01",

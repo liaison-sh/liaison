@@ -12,9 +12,7 @@
   "calls": [
     {
       "method": "hasScope",
-      "args": [
-        "invoicing:issuer:admin"
-      ],
+      "args": ["invoicing:issuer:admin"],
       "reply": true
     },
     {

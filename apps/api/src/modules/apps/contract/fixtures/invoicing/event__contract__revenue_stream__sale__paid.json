@@ -294,7 +294,10 @@
     },
     {
       "method": "db_findMany",
-      "args": ["deferred_events", "{\"where\":{\"event_id\":\"12992208404646\",\"reason\":\"dismissed\"},\"limit\":1}"],
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"event_id\":\"12992208404646\",\"reason\":\"dismissed\"},\"limit\":1}"
+      ],
       "reply": "[]"
     }
   ]

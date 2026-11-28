@@ -19,7 +19,7 @@ import {
 import {
   isShellMode,
   type ShellMode,
-  verifyShellStatement,
+  verifyShellStatementFor,
 } from "../../packages/shared/src/app-signing/shell-statement"
 
 export const DEFAULT_DOWNLOADS_BASE = "https://downloads.liaison.sh"
@@ -66,13 +66,15 @@ export async function verifyPublishedShell(input: VerifyPublishedInput): Promise
     list = checked.list
   }
 
-  const result = await verifyShellStatement(statement, utf8.decode(sig), keys, { list })
-  if (!result.ok) return result.reason
-  if (result.statement.mode !== input.mode) return `statement is for ${result.statement.mode}`
-  if (result.statement.buildId !== input.buildId) {
-    return `statement is for build ${result.statement.buildId}`
-  }
-  return "ok"
+  // Bound to the URL: the statement must name the mode and build id asked for.
+  const result = await verifyShellStatementFor(
+    { mode: input.mode, buildId: input.buildId },
+    statement,
+    utf8.decode(sig),
+    keys,
+    { list },
+  )
+  return result.ok ? "ok" : result.reason
 }
 
 if (import.meta.main) {

@@ -493,7 +493,8 @@ The same key signs builds of the web app itself, so a desktop or phone app can
 run the build its server ships instead of the one compiled into it. A server
 image carries two builds: the desktop build at `/` and the native build (the
 one the phone apps wrap) under `/native/`. `GET /api/shell/info` names their
-build ids (the 16-hex `build-id.txt` of each), and `servedShell`, the server's
+build ids (the 16-hex `build-id.txt` of each, a hash of every file that build
+serves, the service worker and the app frame included), and `servedShell`, the server's
 switch for this (`LIAISON_SERVED_SHELL`, default `true`).
 
 For each build id there is one statement, published at
@@ -508,6 +509,12 @@ reproducible). The revocation list carries a floor per mode,
 `{"name":"shell:desktop","below":"<seq>"}`: a shell statement below it never
 runs. A server running a build that has no statement (a fork, a local patch)
 keeps every app on its compiled-in shell.
+
+A client trusts a statement only when it also names the mode and build id of
+the path it was fetched from (`verifyShellStatementFor` in
+`packages/shared/src/app-signing/shell-statement.ts`), so a host serving another
+signed statement at that path is refused. A revocation list entry named
+`shell:<mode>` for a mode the client does not know is ignored.
 
 `bun scripts/shell-signing/verify-statement.ts <desktop|native> <buildId>`
 checks a published statement against the pinned keys and prints `ok` or the

@@ -206,6 +206,11 @@ export type ShellStatementVerification =
  * Check a shell statement: canonical bytes, a signature by the pinned key it
  * names, and a seq not below its mode's floor. The files it lists are the
  * caller's to compare (each one's sha256 against `statement.files`).
+ *
+ * It does NOT check that the statement is the one asked for: a client fetching
+ * `shell/<mode>/<buildId>/statement.json` uses verifyShellStatementFor, so a
+ * host that serves another validly signed statement at that path is refused.
+ * The revocation list's anti-replay (acceptRevocationList) is the caller's too.
  */
 export async function verifyShellStatement(
   bytes: Uint8Array,
@@ -223,4 +228,26 @@ export async function verifyShellStatement(
   const revoked = shellRevocationFor(statement.mode, statement.seq, revocations)
   if (revoked) return { ok: false, reason: revoked }
   return { ok: true, statement }
+}
+
+export type ShellStatementCheck = ShellStatementVerification | { ok: false; reason: "wrong_build" }
+
+/**
+ * verifyShellStatement, plus the statement must name the mode and build id the
+ * client asked for (the ones in the URL it fetched). Every client (desktop,
+ * phone, the CLI check) verifies through this, or does the same two checks.
+ */
+export async function verifyShellStatementFor(
+  expected: { mode: ShellMode; buildId: string },
+  bytes: Uint8Array,
+  sig: string | Uint8Array,
+  keys: readonly AppSigningKey[],
+  revocations: ShellRevocations,
+): Promise<ShellStatementCheck> {
+  const result = await verifyShellStatement(bytes, sig, keys, revocations)
+  if (!result.ok) return result
+  if (result.statement.mode !== expected.mode || result.statement.buildId !== expected.buildId) {
+    return { ok: false, reason: "wrong_build" }
+  }
+  return result
 }

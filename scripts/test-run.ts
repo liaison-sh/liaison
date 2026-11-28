@@ -1108,6 +1108,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // build id recomputed under the web build's own rule.
             "scripts/shell-signing/build-manifest.test.ts",
             "scripts/shell-signing/sign-statement.test.ts",
+            "scripts/shell-signing/verify-statement.test.ts",
             // The release list's security marker (#639): Security: trailers on tags.
             "scripts/release-security-marker.test.ts",
           ]),

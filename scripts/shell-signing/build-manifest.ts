@@ -10,12 +10,11 @@
 // schema version compiled from the source, and the sha256 of EVERY file under
 // the build root (the files a client fetches and checks).
 //
-// The build id is read from build-id.txt and recomputed here with the Vite
-// plugin's own rule (apps/web/src/lib/web-build-id-plugin.ts): the plugin hashes
-// the files Rollup emitted, before it writes the id into the HTML pages, so the
-// files Vite copies from apps/web/public, the app frame files written after the
-// build (apps/web/scripts/build-app-frame.ts) and build-id.txt itself are left
-// out, and the id is put back to its placeholder in every HTML page.
+// The build id is read from build-id.txt and recomputed here with the build's
+// own rule (apps/web/scripts/stamp-build-id.ts, the last build step): every file
+// of the build root but build-id.txt, the service worker, _app-runtime/ and the
+// app frame files included, with the id put back to its placeholder in every
+// HTML page. So the id names every byte the server serves for the shell.
 //
 // Usage:
 //   bun scripts/shell-signing/build-manifest.ts <desktop|native> <distDir>
@@ -25,18 +24,15 @@
 // name to $LIAISON_VERSION, else "dev". Prints the canonical JSON (or writes it
 // to --out).
 import { spawnSync } from "node:child_process"
-import { existsSync, lstatSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import {
-  APP_FRAME_DOCUMENT_FILE,
-  APP_FRAME_RUNTIME_FILE,
-} from "../../apps/web/scripts/build-app-frame"
-import { SHELL_BRIDGE_RANGE } from "../../apps/web/src/lib/shell-bridge-range"
-import {
   computeWebBuildId,
+  listBuildFiles,
   WEB_BUILD_ID_FILE,
   WEB_BUILD_ID_TOKEN,
-} from "../../apps/web/src/lib/web-build-id-plugin"
+} from "../../apps/web/scripts/stamp-build-id"
+import { SHELL_BRIDGE_RANGE } from "../../apps/web/src/lib/shell-bridge-range"
 import { SETTINGS_SCHEMA_VERSION } from "../../packages/app-sdk/src/app-settings"
 import { sha256Hex } from "../../packages/shared/src/app-signing/encoding"
 import {
@@ -46,8 +42,6 @@ import {
   type ShellMode,
 } from "../../packages/shared/src/app-signing/shell-statement"
 import { canonicalJson } from "../../packages/shared/src/app-signing/statement"
-
-export const WEB_PUBLIC_DIR = resolve(import.meta.dir, "../../apps/web/public")
 
 export interface ShellManifest {
   mode: ShellMode
@@ -61,43 +55,20 @@ export interface ShellManifest {
 }
 
 /** Every regular file under `root`, relative, `/`-separated, in code-unit order. */
-export function listFiles(root: string): string[] {
-  const out: string[] = []
-  const walk = (dir: string, prefix: string) => {
-    for (const name of readdirSync(dir)) {
-      const abs = join(dir, name)
-      const rel = prefix ? `${prefix}/${name}` : name
-      const st = lstatSync(abs)
-      if (st.isSymbolicLink()) throw new Error(`${rel}: a symbolic link in the build`)
-      if (st.isDirectory()) walk(abs, rel)
-      else if (st.isFile()) out.push(rel)
-      else throw new Error(`${rel}: not a regular file`)
-    }
-  }
-  walk(root, "")
-  return out.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-}
+export const listFiles = listBuildFiles
 
-/**
- * The build id the Vite plugin computed for this dist, recomputed from the
- * files on disk. `notBundled` = the paths Rollup did not emit.
- */
-export function recomputeBuildId(
-  files: ReadonlyMap<string, Uint8Array>,
-  id: string,
-  notBundled: ReadonlySet<string>,
-): string {
+/** The build id of the files on disk, under the build's own rule (stamp-build-id.ts). */
+export function recomputeBuildId(files: ReadonlyMap<string, Uint8Array>, id: string): string {
   const decoder = new TextDecoder()
-  const bundle: Record<string, { type: "asset"; fileName: string; source: string | Uint8Array }> =
-    {}
+  const unstamped = new Map<string, Uint8Array | string>()
   for (const [path, bytes] of files) {
-    if (path === WEB_BUILD_ID_FILE || notBundled.has(path)) continue
-    const source = path.endsWith(".html")
-      ? decoder.decode(bytes).split(id).join(WEB_BUILD_ID_TOKEN)
-      : bytes
-    bundle[path] = { type: "asset", fileName: path, source }
+    if (path === WEB_BUILD_ID_FILE) continue
+    unstamped.set(
+      path,
+      path.endsWith(".html") ? decoder.decode(bytes).split(id).join(WEB_BUILD_ID_TOKEN) : bytes,
+    )
   }
-  return computeWebBuildId(bundle)
+  return computeWebBuildId(unstamped)
 }
 
 export interface ManifestInput {
@@ -106,8 +77,6 @@ export interface ManifestInput {
   commit: string
   seq: number
   liaisonVersion: string
-  /** apps/web/public, whose files Vite copies into the dist unhashed. */
-  publicDir?: string
 }
 
 export async function buildShellManifest(input: ManifestInput): Promise<ShellManifest> {
@@ -125,13 +94,7 @@ export async function buildShellManifest(input: ManifestInput): Promise<ShellMan
   const buildId = new TextDecoder().decode(idBytes).trim()
   if (!/^[0-9a-f]{16}$/.test(buildId)) throw new Error(`${WEB_BUILD_ID_FILE}: not a build id`)
   if (!bytes.has("index.html")) throw new Error("index.html: missing from the build")
-  const publicDir = input.publicDir ?? WEB_PUBLIC_DIR
-  const notBundled = new Set<string>([
-    APP_FRAME_RUNTIME_FILE,
-    APP_FRAME_DOCUMENT_FILE,
-    ...(existsSync(publicDir) ? listFiles(publicDir) : []),
-  ])
-  const recomputed = recomputeBuildId(bytes, buildId, notBundled)
+  const recomputed = recomputeBuildId(bytes, buildId)
   if (recomputed !== buildId) {
     throw new Error(
       `${WEB_BUILD_ID_FILE} says ${buildId} but the files hash to ${recomputed} under the build id rule`,

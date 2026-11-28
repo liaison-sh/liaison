@@ -1,0 +1,22 @@
+{
+  "entry": "preflight:documents_correct_issued",
+  "params": {
+    "id": "7c000000-0000-4000-8000-00000000c4a1",
+    "reason": "the tool charged the wrong VAT rate on this invoice",
+    "tax_treatment": "eu_domestic"
+  },
+  "recordedFrom": "hand-written: a contract org with no such document (no bridge call beyond the lookup)",
+  "expectError": {
+    "reason": "no document has this id, so the preflight refuses: pins that refusal; the correction path is proven by correct-issued.test.ts"
+  },
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"id\":\"7c000000-0000-4000-8000-00000000c4a1\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

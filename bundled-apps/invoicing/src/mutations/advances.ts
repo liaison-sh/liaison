@@ -30,6 +30,7 @@ import {
   stepsOf,
   takeDownMilestoneLine,
 } from "./billing-plan"
+import { ISSUED_INVOICE_STATUSES } from "./credit-coverage"
 import { creditNoteCreateAndIssue } from "./credit-notes"
 import { resolveIssuerProfileOrError } from "./db-helpers"
 import { draftsCreate } from "./drafts"
@@ -42,7 +43,7 @@ type Row = Record<string, unknown>
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/
-const ISSUED = new Set(["issued", "paid", "overdue", "refunded"])
+const ISSUED = ISSUED_INVOICE_STATUSES
 
 const asBig = (v: unknown): bigint => {
   if (typeof v === "bigint") return v

@@ -62,6 +62,7 @@ import { isUniqueViolation } from "../mutations/quote-proforma-po"
 import { supplyDateOf } from "../sale-tax"
 import { planSaleMail } from "../sale-thanks"
 import { classify, EXEMPT_TREATMENTS, isUntaxedIntraEuSaleWithoutVat } from "../tax"
+import { parkDismissed } from "./deferred-dismiss"
 
 export interface OrderPaidPayload {
   id: string // Shopify order ID (external_id)
@@ -354,6 +355,7 @@ export type OrderPaidResult =
       status: "skipped"
       reason:
         | "zero_total"
+        | "park_dismissed"
         | "duplicate_document"
         | "not_paid"
         | "already_parked"
@@ -768,6 +770,11 @@ export async function issueOrderFlow(
   const total = toBigIntMinor(payload.total_price_minor)
   if (total === 0n) {
     return { status: "skipped", reason: "zero_total" }
+  }
+  // A person dismissed this sale's park (deferred_dismiss: a staff test, a voided order): it is
+  // never invoiced, whatever re-drives it (a webhook redelivery, a catch-up, a replay).
+  if (await parkDismissed(ctx.db, parkId)) {
+    return { status: "skipped", reason: "park_dismissed" }
   }
 
   // Idempotency at the document level, per scope. A legacy (pre-split,

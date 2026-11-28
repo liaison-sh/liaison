@@ -153,7 +153,7 @@ Month and week calendar that syncs both ways with Google Calendar.
 | `calendar:accounts:read` | role member |  |
 | `calendar:approve` | approver scope | Decide (approve, edit, or deny) calendar approvals raised by its gated tools |
 | `calendar:calendars:read` | role member |  |
-| `calendar:events:read` | entity event; role member; tools activity_read, find_free_slots, list_accounts, list_calendars, list_events, search_events |  |
+| `calendar:events:read` | entity event; role member; tools activity_read, find_free_slots, get_event, list_accounts, list_calendars, list_events and 1 more |  |
 | `calendar:events:write` | role member; tools create_event, delete_event, respond_to_invitation, retry_import, set_selected, update_event |  |
 
 ## calls
@@ -220,8 +220,8 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `invoicing:approve` | approver scope | Decide (approve, edit, or deny) invoicing approvals raised by its gated tools |
 | `invoicing:contacts:read` | manifest scopes; tools contact_relationships_get, counterparty_identity_get, counterparty_identity_lookup, vat_lookup, vat_validate |  |
 | `invoicing:contacts:write` | manifest scopes; tools contact_relationships_set, counterparty_identity_set, counterparty_territory_set, einvoicing_backfill_identities |  |
-| `invoicing:documents:read` | manifest scopes; entities document, recurring_run, recurring_schedule; tools activity_read, approval_route_read, billing_plan_get, client_action_view_get, customer_history, deferred_list and 23 more |  |
-| `invoicing:documents:write` | manifest scopes; tools advance_draft_create, advance_refund_prepare, billing_plan_set, billing_step_add, credit_note_create_and_issue, credit_note_from_reconcile and 48 more |  |
+| `invoicing:documents:read` | manifest scopes; entities document, recurring_run, recurring_schedule; tools activity_read, approval_route_read, billing_plan_get, client_action_view_get, customer_history, deferred_list and 24 more |  |
+| `invoicing:documents:write` | manifest scopes; tools advance_draft_create, advance_refund_prepare, billing_plan_set, billing_step_add, credit_note_create_and_issue, credit_note_from_reconcile and 50 more |  |
 | `invoicing:internal` | manifest scopes; tool card_stream_issuer |  |
 | `invoicing:issuer:admin` | manifest scopes |  |
 | `invoicing:received:read` | manifest scopes; entity received_einvoice; tools received_einvoices_get, received_einvoices_list |  |

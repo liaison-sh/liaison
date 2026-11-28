@@ -2,11 +2,12 @@
 //
 // Invoicing mutations: document PDF rendering (ensureDocumentPdf) and the explicit retry.
 
+import { sha256Hex } from "../einvoicing/backfill-sha256"
 import type { OperationCategory } from "../einvoicing/classify-operation"
 import { importedOriginalMissing, resolveGateMode } from "../einvoicing/gate"
 import { documentLegalMention } from "../einvoicing/mentions"
 import { sellerIncompleteError } from "../einvoicing/seller"
-import { FacturxBuildError, type FacturxInput } from "../facturx/cii"
+import { buildCii, FacturxBuildError, type FacturxInput } from "../facturx/cii"
 import { facturxEligible, facturxInputFrom } from "../facturx/input"
 import {
   buildTemplateData,
@@ -16,9 +17,16 @@ import {
   storedTaxCountry,
   taxCountryOf,
 } from "../issue"
-import { hasLegalOriginal, recordLegalOriginal } from "../legal-originals/record"
+import { base64, utf8Bytes } from "../legal-originals/bytes"
+import {
+  FACTURX_AF_RELATIONSHIP,
+  FACTURX_FILENAME,
+  facturxXmpExtension,
+  hasLegalOriginal,
+  recordLegalOriginal,
+} from "../legal-originals/record"
 import { isUuid } from "../reads"
-import { classify } from "../tax"
+import { classify, type TaxTreatment } from "../tax"
 import { dateOnly, FOREIGN_ID_CHARS, findIssuerProfile } from "./db-helpers"
 import { type DocumentType, type MutationResult, type MutationsCtx, toBigInt } from "./shared"
 
@@ -111,9 +119,109 @@ export async function ensureDocumentPdf(
     typeof doc.number === "string" &&
     doc.number !== "" &&
     (doc.pdf_status as string | null) !== "ready"
+  // A corrected document whose corrected file has not rendered yet: render it now (the retry of a
+  // correction whose render failed). Its file of record is the correction's, never a new legal
+  // original or a management copy.
+  const correctionId =
+    typeof doc.current_correction_id === "string" && doc.current_correction_id
+      ? doc.current_correction_id
+      : null
+  if (correctionId) {
+    const pendingCorrection = (
+      (await ctx.db.findMany("document_corrections", {
+        where: { id: correctionId },
+        limit: 1,
+      })) as Array<Record<string, unknown>>
+    )[0]
+    if (pendingCorrection && !pendingCorrection.file_id) return renderCorrection(ctx, id)
+  }
+  const input = await documentRenderInput(ctx, doc, id)
+  if (!input.ok) return input
+  const { type, issuer, lines, creditRef, legalMention, templateData } = input
+  if (firstRender) {
+    return renderFirstLegalOriginal(ctx, {
+      // An on-demand first render (send) hands the file to the mail app in this same call: the
+      // host commits the legal original row with the file (BL-191). documents_update/payments
+      // (link:false) already hold the documents row and keep everything in their transaction.
+      commit: opts?.link !== false,
+      doc,
+      id,
+      type,
+      lines,
+      issuer: issuer as unknown as Record<string, unknown>,
+      creditRef,
+      legalMention,
+      templateData,
+    })
+  }
+  // The bridge normally wraps a thrown render error into an `{ error }` envelope, but a direct
+  // throw is still possible (and the unit mock throws) — handle both so a render failure becomes a
+  // typed error + `pdf_status='failed'`, never an unhandled rejection that aborts the gated send.
+  let rendered: { file_id: string } | { error: { code?: string; message?: string } }
+  try {
+    rendered = (await ctx.pdf.render({
+      template_kind: `invoicing:${type}_v1`,
+      // Re-render keeps the document-identifying filename (see issue.ts); an
+      // unnumbered draft falls back to the host's template-kind name.
+      ...((doc.number as string | null) ? { filename: `${type}-${doc.number as string}.pdf` } : {}),
+      // The stored snapshot (category, issue date), never a recomputation from current data.
+      data: templateData,
+      // BL-191 — COMMIT the documents.pdf_file_id link in the SAME privileged tx the host uses to write
+      // the file row, so an ON-DEMAND render inside documents_send_to_customer is visible to the
+      // cross-app mail:composeForApp (whose `pdf` fileParent RLS joins documents.pdf_file_id =
+      // files.entity_id) BEFORE this handler's tx commits. Without it the gated send fails closed
+      // "Source file not visible to caller" on any issued-but-unrendered invoice. The redundant
+      // ctx.db.update below keeps pdf_status in the handler tx (rolls back with the handler on failure).
+      //
+      // `link: false` callers (documents_update): the handler has ALREADY UPDATED this documents row
+      // inside its own open transaction, so the row is LOCKED — the host's privileged link-write
+      // (a separate tx) would block on that lock while the handler awaits the render: a deadlock
+      // that rides the sandbox timeout to a killed worker. Those callers persist pdf_file_id via
+      // the in-tx ctx.db.update below instead; the cross-tx link only matters for the
+      // send-to-customer same-tx visibility flow (BL-191), which never pre-updates the row.
+      ...(opts?.link === false
+        ? {}
+        : { link: { table: "documents", column: "pdf_file_id", row_id: id } }),
+    })) as { file_id: string } | { error: { code?: string; message?: string } }
+  } catch (err) {
+    await ctx.db.update("documents", id, { pdf_status: "failed" })
+    return {
+      ok: false,
+      error: {
+        code: (err as { code?: string }).code ?? "render_failed",
+        message: (err as { message?: string }).message ?? "PDF render failed",
+      },
+    }
+  }
+  if ("error" in rendered) {
+    await ctx.db.update("documents", id, { pdf_status: "failed" })
+    return {
+      ok: false,
+      error: {
+        code: (rendered.error.code as string) ?? "render_failed",
+        message: rendered.error.message ?? "PDF render failed",
+      },
+    }
+  }
+  await ctx.db.update("documents", id, { pdf_file_id: rendered.file_id, pdf_status: "ready" })
+  return { ok: true, pdf_file_id: rendered.file_id }
+}
+
+/** Everything a render of the persisted document needs: issuer, lines, the credit note's reference,
+ *  the legal mention and the template data (the same for a legal original, a management copy and
+ *  a corrected file). */
+async function documentRenderInput(
+  ctx: DocumentRenderCtx,
+  doc: Record<string, unknown>,
+  id: string,
+) {
+  const refs = refsOf(doc.external_refs)
   const issuer = await findIssuerProfile(ctx.db, String(doc.issuer_profile_id))
   if (!issuer)
-    return { ok: false, error: { code: "issuer_not_found", message: "issuer profile missing" } }
+    return {
+      ok: false as const,
+      error: { code: "issuer_not_found", message: "issuer profile missing" },
+    }
   const lineRows = await ctx.db.findMany("document_lines", {
     where: { document_id: id },
     orderBy: { position: "asc" },
@@ -167,9 +275,15 @@ export async function ensureDocumentPdf(
   // A credit note's reference to the invoice it reverses (number + issue date, and the reason) is
   // printed on the PDF; a re-render rebuilds it exactly as issue time did, from the original row.
   const creditRef = type === "credit_note" ? await creditNoteReference(ctx, doc, refs) : null
+  // A document corrected in place prints the treatment the correction set; any other re-render
+  // keeps the issue-time classification.
+  const treatment =
+    doc.current_correction_id && isTaxTreatment(doc.tax_treatment)
+      ? doc.tax_treatment
+      : classification.treatment
   const legalMention = await documentLegalMention(
     ctx.db,
-    classification.treatment,
+    treatment,
     doc.language === "fr" || doc.language === "en" || doc.language === "de"
       ? doc.language
       : issuer.default_language,
@@ -180,93 +294,18 @@ export async function ensureDocumentPdf(
       customerKind: (doc.customer_kind as string | null | undefined) ?? null,
     },
   )
-  if (firstRender) {
-    return renderFirstLegalOriginal(ctx, {
-      // An on-demand first render (send) hands the file to the mail app in this same call: the
-      // host commits the legal original row with the file (BL-191). documents_update/payments
-      // (link:false) already hold the documents row and keep everything in their transaction.
-      commit: opts?.link !== false,
-      doc,
-      id,
-      type,
-      lines,
-      issuer: issuer as unknown as Record<string, unknown>,
-      creditRef,
-      legalMention,
-      // biome-ignore lint/suspicious/noExplicitAny: persisted row → DocumentRow (string money; buildTemplateData calls .toString()).
-      templateData: buildTemplateData({
-        type,
-        document: { ...(doc as any), id },
-        issuer,
-        counterparty,
-        lines,
-        requires_hs_code: classification.requires_hs_code,
-        legal_mention: legalMention,
-        ...(creditRef ?? {}),
-      }),
-    })
-  }
-  // The bridge normally wraps a thrown render error into an `{ error }` envelope, but a direct
-  // throw is still possible (and the unit mock throws) — handle both so a render failure becomes a
-  // typed error + `pdf_status='failed'`, never an unhandled rejection that aborts the gated send.
-  let rendered: { file_id: string } | { error: { code?: string; message?: string } }
-  try {
-    rendered = (await ctx.pdf.render({
-      template_kind: `invoicing:${type}_v1`,
-      // Re-render keeps the document-identifying filename (see issue.ts); an
-      // unnumbered draft falls back to the host's template-kind name.
-      ...((doc.number as string | null) ? { filename: `${type}-${doc.number as string}.pdf` } : {}),
-      // biome-ignore lint/suspicious/noExplicitAny: persisted row → DocumentRow (string money; buildTemplateData calls .toString()).
-      data: buildTemplateData({
-        type,
-        document: { ...(doc as any), id },
-        issuer,
-        counterparty,
-        lines,
-        requires_hs_code: classification.requires_hs_code,
-        // The stored snapshot (category, issue date), never a recomputation from current data.
-        legal_mention: legalMention,
-        ...(creditRef ?? {}),
-      }),
-      // BL-191 — COMMIT the documents.pdf_file_id link in the SAME privileged tx the host uses to write
-      // the file row, so an ON-DEMAND render inside documents_send_to_customer is visible to the
-      // cross-app mail:composeForApp (whose `pdf` fileParent RLS joins documents.pdf_file_id =
-      // files.entity_id) BEFORE this handler's tx commits. Without it the gated send fails closed
-      // "Source file not visible to caller" on any issued-but-unrendered invoice. The redundant
-      // ctx.db.update below keeps pdf_status in the handler tx (rolls back with the handler on failure).
-      //
-      // `link: false` callers (documents_update): the handler has ALREADY UPDATED this documents row
-      // inside its own open transaction, so the row is LOCKED — the host's privileged link-write
-      // (a separate tx) would block on that lock while the handler awaits the render: a deadlock
-      // that rides the sandbox timeout to a killed worker. Those callers persist pdf_file_id via
-      // the in-tx ctx.db.update below instead; the cross-tx link only matters for the
-      // send-to-customer same-tx visibility flow (BL-191), which never pre-updates the row.
-      ...(opts?.link === false
-        ? {}
-        : { link: { table: "documents", column: "pdf_file_id", row_id: id } }),
-    })) as { file_id: string } | { error: { code?: string; message?: string } }
-  } catch (err) {
-    await ctx.db.update("documents", id, { pdf_status: "failed" })
-    return {
-      ok: false,
-      error: {
-        code: (err as { code?: string }).code ?? "render_failed",
-        message: (err as { message?: string }).message ?? "PDF render failed",
-      },
-    }
-  }
-  if ("error" in rendered) {
-    await ctx.db.update("documents", id, { pdf_status: "failed" })
-    return {
-      ok: false,
-      error: {
-        code: (rendered.error.code as string) ?? "render_failed",
-        message: rendered.error.message ?? "PDF render failed",
-      },
-    }
-  }
-  await ctx.db.update("documents", id, { pdf_file_id: rendered.file_id, pdf_status: "ready" })
-  return { ok: true, pdf_file_id: rendered.file_id }
+  const templateData = buildTemplateData({
+    type,
+    // biome-ignore lint/suspicious/noExplicitAny: persisted row → DocumentRow (string money; buildTemplateData calls .toString()).
+    document: { ...(doc as any), id },
+    issuer,
+    counterparty,
+    lines,
+    requires_hs_code: classification.requires_hs_code,
+    legal_mention: legalMention,
+    ...(creditRef ?? {}),
+  })
+  return { ok: true as const, type, issuer, lines, creditRef, legalMention, templateData }
 }
 
 /** The first successful render of an issued invoice / credit note: its legal original. */
@@ -415,4 +454,159 @@ export async function documentsRetryPdf(
   const r = await ensureDocumentPdf(ctx, id, { force: true })
   if (!r.ok) return { status: "error", error: r.error }
   return { status: "completed", document_id: id, pdf_file_id: r.pdf_file_id }
+}
+
+const TAX_TREATMENT_SET: ReadonlySet<string> = new Set<TaxTreatment>([
+  "eu_domestic",
+  "eu_reverse_charge",
+  "eu_b2c_oss",
+  "eu_export_non_eu",
+  "uk_domestic",
+  "uk_export_eu",
+  "uk_export_non_eu",
+  "us_domestic",
+  "us_export",
+])
+
+function isTaxTreatment(v: unknown): v is TaxTreatment {
+  return typeof v === "string" && TAX_TREATMENT_SET.has(v)
+}
+
+/**
+ * Render the file of record of a document corrected in place (mutations/correct-issued.ts): a
+ * PDF/A-3B of the corrected content, with its regenerated Factur-X XML embedded for an e-invoice
+ * (and kept as its own file), stored under the correction row (`document_correction` file parent),
+ * never over the legal original, which stays as it was issued. Fills the correction row's file
+ * columns once (the row is immutable otherwise) and points the document's current PDF at it.
+ */
+export async function renderCorrection(
+  ctx: DocumentRenderCtx,
+  documentId: string,
+): Promise<
+  | { ok: true; pdf_file_id: string }
+  | { ok: false; error: { code: string; message: string; retryable?: boolean } }
+> {
+  const doc = (
+    (await ctx.db.findMany("documents", { where: { id: documentId }, limit: 1 })) as Array<
+      Record<string, unknown>
+    >
+  )[0]
+  const correctionId =
+    typeof doc?.current_correction_id === "string" ? doc.current_correction_id : null
+  if (!doc || !correctionId)
+    return { ok: false, error: { code: "not_found", message: "no correction to render" } }
+  const correction = (
+    (await ctx.db.findMany("document_corrections", {
+      where: { id: correctionId },
+      limit: 1,
+    })) as Array<Record<string, unknown>>
+  )[0]
+  if (!correction)
+    return { ok: false, error: { code: "not_found", message: "the correction record is missing" } }
+  if (correction.file_id) return { ok: true, pdf_file_id: String(correction.file_id) }
+  const input = await documentRenderInput(ctx, doc, documentId)
+  if (!input.ok) return input
+  const { type, issuer, lines, creditRef, legalMention, templateData } = input
+  let xml: string | null = null
+  const plain =
+    facturxEligible(type, doc) &&
+    sellerIncompleteError(issuer as unknown as Record<string, unknown>, type) !== null &&
+    (await resolveGateMode(ctx.db, { materialise: false })) !== "enforce"
+  if (facturxEligible(type, doc) && !plain) {
+    try {
+      xml = buildCii(
+        facturxInputFrom({
+          type: type as "invoice" | "credit_note",
+          doc,
+          lines,
+          issuer: issuer as unknown as Record<string, unknown>,
+          original: creditRef
+            ? {
+                number: creditRef.original_invoice_number,
+                issue_date: creditRef.original_invoice_date,
+              }
+            : null,
+          legalMention,
+        }),
+      )
+    } catch (err) {
+      if (!(err instanceof FacturxBuildError)) throw err
+      await ctx.db.update("documents", documentId, { pdf_status: "facturx_failed" })
+      return { ok: false, error: { code: err.code, message: err.message, retryable: true } }
+    }
+  }
+  const xmlBytes = xml != null ? utf8Bytes(xml) : null
+  let rendered:
+    | { file_id: string; byte_size?: number; sha256?: string }
+    | { error: { code?: string; message?: string } }
+  try {
+    rendered = (await ctx.pdf.render({
+      template_kind: `invoicing:${type}_v1`,
+      filename: `${type}-${String(doc.number)}-corrected-${String(correction.sequence ?? 1)}.pdf`,
+      data: templateData,
+      pdfa: "3b",
+      ...(xmlBytes
+        ? {
+            attachments: [
+              {
+                name: FACTURX_FILENAME,
+                mime: "text/xml",
+                bytesBase64: base64(xmlBytes),
+                afRelationship: FACTURX_AF_RELATIONSHIP,
+                description: "Factur-X invoice",
+              },
+            ],
+            xmp: { extensions: [facturxXmpExtension()] },
+          }
+        : {}),
+      parent: { entityType: "document_correction", entityId: correctionId },
+    })) as typeof rendered
+  } catch (err) {
+    rendered = {
+      error: {
+        code: (err as { code?: string }).code,
+        message: (err as { message?: string }).message,
+      },
+    }
+  }
+  if ("error" in rendered || !rendered.sha256) {
+    await ctx.db.update("documents", documentId, { pdf_status: "failed" })
+    const e =
+      "error" in rendered ? rendered.error : { code: "render_failed", message: "no file hash" }
+    return {
+      ok: false,
+      error: {
+        code: e.code ?? "render_failed",
+        message: e.message ?? "PDF render failed",
+        retryable: true,
+      },
+    }
+  }
+  const fill: Record<string, unknown> = {
+    file_id: rendered.file_id,
+    sha256: rendered.sha256,
+    byte_size: rendered.byte_size ?? null,
+  }
+  if (xmlBytes && ctx.files_importAttachment) {
+    const stored = JSON.parse(
+      await ctx.files_importAttachment(
+        JSON.stringify({
+          targetApp: "invoicing",
+          targetEntityType: "document_correction",
+          targetEntityId: correctionId,
+          filename: `${String(doc.number)}-corrected-${String(correction.sequence ?? 1)}-${FACTURX_FILENAME}`,
+          mimeType: "text/xml",
+          bytesBase64: base64(xmlBytes),
+        }),
+      ),
+    ) as { id: string }
+    fill.facturx_xml_file_id = stored.id
+    fill.facturx_sha256 = sha256Hex(xmlBytes)
+  }
+  await ctx.db.update("document_corrections", correctionId, fill)
+  await ctx.db.update("documents", documentId, {
+    pdf_file_id: rendered.file_id,
+    pdf_status: "ready",
+  })
+  return { ok: true, pdf_file_id: rendered.file_id }
 }

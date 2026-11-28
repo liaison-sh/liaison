@@ -4137,5 +4137,21 @@
     "say": "les anciennes factures n'apparaissent pas sur la commande shopify, rattache-les",
     "typed": ["rattacher commande shopify", "relier facture commande", "link invoice order"],
     "any": ["invoicing__documents_link_shopify_orders"]
+  },
+  {
+    "id": "C193",
+    "set": "seed",
+    "lang": "fr",
+    "say": "la facture émise a une erreur de TVA due à l'outil, corrige-la sans avoir",
+    "typed": ["corriger facture émise", "rectifier erreur tva", "correct issued invoice"],
+    "any": ["invoicing__documents_correct_issued"]
+  },
+  {
+    "id": "C194",
+    "set": "seed",
+    "lang": "fr",
+    "say": "la commande en attente est un achat test du personnel, écarte-la sans facture",
+    "typed": ["écarter commande test", "ignorer commande en attente", "dismiss parked order"],
+    "any": ["invoicing__deferred_dismiss"]
   }
 ]

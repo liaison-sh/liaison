@@ -18,8 +18,10 @@
 //   - the order's email equals the document's buyer email (or, when the document has none, its
 //     linked contact's email), compared trimmed and lower-cased;
 //   - when both the order and the document's contact carry a Shopify customer id, they are equal;
-//   - no other document already carries that order id (an invoice and its credit note naming the
-//     same order in the same run are linked together).
+//   - no other LIVE document already carries that order id (an invoice and its credit note naming
+//     the same order in the same run are linked together). A replacement invoice links next to the
+//     documents it replaced: when every other carrier is cancelled or voided, a fully credited
+//     invoice, or a credit note of such an invoice, the live invoice is the order's one invoice.
 // Anything else is reported with its reason and left as it is.
 //
 // What it writes: `shopify_order_id` (and, on the number basis, `shopify_order_number`) and one
@@ -38,6 +40,7 @@ export const SHOPIFY_ORDER_LINKED_EVENT = "shopify_order_linked"
 export const LINK_DEFAULT_LIMIT = 20
 export const LINK_MAX_LIMIT = 40
 const SCAN_PAGE = 500
+const DEAD_STATUSES = new Set(["voided", "cancelled"])
 
 /** Legal documents only; quotes, proformas and purchase orders keep their own order handling. */
 const LINKABLE_TYPES = new Set(["invoice", "credit_note"])
@@ -125,6 +128,46 @@ function refsOf(v: unknown): Row {
  *  the only documents whose own number may stand for their Shopify order's name. */
 function importedLegacy(d: Row): boolean {
   return str(d.legal_original_id) !== null && str(refsOf(d.external_refs).import_source) !== null
+}
+
+function absMinor(v: unknown): bigint {
+  try {
+    const n = BigInt(typeof v === "number" ? Math.round(v) : String(v ?? "0") || "0")
+    return n < 0n ? -n : n
+  } catch {
+    return 0n
+  }
+}
+
+/**
+ * The documents that no longer bill an order: cancelled or voided ones, invoices their issued
+ * credit notes cover in full, and the credit notes of those invoices. A replacement invoice may
+ * carry the order next to them.
+ */
+function replacedDocuments(docs: Row[]): Set<string> {
+  const byId = new Map(docs.map((d) => [String(d.id), d]))
+  const credited = new Map<string, bigint>()
+  for (const d of docs) {
+    if (d.type !== "credit_note" || NOT_LINKABLE_STATUSES.has(String(d.status))) continue
+    const orig = str(d.original_document_id) ?? str(refsOf(d.external_refs).original_document_id)
+    if (orig) credited.set(orig, (credited.get(orig) ?? 0n) + absMinor(d.grand_total_minor))
+  }
+  const dead = new Set<string>()
+  for (const d of docs) {
+    const id = String(d.id)
+    if (DEAD_STATUSES.has(String(d.status))) dead.add(id)
+    else if (d.type === "invoice") {
+      const total = absMinor(d.grand_total_minor)
+      if (d.payment_status === "credited" || (total > 0n && (credited.get(id) ?? 0n) >= total))
+        dead.add(id)
+    }
+  }
+  for (const d of docs) {
+    if (d.type !== "credit_note") continue
+    const orig = str(d.original_document_id) ?? str(refsOf(d.external_refs).original_document_id)
+    if (orig && dead.has(orig) && byId.has(orig)) dead.add(String(d.id))
+  }
+  return dead
 }
 
 const lowerEmail = (v: unknown): string | null => str(v)?.toLowerCase() ?? null
@@ -221,6 +264,7 @@ export async function linkShopifyOrders(
   }
 
   const docs = await allRows(ctx, "documents")
+  const replaced = replacedDocuments(docs)
   // Which documents already carry each order id.
   const carriers = new Map<string, Set<string>>()
   for (const d of docs) {
@@ -342,7 +386,10 @@ export async function linkShopifyOrders(
     const orderId = order.id as string
 
     const others = [...(carriers.get(orderId) ?? [])].filter((x) => !linkedHere.has(x))
-    if (others.length > 0) {
+    // A live replacement invoice links next to the documents it replaced (see the header).
+    const replacement =
+      d.type === "invoice" && !replaced.has(id) && others.every((x) => replaced.has(x))
+    if (others.length > 0 && !replacement) {
       report("order_already_linked", { shopify_order_id: orderId })
       continue
     }

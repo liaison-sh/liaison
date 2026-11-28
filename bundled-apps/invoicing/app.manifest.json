@@ -316,7 +316,15 @@
       },
       {
         "tools": ["documents_update"],
-        "text": "`documents_update`: An issued invoice is legally immutable; to correct amounts, tax treatment, or the counterparty's legal identity, issue a CREDIT NOTE with credit_note_create_and_issue (referencing this invoice), never an in-place edit. A PROFORMA, a QUOTE or a PURCHASE ORDER is not an accounting document and is never frozen: on an issued one, every field above stays editable exactly like a draft, including a full `lines` replacement (totals recompute, the PDF re-renders, the edit is logged). This is THE way to change an issued proforma's amount or lines (e.g. a 0 value proforma that must declare 1.00): calling proforma_create_and_issue again for the same order does not change it. Harmless metadata (address, email, linked contact, incoterm, issued_at/due_at, po_number, notes) stays editable post-issue for a Sufio-style typo fix. An issued document's date stays in its number's year (issue_date_crosses_number_year, and an invoice or credit note then needs a credit note, never another date); an issued invoice or credit note's date also stays between its neighbouring numbers (issue_date_breaks_number_order) and on or before today (issue_date_in_future), a credit note stays on or after the invoice it corrects (issue_date_before_original) and that invoice on or before its credit notes (issue_date_after_credit_note), and an issued document cannot lose its date (issued_at_invalid). `number`, `type`, `status`, `issuer_profile_id`, and `currency` are never editable here (no such params). The customer's purchase order number IS a non financial reference like the address or due date: set or correct it with `po_number` on a draft or an already-issued document alike, and the PDF re-renders with the new value. Editing the underlying Shopify order is NOT a substitute for this: it changes the order without changing the document that was already sent to the customer. `notes` is free text in the same class: a contract reference, extra customs information or a special mention, printed on the PDF and settable on a draft or on an already issued, sent or paid document, capped at 2000 characters. A voided or cancelled document is fully immutable (the call fails `document_not_editable`). Every applied edit appends a lifecycle_log entry recording the changed field names and forces a fresh PDF re-render (a render FAILURE does not undo the edit: the edit persists and pdf_status reflects the failure; retry with documents_retry_pdf)."
+        "text": "`documents_update`: An issued invoice is legally immutable; to correct amounts, tax treatment, or the counterparty's legal identity, issue a CREDIT NOTE with credit_note_create_and_issue (referencing this invoice), never an in-place edit with this tool (the one exception, a TOOL error the person asks to correct in place, is documents_correct_issued). A PROFORMA, a QUOTE or a PURCHASE ORDER is not an accounting document and is never frozen: on an issued one, every field above stays editable exactly like a draft, including a full `lines` replacement (totals recompute, the PDF re-renders, the edit is logged). This is THE way to change an issued proforma's amount or lines (e.g. a 0 value proforma that must declare 1.00): calling proforma_create_and_issue again for the same order does not change it. Harmless metadata (address, email, linked contact, incoterm, issued_at/due_at, po_number, notes) stays editable post-issue for a Sufio-style typo fix. An issued document's date stays in its number's year (issue_date_crosses_number_year, and an invoice or credit note then needs a credit note, never another date); an issued invoice or credit note's date also stays between its neighbouring numbers (issue_date_breaks_number_order) and on or before today (issue_date_in_future), a credit note stays on or after the invoice it corrects (issue_date_before_original) and that invoice on or before its credit notes (issue_date_after_credit_note), and an issued document cannot lose its date (issued_at_invalid). `number`, `type`, `status`, `issuer_profile_id`, and `currency` are never editable here (no such params). The customer's purchase order number IS a non financial reference like the address or due date: set or correct it with `po_number` on a draft or an already-issued document alike, and the PDF re-renders with the new value. Editing the underlying Shopify order is NOT a substitute for this: it changes the order without changing the document that was already sent to the customer. `notes` is free text in the same class: a contract reference, extra customs information or a special mention, printed on the PDF and settable on a draft or on an already issued, sent or paid document, capped at 2000 characters. A voided or cancelled document is fully immutable (the call fails `document_not_editable`). Every applied edit appends a lifecycle_log entry recording the changed field names and forces a fresh PDF re-render (a render FAILURE does not undo the edit: the edit persists and pdf_status reflects the failure; retry with documents_retry_pdf)."
+      },
+      {
+        "tools": ["documents_correct_issued"],
+        "text": "`documents_correct_issued`: ONLY for an issued invoice or credit note that is wrong because of a TOOL error (the wrong currency amount, a VAT rate or treatment the tool should not have applied, a cent of per-line rounding, shipping on the wrong document of a split order), when the person asks for it to be corrected in place; a real change of the sale (a return, a discount, another price) is a credit note. Pass the FULL corrected line set in `lines`, each line with its `tax_rate_bp`; `tax_minor` only to keep a one-unit rounding as charged; `line_kind` goods, service, digital or shipping. Keep the paid amount unless the person says otherwise: a changed grand total is refused without `total_change_reason`. To move shipping between the goods and digital invoices of one order, call it on the document that carries the line with `move_shipping` {to_document_id, position} and nothing else. Run documents_get first and cite the before and after amounts. The card goes to a person holding invoicing:issuer:admin; say that the company's accountant should agree. It never changes the number, date, issuer or currency, creates no document and sends no mail. A document sent to the e-invoicing platform is refused: issue a credit note there."
+      },
+      {
+        "tools": ["deferred_dismiss"],
+        "text": "`deferred_dismiss`: only when the person says the parked order must never be invoiced (a staff test purchase, a voided order). Pass their reason. A park waiting on fixable data (an email, a VAT number, a tax decision) is fixed at its source or with deferred_tax_override instead."
       },
       {
         "tools": ["credit_note_create_and_issue"],
@@ -324,7 +332,7 @@
       }
     ]
   },
-  "version": "0.45.0",
+  "version": "0.46.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -453,6 +461,17 @@
         "tableName": "legal_originals",
         "fileParent": {
           "tableName": "legal_originals",
+          "schemaRef": "app_invoicing",
+          "joinOn": "id",
+          "readScope": "invoicing:documents:read",
+          "writeScope": "invoicing:documents:write"
+        }
+      },
+      "document_correction": {
+        "labelField": "reason",
+        "tableName": "document_corrections",
+        "fileParent": {
+          "tableName": "document_corrections",
           "schemaRef": "app_invoicing",
           "joinOn": "id",
           "readScope": "invoicing:documents:read",
@@ -1110,6 +1129,7 @@
             "description": "The client company the document is made out to, stamped once at issue from the counterparty contact's company and never followed afterwards: what the client portal reads."
           },
           "legal_original_id": "uuid?",
+          "current_correction_id": "uuid?",
           "internal_cancellation": {
             "type": "boolean",
             "required": false
@@ -1976,6 +1996,68 @@
             ]
           ]
         }
+      },
+      "document_corrections": {
+        "rlsScope": "documents",
+        "immutable": {
+          "retentionYears": 10
+        },
+        "fields": {
+          "document_id": "uuid",
+          "sequence": "integer",
+          "kind": {
+            "type": "string",
+            "enum": [
+              "correct",
+              "move_shipping"
+            ]
+          },
+          "group_id": "uuid?",
+          "reason": "text",
+          "total_changed": {
+            "type": "boolean",
+            "default": false
+          },
+          "total_change_reason": "text?",
+          "changed_fields": {
+            "type": "json",
+            "default": []
+          },
+          "before": {
+            "type": "json",
+            "default": {}
+          },
+          "after": {
+            "type": "json",
+            "default": {}
+          },
+          "previous_legal_original_id": "uuid?",
+          "previous_legal_original_sha256": "text?",
+          "previous_correction_id": "uuid?",
+          "previous_pdf_file_id": "uuid?",
+          "file_id": "uuid?",
+          "sha256": "text?",
+          "byte_size": "bigint?",
+          "facturx_xml_file_id": "uuid?",
+          "facturx_sha256": "text?",
+          "corrected_by": "text",
+          "approved_by": "text?",
+          "approval_request_id": "text?",
+          "corrected_at": "date"
+        },
+        "constraints": {
+          "unique": [
+            [
+              "document_id",
+              "sequence"
+            ]
+          ]
+        },
+        "indexes": [
+          [
+            "group_id"
+          ]
+        ]
       },
       "facturx_files": {
         "rlsScope": "documents",
@@ -7053,7 +7135,7 @@
       }
     },
     "documents_link_shopify_orders": {
-      "description": "Link issued invoices and credit notes that name their Shopify order only by number to that order, so the order's reads find them. The name is the document's order number or, for an imported document with no order number, its all-digits number as \"#<number>\" (basis number_as_order_name). Links only when the issuer's shop holds exactly one order with that name, its email is the buyer's, no customer id conflicts and no other document has the order. Every other document is reported with its reason. dry_run defaults to true; continue with next_cursor. Gated.",
+      "description": "Link issued invoices and credit notes that name their Shopify order only by number to that order, so the order's reads find them. The name is the order number or, for an imported document without one, its all-digits number as \"#<number>\". Links only when the issuer's shop holds exactly one order with that name, its email is the buyer's, no customer id conflicts and no other live document has the order (a replacement links next to cancelled or credited ones). Every other document is reported with its reason. dry_run defaults to true; continue with next_cursor. Gated.",
       "requiredScopes": [
         "invoicing:documents:write"
       ],
@@ -7093,6 +7175,412 @@
             "description": "next_cursor of the previous call."
           }
         }
+      }
+    },
+    "documents_correct_issued": {
+      "description": "Correct an ISSUED invoice or credit note IN PLACE after a TOOL error: same number and date, no new document, no credit note, no mail. Changes lines, VAT rates, tax treatment (its legal mention follows) and, only when passed, the buyer's name, VAT number, country or address. A changed grand total needs total_change_reason. The previous file stays archived with a correction record. Refused once sent to the e-invoicing platform. Only a person holding invoicing:issuer:admin decides it. GATED: report it as pending.",
+      "searchKeywords": [
+        "corriger",
+        "rectifier",
+        "correction",
+        "erreur",
+        "émise",
+        "fix",
+        "correct"
+      ],
+      "requiredScopes": [
+        "invoicing:documents:write"
+      ],
+      "handler": "documentsCorrectIssuedHandler",
+      "preflight": "documentsCorrectIssuedPreflightHandler",
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "timeoutMs": 60000,
+      "writesToTable": "app_invoicing.documents",
+      "summarizer": "summarizeCorrectIssued",
+      "summarizerContext": {
+        "tool": "documents_correct_issued_preview",
+        "params": {
+          "id": "id",
+          "reason": "reason",
+          "lines": "lines",
+          "tax_treatment": "tax_treatment",
+          "counterparty_name": "counterparty_name",
+          "counterparty_vat_id": "counterparty_vat_id",
+          "counterparty_country": "counterparty_country",
+          "counterparty_address": "counterparty_address",
+          "total_change_reason": "total_change_reason",
+          "move_shipping": "move_shipping"
+        }
+      },
+      "approvalCard": {
+        "summary": "Correct issued document {{params.id}} in place"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Document id or number."
+          },
+          "reason": {
+            "type": "string",
+            "description": "The tool error it corrects."
+          },
+          "lines": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "The FULL corrected line set.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "position": {
+                  "type": "integer"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "quantity": {
+                  "type": [
+                    "string",
+                    "number"
+                  ]
+                },
+                "unit_price_minor": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Net, MINOR units."
+                },
+                "discount_minor": {
+                  "type": [
+                    "integer",
+                    "string",
+                    "null"
+                  ]
+                },
+                "tax_rate_bp": {
+                  "type": "integer",
+                  "description": "2000 = 20 %."
+                },
+                "tax_minor": {
+                  "type": [
+                    "integer",
+                    "string",
+                    "null"
+                  ],
+                  "description": "Only for a one-unit rounding fix."
+                },
+                "line_kind": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "goods",
+                    "service",
+                    "digital",
+                    "shipping",
+                    null
+                  ]
+                }
+              },
+              "required": [
+                "description",
+                "quantity",
+                "unit_price_minor",
+                "tax_rate_bp"
+              ]
+            }
+          },
+          "tax_treatment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "eu_domestic",
+              "eu_reverse_charge",
+              "eu_b2c_oss",
+              "eu_export_non_eu",
+              "uk_domestic",
+              "uk_export_eu",
+              "uk_export_non_eu",
+              "us_domestic",
+              "us_export",
+              null
+            ]
+          },
+          "counterparty_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "counterparty_vat_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "counterparty_country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "counterparty_address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total_change_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required when the grand total changes."
+          },
+          "move_shipping": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Alone: moves a shipping line to another document of the same order.",
+            "properties": {
+              "to_document_id": {
+                "type": "string"
+              },
+              "position": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "to_document_id",
+              "position"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "reason"
+        ]
+      }
+    },
+    "documents_correct_issued_preview": {
+      "taintSource": true,
+      "agentVisible": false,
+      "description": "What documents_correct_issued would change, without changing anything: lines, VAT and totals before and after, or why it would be refused. Backs its approval card.",
+      "requiredScopes": [
+        "invoicing:documents:read"
+      ],
+      "handler": "documentsCorrectIssuedPreviewHandler",
+      "timeoutMs": 30000,
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Document id or number."
+          },
+          "reason": {
+            "type": "string",
+            "description": "The tool error it corrects."
+          },
+          "lines": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "The FULL corrected line set.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "position": {
+                  "type": "integer"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "quantity": {
+                  "type": [
+                    "string",
+                    "number"
+                  ]
+                },
+                "unit_price_minor": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Net, MINOR units."
+                },
+                "discount_minor": {
+                  "type": [
+                    "integer",
+                    "string",
+                    "null"
+                  ]
+                },
+                "tax_rate_bp": {
+                  "type": "integer",
+                  "description": "2000 = 20 %."
+                },
+                "tax_minor": {
+                  "type": [
+                    "integer",
+                    "string",
+                    "null"
+                  ],
+                  "description": "Only for a one-unit rounding fix."
+                },
+                "line_kind": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "goods",
+                    "service",
+                    "digital",
+                    "shipping",
+                    null
+                  ]
+                }
+              },
+              "required": [
+                "description",
+                "quantity",
+                "unit_price_minor",
+                "tax_rate_bp"
+              ]
+            }
+          },
+          "tax_treatment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "eu_domestic",
+              "eu_reverse_charge",
+              "eu_b2c_oss",
+              "eu_export_non_eu",
+              "uk_domestic",
+              "uk_export_eu",
+              "uk_export_non_eu",
+              "us_domestic",
+              "us_export",
+              null
+            ]
+          },
+          "counterparty_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "counterparty_vat_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "counterparty_country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "counterparty_address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total_change_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required when the grand total changes."
+          },
+          "move_shipping": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Alone: moves a shipping line to another document of the same order.",
+            "properties": {
+              "to_document_id": {
+                "type": "string"
+              },
+              "position": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "to_document_id",
+              "position"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "reason"
+        ]
+      }
+    },
+    "deferred_dismiss": {
+      "description": "Close a park (a deferred_list item) that must never issue, e.g. a staff test or a voided order: resolved as dismissed with the reason, who and when, and the order is never invoiced later. Nothing is issued or mailed. GATED: report it as pending.",
+      "searchKeywords": [
+        "ignorer",
+        "écarter",
+        "classer",
+        "test",
+        "dismiss",
+        "close"
+      ],
+      "requiredScopes": [
+        "invoicing:documents:write"
+      ],
+      "handler": "deferredDismissHandler",
+      "preflight": "deferredDismissPreflightHandler",
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "writesToTable": "app_invoicing.deferred_events",
+      "summarizer": "summarizeDeferredDismiss",
+      "summarizerContext": {
+        "tool": "deferred_list",
+        "params": {}
+      },
+      "approvalCard": {
+        "summary": "Dismiss the parked order {{params.deferred_id}}"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "deferred_id": {
+            "type": "string",
+            "description": "The deferred_list item id."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why it never issues, e.g. staff test purchase."
+          }
+        },
+        "required": [
+          "deferred_id",
+          "reason"
+        ]
       }
     }
   },
@@ -7277,12 +7765,14 @@
       "document:paid",
       "document:cancelled",
       "document:po_number_changed",
+      "document:corrected",
       "issuer_profile:created",
       "issuer_profile:updated",
       "issuer_profile:deleted",
       "issuer_profile:timezone_unset",
       "deferred:tax_review",
       "deferred:credit_note_refused",
+      "deferred:dismissed",
       "einvoicing:identity_missing",
       "einvoicing:issuer_incomplete",
       "einvoicing:facturx_failed",

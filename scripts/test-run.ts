@@ -1576,6 +1576,11 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // documents_link_shopify_orders (createMockDb + stubbed shopify/contacts reads): links a
             // document named by order number to the order only on a proven shop + buyer match.
             "src/handlers/link-shopify-orders.test.ts",
+            // documents_correct_issued (createMockDb + stub renderer): the in-place correction of an
+            // issued document after a tool error, its record, file of record and refusals.
+            "src/correct-issued.test.ts",
+            // deferred_dismiss (createMockDb): a dismissed park closes and its order never issues.
+            "src/handlers/deferred-dismiss.test.ts",
             // Shipment write back (createMockDb + stubbed boxtal:search): an invoice records the
             // Boxtal shipment created against it in external_refs.shipments, never shipment_ref.
             "src/handlers/link-shipments.test.ts",

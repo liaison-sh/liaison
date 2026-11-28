@@ -293,3 +293,16 @@ Preview PDFs readable with documents read and settings read, replaced per sale, 
 parked Shopify orders show as pending, same matching rule, no park reason -> apps/api/src/modules/buyer-invoices/store.ts:313
 issued invoice replaces the pending entry -> apps/api/src/modules/buyer-invoices/store.ts:481
 parked order identity from the order payload -> apps/api/src/modules/buyer-invoices/parks.ts:1
+documents_correct_issued corrects an issued invoice or credit note in place: lines, VAT, treatment, buyer only when passed -> bundled-apps/invoicing/src/mutations/correct-issued.ts:1-29
+only a holder of invoicing:issuer:admin decides it, never auto-approved -> bundled-apps/invoicing/src/mutations/correct-issued.ts (authorityRefusal) ; bundled-apps/invoicing/app.manifest.json (documents_correct_issued noAutoApprove)
+line kinds goods, service, digital, shipping -> bundled-apps/invoicing/src/mutations/correct-issued.ts (LINE_KIND_ALIASES)
+never number, issue date, issuer, currency; no document, no number, no mail -> bundled-apps/invoicing/src/mutations/correct-issued.ts (correctIssued) ; bundled-apps/invoicing/src/correct-issued.test.ts
+a changed grand total needs total_change_reason; one-cent line VAT kept as charged -> bundled-apps/invoicing/src/mutations/correct-issued.ts (total_change_unexplained, line_tax_off)
+move_shipping moves one shipping line between two documents of one order in one commit -> bundled-apps/invoicing/src/mutations/correct-issued.ts (planMove)
+legal original kept; correction record 10 years with before, after, who, approver, when, why -> bundled-apps/invoicing/app.manifest.json (document_corrections immutable) ; bundled-apps/invoicing/src/mutations/correct-issued.ts (document_corrections insert)
+corrected PDF and Factur-X are the file of record for preview, download, mails and the buyer invoices API -> bundled-apps/invoicing/src/mutations/pdf.ts (renderCorrection) ; bundled-apps/invoicing/src/legal-originals/delivery.ts ; apps/api/src/modules/buyer-invoices/store.ts (buyerDocumentFile)
+refused when sent or waiting for the e-invoicing platform; a corrected document is not sent or booked afterwards -> bundled-apps/invoicing/src/mutations/correct-issued.ts (documentRefusal) ; bundled-apps/invoicing/src/einvoicing/transmit.ts (current_correction_id) ; bundled-apps/invoicing/src/einvoicing/booking.ts (bookable)
+imported, draft, voided, cancelled documents refused -> bundled-apps/invoicing/src/mutations/correct-issued.ts (NOT_CORRECTABLE_STATUSES, imported_document)
+deferred_dismiss closes a park with a reason, gated; dismissed order never issues later -> bundled-apps/invoicing/src/handlers/deferred-dismiss.ts ; bundled-apps/invoicing/src/handlers/shopify-order-paid.ts (park_dismissed)
+replacement invoice links next to cancelled or credited documents; live invoice listed first -> bundled-apps/invoicing/src/handlers/link-shopify-orders.ts (replacedDocuments) ; bundled-apps/invoicing/src/reads.ts (orderLinkRank)
+fulfilled invoice credited, refunded, cancelled like a paid one -> bundled-apps/invoicing/src/mutations/credit-coverage.ts (ISSUED_INVOICE_STATUSES) ; bundled-apps/invoicing/src/state.ts

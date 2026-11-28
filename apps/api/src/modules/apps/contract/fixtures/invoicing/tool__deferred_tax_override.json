@@ -50,6 +50,11 @@
       "args": [
         "{\"entity\":\"deferred\",\"action\":\"tax_review\",\"entityId\":\"8422efd8-8010-4105-9086-2c6a161d98ef\",\"data\":{\"deferred_id\":\"8422efd8-8010-4105-9086-2c6a161d98ef\",\"order_id\":\"12992208404646\",\"order_label\":\"#2745\",\"reason\":\"tax review\",\"resolved\":true}}"
       ]
+    },
+    {
+      "method": "db_findMany",
+      "args": ["deferred_events", "{\"where\":{\"event_id\":\"12992208404646\",\"reason\":\"dismissed\"},\"limit\":1}"],
+      "reply": "[]"
     }
   ]
 }

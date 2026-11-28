@@ -1,0 +1,29 @@
+{
+  "entry": "tool:documents_correct_issued",
+  "params": {
+    "id": "7c000000-0000-4000-8000-00000000c4a1",
+    "reason": "the tool charged the wrong VAT rate on this invoice",
+    "tax_treatment": "eu_domestic"
+  },
+  "recordedFrom": "hand-written: a person holding the issuer admin scope, a contract org with no such document",
+  "expectError": {
+    "reason": "no document has this id, so the correction refuses after the scope check: pins that refusal; the correction path is proven by correct-issued.test.ts"
+  },
+  "calls": [
+    {
+      "method": "hasScope",
+      "args": [
+        "invoicing:issuer:admin"
+      ],
+      "reply": true
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"id\":\"7c000000-0000-4000-8000-00000000c4a1\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

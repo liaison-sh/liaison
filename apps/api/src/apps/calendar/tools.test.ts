@@ -1254,7 +1254,7 @@ describe("calendar events: indexed time columns", () => {
     expect(read.broken).toEqual({ s: null, e: null, o: null })
   })
 
-  it("a week read over 50k events of history uses the time indexes, never a sequential scan", async () => {
+  it("a week read over 50k events of history uses the time and series indexes, never a sequential scan", async () => {
     const { accountId, calendarId } = await windowFixture()
     await withSystemDb("calendar-window-history", async (tx) => {
       // Four years of history, one event every ~40 minutes, then one week of the window.
@@ -1266,6 +1266,19 @@ describe("calendar events: indexed time columns", () => {
                ${accountId}
         FROM generate_series(1, 50000) AS g,
              LATERAL (SELECT timestamptz '2022-01-01 00:00Z' + g * interval '40 minutes' AS t) AS slot`)
+      // Three weekly series: two live in the window, one ended by UNTIL long before it.
+      await tx.execute(drizzleSql`
+        INSERT INTO app_calendar.events (id, org_id, calendar_id, google_event_id, title, start, "end", recurrence, calaccess)
+        VALUES
+          (gen_random_uuid(), ${orgId}::uuid, ${calendarId}::uuid, 'series-a', 'series weekly',
+           '{"dateTime":"2023-03-06T09:00:00Z"}'::jsonb, '{"dateTime":"2023-03-06T09:30:00Z"}'::jsonb,
+           '["RRULE:FREQ=WEEKLY;BYDAY=MO"]'::jsonb, ${accountId}),
+          (gen_random_uuid(), ${orgId}::uuid, ${calendarId}::uuid, 'series-b', 'series daily',
+           '{"dateTime":"2025-05-01T08:00:00Z"}'::jsonb, '{"dateTime":"2025-05-01T08:15:00Z"}'::jsonb,
+           '["RRULE:FREQ=DAILY"]'::jsonb, ${accountId}),
+          (gen_random_uuid(), ${orgId}::uuid, ${calendarId}::uuid, 'series-c', 'series ended',
+           '{"dateTime":"2022-02-01T10:00:00Z"}'::jsonb, '{"dateTime":"2022-02-01T11:00:00Z"}'::jsonb,
+           '["RRULE:FREQ=WEEKLY;UNTIL=20220301T000000Z"]'::jsonb, ${accountId})`)
       await tx.execute(drizzleSql`ANALYZE app_calendar.events`)
     })
     const plans: string[] = []
@@ -1301,9 +1314,18 @@ describe("calendar events: indexed time columns", () => {
     )
     // About 252 history events fall in that week (one every 40 minutes).
     expect(events.filter((e) => e.title?.startsWith("history ")).length).toBeGreaterThan(240)
-    const [plain, , exceptions] = plans
+    const [plain, masters, exceptions] = plans
     expect(plain).toMatch(/idx_app_calendar_events_(start|end)_at/)
     expect(plain).not.toMatch(/Seq Scan on events/)
+    // The series read uses the partial series index, not the history-wide start index.
+    expect(masters).toMatch(/idx_app_calendar_events_start_at_end_at/)
+    expect(masters).not.toMatch(/Seq Scan on events/)
     expect(exceptions).not.toMatch(/Seq Scan on events/)
+    expect(
+      events
+        .filter((e) => e.title?.startsWith("series "))
+        .map((e) => e.title)
+        .sort(),
+    ).toEqual(["series daily", "series weekly"])
   }, 120_000)
 })

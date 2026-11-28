@@ -415,11 +415,15 @@ export async function listEventsForCaller(
   // Recurring masters begun before the window ends and not ended by a date UNTIL before it
   // starts. UNTIL bounds an occurrence's START: the last one may run on for the series'
   // duration, and the UNTIL day is read with two days of margin for the zones.
+  // `recurrence <> 'null' AND recurrence <> '[]'` repeats, word for word, the predicate of the
+  // series index (`(org_id, start_at, end_at)` over live masters only, calendar manifest), so the
+  // planner can prove it and read the few series instead of every event begun before the window.
   const masterCandidates = rowsOf<RawEventRow>(
     await db.execute(sql`
       SELECT ${sql.raw(EVENT_COLUMNS)}
       FROM ${sql.raw(schema)}.events
       WHERE org_id = ${orgId}::uuid AND recurring_event_id IS NULL
+        AND recurrence <> 'null'::jsonb AND recurrence <> '[]'::jsonb
         AND jsonb_typeof(recurrence) = 'array' AND jsonb_array_length(recurrence) > 0
         AND deleted_at IS NULL ${calendarFilter} ${selectedOnly}
         AND ${startTs} < ${timeMax}::timestamptz

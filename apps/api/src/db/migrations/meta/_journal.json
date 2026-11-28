@@ -2542,6 +2542,13 @@
       "when": 1900003450004,
       "tag": "0361_erased_user_display_name",
       "breakpoints": true
+    },
+    {
+      "idx": 363,
+      "version": "7",
+      "when": 1900003450005,
+      "tag": "0362_calendar_series_index",
+      "breakpoints": true
     }
   ]
 }

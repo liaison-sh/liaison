@@ -4977,6 +4977,7 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.clientVersion.dismiss": "Pas maintenant",
   "kernel.settingsPage.unsupported":
     "Ce réglage nécessite une version plus récente de Liaison. Mettez Liaison à jour pour le modifier.",
+  "kernel.settingsPage.fallbackOpen": "Ouvrir dans le navigateur",
   "kernel.outsideText.label": "Texte extérieur",
   "kernel.outsideText.menuTitle": "Cette discussion a lu du texte extérieur",
   "kernel.outsideText.explainer":

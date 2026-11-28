@@ -176,8 +176,35 @@ function blank(v: string | null | undefined): boolean {
  * else null. Shared by every issuing handler AND by `issueDocument` so the rule has ONE
  * definition and one message.
  */
+/**
+ * Whether the document must carry the buyer's postal address. It always must, except for a
+ * consumer (`customer_kind` individual, no VAT number) buying only services or digital supplies
+ * (no goods, no carriage): France requires no invoice for services to individuals (CGI art. 289
+ * I-1; the goods exception is the distance sale of art. 258 A), the OSS keeps the invoicing rules
+ * of the member state of identification (Directive 2006/112/EC art. 219a), and when no invoice is
+ * required an invoice to an individual may leave out some of the art. 242 nonies A mentions, the
+ * address among them (BOFiP BOI-TVA-DECLA-30-20-20-10). Name or email and the country stay
+ * required, and the place of supply rests on its location evidence. A company buyer (art. 242
+ * nonies A, I-2°) or any goods line keeps the address required. Without `lines` it is required.
+ */
+export function postalAddressRequired(
+  counterparty: Pick<Counterparty, "customer_kind" | "vat_id">,
+  lines?: ReadonlyArray<{ line_kind?: LineKind | null }> | null,
+): boolean {
+  if (counterparty.customer_kind !== "individual" || !blank(counterparty.vat_id)) return true
+  if (!lines || lines.length === 0) return true
+  return lines.some((l) => {
+    const kind = l.line_kind ?? "goods"
+    return kind !== "software" && kind !== "service"
+  })
+}
+
 export function counterpartyCompletenessError(
-  counterparty: Pick<Counterparty, "legal_name" | "country" | "address" | "email">,
+  counterparty: Pick<Counterparty, "legal_name" | "country" | "address" | "email"> &
+    Partial<Pick<Counterparty, "customer_kind" | "vat_id">>,
+  /** The document's lines: with them, a consumer's services-only document needs no address
+   *  (`postalAddressRequired`). Omitted, the address is required. */
+  lines?: ReadonlyArray<{ line_kind?: LineKind | null }> | null,
 ): {
   code: string
   message: string
@@ -185,7 +212,13 @@ export function counterpartyCompletenessError(
    *  `counterparty` each one is. The message stays in a person's words. */
   body: { missing_params: string[]; counterparty_fields: string[]; set_with: string }
 } | null {
-  const missing = REQUIRED_COUNTERPARTY_FIELDS.filter((f) => blank(counterparty[f]))
+  const needsAddress = postalAddressRequired(
+    { customer_kind: counterparty.customer_kind ?? null, vat_id: counterparty.vat_id ?? null },
+    lines,
+  )
+  const missing = REQUIRED_COUNTERPARTY_FIELDS.filter(
+    (f) => (f !== "address" || needsAddress) && blank(counterparty[f]),
+  )
   if (missing.length === 0) return null
   const said = missing.map((f) => `the customer's ${COUNTERPARTY_FIELD_SAID[f]}`)
   const list = said.length === 1 ? said[0] : `${said.slice(0, -1).join(", ")} and ${said.at(-1)}`
@@ -515,6 +548,86 @@ export interface PreparedIssue {
   sequence: IssueBatchSequence
   ops: IssueBatchOp[]
   finish(committed: { value: number; formatted: string; documentId: string }): Promise<IssueResult>
+  /** The PDF template data the issue would render, with no number (nothing is written): what a
+   *  preview renders (`previewDocument`). */
+  previewData(): Promise<{ template_kind: string; data: ReturnType<typeof buildTemplateData> }>
+}
+
+/** What a preview of a document renders: watermarked, unnumbered, never a legal document. */
+export const PREVIEW_WATERMARK = "PREVIEW, not an invoice"
+
+export interface PreviewedDocument {
+  type: DocumentType
+  scope: string | null
+  /** The rendered preview PDF (an internal file, never mailed nor linked to a buyer); null when
+   *  the render failed (`render_error`). */
+  pdf_file_id: string | null
+  render_error: string | null
+  currency: string
+  subtotal_minor: string
+  tax_total_minor: string
+  grand_total_minor: string
+  tax_treatment: string
+  legal_mention: string
+  lines: Array<{
+    description: string
+    quantity: string
+    unit_price_minor: string
+    discount_minor: string
+    tax_rate_bp: number
+    tax_minor: string
+    total_minor: string
+  }>
+}
+
+/**
+ * The document `issueDocument(ctx, input)` would issue, rendered as a watermarked, unnumbered
+ * PDF: the same preparation (recipient, e-invoicing gate, classification, lines, rates, legal
+ * mention, totals), then a plain render with no number, no row, no legal original, no mail.
+ * Throws what `issueDocument` would throw before numbering.
+ */
+export async function previewDocument(
+  ctx: IssueCtx,
+  input: IssueInput,
+  filename: string,
+): Promise<PreviewedDocument> {
+  const prepared = await prepareIssue(ctx, input)
+  const { template_kind, data } = await prepared.previewData()
+  let pdfFileId: string | null = null
+  let renderError: string | null = null
+  try {
+    const rendered = (await ctx.pdf.render({
+      template_kind,
+      filename,
+      data: { ...data, preview: PREVIEW_WATERMARK },
+    })) as { file_id: string } | { error: { code?: string; message?: string } }
+    if ("error" in rendered) renderError = rendered.error.code ?? rendered.error.message ?? "error"
+    else pdfFileId = rendered.file_id
+  } catch (err) {
+    renderError = err instanceof Error ? err.message : String(err)
+  }
+  const d = data.document
+  return {
+    type: input.type,
+    scope: input.scope ?? null,
+    pdf_file_id: pdfFileId,
+    render_error: renderError,
+    currency: d.currency,
+    subtotal_minor: d.subtotal_minor,
+    tax_total_minor: d.tax_total_minor,
+    grand_total_minor: d.grand_total_minor,
+    tax_treatment: d.tax_treatment,
+    legal_mention: data.legal_mention,
+    lines: data.line_items.map((l) => ({
+      description: l.description,
+      quantity: String(l.quantity),
+      unit_price_minor: l.unit_price_minor,
+      discount_minor: l.discount_minor,
+      tax_rate_bp: l.tax_rate_bp,
+      tax_minor: l.tax_minor,
+      total_minor: l.total_minor,
+    })),
+  }
 }
 
 // Minimal ctx surface — the helper consumes only the bridges it needs.
@@ -1355,7 +1468,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   // 0) Recipient completeness. Runs BEFORE number allocation and any persistence, so a refused
   //    issuance consumes no invoice number and leaves no partial row. Backstop only — handlers
   //    check first and return a typed error; a throw here means a new path skipped that check.
-  const incomplete = counterpartyCompletenessError(counterparty)
+  const incomplete = counterpartyCompletenessError(counterparty, draft.lines)
   if (incomplete) throw new CounterpartyIncompleteError(incomplete.message, incomplete.code)
 
   // 0b) E-invoicing gate. Same order rule: before numbering and any persistence. Backstop only —
@@ -1951,7 +2064,36 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
       ...(einvoiceSend ? { einvoice_send_approval_id: einvoiceSend.approval_id } : {}),
     }
   }
-  return { sequence, ops, finish }
+  const previewData = async () => {
+    const legalMention = await documentLegalMention(
+      ctx.db,
+      classification.treatment,
+      issuer.default_language,
+      {
+        category:
+          (documentInsert.einvoice?.operation_category as OperationCategory | null | undefined) ??
+          null,
+        issueDate: draft.issued_at,
+        customerKind: (documentInsert.einvoice?.customer_kind as string | null | undefined) ?? null,
+      },
+    )
+    return {
+      template_kind: `invoicing:${type}_v1`,
+      data: buildTemplateData({
+        type,
+        document: { ...documentInsert, id: "preview" },
+        issuer,
+        counterparty,
+        lines: snapshotLines,
+        requires_hs_code: classification.requires_hs_code,
+        legal_mention: legalMention,
+        original_invoice_number: input.original_invoice_number ?? null,
+        original_invoice_date: input.original_invoice_date ?? null,
+        reason: reasonFromRefs,
+      }),
+    }
+  }
+  return { sequence, ops, finish, previewData }
 }
 
 /** The country the classifier must read for this counterparty: its tax destination when one was

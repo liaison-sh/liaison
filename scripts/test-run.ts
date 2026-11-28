@@ -1573,6 +1573,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // human Shopify order number on documents issued before the column existed, so the
             // whole history is searchable by order number. Pins its idempotency/self-termination.
             "src/handlers/backfill-order-numbers.test.ts",
+            // documents_link_shopify_orders (createMockDb + stubbed shopify/contacts reads): links a
+            // document named by order number to the order only on a proven shop + buyer match.
+            "src/handlers/link-shopify-orders.test.ts",
             // Shipment write back (createMockDb + stubbed boxtal:search): an invoice records the
             // Boxtal shipment created against it in external_refs.shipments, never shipment_ref.
             "src/handlers/link-shipments.test.ts",

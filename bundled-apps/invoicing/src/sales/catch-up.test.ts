@@ -16,7 +16,12 @@ import {
   stripeDb,
 } from "../handlers/stripe-money.testkit"
 import type { MockDb } from "../test-db"
-import { type CatchUpCtx, revenueStreamCatchUp, revenueStreamCatchUpPreview } from "./catch-up"
+import {
+  type CatchUpCtx,
+  revenueStreamCatchUp,
+  revenueStreamCatchUpPreview,
+  revenueStreamPreviewPdfs,
+} from "./catch-up"
 
 const STREAM = {
   id: "stream-hub",
@@ -140,8 +145,143 @@ describe("revenue stream catch-up", () => {
     expect(out.sales[1]?.refunds).toEqual([
       { refund_id: "re_2", amount_minor: "2380", at: "2026-11-13T10:00:00.000Z" },
     ])
-    expect(((out.sales[2]?.blockers ?? []) as string[]).join(" ")).toContain("USD")
+    // A USD sale is priced in EUR at issue (the ECB rate of the issue date): no blocker here,
+    // the preview says which rate it would use, or that the ECB did not answer just now.
+    expect(out.sales[2]).toMatchObject({ blockers: [], fx: { currency: "USD", rate: null } })
     expect(JSON.stringify(db.__all("documents")) + JSON.stringify(parks(db))).toBe(before)
+  })
+
+  test("the preview blocks a rate that is not the treatment's, and shows each line's discount", async () => {
+    const db = await seeded()
+    const sales = [
+      sale(1, "2026-11-05T10:00:00.000Z", {
+        buyer: {
+          email: "ap@example.fr",
+          name: "Paul",
+          legal_name: "Studio SAS",
+          kind: "company",
+          vat_id: "FR40303265045",
+          billing: { line1: "1 rue A", postcode: "75001", city: "Paris", country: "FR" },
+        },
+        lines: [
+          {
+            description: "Sound pack",
+            quantity: "1",
+            unit_price_minor: "2000",
+            discount_minor: "500",
+            kind: "service",
+            tax: { rate_bp: 0, amount_minor: "0", reported_by_source: true },
+          },
+        ],
+        totals: { total_minor: "1500", subtotal_minor: "1500", tax_minor: "0" },
+      }),
+    ]
+    const out = (await revenueStreamCatchUpPreview(ctxOf(db, sales, false), WINDOW)) as {
+      sales: Array<{ treatment: string; lines: unknown[]; blockers: string[] }>
+    }
+    expect(out.sales[0]?.treatment).toBe("eu_domestic")
+    expect(out.sales[0]?.lines[0]).toMatchObject({
+      unit_price_minor: "2000",
+      discount_minor: "500",
+    })
+    expect(out.sales[0]?.blockers.join(" ")).toContain("2000")
+  })
+
+  test("preview PDFs: the documents the issue would produce, unnumbered and watermarked, nothing written", async () => {
+    const db = await seeded()
+    const sales = [
+      // A consumer in France at 20 %, no street address (a digital service).
+      sale(1, "2026-11-05T10:00:00.000Z", {
+        buyer: {
+          email: "a@example.fr",
+          name: "Alice",
+          kind: "individual",
+          billing: { country: "FR" },
+          tax_evidence: { billing_country: "FR", card_country: "FR" },
+        },
+        lines: [
+          {
+            description: "Sound pack",
+            quantity: "1",
+            unit_price_minor: "6703",
+            discount_minor: "6033",
+            kind: "service",
+            tax: { rate_bp: 2000, amount_minor: "134", reported_by_source: true },
+          },
+        ],
+        totals: { total_minor: "804", subtotal_minor: "670", tax_minor: "134" },
+      }),
+      // A consumer in Switzerland: no VAT, the art. 259 B mention.
+      sale(2, "2026-11-06T10:00:00.000Z", {
+        buyer: {
+          email: "c@example.ch",
+          name: "Carla",
+          kind: "individual",
+          billing: { country: "CH" },
+          tax_evidence: { billing_country: "CH", card_country: "CH" },
+        },
+        lines: [
+          {
+            description: "Sound pack",
+            quantity: "1",
+            unit_price_minor: "2793",
+            kind: "service",
+            tax: { rate_bp: 0, amount_minor: "0", reported_by_source: true },
+          },
+        ],
+        totals: { total_minor: "2793", subtotal_minor: "2793", tax_minor: "0" },
+      }),
+      // A company with no address: it would park, and says so.
+      sale(3, "2026-11-07T10:00:00.000Z", {
+        buyer: {
+          email: "ap@example.de",
+          name: "Jan",
+          legal_name: "Studio GmbH",
+          kind: "company",
+          billing: { country: "DE" },
+        },
+      }),
+    ]
+    const renders: Array<{ filename?: string; data: Record<string, unknown> }> = []
+    const ctx = ctxOf(db, sales, false)
+    ctx.pdf = {
+      async render(input: { filename?: string; data: unknown }) {
+        renders.push({ filename: input.filename, data: input.data as Record<string, unknown> })
+        return { file_id: `file-${renders.length}`, byte_size: 1, page_count: 1 }
+      },
+    } as unknown as CatchUpCtx["pdf"]
+    const before = JSON.stringify(db.__all("documents")) + JSON.stringify(parks(db))
+    const out = (await revenueStreamPreviewPdfs(ctx, WINDOW)) as {
+      sales: Array<{ external_id: string; preview?: Record<string, unknown> }>
+    }
+    expect(JSON.stringify(db.__all("documents")) + JSON.stringify(parks(db))).toBe(before)
+    expect(db.__all("sales") ?? []).toEqual([])
+    const [fr, ch, de] = out.sales
+    expect(fr?.preview).toMatchObject({
+      outcome: "preview",
+      documents: [
+        {
+          pdf_file_id: "file-1",
+          tax_treatment: "eu_domestic",
+          subtotal_minor: "670",
+          tax_total_minor: "134",
+          grand_total_minor: "804",
+          lines: [{ unit_price_minor: "6703", discount_minor: "6033", tax_rate_bp: 2000 }],
+        },
+      ],
+    })
+    expect(ch?.preview).toMatchObject({
+      outcome: "preview",
+      documents: [{ tax_treatment: "eu_export_non_eu", tax_total_minor: "0" }],
+    })
+    const chDocs = (ch?.preview?.documents ?? []) as Array<{ legal_mention: string }>
+    expect(String(chDocs[0]?.legal_mention)).toContain("259 B")
+    expect(de?.preview).toMatchObject({ outcome: "would_park", reason: "counterparty_incomplete" })
+    // The render: watermarked, no number, not a file a buyer gets.
+    expect(renders).toHaveLength(2)
+    expect(renders[0]?.data.preview).toBe("PREVIEW, not an invoice")
+    expect((renders[0]?.data.document as { number?: string } | undefined)?.number).toBe("")
+    expect(renders[0]?.filename).toBe("preview-pi_1-software.pdf")
   })
 
   test("the run needs a person's approval", async () => {
@@ -192,7 +332,14 @@ describe("revenue stream catch-up", () => {
     const sales = [
       sale(1, "2026-11-05T10:00:00.000Z"),
       sale(2, "2026-11-12T10:00:00.000Z", {
-        buyer: { email: "noaddress@example.de", name: "No Address", billing: { country: "DE" } },
+        // A company with no postal address: its invoice cannot issue.
+        buyer: {
+          email: "noaddress@example.de",
+          name: "No Address",
+          legal_name: "No Address GmbH",
+          kind: "company",
+          billing: { country: "DE" },
+        },
       }),
       sale(3, "2026-11-20T10:00:00.000Z"),
     ]

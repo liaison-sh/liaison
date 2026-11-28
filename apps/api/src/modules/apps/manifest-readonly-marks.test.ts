@@ -116,6 +116,7 @@ const READ_ONLY: Record<string, string[]> = {
     "list_calendars",
     "list_events",
     "search_events",
+    "get_event", // one event by id, the event tab's read
     "find_free_slots", // synced-event reads plus a Google freebusy.query, writes nothing
     "list_accounts",
     "activity_read", // a timeline read the kernel makes, in a read-only savepoint
@@ -330,6 +331,9 @@ const READ_ONLY: Record<string, string[]> = {
     "revenue_streams_list",
     // A stream's sales of a window as the catch-up would invoice them; nothing written.
     "sales_catch_up_preview",
+    // Renders each sale as an unnumbered, watermarked preview PDF (as documents_preview_pdf):
+    // the issue path on a context that writes nothing, no document, number or mail.
+    "sales_preview_pdfs",
   ],
   monitoring: ["incidents_list", "incidents_get", "incidents_summary", "webhook_info"],
   stripe: [

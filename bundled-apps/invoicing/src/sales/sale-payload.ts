@@ -113,6 +113,7 @@ export function orderPaidPayloadFromSale(sale: Sale): OrderPaidPayload {
           tax_country: taxCountry,
           legal_name: legalName,
           vat_id: b.vat_id ?? null,
+          ...(b.kind ? { kind: b.kind } : {}),
           address: formatSaleAddress(billingFrom),
           shipping_address: formatSaleShippingAddress(deliverySrc),
           shipping_name: shippingName ?? null,

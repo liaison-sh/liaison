@@ -144,6 +144,12 @@ describe("orders_search", () => {
     expect(out.results[0]!.currency).toBe("USD")
   })
 
+  it("names the shop it read the orders from", async () => {
+    const { ctx } = makeCtx({ fetchResponses: [loadFixture("orders-search.json")] })
+    const out = await orders_search({ query: "name:#1001" }, ctx)
+    expect(out.shopDomain).toBe("demo.myshopify.com")
+  })
+
   it("surfaces cancellation facts (cancelledAt/cancelReason) on a cancelled order hit", async () => {
     const { ctx } = makeCtx({
       fetchResponses: [

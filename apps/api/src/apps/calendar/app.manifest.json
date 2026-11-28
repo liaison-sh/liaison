@@ -233,6 +233,11 @@
           "required": false,
           "description": "Google's eventType, as sent and nothing else (default, outOfOffice, focusTime, ...). Also added by migration 0267 where the table already exists; NULL until the next sync."
         },
+        "eventColor": {
+          "type": "string",
+          "required": false,
+          "description": "Google's per-event colour id (\"1\"..\"11\") as sent; NULL when the event uses its calendar's colour, or until the next sync."
+        },
         "transparency": {
           "type": "string",
           "required": false,
@@ -383,6 +388,23 @@
           }
         },
         "required": ["timeMin", "timeMax"]
+      }
+    },
+    "get_event": {
+      "taintSource": true,
+      "description": "Read the details of one meeting by the eventId list_events or search_events gave: times, description, location, guests and their answers, Meet link, recurrence.",
+      "readOnly": true,
+      "agentVisible": false,
+      "useInstead": "search_events",
+      "requiredScopes": ["calendar:events:read"],
+      "trustBoundary": "user",
+      "handler": "calendarGetEvent",
+      "params": {
+        "type": "object",
+        "properties": {
+          "eventId": { "type": "string" }
+        },
+        "required": ["eventId"]
       }
     },
     "search_events": {

@@ -5,7 +5,7 @@
 // stay under the card stream, never here), read from its Checkout Session:
 //
 //   GET /v1/checkout/sessions?payment_intent=<pi>&expand[]=data.line_items
-//       &expand[]=data.payment_intent.latest_charge
+//       &expand[]=data.line_items.data.taxes&expand[]=data.payment_intent.latest_charge
 //
 // The session holds what the invoice needs and the bare charge does not: the buyer's details as
 // they typed them at checkout (`customer_details`: email, name, business name, address, tax ids,
@@ -48,48 +48,76 @@ function rateBpOf(taxes: unknown): { rate_bp: number; jurisdiction: string | nul
   return { rate_bp: bp, jurisdiction }
 }
 
+/** `a * n / d`, half-up, for non-negative amounts. */
+function mulDivHalfUp(a: bigint, n: bigint, d: bigint): bigint {
+  return d > 0n ? (2n * a * n + d) / (2n * d) : 0n
+}
+
 function lineOf(item: Obj, kind: SaleLine["kind"]): SaleLine {
   const q = Math.max(1, Math.round(num(item.quantity) || 1))
   const subtotal = BigInt(Math.round(num(item.amount_subtotal)))
   const total = BigInt(Math.round(num(item.amount_total)))
   const tax = BigInt(Math.round(num(item.amount_tax)))
   const discount = BigInt(Math.round(num(item.amount_discount)))
-  const taxes = item.taxes as Obj[] | undefined
-  const inclusive =
-    Array.isArray(taxes) && taxes.some((t) => ((t.rate ?? {}) as Obj).inclusive === true)
+  // `taxes` is returned only when expanded (`line_items.data.taxes`, see EXPAND): without it a
+  // line would read as untaxed. The price's `tax_behavior` and the amounts tell an inclusive price
+  // apart even so: its total is the gross after the discount, the tax inside it.
+  const taxes = Array.isArray(item.taxes) ? (item.taxes as Obj[]) : null
+  const behavior = str(((item.price ?? {}) as Obj).tax_behavior)
+  const inclusive = taxes?.length
+    ? taxes.some((t) => ((t.rate ?? {}) as Obj).inclusive === true)
+    : behavior === "inclusive" ||
+      (behavior !== "exclusive" && tax > 0n && total === subtotal - discount)
   const description = str(item.description) ?? "Item"
-  // Net lines: an exclusive price keeps its discount explicit; an inclusive one is net of the tax
-  // Stripe computed (total after discount, less its tax), its discount folded into the price.
-  let net = inclusive ? total - tax : subtotal
-  const disc = inclusive ? 0n : discount
-  let quantity = q
-  if (net % BigInt(q) !== 0n) quantity = 1
-  const unit = net / BigInt(quantity)
-  net = unit * BigInt(quantity)
   const rate = rateBpOf(taxes)
+  // Net lines. An exclusive price is net already, its discount explicit. An inclusive one is net
+  // of the tax Stripe computed (the total after discount, less its tax), and its discount is
+  // brought to the same net basis so the invoice still shows it (CGI art. 242 nonies A, I-9°).
+  const netLine = inclusive ? total - tax : subtotal - discount
+  let disc = discount
+  if (inclusive && discount > 0n) {
+    disc = rate
+      ? mulDivHalfUp(discount, 10000n, 10000n + BigInt(rate.rate_bp))
+      : total > 0n
+        ? mulDivHalfUp(discount, netLine, total)
+        : 0n
+  }
+  let gross = netLine + disc
+  let quantity = q
+  if (gross % BigInt(q) !== 0n) quantity = 1
+  const unit = gross / BigInt(quantity)
+  gross = unit * BigInt(quantity)
   return {
     description: quantity === 1 && q > 1 ? `${q} x ${description}` : description,
     quantity: String(quantity),
     unit_price_minor: unit.toString(),
-    discount_minor: disc.toString(),
+    discount_minor: (gross - netLine).toString(),
     kind,
     sku: str(((item.price ?? {}) as Obj).id),
     tax: rate
       ? {
           rate_bp: rate.rate_bp,
           amount_minor: tax.toString(),
-          line_count: Array.isArray(taxes) ? taxes.length : 1,
+          line_count: taxes?.length ?? 1,
           jurisdiction: rate.jurisdiction,
           reported_by_source: true,
         }
-      : {
-          // Stripe Tax computed nothing on the line (reverse charge, exempt, outside its reach).
-          rate_bp: 0,
-          amount_minor: tax.toString(),
-          line_count: 1,
-          jurisdiction: null,
-          reported_by_source: true,
-        },
+      : taxes || tax === 0n
+        ? {
+            // Stripe Tax computed nothing on the line (reverse charge, exempt, outside its reach).
+            rate_bp: 0,
+            amount_minor: tax.toString(),
+            line_count: 1,
+            jurisdiction: null,
+            reported_by_source: true,
+          }
+        : {
+            // Tax charged, its rate not read: the issuing flow decides the rate, never a guess.
+            amount_minor: tax.toString(),
+            line_count: 1,
+            jurisdiction: null,
+            reported_by_source: true,
+          },
   }
 }
 
@@ -218,7 +246,12 @@ export function saleFromSession(session: Obj, refunds: Obj[]): Sale | null {
   }
 }
 
-const EXPAND = ["data.line_items", "data.payment_intent.latest_charge"]
+// `line_items.data.taxes` is not in a line by default: without it no line has its rate.
+const EXPAND = [
+  "data.line_items",
+  "data.line_items.data.taxes",
+  "data.payment_intent.latest_charge",
+]
 
 async function refundsOfSale(ctx: StripeHttpCtx, sale: Obj): Promise<Obj[]> {
   const intent = (sale.payment_intent ?? {}) as Obj

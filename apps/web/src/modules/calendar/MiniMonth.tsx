@@ -1,29 +1,49 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Sidebar mini-month — Google-Calendar-style minimap: compact 7×6 grid, event-density dots,
 // today as a filled accent circle, click to focus the main view on that day.
-import { type Component, createMemo, createSignal, For } from "solid-js"
+import { type Component, createEffect, createMemo, createSignal, For, on } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { calendarStore, focusedDate, isCalendarVisible, setFocusedDate } from "./calendar-store"
 import { isSameDay, monthGridDays, weekdayLabels, weekStartsOn } from "./date-utils"
+import { occurrenceDaySpan } from "./layout"
+import { expandEvents } from "./rrule-expand"
+import { createToday } from "./today"
 
 export const MiniMonth: Component = () => {
   const i18n = useI18n()
   const [cursor, setCursor] = createSignal(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   )
-  const today = new Date()
+  const today = createToday()
+  // The month shown follows the main view: navigating there (or Today) brings the mini month
+  // along; its own arrows still browse freely until the main view moves again.
+  createEffect(
+    on(focusedDate, (d) => setCursor(new Date(d.getFullYear(), d.getMonth(), 1)), { defer: false }),
+  )
   const firstDay = () => weekStartsOn(i18n.locale())
   const days = createMemo(() =>
     monthGridDays(cursor().getFullYear(), cursor().getMonth(), firstDay()),
   )
 
   const eventDays = createMemo(() => {
+    // Occurrences, not rows: every day of a recurring series gets its dot.
     const set = new Set<string>()
-    for (const e of calendarStore.events) {
-      if (!isCalendarVisible(e.calendarId)) continue
-      const raw = e.start?.dateTime ?? (e.start?.date ? `${e.start.date}T00:00:00` : null)
-      if (!raw) continue
-      set.add(new Date(raw).toDateString())
+    const grid = days()
+    const first = grid[0]
+    const last = grid[grid.length - 1]
+    if (!first || !last) return set
+    const windowEnd = new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1)
+    for (const occ of expandEvents(calendarStore.events, first, windowEnd)) {
+      if (!isCalendarVisible(occ.calendarId)) continue
+      const span = occurrenceDaySpan(occ)
+      if (!span) continue
+      for (
+        let d = span.first;
+        d <= span.last;
+        d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
+      ) {
+        set.add(d.toDateString())
+      }
     }
     return set
   })
@@ -62,13 +82,13 @@ export const MiniMonth: Component = () => {
         <For each={days()}>
           {(day) => {
             const inMonth = () => day.getMonth() === cursor().getMonth()
-            const isToday = isSameDay(day, today)
+            const isToday = () => isSameDay(day, today())
             const isFocused = () => isSameDay(day, focusedDate())
             return (
               <button
                 type="button"
                 class={`relative mx-auto flex h-6 w-6 items-center justify-center rounded-full text-[11px] tabular-nums transition-colors ${
-                  isToday
+                  isToday()
                     ? "bg-accent font-semibold text-accent-foreground"
                     : isFocused()
                       ? "bg-[color-mix(in_srgb,var(--color-accent)_18%,transparent)] font-medium text-accent"
@@ -82,7 +102,9 @@ export const MiniMonth: Component = () => {
                 {day.getDate()}
                 <span
                   class={`absolute bottom-0 h-[3px] w-[3px] rounded-full ${
-                    eventDays().has(day.toDateString()) && !isToday ? "bg-accent" : "bg-transparent"
+                    eventDays().has(day.toDateString()) && !isToday()
+                      ? "bg-accent"
+                      : "bg-transparent"
                   }`}
                 />
               </button>

@@ -140,5 +140,23 @@
   "weekday.WE": "Wed",
   "eventMoved": "Event moved",
   "moveFailed": "The event could not be moved: {{message}}",
-  "scopeMoveTitle": "Move the recurring event"
+  "scopeMoveTitle": "Move the recurring event",
+  "secondaryZone": "Second time zone",
+  "secondaryZoneNone": "None",
+  "eventZoneNote": "Times are in your zone ({{yours}}). This event's zone: {{zone}}.",
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "today": "Go to today",
+    "next": "Next day, week or month",
+    "previous": "Previous day, week or month",
+    "day": "Day view",
+    "week": "Week view",
+    "month": "Month view",
+    "create": "New event",
+    "help": "Show these shortcuts",
+    "escape": "Close the new event card",
+    "delete": "Delete the open event (asks first)",
+    "escapeKey": "Esc",
+    "deleteKey": "Del"
+  }
 }

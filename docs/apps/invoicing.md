@@ -68,10 +68,12 @@ An order to a customer in another EU country that Shopify charged no VAT (tax ex
 Any app that reports its sales to invoicing (it implements `revenue-stream@1`, see [app development](../app-development.md)) can have each sale invoiced, the same way as a paid Shopify order: same numbering, tax checks, approvals and **Deferred** list.
 
 1. Ask an agent to bind the app (`revenue_stream_bind` with the app, the issuer profile and a mode). A person approves it; it is never approved automatically. `revenue_streams_list` shows the bound apps and the apps that could be bound.
-2. Pick the mode: `auto` invoices each sale at once (the issuer profile's approval threshold still applies), `review` asks a person for every sale, `off` invoices nothing.
+2. Pick the mode: `auto` invoices each paid sale at once and sends its mail, with no approval card (a paid sale is a business event: the issuer profile's approval threshold applies to documents an agent issues, not to sales); `review` asks a person for every sale and is meant for agents and testing, not as the everyday mode; `off` invoices nothing. A paid Shopify order is invoiced the same way, with no approval card.
 3. A bound app's sales are invoiced from the moment it was bound. Earlier sales are invoiced only through a catch-up, never by an event.
 
-Invoicing reads each sale from its app before it invoices it, so a late or repeated event invoices nothing twice. A sale whose lines do not add up to its totals, or that is not a well formed sale, waits under **Deferred**.
+Invoicing reads each sale from its app before it invoices it, so a late or repeated event invoices nothing twice. A sale whose lines do not add up to its totals, or that is not a well formed sale, waits under **Deferred**. So does a sale whose invoice would not total exactly what the buyer paid, and a sale whose app charged a VAT rate other than the one invoicing applies (French VAT on a sale in France, business buyers included; the customer's country's standard rate for a consumer elsewhere in the EU, through the OSS): the tax the app charged is the reference, never overwritten. A consumer outside the EU pays no VAT, and the invoice carries the art. 259 B mention.
+
+**The buyer's address.** An invoice to a business, or for goods, needs the buyer's postal address (CGI art. 242 nonies A). An invoice to a consumer for services or digital goods, with no VAT number, issues with the name (or email) and the country when the app has no street address: in France no invoice is required for services to individuals (CGI art. 289), the OSS keeps the French invoicing rules (Directive 2006/112/EC art. 219a), and an invoice to an individual may then leave out some mentions. The place of supply still rests on the location evidence of the sale. Check with your accountant that this fits your case.
 
 Your Shopify store is such an app: its orders reach invoicing the same way, and its issuer stays the one the shop mapping names. Stripe is one for payments taken through Checkout with no Stripe invoice: each is read from its Checkout Session (see [Stripe](stripe.md#what-reaches-invoicing)).
 
@@ -81,7 +83,8 @@ A refund the app reports (`sale:refunded`) gives one credit note on the sale's i
 
 Sales paid before the stream was bound are invoiced only on a person's decision:
 
-1. `sales_catch_up_preview` with the stream and a window (`paidFrom`, `paidTo`) lists every sale of the window, oldest first: buyer, country, tax treatment, lines, the tax as computed next to the tax the app charged, totals, refunds, blockers (a missing address, a VAT number to check, a currency that needs the exchange rate, a tax gap) and the invoice a sale already has. It writes nothing.
+1. `sales_catch_up_preview` with the stream and a window (`paidFrom`, `paidTo`) lists every sale of the window, oldest first: buyer, country, tax treatment, lines, the tax as computed next to the tax the app charged, totals, refunds, blockers (a missing address, a VAT number to check, a rate other than the treatment's, a tax gap), the ECB rate a foreign currency would be priced at, and the invoice a sale already has. It writes nothing.
+   `sales_preview_pdfs` with the same window (up to 8 sales per call, `externalIds` for the next ones) renders each sale with no invoice as the document it would become: the same lines, rates, VAT mentions and totals as the issue, with no number and a **PREVIEW, not an invoice** watermark. It issues, numbers and sends nothing, and the PDFs stay internal files no buyer receives. A sale that would wait under **Deferred** says why instead. Check every one before the run.
 2. `sales_catch_up` with the same window waits for a person's approval, never automatic. It invoices each sale that has no invoice, oldest first, one number each, dated today, then a credit note for each refund. It stops at the first sale it cannot invoice, so the later ones keep their place in the numbering; fix the cause and approve the run again (sales already invoiced are skipped). A run lasts at most a minute: a long window may take more than one run, each going on where the last one stopped.
 
 ## Create a quote, proforma or purchase order
@@ -228,6 +231,7 @@ Invoices, credit notes and proformas issued in another tool can be imported with
 - A document imported before is skipped. A document whose number the issuer already used, or that an earlier document of the same import uses (in any batch of it, in a preview too), fails with `numberTaken`, and so does one whose number and number_int disagree or whose status contradicts its payment.
 - An imported document keeps its PDF as its original: marking it paid or editing it never renders a new one.
 - The import does not record legal originals. Once you have checked the imported documents, run `einvoicing_backfill_legacy_originals` to record them from the PDFs.
+- A document that names its Shopify order only by number (imported, or made by hand) is not linked to the order, so the order's own reads, such as your website's purchases page, do not find it. `documents_link_shopify_orders` links it. It links a document only when its issuer profile's shop holds exactly one order with that name and the order's email is the document's buyer email (or its contact's email). It reports every other document with the reason, and changes nothing else on it. Run it with `dry_run` first.
 - Until then, the run can be undone under **Settings › Organization › Imports**. A document that changed since, for example once its legal original is recorded, is kept.
 
 ## Recurring invoice schedules
@@ -412,6 +416,7 @@ Your own website can list a signed-in buyer's invoices and credit notes and let 
 | `counterparty_identity_get`, `counterparty_identity_lookup`, `counterparty_identity_set` | Read, look up and record a customer's SIREN/SIRET identity | No |
 | `counterparty_territory_set` | Decide whether a Monaco or overseas buyer is treated as French | Always |
 | `einvoicing_backfill_identities`, `einvoicing_backfill_legacy_originals` | Backfill identities and legal originals | Always |
+| `documents_link_shopify_orders` | Link documents named by a Shopify order number to that order, when the order's email is the buyer's | Always |
 | `einvoice_send_request` | Ask for approval to send one e-invoice | Files an approval |
 | `einvoice_status_refresh`, `einvoice_transmission_get` | Read an e-invoice's platform status | No |
 | `legal_originals_verify` | Check stored legal originals are intact | No |

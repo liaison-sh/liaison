@@ -1,0 +1,17 @@
+{
+  "entry": "tool:documents_link_shopify_orders",
+  "params": { "dry_run": true },
+  "recordedFrom": "an install with no issuer profile and no document yet (contract replay, no Shopify call)",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["issuer_profiles", "{\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["documents", "{\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"],
+      "reply": "[]"
+    }
+  ]
+}

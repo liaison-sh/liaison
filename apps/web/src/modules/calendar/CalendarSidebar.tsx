@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Calendar sidebar — + Create pill, mini-month minimap, and the per-calendar visibility list
 // with Google-style colored check squares.
-import { type Component, For } from "solid-js"
+import { type Component, createMemo, For } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import {
   calendarStore,
@@ -10,9 +10,11 @@ import {
   toggleCalendarVisibility,
 } from "./calendar-store"
 import { MiniMonth } from "./MiniMonth"
+import { browserTimeZone, knownZones, secondaryTimeZone, setSecondaryTimeZone } from "./time-zones"
 
 const CalendarSidebar: Component = () => {
   const i18n = useI18n()
+  const zones = createMemo(() => knownZones().filter((z) => z !== browserTimeZone()))
   return (
     <div class="flex h-full flex-col gap-4 overflow-y-auto p-3" data-testid="calendar-sidebar">
       <button
@@ -65,6 +67,21 @@ const CalendarSidebar: Component = () => {
           </For>
         </ul>
       </div>
+
+      <label class="flex flex-col gap-1 px-1 text-xs text-text-secondary">
+        {i18n.t("calendar.secondaryZone")}
+        <select
+          class="w-full min-w-0 rounded-sm border border-border bg-bg px-2 py-1 text-xs text-text"
+          value={secondaryTimeZone() ?? ""}
+          onChange={(e) => setSecondaryTimeZone(e.currentTarget.value || null)}
+          data-testid="calendar-secondary-zone-select"
+        >
+          <option value="">{i18n.t("calendar.secondaryZoneNone")}</option>
+          <For each={zones()}>
+            {(zone) => <option value={zone}>{zone.replaceAll("_", " ")}</option>}
+          </For>
+        </select>
+      </label>
     </div>
   )
 }

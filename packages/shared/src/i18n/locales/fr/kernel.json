@@ -4078,7 +4078,8 @@
       "counterparty_territory_set": "définir le territoire d'un tiers",
       "einvoicing_settings_set": "modifier les réglages de facturation électronique",
       "einvoicing_backfill_identities": "compléter les identités des tiers",
-      "einvoicing_backfill_legacy_originals": "compléter les originaux anciens"
+      "einvoicing_backfill_legacy_originals": "compléter les originaux anciens",
+      "documents_link_shopify_orders": "relier des documents à leurs commandes Shopify"
     },
     "mcp-manager": {
       "add_connection": "connecter un serveur MCP"

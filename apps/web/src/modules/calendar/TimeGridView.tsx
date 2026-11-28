@@ -9,6 +9,7 @@ import {
   createMemo,
   createSignal,
   For,
+  on,
   onCleanup,
   Show,
 } from "solid-js"
@@ -24,8 +25,11 @@ import {
   moveRange,
   resizeEnd,
 } from "./drag-math"
+import { occurrenceColor } from "./event-colors"
 import { isSpanning, layoutDayColumns, layoutWeekSegments, type WeekSegment } from "./layout"
 import type { CalendarEventPoint, ExpandedOccurrence } from "./rrule-expand"
+import { hourLabelIn, zoneShortName } from "./time-zones"
+import { createToday } from "./today"
 
 export interface TimeGridViewProps {
   /** first visible day (for week: the week start; for day: the day itself) */
@@ -50,6 +54,10 @@ export interface TimeGridViewProps {
   ) => void
   /** Whether an event may be dragged. */
   canDrag?: (eventId: string) => boolean
+  /** "+N" in the all-day band: show that day (the day view). */
+  onShowDay?: (day: Date) => void
+  /** A second zone shown as an extra hour rail beside the browser's (IANA name), if any. */
+  secondaryTimeZone?: string | null
 }
 
 type Drag =
@@ -77,6 +85,8 @@ interface DragSession {
 
 const HOUR_PX = 48
 const SPAN_LANE_PX = 24
+/** All-day band lanes shown before "+N". */
+const MAX_LANES = 4
 
 function nowMinutes(): number {
   const n = new Date()
@@ -96,7 +106,7 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
           ),
         ],
   )
-  const today = new Date()
+  const today = createToday()
   const hours = Array.from({ length: 24 }, (_, h) => h)
 
   // --- Drag: create over empty slots, move an event, resize its bottom edge. Pointer events on
@@ -256,21 +266,48 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
     )
     return layoutWeekSegments(padded, spanning).filter((s) => s.startCol === 0)
   })
-  const spanLaneCount = createMemo(() =>
-    Math.min(
-      4,
-      spanSegments().reduce((m, s) => Math.max(m, s.lane + 1), 0),
-    ),
-  )
+  // At most MAX_LANES lanes show; a day with more says "+N" in the last lane instead.
+  const laneTotal = createMemo(() => spanSegments().reduce((m, s) => Math.max(m, s.lane + 1), 0))
+  const visibleLanes = () => (laneTotal() > MAX_LANES ? MAX_LANES - 1 : laneTotal())
+  const spanLaneCount = createMemo(() => Math.min(MAX_LANES, laneTotal()))
+  /** Hidden band events per day column (those in lanes past the visible ones). */
+  const hiddenPerDay = createMemo(() => {
+    const counts = Array.from({ length: props.dayCount }, () => 0)
+    for (const seg of spanSegments()) {
+      if (seg.lane < visibleLanes()) continue
+      for (let c = seg.startCol; c <= Math.min(seg.endCol, props.dayCount - 1); c++) {
+        counts[c] = (counts[c] ?? 0) + 1
+      }
+    }
+    return counts
+  })
 
-  const gridTemplate = () => `3.5rem repeat(${props.dayCount}, minmax(0, 1fr))`
+  const railCount = () => (props.secondaryTimeZone ? 2 : 1)
+  const gridTemplate = () =>
+    `${props.secondaryTimeZone ? "3.5rem " : ""}3.5rem repeat(${props.dayCount}, minmax(0, 1fr))`
+  const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone
 
   let scrollRef: HTMLDivElement | undefined
-  createEffect(() => {
-    // Scroll ~8:00 into view on mount / range change. (Guarded: jsdom has no scrollTo.)
-    void props.rangeStart
-    if (typeof scrollRef?.scrollTo === "function") scrollRef.scrollTo({ top: 7.5 * HOUR_PX })
-  })
+  // On a new range: today's column scrolls the current time into view, another range its first
+  // timed event, an empty range 08:00. Only when the range changes, never while reading it.
+  createEffect(
+    on(
+      () => props.rangeStart.getTime(),
+      () => {
+        if (typeof scrollRef?.scrollTo !== "function") return // jsdom
+        const showsToday = days().some((d) => isSameDay(d, today()))
+        let minute = 8 * 60
+        if (showsToday) minute = Math.max(0, nowMinutes() - 90)
+        else {
+          const starts = days().flatMap((d) =>
+            layoutDayColumns(d, props.occurrences).map((b) => b.startMin),
+          )
+          if (starts.length > 0) minute = Math.max(0, Math.min(...starts) - 30)
+        }
+        scrollRef.scrollTo({ top: (minute / 60) * HOUR_PX })
+      },
+    ),
+  )
 
   return (
     <div
@@ -279,10 +316,27 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
     >
       {/* Day headers */}
       <div class="grid border-b border-border" style={{ "grid-template-columns": gridTemplate() }}>
-        <div />
+        <Show when={props.secondaryTimeZone}>
+          {(zone) => (
+            <div
+              class="self-end truncate px-1 pb-1 text-right text-[10px] text-text-tertiary"
+              title={zone()}
+              data-testid="calendar-secondary-zone-label"
+            >
+              {zoneShortName(zone(), i18n.locale())}
+            </div>
+          )}
+        </Show>
+        <div
+          class="self-end truncate px-1 pb-1 text-right text-[10px] text-text-tertiary"
+          title={browserZone()}
+          data-testid="calendar-zone-label"
+        >
+          {zoneShortName(browserZone(), i18n.locale())}
+        </div>
         <For each={days()}>
           {(day) => {
-            const isToday = isSameDay(day, today)
+            const isToday = () => isSameDay(day, today())
             return (
               <div class="flex items-baseline gap-1.5 px-2 py-1.5">
                 <span class="text-[11px] font-medium uppercase tracking-[0.08em] text-text-tertiary">
@@ -290,7 +344,7 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                 </span>
                 <span
                   class={`flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-sm tabular-nums ${
-                    isToday ? "bg-accent font-semibold text-accent-foreground" : "text-text"
+                    isToday() ? "bg-accent font-semibold text-accent-foreground" : "text-text"
                   }`}
                 >
                   {day.getDate()}
@@ -308,19 +362,23 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
           style={{ "grid-template-columns": gridTemplate() }}
           data-testid="calendar-allday-row"
         >
-          <div class="py-1 pr-2 text-right text-[10px] uppercase tracking-wide text-text-tertiary">
+          <div
+            class="py-1 pr-2 text-right text-[10px] uppercase tracking-wide text-text-tertiary"
+            style={{ "grid-column": `1 / span ${railCount()}` }}
+          >
             {i18n.t("calendar.allDay")}
           </div>
           <div
-            class="relative col-span-full col-start-2 grid gap-y-px py-0.5"
+            class="relative col-span-full grid gap-y-px py-0.5"
             style={{
+              "grid-column-start": String(railCount() + 1),
               "grid-template-columns": `repeat(${props.dayCount}, minmax(0, 1fr))`,
               "min-height": `${spanLaneCount() * SPAN_LANE_PX}px`,
             }}
           >
-            <For each={spanSegments().filter((s) => s.lane < 4)}>
+            <For each={spanSegments().filter((s) => s.lane < visibleLanes())}>
               {(seg) => {
-                const color = props.calendarColors[seg.occ.calendarId] ?? "#2563eb"
+                const color = occurrenceColor(seg.occ, props.calendarColors)
                 const endCol = Math.min(seg.endCol, props.dayCount - 1)
                 return (
                   <button
@@ -346,6 +404,24 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                 )
               }}
             </For>
+            <For each={hiddenPerDay()}>
+              {(count, col) => (
+                <Show when={count > 0}>
+                  <button
+                    type="button"
+                    class="mx-px h-[20px] truncate rounded px-1.5 text-left text-xs text-text-secondary hover:bg-[color-mix(in_srgb,var(--color-border)_50%,transparent)]"
+                    style={{
+                      "grid-column": `${col() + 1} / span 1`,
+                      "grid-row": String(MAX_LANES),
+                    }}
+                    data-testid="calendar-allday-more"
+                    onClick={() => props.onShowDay?.(days()[col()] ?? props.rangeStart)}
+                  >
+                    {i18n.t("calendar.moreEvents", { count })}
+                  </button>
+                </Show>
+              )}
+            </For>
           </div>
         </div>
       </Show>
@@ -356,6 +432,28 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
           class="relative grid"
           style={{ "grid-template-columns": gridTemplate(), height: `${24 * HOUR_PX}px` }}
         >
+          {/* second zone's hour rail */}
+          <Show when={props.secondaryTimeZone}>
+            {(zone) => (
+              <div
+                class="relative border-r border-border-subtle"
+                data-testid="calendar-secondary-rail"
+              >
+                <For each={hours}>
+                  {(hour) => (
+                    <Show when={hour > 0}>
+                      <span
+                        class="absolute right-2 -translate-y-1/2 text-[11px] tabular-nums text-text-tertiary"
+                        style={{ top: `${hour * HOUR_PX}px` }}
+                      >
+                        {hourLabelIn(days()[0] ?? props.rangeStart, hour, zone(), i18n.locale())}
+                      </span>
+                    </Show>
+                  )}
+                </For>
+              </div>
+            )}
+          </Show>
           {/* time rail */}
           <div class="relative border-r border-border-subtle">
             <For each={hours}>
@@ -377,7 +475,7 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
           <For each={days()}>
             {(day, colIndex) => {
               const blocks = createMemo(() => layoutDayColumns(day, props.occurrences))
-              const isToday = isSameDay(day, today)
+              const isToday = () => isSameDay(day, today())
               return (
                 <div
                   ref={(el) => {
@@ -405,7 +503,7 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                     )}
                   </For>
                   {/* now filament */}
-                  <Show when={isToday}>
+                  <Show when={isToday()}>
                     <div
                       class="pointer-events-none absolute inset-x-0 z-20"
                       style={{ top: `${(nowMin() / 60) * HOUR_PX}px` }}
@@ -419,7 +517,7 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                   {/* event blocks */}
                   <For each={blocks()}>
                     {(block) => {
-                      const color = props.calendarColors[block.occ.calendarId] ?? "#2563eb"
+                      const color = occurrenceColor(block.occ, props.calendarColors)
                       const top = (block.startMin / 60) * HOUR_PX
                       const height = Math.max(
                         18,
@@ -454,8 +552,15 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                             "opacity-60 line-through": block.occ.declined === true,
                           }}
                           data-testid="calendar-timed-event"
-                          data-declined={block.occ.declined ? "true" : undefined}
                           data-event-id={block.occ.eventId}
+                          data-declined={block.occ.declined ? "true" : undefined}
+                          aria-label={`${block.occ.title ?? i18n.t("calendar.untitledEvent")}, ${
+                            startD?.toLocaleString(i18n.locale(), {
+                              weekday: "long",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            }) ?? ""
+                          }`}
                           onPointerDown={(e) => {
                             e.stopPropagation()
                             const draggable = props.canDrag?.(block.occ.eventId) ?? false
@@ -496,6 +601,7 @@ export const TimeGridView: Component<TimeGridViewProps> = (props) => {
                         >
                           <span
                             class="truncate text-xs font-medium leading-4"
+                            classList={{ "line-through": block.occ.declined === true }}
                             style={{ color: `color-mix(in srgb, ${color} 65%, var(--color-text))` }}
                           >
                             {block.occ.title ?? i18n.t("calendar.untitledEvent")}

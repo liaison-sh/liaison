@@ -178,6 +178,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `merge_imported_user` | Link an IMPORTED user (history author from a Slack import, email @import.invalid) to the real team member it stands for: their messages, mentions, reactions, files and conversations move to the member and the imported user is removed. | yes | `kernel:users:admin` |
 | `merge_imported_user_preview` | Preview linking an IMPORTED user (a deactivated history author created by a Slack import, email ending @import.invalid) to the real team member it stands for: returns how many messages, mentions, reactions, files and conversations would move. |  | `kernel:users:admin` |
 | `notification_rules_set` | Silence one app ENTIRELY for the user (every channel, the in-app feed included), keep only some of its notification kinds, or remove such a rule. |  | `kernel:agent:memory` |
+| `notifications_email_send` | Internal: send one mail to one recipient through the organization's transactional sender (its email.from), for an app with no mailbox to send from. |  | `kernel:org:admin` |
 | `notifications_get` | Read the user's own notification settings: which channels (in-app, desktop, phone push, email digest) each notification group uses, quiet hours, digest cadence, per-app rules, muted threads count, with a plain `summary` to quote. |  | `kernel:agent:memory` |
 | `notifications_set` | Change the user's own notification settings: switch a group's desktop, phone (push) or email cell on/off (e.g. |  | `kernel:agent:memory` |
 | `notify_user` | Post a notification to the user's attention feed, to remind them of something or surface a result. |  | `kernel:agent:memory` |
@@ -435,15 +436,17 @@ Month and week calendar that syncs both ways with Google Calendar.
 | --- | --- | --- | --- |
 | `activity_read` | The meetings a company's or a contact's people attend, in the 90 days before the cursor, newest first, for their timeline. |  | `calendar:events:read` |
 | `create_event` | Create a new event or meeting on a writable calendar. |  | `calendar:events:write` |
-| `delete_event` | Delete an event or meeting. |  | `calendar:events:write` |
+| `delete_event` | Delete an event or meeting; syncs to Google in the background. |  | `calendar:events:write` |
+| `get_event` | Read the details of one meeting by the eventId list_events or search_events gave: times, description, location, guests and their answers, Meet link, recurrence. |  | `calendar:events:read` |
 | `find_free_slots` | Find free times of a given length when the user and their guests are all free, inside working hours. |  | `calendar:events:read` |
 | `list_accounts` | List connected Google Calendar accounts visible to the caller (their own personal connections plus every org-wide connection) — the generic kernel connections list deliberately excludes org-owned non-kernel connections, so Settings uses this app-specific tool instead (mirrors mail's listAccounts). |  | `calendar:events:read` |
 | `list_calendars` | List the connected Google calendars visible to the caller (personal calendars they own, plus org-wide calendars), each with `selected`: only selected calendars are synced and have events. |  | `calendar:events:read` |
 | `list_events` | List events in a time window, optionally scoped to one calendar. |  | `calendar:events:read` |
+| `respond_to_invitation` | Answer an invitation the user received: response "accepted" (yes), "declined" (no) or "tentative" (maybe). |  | `calendar:events:write` |
 | `retry_import` | Re-run the import of a connected Google Calendar account whose last import failed (sync status 'error'), e.g. |  | `calendar:events:write` |
 | `search_events` | Search events by text over title, description, and location. |  | `calendar:events:read` |
 | `set_selected` | Toggle whether a connected Google calendar is selected for sync (UI settings action — deselecting stops its watch channel and purges local events; re-selecting resyncs it). |  | `calendar:events:write` |
-| `update_event` | Update an existing event or meeting: change its time, title, description, location or guests, or add or remove its Google Meet video link. |  | `calendar:events:write` |
+| `update_event` | Update an existing event or meeting: time, title, description, location, guests, or its Google Meet link. |  | `calendar:events:write` |
 
 ## calls
 
@@ -564,6 +567,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `documents_for_orders` | Resolve the invoicing documents linked to a set of Shopify order ids. |  | `invoicing:documents:read` |
 | `documents_get` | Get one invoicing document by id, including lines. |  | `invoicing:documents:read` |
 | `documents_issue_preview` | The issuer profiles plus the VAT status of a buyer about to be issued a document: VAT number (as given or found on an earlier document), its VIES check, or why a business buyer without one is refused. |  | `invoicing:settings:read` |
+| `documents_link_shopify_orders` | Link issued invoices and credit notes that name their Shopify order only by number (no shopify_order_id) to that order, so the order's reads find them. | yes | `invoicing:documents:write` |
 | `documents_mark_paid` | Mark a document as paid (full payment recorded). | yes | `invoicing:documents:write` |
 | `documents_preview_pdf` | Resolve a document's rendered-PDF file id + inline URL for preview. |  | `invoicing:documents:read` |
 | `documents_record_refund` | Record a refund against a document (full or partial): records only, moves no money. | yes | `invoicing:documents:write` |

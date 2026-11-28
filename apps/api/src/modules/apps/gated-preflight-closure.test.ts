@@ -145,6 +145,7 @@ const NO_PREFLIGHT_NEEDED: Record<string, string> = {
   // Batch backfills: every field optional with a default, dry_run first; a
   // document that cannot be processed is reported in the result, never refused.
   "invoicing:einvoicing_backfill_identities": "params schema covers it; reports, never refuses",
+  "invoicing:documents_link_shopify_orders": "params schema covers it; reports, never refuses",
   "invoicing:einvoicing_backfill_legacy_originals":
     "params schema covers it; per-document failures are reported, never refused",
   "invoicing:counterparty_territory_set":

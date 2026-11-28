@@ -481,6 +481,15 @@ export function createCalendarMethods(
       return JSON.stringify(rows)
     },
 
+    calendar_getEventForCaller: async (eventId: string): Promise<string> => {
+      requireApp("calendar", "calendar_getEventForCaller")
+      if (!hasScope("calendar:events:read", callerScopes ?? [])) {
+        throw new Error("forbidden: missing scope calendar:events:read")
+      }
+      const { getEventForCaller } = await import("~/apps/calendar/tools")
+      return JSON.stringify(await getEventForCaller(txDb, orgId, eventId))
+    },
+
     /**
      * What `find_free_slots` needs from the host: the caller's own events over the window, their
      * addresses (to read "declined" and "attends"), their zone (profile, else primary calendar),

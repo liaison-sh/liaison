@@ -123,7 +123,7 @@ describe("layoutDayColumns", () => {
     expect(blocks[0]!.col).not.toBe(blocks[1]!.col)
   })
 
-  it("spanning and all-day events are excluded; minutes are clamped and minimum-height", () => {
+  it("all-day events are excluded, an overnight one is clamped to the day; minimum height", () => {
     const blocks = layoutDayColumns(day, [
       occ({
         eventId: "allday",
@@ -133,6 +133,11 @@ describe("layoutDayColumns", () => {
       }),
       occ({
         eventId: "multi",
+        start: { dateTime: "2026-07-13T22:00:00" },
+        end: { dateTime: "2026-07-15T02:00:00" },
+      }),
+      occ({
+        eventId: "overnight",
         start: { dateTime: "2026-07-14T22:00:00" },
         end: { dateTime: "2026-07-15T02:00:00" },
       }),
@@ -145,6 +150,9 @@ describe("layoutDayColumns", () => {
     const ids = blocks.map((b) => b.occ.eventId)
     expect(ids).not.toContain("allday")
     expect(ids).not.toContain("multi")
+    // Shorter than a day across midnight: in the grid, from 00:00 to 02:00 on this day.
+    const overnight = blocks.find((b) => b.occ.eventId === "overnight")!
+    expect([overnight.startMin, overnight.endMin]).toEqual([0, 120])
     const zero = blocks.find((b) => b.occ.eventId === "zero")!
     expect(zero.endMin - zero.startMin).toBeGreaterThanOrEqual(20)
   })

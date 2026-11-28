@@ -5,9 +5,10 @@
 // delete asks first and offers Undo. An event of a recurring meeting asks which occurrences a
 // save or a delete applies to (this one, this and the following ones, all of them). Guests are
 // emailed only when "Send invitations" is ticked; the account's own invitation is answered here.
-import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js"
+import { type Component, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
+import { useTabIsActive } from "~/modules/shell/TabVisibilityContext"
 import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
 import { Dialog } from "~/ui/Dialog"
@@ -16,6 +17,7 @@ import { createAttendeeSearch } from "./attendee-search"
 import {
   type CalendarAttendee,
   type CalendarEventDto,
+  getEvent,
   type RsvpResponse,
   respondToEvent,
   type SeriesScope,
@@ -55,6 +57,7 @@ import {
   seriesContextOf,
   seriesTimes,
 } from "./series-edit"
+import { browserTimeZone, zoneShortName } from "./time-zones"
 
 const REPEAT_FREQS: RepeatFreq[] = ["none", "daily", "weekly", "monthly", "yearly"]
 const RSVP_CHOICES: RsvpResponse[] = ["accepted", "tentative", "declined"]
@@ -75,10 +78,15 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
   // `<series id>~<occurrence>` for one occurrence of a recurring meeting.
   const target = () => parseEventTabEntityId(entityId())
 
+  // Read by id when the calendar window does not hold it (a tab reopened after a reload, an
+  // event outside the week on screen): `undefined` while that read runs.
+  const [fetched, setFetched] = createSignal<CalendarEventDto | null | undefined>(null)
   const event = createMemo<CalendarEventDto | null>(() => {
     if (isNew()) return null
     const id = target().eventId
-    return calendarStore.events.find((e) => e.eventId === id) ?? openedEvent(id) ?? null
+    return (
+      calendarStore.events.find((e) => e.eventId === id) ?? openedEvent(id) ?? fetched() ?? null
+    )
   })
   const series = createMemo(() => seriesContextOf(event(), target().occurrence))
   /** The event as the form shows it: a series at the occurrence it was opened at. */
@@ -109,6 +117,18 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
   )
 
   onMount(() => {
+    if (!isNew() && !event()) {
+      setFetched(undefined)
+      void getEvent(api, target().eventId)
+        .then((found) => {
+          setFetched(found)
+          if (found) {
+            setForm(formFromEvent(shown() ?? found, {}, calendarStore.calendars))
+            setAttendees(found.attendees ?? [])
+          }
+        })
+        .catch(() => setFetched(null))
+    }
     if (calendarStore.calendars.length === 0) {
       void loadCalendarsList(api).then(() => {
         if (!form().calendarId) {
@@ -123,6 +143,25 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
     setRepeat({ ...repeat(), ...patch })
     setRepeatChanged(true)
   }
+
+  /** The event's own zone, when Google gives one that differs from the browser's. */
+  const eventZone = () => {
+    const zone = event()?.start?.timeZone
+    return zone && zone !== browserTimeZone() ? zone : null
+  }
+
+  // Del (or Backspace) outside a field asks to delete the open event, like the Delete button.
+  const tabActive = useTabIsActive()
+  const onDeleteKey = (e: KeyboardEvent) => {
+    if (e.key !== "Delete" && e.key !== "Backspace") return
+    if (!tabActive() || !event() || confirmDelete() || pending() !== null) return
+    const target = e.target as HTMLElement | null
+    if (target?.closest?.("input, textarea, select, [contenteditable='true']")) return
+    e.preventDefault()
+    askDelete()
+  }
+  document.addEventListener("keydown", onDeleteKey)
+  onCleanup(() => document.removeEventListener("keydown", onDeleteKey))
 
   const writableCalendars = createMemo(() =>
     calendarStore.calendars.filter((c) => c.selected !== false && isWritableCalendar(c)),
@@ -395,7 +434,7 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
             void save()
           }}
         >
-          <Show when={!isNew() && !event()}>
+          <Show when={!isNew() && !event() && fetched() !== undefined}>
             <p class="text-sm text-text-secondary" data-testid="event-not-found">
               {i18n.t("calendar.eventNotFound")}
             </p>
@@ -509,6 +548,16 @@ export const CalendarEventTab: Component<{ entityId?: string }> = (props) => {
                 </Show>
               </label>
             </div>
+            <Show when={!form().allDay && eventZone()}>
+              {(zone) => (
+                <span class="text-xs text-text-secondary" data-testid="event-zone-note">
+                  {i18n.t("calendar.eventZoneNote", {
+                    yours: zoneShortName(browserTimeZone(), i18n.locale()),
+                    zone: zone().replaceAll("_", " "),
+                  })}
+                </span>
+              )}
+            </Show>
           </div>
 
           <div class="flex gap-2">

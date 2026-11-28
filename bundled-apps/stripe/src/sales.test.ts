@@ -185,6 +185,64 @@ describe("saleFromSession", () => {
     })
   })
 
+  it("a tax-inclusive French sale with a discount: net of tax, the discount kept apart", () => {
+    // As Stripe answers with Stripe Tax on an inclusive price: amount_subtotal is the gross before
+    // the discount, amount_total the gross paid, amount_tax the VAT inside it.
+    const sale = saleFromSession(
+      session(
+        {
+          amount_subtotal: 8043,
+          amount_total: 804,
+          total_details: { amount_tax: 134, amount_discount: 7239, amount_shipping: 0 },
+          customer_details: {
+            email: "a@example.fr",
+            name: "Alice",
+            address: { country: "FR" },
+            tax_exempt: "none",
+            tax_ids: [],
+          },
+        },
+        {
+          amount_subtotal: 8043,
+          amount_discount: 7239,
+          amount_tax: 134,
+          amount_total: 804,
+          price: { id: "price_1", unit_amount: 8043, tax_behavior: "inclusive" },
+          taxes: [{ amount: 134, rate: { percentage: 20, country: "FR", inclusive: true } }],
+        },
+      ),
+      [],
+    )
+    expect(sale?.lines[0]).toMatchObject({
+      quantity: "1",
+      unit_price_minor: "6703",
+      discount_minor: "6033",
+      tax: { rate_bp: 2000, amount_minor: "134", jurisdiction: "FR" },
+    })
+    expect(sale?.totals).toEqual({ total_minor: "804", subtotal_minor: "670", tax_minor: "134" })
+  })
+
+  it("an inclusive price whose taxes were not expanded is still read net of its tax", () => {
+    const sale = saleFromSession(
+      session(
+        { amount_total: 1043, total_details: { amount_tax: 174 } },
+        {
+          amount_subtotal: 1043,
+          amount_discount: 0,
+          amount_tax: 174,
+          amount_total: 1043,
+          price: { id: "price_1", unit_amount: 1043, tax_behavior: "inclusive" },
+          taxes: undefined,
+        },
+      ),
+      [],
+    )
+    // Net 869, its tax 174: the rate is left for the issuing flow to decide, never guessed here.
+    expect(sale?.lines[0]).toMatchObject({ unit_price_minor: "869", discount_minor: "0" })
+    expect(sale?.lines[0]?.tax?.rate_bp).toBeUndefined()
+    expect(sale?.lines[0]?.tax?.amount_minor).toBe("174")
+  })
+
   it("a subscription invoice or a non-payment session is not a sale", () => {
     expect(saleFromSession(session({ invoice: "in_1" }), [])).toBeNull()
     expect(saleFromSession(session({ mode: "subscription" }), [])).toBeNull()
@@ -208,6 +266,9 @@ describe("rs_sale_get", () => {
     expect(out).toMatchObject({ found: true, sale: { external_id: "pi_1" } })
     expect(urls[0]).toContain("payment_intent=pi_1")
     expect(decodeURIComponent(urls[0] ?? "")).toContain("expand[0]=data.line_items")
+    // A line's taxes (its rate, and whether the price includes them) are not returned unless
+    // expanded: without them every line read as untaxed and exclusive.
+    expect(decodeURIComponent(urls[0] ?? "")).toContain("=data.line_items.data.taxes")
     expect(await rs_sale_get({ external_id: "ch_1" }, ctx)).toEqual({ found: false })
   })
 

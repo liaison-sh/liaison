@@ -8,13 +8,15 @@
 
 import { readMinorAmount } from "@liaison/app-sdk"
 import { lineAmounts, lineSubtotal, netOfIncludedTax } from "./money"
-import { classify, type TaxTreatment } from "./tax"
+import { classifyLines, lineRateBp, type TaxTreatment } from "./tax"
 
 export interface TaxPlanLine {
   quantity?: unknown
   unit_price_minor?: unknown
   discount_minor?: unknown
   tax_rate_bp_override?: unknown
+  /** goods / software / service / shipping: the French overseas rules rate each kind. */
+  line_kind?: string | null
 }
 
 export interface TaxPlanInput {
@@ -52,19 +54,21 @@ function qty(v: unknown): string | number {
 }
 
 export function planTax(input: TaxPlanInput): TaxPlan {
-  const c = classify({
-    issuer_country: input.issuerCountry,
-    counterparty_country: input.taxCountry,
-    has_vat_id: input.hasVatId,
-  })
+  const c = classifyLines(
+    {
+      issuer_country: input.issuerCountry,
+      counterparty_country: input.taxCountry,
+      has_vat_id: input.hasVatId,
+    },
+    input.lines,
+  )
   let typed = 0n
   let subtotal = 0n
   let tax = 0n
   let netted = false
   let anyTax = false
   for (const l of input.lines) {
-    const rate =
-      typeof l.tax_rate_bp_override === "number" ? l.tax_rate_bp_override : c.default_rate_bp
+    const rate = lineRateBp(c, l)
     let unit = minor(l.unit_price_minor)
     let discount = minor(l.discount_minor)
     let lineTyped = 0n

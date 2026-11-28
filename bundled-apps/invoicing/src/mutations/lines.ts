@@ -14,7 +14,7 @@ import {
 } from "../issue"
 import type { IssueDateParts } from "../issue-date"
 import { lineAmounts, netOfIncludedTax } from "../money"
-import { type ClassifyInput, classify, KNOWN_COUNTRIES } from "../tax"
+import { type ClassifyInput, classifyLines, KNOWN_COUNTRIES, lineRateBp } from "../tax"
 import {
   coerceMinorAmount,
   type DocumentType,
@@ -196,13 +196,13 @@ export function netLinesForIssuer<
     unit_price_minor: bigint
     discount_minor?: bigint
     tax_rate_bp_override?: number
+    line_kind?: string | null
   },
 >(items: T[], issuer: { prices_include_tax?: boolean }, classifyInput: ClassifyInput): T[] {
   if (!issuer.prices_include_tax) return items
-  const { default_rate_bp } = classify(classifyInput)
+  const classification = classifyLines(classifyInput, items)
   return items.map((l) => {
-    const rate =
-      typeof l.tax_rate_bp_override === "number" ? l.tax_rate_bp_override : default_rate_bp
+    const rate = lineRateBp(classification, l)
     if (rate <= 0) return l
     const next: T = { ...l, unit_price_minor: netOfIncludedTax(l.unit_price_minor, rate) }
     if (l.discount_minor != null) next.discount_minor = netOfIncludedTax(l.discount_minor, rate)
@@ -214,12 +214,11 @@ export function computeLineFinancials(
   lines: DraftLine[],
   classifyInput: ClassifyInput,
 ): { subtotal: bigint; tax: bigint; grand: bigint } {
-  const { default_rate_bp } = classify(classifyInput)
+  const classification = classifyLines(classifyInput, lines)
   let subtotal = 0n
   let tax = 0n
   for (const l of lines) {
-    const rate =
-      typeof l.tax_rate_bp_override === "number" ? l.tax_rate_bp_override : default_rate_bp
+    const rate = lineRateBp(classification, l)
     const amounts = lineAmounts(
       {
         quantity: l.quantity,

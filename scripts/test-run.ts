@@ -1428,6 +1428,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/issue-date.test.ts",
             "src/state.test.ts",
             "src/tax.test.ts",
+            // French overseas VAT (DOM-TOM): the decision table, mentions, source reconciliation.
+            "src/dom-tom-vat.test.ts",
             // The sales a buyer reads its documents by, and the identity each keeps (pure).
             "src/sales-ledger.test.ts",
             // A source-taxed sale checked against OSS, reverse charge and location evidence (pure).

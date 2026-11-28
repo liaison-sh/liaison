@@ -117,6 +117,17 @@ export function classifyRegime(input: ClassifyInput): ClassifyResult {
   // 4
   const terr = buyerTerritory(input)
   let french = terr.territory === "FR"
+  // A consumer is e-reporting whether its territory reads as French or foreign, so a consumer in
+  // Guyane, Mayotte, a collectivity or Monaco is never held for a territory decision.
+  const consumer =
+    input.customerKind === "individual" || input.customerKind === "non_registered_entity"
+  if (
+    terr.territory === "needs_review" &&
+    consumer &&
+    (terr.code === "dom_no_vat" || terr.code === "com" || terr.code === "monaco")
+  ) {
+    return { regime: "e_reporting", reasons: [R.not_business] }
+  }
   if (terr.territory === "needs_review") {
     if (input.territoryTreatment === "as_fr") french = true
     else if (input.territoryTreatment !== "as_foreign") {

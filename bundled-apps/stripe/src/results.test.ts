@@ -209,6 +209,10 @@ function cases(db: MemDb): Record<string, Case | string> {
     // connection.test.ts reads every row they give.
     connection_check: "no customer data: ten permission rows (connection.test.ts)",
     connection_precheck: "no customer data: one verdict about a key (connection.test.ts)",
+    rs_sale_get:
+      "invoicing's revenue-stream@1 read, never the agent's (agentVisible false, stripe:internal): the buyer's address and tax ids on purpose, for a legal invoice (sales.test.ts)",
+    rs_sales_list:
+      "invoicing's revenue-stream@1 read, never the agent's (agentVisible false, stripe:internal): as rs_sale_get (sales.test.ts)",
     settings_load:
       "no customer data: the connection's state and webhook address (connection.test.ts)",
     webhook_status:

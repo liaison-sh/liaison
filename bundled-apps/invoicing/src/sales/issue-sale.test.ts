@@ -68,10 +68,11 @@ function makeCtx(opts: {
   streams?: Array<Record<string, unknown>>
   sales?: Record<string, Sale>
   approval?: OrderPaidCtx["approval"]
+  issuer?: Record<string, unknown>
 }) {
   const db = createMockDb({
     seed: {
-      issuer_profiles: [ISSUER],
+      issuer_profiles: [{ ...ISSUER, ...(opts.issuer ?? {}) }],
       revenue_streams: opts.streams ?? [],
     },
     bridgeWhereOperators: true,
@@ -253,6 +254,196 @@ describe("onSaleEvent", () => {
       Record<string, unknown>
     >
     expect(parks[0]).toMatchObject({ reason: "sale_totals_mismatch" })
+    expect(await docs(db)).toEqual([])
+  })
+
+  test("a consumer buying a digital service needs no street address: the country is printed", async () => {
+    const { ctx, db } = makeCtx({
+      streams: [stream()],
+      sales: {
+        "hubshop:pi_1": sale({
+          buyer: {
+            email: "buyer@example.de",
+            name: "Lena Buyer",
+            kind: "individual",
+            billing: { country: "DE" },
+            tax_evidence: { billing_country: "DE", card_country: "DE" },
+          },
+        }),
+      },
+    })
+    expect((await onSaleEvent(event("hubshop", "pi_1"), ctx)).status).toBe("ok")
+    const [doc] = await docs(db)
+    expect(doc).toMatchObject({ type: "invoice", grand_total_minor: "2380" })
+  })
+
+  test("a company buyer, or a sale of goods, still needs the postal address", async () => {
+    const company = makeCtx({
+      streams: [stream()],
+      sales: {
+        "hubshop:pi_1": sale({
+          buyer: {
+            email: "ap@studio.example.de",
+            name: "Jan",
+            legal_name: "Studio GmbH",
+            kind: "company",
+            billing: { country: "DE" },
+            tax_evidence: { billing_country: "DE", card_country: "DE" },
+          },
+        }),
+      },
+    })
+    expect(await onSaleEvent(event("hubshop", "pi_1"), company.ctx)).toMatchObject({
+      status: "deferred",
+    })
+    const goods = makeCtx({
+      streams: [stream()],
+      sales: {
+        "hubshop:pi_1": sale({
+          buyer: {
+            email: "buyer@example.de",
+            name: "Lena Buyer",
+            kind: "individual",
+            billing: { country: "DE" },
+          },
+          lines: [
+            {
+              description: "Controller",
+              quantity: "1",
+              unit_price_minor: "2000",
+              kind: "goods",
+              tax: { rate_bp: 1900, amount_minor: "380", reported_by_source: true },
+            },
+          ],
+        }),
+      },
+    })
+    expect(await onSaleEvent(event("hubshop", "pi_1"), goods.ctx)).toMatchObject({
+      status: "deferred",
+    })
+    for (const { db } of [company, goods]) {
+      const parks = (await db.findMany("deferred_events", { limit: 5 })) as Array<
+        Record<string, unknown>
+      >
+      expect(parks[0]).toMatchObject({ reason: "counterparty_incomplete" })
+      expect(await docs(db)).toEqual([])
+    }
+  })
+
+  test("a French consumer taxed at 20 % by the source issues at 20 %", async () => {
+    const { ctx, db } = makeCtx({
+      streams: [stream()],
+      sales: {
+        "hubshop:pi_1": sale({
+          buyer: {
+            email: "a@example.fr",
+            name: "Alice",
+            kind: "individual",
+            billing: { line1: "1 rue A", postcode: "75001", city: "Paris", country: "FR" },
+            tax_evidence: { billing_country: "FR", card_country: "FR" },
+          },
+          lines: [
+            {
+              description: "Sound pack",
+              quantity: "1",
+              unit_price_minor: "6703",
+              discount_minor: "6033",
+              kind: "service",
+              tax: { rate_bp: 2000, amount_minor: "134", reported_by_source: true },
+            },
+          ],
+          totals: { total_minor: "804", subtotal_minor: "670", tax_minor: "134" },
+        }),
+      },
+    })
+    expect((await onSaleEvent(event("hubshop", "pi_1"), ctx)).status).toBe("ok")
+    const [doc] = await docs(db)
+    expect(doc).toMatchObject({ grand_total_minor: "804", tax_treatment: "eu_domestic" })
+  })
+
+  test("a rate the source charged that is not the treatment's standard rate parks for a person", async () => {
+    // A French company with its VAT number is domestic B2B at 20 %: a 0 % sale is never issued as is.
+    const fr = makeCtx({
+      streams: [stream()],
+      sales: {
+        "hubshop:pi_1": sale({
+          buyer: {
+            email: "ap@example.fr",
+            name: "Paul",
+            legal_name: "Studio SAS",
+            kind: "company",
+            vat_id: "FR40303265045",
+            billing: { line1: "1 rue A", postcode: "75001", city: "Paris", country: "FR" },
+          },
+          lines: [
+            {
+              description: "Sound pack",
+              quantity: "1",
+              unit_price_minor: "2000",
+              kind: "service",
+              tax: { rate_bp: 0, amount_minor: "0", reported_by_source: true },
+            },
+          ],
+          totals: { total_minor: "2000", subtotal_minor: "2000", tax_minor: "0" },
+        }),
+      },
+    })
+    // A consumer in Poland (OSS) charged the German rate.
+    const pl = makeCtx({
+      streams: [stream()],
+      sales: {
+        "hubshop:pi_1": sale({
+          buyer: {
+            email: "p@example.pl",
+            name: "Piotr",
+            kind: "individual",
+            billing: { line1: "ul. 1", postcode: "00-001", city: "Warszawa", country: "PL" },
+          },
+        }),
+      },
+    })
+    for (const { ctx, db } of [fr, pl]) {
+      expect(await onSaleEvent(event("hubshop", "pi_1"), ctx)).toMatchObject({ status: "deferred" })
+      const parks = (await db.findMany("deferred_events", { limit: 5 })) as Array<
+        Record<string, unknown>
+      >
+      expect(parks[0]).toMatchObject({ reason: "sale_tax_rate_mismatch" })
+      expect(await docs(db)).toEqual([])
+    }
+  })
+
+  test("an auto stream's sale issues with no card, whatever the issuer's approval threshold", async () => {
+    const { ctx, db, approvals } = makeCtx({
+      streams: [stream({ mode: "auto" })],
+      sales: { "hubshop:pi_1": sale() },
+      issuer: { invoice_approval_threshold_minor: "100" },
+    })
+    expect((await onSaleEvent(event("hubshop", "pi_1"), ctx)).status).toBe("ok")
+    expect(approvals).toEqual([])
+    expect(await docs(db)).toHaveLength(1)
+  })
+
+  test("the invoice's total must be the source's: a gap at issue refuses the sale", async () => {
+    // Within the one-unit-per-line tolerance of the lines check (999 + 190 against 1190), but the
+    // invoice would total 1189 where the buyer paid 1190: never issued with a cent of difference.
+    const { ctx, db } = makeCtx({
+      streams: [stream()],
+      sales: {
+        "hubshop:pi_1": sale({
+          lines: [
+            {
+              description: "Sound pack",
+              quantity: "3",
+              unit_price_minor: "333",
+              kind: "service",
+              tax: { rate_bp: 1900, amount_minor: "190", reported_by_source: true },
+            },
+          ],
+          totals: { total_minor: "1190", subtotal_minor: "999", tax_minor: "190" },
+        }),
+      },
+    })
+    expect(await onSaleEvent(event("hubshop", "pi_1"), ctx)).toMatchObject({ status: "deferred" })
     expect(await docs(db)).toEqual([])
   })
 

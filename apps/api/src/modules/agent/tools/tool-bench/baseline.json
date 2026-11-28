@@ -553,8 +553,8 @@
       "schema": 195
     },
     "calendar__delete_event": {
-      "desc": 436,
-      "schema": 203
+      "desc": 392,
+      "schema": 196
     },
     "calendar__list_accounts": {
       "desc": 298,
@@ -581,8 +581,8 @@
       "schema": 33
     },
     "calendar__update_event": {
-      "desc": 1213,
-      "schema": 330
+      "desc": 1083,
+      "schema": 323
     },
     "calls__calls_list": {
       "desc": 272,
@@ -3730,9 +3730,9 @@
     "N03|retenir": "15tl",
     "N03|se souvenir": "15tl",
     "N03|souviens-toi": "15tl",
-    "RS1|bound sales apps": "5t",
+    "RS1|bound sales apps": "15tl",
     "RS1|revenue streams": "15tl",
-    "RS1|sales apps invoiced": "5t",
+    "RS1|sales apps invoiced": "15tl",
     "RS2|bind revenue stream": "15tl",
     "RS2|facturer les ventes d'une app": "5t",
     "RS2|lier un flux de ventes": "15t",
@@ -3740,6 +3740,10 @@
     "RS3|sales without invoice before binding": "15t",
     "RS4|facturer les ventes passées": "",
     "RS4|rattrapage des factures": "15t",
+    "RS5|preview pdf of the sales invoices": "15tl",
+    "RS5|render sales previews before catch-up": "5t",
+    "RS6|aperçu pdf des ventes": "15t",
+    "RS6|prévisualiser les factures du rattrapage": "5t",
     "WI1|invoice issuer Stripe or Liaison": "5t",
     "WI1|who issues card subscription invoices": "15tl",
     "WI10|create invoice from payment": "15t",

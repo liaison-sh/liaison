@@ -168,6 +168,10 @@ const LISTED = new Map<string, string>([
     `sales the org's own sales apps took, each one's buyer and lines as the app holds them: ${NONE}`,
   ],
   [
+    "invoicing:sales_preview_pdfs",
+    `the documents the org's own sales would become (totals, rates, mentions) and the preview files' ids: ${NONE}`,
+  ],
+  [
     "invoicing:revenue_streams_list",
     `which sales apps are bound and how, set by the org's people, and the installed apps' names: ${NONE}`,
   ],

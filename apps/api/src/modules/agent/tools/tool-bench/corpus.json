@@ -2850,6 +2850,22 @@
     "any": ["invoicing__sales_catch_up"]
   },
   {
+    "id": "RS5",
+    "set": "seed",
+    "lang": "en",
+    "say": "before we invoice those past sales, render each one as a preview PDF so I can check it",
+    "typed": ["preview pdf of the sales invoices", "render sales previews before catch-up"],
+    "any": ["invoicing__sales_preview_pdfs"]
+  },
+  {
+    "id": "RS6",
+    "set": "seed",
+    "lang": "fr",
+    "say": "montre-moi l'aperçu PDF de chaque facture de vente avant de les émettre",
+    "typed": ["aperçu pdf des ventes", "prévisualiser les factures du rattrapage"],
+    "any": ["invoicing__sales_preview_pdfs"]
+  },
+  {
     "id": "WI1",
     "set": "seed",
     "lang": "en",

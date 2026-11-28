@@ -43,6 +43,8 @@ import {
   type IssueInput,
   issueDocument,
   type LineKind,
+  type PreviewedDocument,
+  previewDocument,
 } from "../issue"
 import { civilDateOf, type IssueDateParts, issueDateParts } from "../issue-date"
 import { deliveryFileId } from "../legal-originals/delivery"
@@ -102,6 +104,9 @@ export interface OrderPaidPayload {
     tax_country?: string
     legal_name?: string
     vat_id?: string | null
+    /** The buyer's kind when the source states it (a revenue-stream sale: `individual` for a
+     *  consumer). Absent on a Shopify order: the e-invoicing gate derives it, as before. */
+    kind?: "individual" | "company" | null
     address?: string | null
     /** Ship to, captured as its OWN field. It used to be read and then discarded (or used AS the
      *  billing address), so an order shipped to a different consignee printed one address only.
@@ -174,6 +179,26 @@ export function applyTaxOverride(
     const rate = subtotal > 0n ? Number((reported * 10000n * 2n + subtotal) / (subtotal * 2n)) : 0
     return { ...rest, tax_rate_bp: rate }
   })
+}
+
+/**
+ * The lines of a revenue-stream sale whose source rate is not the one its treatment charges:
+ * French VAT on a domestic sale, the consumer's member state standard rate through the OSS. Other
+ * treatments (exempt, reverse charge, export) have their own guards. Lines without a source rate
+ * take the treatment's rate and are not listed.
+ */
+export function streamRateMismatches(
+  lineItems: OrderPaidPayload["line_items"],
+  classification: { treatment: string; default_rate_bp: number },
+): Array<{ description: string; tax_rate_bp: number }> {
+  if (classification.treatment !== "eu_domestic" && classification.treatment !== "eu_b2c_oss")
+    return []
+  return lineItems
+    .filter(
+      (li) =>
+        typeof li.tax_rate_bp === "number" && li.tax_rate_bp !== classification.default_rate_bp,
+    )
+    .map((li) => ({ description: li.description, tax_rate_bp: li.tax_rate_bp as number }))
 }
 
 /** A structured order address (billing), with the company it names. */
@@ -286,6 +311,9 @@ export interface OrderPaidCtx extends IssueCtx {
   // contact. Shopify is an OPTIONAL dependency — this is only ever reached when
   // a Shopify event is delivered, so it adds no standalone coupling.
   resolveContact(params: { email?: string; name?: string; externalId?: string }): Promise<unknown>
+  /** Set only by a sale preview (sales/sale-preview.ts): at the issue step the flow renders each
+   *  document as `previewDocument` would, and returns them instead of issuing anything. */
+  preview?: { filename(scope: "goods" | "software"): string } | null
 }
 
 export interface IssuedDocumentRef {
@@ -319,6 +347,7 @@ export type OrderPaidResult =
     }
   | { status: "deferred"; deferred_id: string; reason: string }
   | { status: "pending_approval"; approval_id: string }
+  | { status: "preview"; documents: PreviewedDocument[] }
 
 /** Slice an ISO-8601 date/date-time value to its `YYYY-MM-DD` calendar date for a reviewer-
  *  legible approval-card line. Degrades to null on anything malformed/absent. */
@@ -911,6 +940,26 @@ export async function issueOrderFlow(
     })
   }
 
+  // (5) A revenue-stream sale (not the shop): the rate its source charged must be the treatment's
+  // own (French VAT at home, the consumer's member state rate through the OSS). The source's
+  // amount is the truth the invoice reconciles against, never overridden: a sale charged another
+  // rate (none on a domestic business sale, another country's, a reduced one) waits for a person.
+  const rateMismatches =
+    src && !payload.tax_override ? streamRateMismatches(payload.line_items, classification) : []
+  if (rateMismatches.length > 0) {
+    return parkForTaxReview(ctx, parkPayload, orderNumber, src, {
+      status: "awaiting_data",
+      reason: "sale_tax_rate_mismatch",
+      blocked_on: {
+        kind: "tax_rate",
+        treatment: classification.treatment,
+        counterparty_country: counterpartyCountry,
+        expected_rate_bp: classification.default_rate_bp,
+        lines: rateMismatches,
+      },
+    })
+  }
+
   // Steps 7+8+10+11+12 — build drafts, snapshot lines, issue + PDF + thread post.
   //
   // SPLIT BY SCOPE: physical goods on one document, EVERYTHING non-merchandise
@@ -961,6 +1010,9 @@ export async function issueOrderFlow(
     // a credit note or a reissue classifies the same way.
     tax_country: counterpartyCountry,
     vat_id: customer.vat_id ?? null,
+    // A consumer the source names as one: a services-only invoice then needs no street address
+    // (postalAddressRequired). A company stays for the e-invoicing gate to derive, as before.
+    ...(customer.kind === "individual" ? { customer_kind: "individual" as const } : {}),
     address: customer.address ?? null,
     // Render only: counterpartyCountry above remains the sole tax-classification input.
     shipping_address: customer.shipping_address ?? null,
@@ -980,7 +1032,10 @@ export async function issueOrderFlow(
   // operator fills the contact in and replays — rather than either issuing an unaddressed invoice
   // or letting issueDocument's backstop throw the whole handler run. Mirrors the
   // customer_email_missing / contact_missing guards above.
-  const counterpartyIncomplete = counterpartyCompletenessError(counterpartyInput)
+  const counterpartyIncomplete = counterpartyCompletenessError(
+    counterpartyInput,
+    payload.line_items,
+  )
   if (counterpartyIncomplete) {
     const def = await insertDeferred(ctx.db, {
       event_id: parkId,
@@ -1148,7 +1203,7 @@ export async function issueOrderFlow(
       company: customer.billing?.company ?? null,
     })
     const derivedKind = check.ok ? check.prepared.derivedKind : check.derivedKind
-    if (derivedKind && !derivedRecorded) {
+    if (derivedKind && !derivedRecorded && !ctx.preview) {
       derivedRecorded = true
       await ensureDerivedIdentity(ctx.db, {
         contact_id: customer.contact_id,
@@ -1207,19 +1262,26 @@ export async function issueOrderFlow(
     }
   }
 
-  // Step 9 — threshold-gating. Runs after every refusal the order could still meet (tax guards,
-  // completeness, the e-invoicing gate), so nobody approves a document that can only park.
-  // Gate on the computed invoice total (sum of lines + classified tax), not
-  // the Shopify gross total, so the threshold check and the persisted
-  // grand_total_minor compare the same number.
+  // Step 9 — the invoice's total against the source's. A revenue-stream sale's invoice must total
+  // exactly what the buyer paid (the lines were read from the source just now): a single minor
+  // unit of difference refuses it, so a person looks. The shop's orders keep their own checks.
   const invoiceTotal = computeInvoiceTotal(payload.line_items, classification.default_rate_bp)
-  const threshold =
-    issuer.invoice_approval_threshold_minor != null
-      ? toBigIntMinor(issuer.invoice_approval_threshold_minor)
-      : null
-  // A stream in review mode asks a person for every sale, whatever its amount.
+  if (src && !payload.tax_override && invoiceTotal !== toBigIntMinor(payload.total_price_minor)) {
+    return parkForTaxReview(ctx, parkPayload, orderNumber, src, {
+      status: "awaiting_data",
+      reason: "sale_total_mismatch",
+      blocked_on: {
+        kind: "sale_totals",
+        invoice_total_minor: invoiceTotal.toString(),
+        source_total_minor: String(payload.total_price_minor),
+      },
+    })
+  }
+  // A paid sale is a business event, not an agent's action: it is never held for an approval card
+  // (the issuer's approval threshold gates an agent's issue, mutations/invoice-issue.ts). Only a
+  // stream a person set to `review` asks, for each of its sales.
   const reviewEach = src?.stream.mode === "review"
-  if (!ctx.approval && (reviewEach || (threshold != null && invoiceTotal > threshold))) {
+  if (!ctx.approval && reviewEach) {
     const approval = await ctx.requestApproval({
       tool_name: src ? "invoicing:revenue_stream_sale_issue" : "invoicing:onShopifyOrderPaid",
       summary: `Issue invoice for ${customer.legal_name ?? customer.email}, ${formatMoneyMinor(invoiceTotal, payload.currency)}${orderNumber ? `, order ${String(orderNumber).startsWith("#") ? "" : "#"}${orderNumber}` : ""}`,
@@ -1256,6 +1318,20 @@ export async function issueOrderFlow(
   // The ECB rate of a foreign-currency order, fetched once here (issueDocument only reads the
   // cache); every split and every other order issued today reuses it.
   await warmFxRate(ctx as OrderPaidCtx & FxFetchCtx, payload.currency, fxIssueDate(when.issued_at))
+  if (ctx.preview) {
+    // A preview: the very inputs the issue below would take, rendered unnumbered, nothing written.
+    const documents: PreviewedDocument[] = []
+    for (const split of splits) {
+      documents.push(
+        await previewDocument(
+          ctx,
+          buildIssueInput(split.scope, split.items, when, paidAt),
+          ctx.preview.filename(split.scope),
+        ),
+      )
+    }
+    return { status: "preview", documents }
+  }
   for (const split of splits) {
     let issueResult: Awaited<ReturnType<typeof issueDocument>>
     const issueInput = buildIssueInput(split.scope, split.items, when, paidAt)

@@ -1011,15 +1011,16 @@ export async function issueOrderFlow(
 
   // Steps 7+8+10+11+12 — build drafts, snapshot lines, issue + PDF + thread post.
   //
-  // SPLIT BY SCOPE: physical goods on one document, EVERYTHING non-merchandise
-  // (software/digital lines AND carriage) on another. Customs values a shipment
-  // from the commercial invoice's total — a mixed invoice makes them tariff the
-  // software and the freight too. The goods invoice accompanies the parcel and
-  // contains ONLY merchandise value; the services invoice never reaches customs.
-  const goodsItems = payload.line_items.filter((li) => (li.line_kind ?? "goods") === "goods")
-  const softwareItems = payload.line_items.filter(
-    (li) => li.line_kind === "software" || li.line_kind === "shipping",
-  )
+  // SPLIT BY SCOPE: physical goods and their carriage on one document, digital lines on another.
+  // Customs values a shipment from the commercial invoice, which must not carry the software.
+  // The carriage belongs to the goods it moves (the invoice that states the Incoterm): on a
+  // digital invoice it turned the supply into "goods and services" and printed the export of
+  // goods mention on a download. Only an order with no goods at all keeps it on its one invoice.
+  const physical = payload.line_items.filter((li) => (li.line_kind ?? "goods") === "goods")
+  const carriage = payload.line_items.filter((li) => li.line_kind === "shipping")
+  const digital = payload.line_items.filter((li) => li.line_kind === "software")
+  const goodsItems = physical.length > 0 ? [...physical, ...carriage] : []
+  const softwareItems = physical.length > 0 ? digital : [...digital, ...carriage]
 
   const issuerInput: IssueInput["issuer"] = {
     id: issuer.id,

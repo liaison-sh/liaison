@@ -49,7 +49,7 @@ export function line(position: number, description: string): LineItem {
 export function documentInput(
   type: GoldenDocType,
   lines: number,
-  opts: { french?: boolean } = {},
+  opts: { french?: boolean; operationLabel?: string } = {},
 ): DocumentRenderInput {
   const items = Array.from({ length: lines }, (_, i) =>
     line(i + 1, `Design and build work, part ${i + 1} of the agreed scope`),
@@ -67,6 +67,7 @@ export function documentInput(
       grand_total_minor: 12000n * n,
       tax_treatment: "standard",
       incoterm: "DAP",
+      ...(opts.operationLabel ? { operation_label: opts.operationLabel } : {}),
       ...(type === "credit_note"
         ? {
             original_invoice_number: "DOC-2026-0001",
@@ -113,10 +114,26 @@ export const GOLDEN_CASES: ReadonlyArray<{
   type: GoldenDocType
   lines: number
   french: boolean
-}> = (Object.keys(TEMPLATES) as GoldenDocType[]).flatMap((type) => [
-  { name: `${type}-short`, type, lines: 1, french: false },
-  { name: `${type}-pages`, type, lines: 60, french: true },
-])
+  /** A header value long enough to wrap (it was once drawn over its own label). */
+  operationLabel?: string
+}> = [
+  ...(Object.keys(TEMPLATES) as GoldenDocType[]).flatMap((type) => [
+    { name: `${type}-short`, type, lines: 1, french: false },
+    { name: `${type}-pages`, type, lines: 60, french: true },
+  ]),
+  {
+    name: "invoice-operation-mixed",
+    type: "invoice",
+    lines: 1,
+    french: false,
+    operationLabel: "Delivery of goods and provision of services",
+  },
+]
+
+/** The render input of one golden case. */
+export function goldenInput(c: (typeof GOLDEN_CASES)[number]): DocumentRenderInput {
+  return documentInput(c.type, c.lines, { french: c.french, operationLabel: c.operationLabel })
+}
 
 /** Commands as stable JSON (money values are bigint in the template input). */
 export function commandsJson(cmds: DrawCommand[]): string {
@@ -142,7 +159,7 @@ export function readGolden(file: string): string | null {
 export async function writeGoldens(): Promise<void> {
   mkdirSync(GOLDEN_DIR, { recursive: true })
   for (const c of GOLDEN_CASES) {
-    const cmds = TEMPLATES[c.type](documentInput(c.type, c.lines, { french: c.french }))
+    const cmds = TEMPLATES[c.type](goldenInput(c))
     const p = goldenPaths(c.name)
     writeFileSync(p.draw, commandsJson(cmds))
     writeFileSync(p.text, `${await pageText(cmds)}\n`)

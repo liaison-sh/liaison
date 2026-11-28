@@ -21,7 +21,8 @@ export function operationCategory(
   let services = false
   for (const l of lines) {
     if (l.line_kind === "software" || l.line_kind === "service") services = true
-    else goods = true
+    // Carriage is accessory to what it carries: it never makes a supply "goods and services".
+    else if (l.line_kind !== "shipping") goods = true
   }
   return { category: goods && services ? "mixed" : services ? "services" : "goods", source }
 }

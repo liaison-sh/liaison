@@ -300,3 +300,6 @@ country printed once by name in the face language -> bundled-apps/invoicing/temp
 ship to equal to billing but for a country line is not repeated -> bundled-apps/invoicing/templates/shared.ts:1389
 share capital localised with its currency -> bundled-apps/invoicing/templates/shared.ts:1848
 Incoterm only for B2B cross border goods or a non default term -> bundled-apps/invoicing/templates/shared.ts:1353
+goods invoice carries the shipping, digital invoice digital lines only -> bundled-apps/invoicing/src/handlers/shopify-order-paid.ts:1023
+shipping never makes a supply mixed -> bundled-apps/invoicing/src/einvoicing/classify-operation.ts:25
+long header value wraps under itself -> bundled-apps/invoicing/templates/shared.ts:1294

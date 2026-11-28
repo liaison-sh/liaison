@@ -1221,6 +1221,8 @@ export function renderDocument(input: DocumentRenderInput): DrawCommand[] {
 }
 
 const LOGO_BOX = { width: 140, height: 48 }
+/** The widest a header meta value runs before it wraps (pt): the meta block stays a column. */
+const META_VALUE_MAX = 150
 
 function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
   const top = state.cursor.y
@@ -1286,11 +1288,18 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
   for (const [label, value] of metaLines) {
     const ctxLabel = ctxOf(state)
     // Labels share a column 70 pt left of the margin; a value wider than that pushes its own
-    // label left so the two never run into each other ("Provision of services").
-    const labelRight = Math.min(rightX - 70, rightX - textWidth(value, 8.5) - 6)
+    // label left so the two never run into each other ("Provision of services"). A value wider
+    // than META_VALUE_MAX wraps onto more lines under itself ("Delivery of goods and provision
+    // of services"), so its label never runs back over the value or off the header.
+    const valueLines = wrapText(value, META_VALUE_MAX, 8.5)
+    const widest = Math.max(0, ...valueLines.map((v) => textWidth(v, 8.5)))
+    const labelRight = Math.min(rightX - 70, rightX - widest - 6)
     drawRight(ctxLabel, L.colon(label), labelRight, { y: ry, size: 8.5, color: GRAY_LABEL })
-    const ctxVal = ctxOf(state)
-    drawRight(ctxVal, value, rightX, { y: ry, size: 8.5, color: GRAY_DARK })
+    for (const [i, v] of valueLines.entries()) {
+      const ctxVal = ctxOf(state)
+      drawRight(ctxVal, v, rightX, { y: ry, size: 8.5, color: GRAY_DARK })
+      if (i < valueLines.length - 1) ry -= 11
+    }
     ry -= 13
   }
 

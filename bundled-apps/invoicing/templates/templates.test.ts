@@ -1683,3 +1683,45 @@ describe("face fixes: country, capital, SIREN, ship to, Incoterm, VAT labels, co
     expect(rate.x - (price.x + textWidth(price.text, price.size))).toBeGreaterThanOrEqual(18)
   })
 })
+
+// Prod, a split Shopify order: "Delivery of goods and provision of services" was drawn over its
+// own "Operation:" label. A long value wraps under itself; its label stays clear of every line.
+describe("a long header value wraps and never covers its label", () => {
+  const cases = [
+    ["en", "Operation:", "Delivery of goods and provision of services"],
+    ["fr", "Opération :", "Livraison de biens et prestation de services"],
+    ["de", "Vorgang:", "Lieferung von Waren und Erbringung von Dienstleistungen"],
+  ] as const
+  for (const [language, labelText, value] of cases) {
+    test(`${language}: ${value}`, () => {
+      const cmds = textCmds(
+        invoiceTemplate(
+          shortInput({
+            document: {
+              ...shortInput().document,
+              language,
+              operation_label: value,
+              shopify_order_number: "#3700",
+            },
+          }),
+        ),
+      )
+      const label = cmds.find((c) => c.text === labelText)!
+      expect(label).toBeDefined()
+      const labelRight = label.x + textWidth(label.text, label.size)
+      // The value's lines: right-aligned at the margin, on and under the label's row.
+      const valueLines = cmds.filter(
+        (c) => c.y <= label.y && c.y > label.y - 30 && c.x > labelRight && value.includes(c.text),
+      )
+      expect(valueLines.map((c) => c.text).join(" ")).toBe(value)
+      expect(valueLines.length).toBeGreaterThan(1)
+      for (const v of valueLines) {
+        expect(v.x).toBeGreaterThan(labelRight + 4)
+        expect(v.x + textWidth(v.text, v.size)).toBeLessThanOrEqual(545.01)
+      }
+      // The next meta row sits below the wrapped value.
+      const order = cmds.find((c) => c.text === "#3700")!
+      expect(order.y).toBeLessThan(Math.min(...valueLines.map((v) => v.y)) - 8)
+    })
+  }
+})

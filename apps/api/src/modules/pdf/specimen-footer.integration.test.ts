@@ -30,6 +30,7 @@ import {
   commandsJson,
   documentInput,
   GOLDEN_CASES,
+  goldenInput,
   goldenPaths,
   pageText,
   readGolden,
@@ -58,13 +59,13 @@ describe("outside a demo, an invoicing document is drawn as before", () => {
   for (const c of GOLDEN_CASES) {
     test(`outside a demo the template's draw program for ${c.name} is identical to before`, () => {
       const p = goldenPaths(c.name)
-      const cmds = TEMPLATES[c.type](documentInput(c.type, c.lines, { french: c.french }))
+      const cmds = TEMPLATES[c.type](goldenInput(c))
       expect(JSON.parse(commandsJson(cmds))).toEqual(JSON.parse(readGolden(p.draw) ?? "null"))
     })
 
     test(`outside a demo the extracted page text of ${c.name} is unchanged`, async () => {
       const p = goldenPaths(c.name)
-      const cmds = TEMPLATES[c.type](documentInput(c.type, c.lines, { french: c.french }))
+      const cmds = TEMPLATES[c.type](goldenInput(c))
       expect(`${await pageText(cmds)}\n`).toBe(readGolden(p.text) ?? "missing golden")
     })
   }

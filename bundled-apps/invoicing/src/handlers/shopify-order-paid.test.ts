@@ -147,7 +147,7 @@ function makeCtx(opts?: {
   }
   // The default buyer (basePayload, contact-1) is a French company: a registry-confirmed identity.
   if (!opts?.noDefaultIdentity) seed.counterparty_identities = [CONTACT_1_IDENTITY]
-  const db = createMockDb({ seed })
+  const db = createMockDb({ seed, bridgeWhereOperators: true })
 
   let failRenderRemaining = opts?.failRenderTimes ?? 0
   const failThreadPost = !!opts?.failThreadPost

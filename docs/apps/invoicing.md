@@ -63,7 +63,7 @@ With it off, the profile keeps the plain invoice mail, sent only when `autoEmail
 
 **Settings › Invoicing › Shopify shop mappings** lists each **Shop URL** with its **Issuer profile**. Without a mapping, paid orders are parked and no invoice issues.
 
-When an order cannot be invoiced automatically, it appears under **Deferred** in the Invoicing sidebar (the row shows only when something is waiting). An order whose tax needs a decision offers **Issue with Shopify's tax** and **Issue as computed**. Both file an approval.
+When an order cannot be invoiced automatically, it appears under **Deferred** in the Invoicing sidebar (the row shows only when something is waiting). The list holds the orders still waiting, newest first; an order that was invoiced or cancelled since leaves it. `documents_for_orders` answers the same for an order with no document: its `parks` entry names the reason and what it waits on, so a waiting order never reads as one invoicing never saw. An order whose tax needs a decision offers **Issue with Shopify's tax** and **Issue as computed**. Both file an approval.
 
 A retried order reads the Shopify order as it is now: a VAT number added as a custom attribute named `VAT number`, or a billing company, after the order was parked is used, and a customer with a VAT number is invoiced under the billing company's name.
 

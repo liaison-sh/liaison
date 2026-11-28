@@ -70,6 +70,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["calendar_notePushFailure", "async"],
   ["calendar_onAccountConnected", "async"],
   ["calendar_onAccountDisconnected", "async"],
+  ["calendar_purgeLongDeselectedEvents", "async"],
   ["calendar_recordImportFailure", "async"],
   ["calendar_recordPushFailure", "async"],
   ["calendar_recordSyncFailure", "async"],

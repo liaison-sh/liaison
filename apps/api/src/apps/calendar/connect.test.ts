@@ -286,7 +286,7 @@ describe("calendar connect lifecycle", () => {
     })
   })
 
-  it("deselecting a calendar purges its local events and stops the watch channel", async () => {
+  it("deselecting a calendar keeps its events hidden and stops the watch channel", async () => {
     await withSystemDb("calendar-deselect", async (tx) => {
       const event = connectedAccountEvent("user", userId, "deselect@gmail.com")
       const { accountId } = await onAccountConnected(tx as any, orgId, event, async () => {})
@@ -332,7 +332,8 @@ describe("calendar connect lifecycle", () => {
         SELECT count(*)::int AS c FROM app_calendar.events WHERE calendar_id = ${calendarId}::uuid
       `)) as any
       const evtRows = evts.rows ?? evts
-      expect(evtRows[0].c).toBe(0)
+      // The rows stay (hidden) so a re-select keeps their ids; purged after 30 days.
+      expect(evtRows[0].c).toBe(1)
       expect(jobs.length).toBe(0)
     })
   })
@@ -675,7 +676,8 @@ describe("set_selected under the caller's RLS context", () => {
         userId,
       }),
     )
-    expect(await calendarState(calendarId)).toEqual({ selected: false, events: 0 })
+    // Kept (hidden) so a re-select keeps the event ids; purged after 30 days.
+    expect(await calendarState(calendarId)).toEqual({ selected: false, events: 1 })
 
     const jobs: string[] = []
     await withRlsContext(asOwner, (tx) =>
@@ -710,7 +712,8 @@ describe("set_selected under the caller's RLS context", () => {
           userId: otherUserId,
         }),
     )
-    expect(await calendarState(calendarId)).toEqual({ selected: false, events: 0 })
+    // Kept (hidden) so a re-select keeps the event ids; purged after 30 days.
+    expect(await calendarState(calendarId)).toEqual({ selected: false, events: 1 })
   })
 
   it("reports a failure instead of succeeding when the row could not be written", async () => {

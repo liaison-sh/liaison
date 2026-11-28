@@ -18,6 +18,7 @@ import {
   markPushRejected,
   notePushFailure,
   onAccountConnected,
+  purgeLongDeselectedEvents,
   recordPushFailure,
   resolveUpdateTarget,
   restoreRefusedDelete,
@@ -1155,6 +1156,12 @@ describe("calendar outbound sync", () => {
           isAdmin: true,
           userId,
         })
+        expect((await getEventById(tx as any, orgId, eventId))?.pending_push).toBe("delete")
+        // The other rows are kept (hidden) for a re-select; the 30-day purge spares the tombstone.
+        expect(await getEventById(tx as any, orgId, other.eventId)).toBeDefined()
+        await tx.execute(drizzleSql`UPDATE app_calendar.calendars SET deselected_at = now() - interval '31 days'
+                                    WHERE id = ${calendarId}::uuid`)
+        await purgeLongDeselectedEvents(tx as any, orgId)
         expect((await getEventById(tx as any, orgId, eventId))?.pending_push).toBe("delete")
         expect(await getEventById(tx as any, orgId, other.eventId)).toBeUndefined()
       })

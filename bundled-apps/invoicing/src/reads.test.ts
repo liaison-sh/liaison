@@ -1191,6 +1191,7 @@ describe("deferredList names the order each park is about", () => {
           },
         ],
       },
+      bridgeWhereOperators: true,
     })
     const ctx = { db } as unknown as ReadsCtx
     const { items } = await deferredList(ctx)
@@ -1205,7 +1206,7 @@ describe("deferredList names the order each park is about", () => {
 })
 
 describe("deferredList fills a missing order number from the same order's other park", () => {
-  test("an older duplicate park with no order_number reads it from its refreshed sibling", async () => {
+  test("an open park with no order_number reads it from a closed sibling of the same order", async () => {
     const db = createMockDb({
       seed: {
         deferred_events: [
@@ -1213,8 +1214,8 @@ describe("deferredList fills a missing order number from the same order's other 
             id: "00000000-0000-4000-8000-00000000d101",
             event_id: "12966079070539",
             event_payload_json: { id: "12966079070539" },
-            status: "resolved",
-            reason: "duplicate_park",
+            status: "awaiting_data",
+            reason: "awaiting_data",
             blocked_on: { kind: "customer_email" },
             retry_count: 0,
           },
@@ -1223,15 +1224,83 @@ describe("deferredList fills a missing order number from the same order's other 
             event_id: "12966079070539",
             event_payload_json: { id: "12966079070539", order_number: "#3280" },
             status: "resolved",
-            reason: "order_cancelled",
+            reason: "duplicate_park",
             blocked_on: { kind: "customer_email" },
             retry_count: 1,
           },
         ],
       },
+      bridgeWhereOperators: true,
     })
     const { items } = await deferredList({ db } as unknown as ReadsCtx)
-    expect(items.map((i) => i.order_number)).toEqual(["#3280", "#3280"])
+    expect(items.map((i) => [i.id, i.order_number])).toEqual([
+      ["00000000-0000-4000-8000-00000000d101", "#3280"],
+    ])
+  })
+})
+
+describe("deferredList lists the open parks, never buried under closed ones", () => {
+  // A paid order parked on its buyer's e-invoicing identity read as "no document, not parked":
+  // the list ordered every park ever written by retried_at and cut at the limit, so thousands of
+  // resolved and dead-lettered rows (NULL retried_at sorts FIRST in a Postgres DESC) filled the
+  // page and the one open park never reached the Deferred tab, its badge or the agent.
+  const closed = Array.from({ length: 150 }, (_, i) => ({
+    id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    event_id: `1290000000${String(i).padStart(4, "0")}`,
+    event_payload_json: { id: `1290000000${String(i).padStart(4, "0")}` },
+    status: i % 2 === 0 ? "resolved" : "permanent_failure",
+    reason: i % 2 === 0 ? "order_cancelled" : "dead-lettered",
+    blocked_on: { kind: "customer_email" },
+    retry_count: 1,
+    retried_at: new Date("2026-11-27T12:00:00Z"),
+    created_at: new Date("2026-07-11T12:00:00Z"),
+  }))
+  const open = {
+    id: "00000000-0000-4000-8000-00000000e001",
+    event_id: "13470003953995",
+    event_payload_json: { id: "13470003953995", order_number: "#3609" },
+    status: "awaiting_data",
+    reason: "awaiting_data",
+    blocked_on: { kind: "einvoice_identity", code: "einvoice_data_missing" },
+    retry_count: 66,
+    retried_at: new Date("2026-11-25T10:00:00Z"),
+    created_at: new Date("2026-11-25T09:03:09Z"),
+  }
+
+  test("an open park shows however many closed parks the org has, and the closed ones do not", async () => {
+    const db = createMockDb({
+      seed: { deferred_events: [...closed, open] },
+      bridgeWhereOperators: true,
+    })
+    for (const limit of [undefined, 50, 100, 200]) {
+      const { items } = await deferredList({ db } as unknown as ReadsCtx, { limit })
+      expect(
+        items.map((i) => i.order_number),
+        String(limit),
+      ).toEqual(["#3609"])
+      expect(items[0]).toMatchObject({
+        status: "awaiting_data",
+        order_id: "13470003953995",
+        blocked_on: { kind: "einvoice_identity", code: "einvoice_data_missing" },
+      })
+    }
+  })
+
+  test("open parks come newest first", async () => {
+    const older = {
+      ...open,
+      id: "00000000-0000-4000-8000-00000000e002",
+      event_id: "13160775254347",
+      event_payload_json: { id: "13160775254347", order_number: "#3427" },
+      retried_at: null,
+      created_at: new Date("2026-10-28T13:31:26Z"),
+    }
+    const db = createMockDb({
+      seed: { deferred_events: [older, ...closed, open] },
+      bridgeWhereOperators: true,
+    })
+    const { items } = await deferredList({ db } as unknown as ReadsCtx)
+    expect(items.map((i) => i.order_number)).toEqual(["#3609", "#3427"])
   })
 })
 

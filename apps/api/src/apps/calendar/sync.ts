@@ -771,7 +771,8 @@ async function setCalendarSelected(
   const { sql } = await import("drizzle-orm")
   const schema = CALENDAR_SCHEMA()
   const rows = (await db.execute(sql`
-    UPDATE ${sql.raw(schema)}.calendars SET selected = ${selected}
+    UPDATE ${sql.raw(schema)}.calendars
+    SET selected = ${selected}, deselected_at = ${selected ? null : new Date().toISOString()}::timestamptz
     WHERE org_id = ${orgId}::uuid AND id = ${calendarId}::uuid
     RETURNING id
   `)) as unknown as { rows?: Array<{ id: string }> } | Array<{ id: string }>
@@ -1038,7 +1039,7 @@ export interface SetSelectedCaller {
  * local events; select → enqueue initial sync").
  *
  * Authorization (security boundary — success criterion #4 / Amendment 5): toggling an ORG
- * calendar is admin-only (deselect is destructive — it purges every member's mirrored events for
+ * calendar is admin-only (deselect hides every member's mirrored events for
  * that calendar). A member may toggle a PERSONAL calendar they own. Enforced here, not by the
  * tool scope alone (the tool is member-reachable so the personal path works).
  */
@@ -1066,13 +1067,52 @@ export async function setCalendarSelectedAndSync(
     }
   }
 
+  const { sql } = await import("drizzle-orm")
+  const wasSelected = calendar.selected
   await setCalendarSelected(db, orgId, calendarId, selected)
   if (selected) {
+    if (wasSelected) return
+    // Re-selected: its rows were kept (hidden), so the full listing goes into them and sweeps
+    // the events Google no longer has, the way a resync after an expired token does. The event
+    // ids open tabs, timelines and links hold stay the same.
+    await db.execute(sql`
+      UPDATE ${sql.raw(CALENDAR_SCHEMA())}.calendars
+      SET full_sync_run = ${crypto.randomUUID()}, sync_token = NULL
+      WHERE org_id = ${orgId}::uuid AND id = ${calendarId}::uuid
+    `)
     await enqueueJob("calendar-initial-sync", { orgId, calendarId })
   } else {
+    // Deselected: no more syncing, and its events leave every view and read at once, but the
+    // rows stay for DESELECTED_EVENTS_KEEP_DAYS so selecting it again keeps their ids
+    // (purgeLongDeselectedEvents removes them after that).
     await stopCalendarWatch(db, orgId, calendarId)
-    await deleteEventsForCalendar(db, orgId, calendarId)
   }
+}
+
+/** How long a deselected calendar's events are kept (hidden) for a re-select to reuse them. */
+export const DESELECTED_EVENTS_KEEP_DAYS = 30
+
+/** purgeLongDeselectedEvents — the daily cron's sweep: the events of calendars deselected more
+ * than DESELECTED_EVENTS_KEEP_DAYS ago go (a delete still owed to Google stays and is pushed). */
+export async function purgeLongDeselectedEvents(db: RlsClient, orgId: string): Promise<number> {
+  const { sql } = await import("drizzle-orm")
+  const schema = CALENDAR_SCHEMA()
+  const res: unknown = await db.execute(sql`
+    SELECT id FROM ${sql.raw(schema)}.calendars
+    WHERE org_id = ${orgId}::uuid AND selected = false AND deselected_at IS NOT NULL
+      AND deselected_at < now() - ${sql.raw(`interval '${DESELECTED_EVENTS_KEEP_DAYS} days'`)}
+  `)
+  const rows = (Array.isArray(res) ? res : ((res as { rows?: unknown[] }).rows ?? [])) as Array<{
+    id: string
+  }>
+  for (const row of rows) {
+    await deleteEventsForCalendar(db, orgId, row.id)
+    await db.execute(sql`
+      UPDATE ${sql.raw(schema)}.calendars SET deselected_at = NULL
+      WHERE org_id = ${orgId}::uuid AND id = ${row.id}::uuid AND selected = false
+    `)
+  }
+  return rows.length
 }
 
 // --- Events table helpers + inbound sync (Task 4) ---

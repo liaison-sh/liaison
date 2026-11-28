@@ -398,6 +398,11 @@ export function createCalendarMethods(
       return JSON.stringify(await claimCalendarSyncPending(txDb, orgId, calendarId))
     },
 
+    calendar_purgeLongDeselectedEvents: async (): Promise<string> => {
+      requireApp("calendar", "calendar_purgeLongDeselectedEvents")
+      const { purgeLongDeselectedEvents } = await import("~/apps/calendar/sync")
+      return JSON.stringify({ purged: await purgeLongDeselectedEvents(txDb, orgId) })
+    },
     calendar_findAccountsForListRefresh: async (): Promise<string> => {
       requireApp("calendar", "calendar_findAccountsForListRefresh")
       const { findAccountsForListRefresh } = await import("~/apps/calendar/sync")

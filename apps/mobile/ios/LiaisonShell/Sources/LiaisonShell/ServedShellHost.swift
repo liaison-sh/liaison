@@ -17,11 +17,21 @@ import Foundation
 import os
 
 public final class ServedShellHost {
-    public static let shared = ServedShellHost(
-        store: .standard(), http: URLSessionShellHTTP(), bundledPublic: Bundle.main.resourceURL?
-            .appendingPathComponent("public", isDirectory: true),
-        defaults: .standard
-    )
+    public static let shared: ServedShellHost = {
+        let bundled = Bundle.main.resourceURL?.appendingPathComponent("public", isDirectory: true)
+        #if DEBUG
+        if let walk = WalkOverrides(environment: ProcessInfo.processInfo.environment) {
+            Logger(subsystem: "sh.liaison.mobile", category: "shell")
+                .notice("shell DEBUG walk overrides: \(walk.summary, privacy: .public)")
+            return ServedShellHost(store: .standard(), http: URLSessionShellHTTP(), bundledPublic: bundled,
+                                   defaults: .standard, keys: walk.keys ?? PinnedKeys.keys,
+                                   bridgeVersion: walk.bridgeVersion ?? NATIVE_BRIDGE_VERSION,
+                                   downloads: walk.downloads ?? ShellUpdater.downloads)
+        }
+        #endif
+        return ServedShellHost(store: .standard(), http: URLSessionShellHTTP(), bundledPublic: bundled,
+                               defaults: .standard)
+    }()
 
     /// Where Capacitor Preferences keep the page's server address
     /// (apps/mobile/src/onboarding/server-address.ts `SERVER_ADDRESS_KEY`, group `CapacitorStorage`).
@@ -367,3 +377,57 @@ public enum ShellNavigation {
         return a == b
     }
 }
+
+#if DEBUG
+/// DEBUG BUILDS ONLY (compiled out of Release): lets a simulator walk point the
+/// host at a test signing key, a local downloads host and another bridge
+/// version, from the launch environment
+/// (`SIMCTL_CHILD_LIAISON_DEBUG_SHELL_KEYS=<keyId>=<base64>[,...]`,
+/// `SIMCTL_CHILD_LIAISON_DEBUG_SHELL_DOWNLOADS=<url>`,
+/// `SIMCTL_CHILD_LIAISON_DEBUG_SHELL_BRIDGE=<int>`), so revoked builds, floors,
+/// kill switches and bridge ranges are walked without publishing anything with
+/// the real key. Nil when none is set or any is malformed (then nothing changes).
+public struct WalkOverrides {
+    public let keys: [PinnedKey]?
+    public let downloads: URL?
+    public let bridgeVersion: Int?
+
+    public init?(environment: [String: String]) {
+        let rawKeys = environment["LIAISON_DEBUG_SHELL_KEYS"]
+        let rawDownloads = environment["LIAISON_DEBUG_SHELL_DOWNLOADS"]
+        let rawBridge = environment["LIAISON_DEBUG_SHELL_BRIDGE"]
+        if rawKeys == nil && rawDownloads == nil && rawBridge == nil { return nil }
+        var keys: [PinnedKey]?
+        if let rawKeys = rawKeys {
+            var parsed: [PinnedKey] = []
+            for item in rawKeys.split(separator: ",") {
+                guard let eq = item.firstIndex(of: "="),
+                      let key = PinnedKey(keyId: String(item[..<eq]), base64: String(item[item.index(after: eq)...])) else {
+                    return nil
+                }
+                parsed.append(key)
+            }
+            guard !parsed.isEmpty else { return nil }
+            keys = parsed
+        }
+        var downloads: URL?
+        if let rawDownloads = rawDownloads {
+            guard let url = URL(string: rawDownloads), let scheme = url.scheme, scheme == "http" || scheme == "https",
+                  url.host != nil else { return nil }
+            downloads = url
+        }
+        var bridge: Int?
+        if let rawBridge = rawBridge {
+            guard let value = Int(rawBridge), value > 0 else { return nil }
+            bridge = value
+        }
+        self.keys = keys
+        self.downloads = downloads
+        bridgeVersion = bridge
+    }
+
+    public var summary: String {
+        "keys=\(keys?.map(\.keyId).joined(separator: ",") ?? "pinned") downloads=\(downloads?.absoluteString ?? "default") bridge=\(bridgeVersion.map(String.init) ?? "default")"
+    }
+}
+#endif

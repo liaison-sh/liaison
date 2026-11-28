@@ -818,7 +818,9 @@ async function validateForRegistration(
     name: desc.name,
     version: String(desc.version ?? ""),
     requires:
-      typeof needsSettingsSchema === "number" ? { settingsSchema: needsSettingsSchema } : undefined,
+      Number.isInteger(needsSettingsSchema) && typeof needsSettingsSchema === "number"
+        ? { settingsSchema: needsSettingsSchema }
+        : undefined,
   })
   if (settingsProblem) {
     log.error(

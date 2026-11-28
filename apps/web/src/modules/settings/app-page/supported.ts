@@ -59,7 +59,7 @@ export function settingsBlockFallback(block: unknown): SettingsBlockFallback | n
   const { text, href } = fallback as { text?: unknown; href?: unknown }
   if (typeof text !== "string" || text.length < 1 || text.length > FALLBACK_TEXT_MAX) return null
   if (href === undefined) return { text }
-  if (typeof href !== "string") return null
+  if (typeof href !== "string" || href.length > 500) return null
   const relative = href.startsWith("#") || (href.startsWith("/") && !href.startsWith("//"))
   return relative ? { text, href } : null
 }

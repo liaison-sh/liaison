@@ -722,7 +722,16 @@ export async function calendarPush(payload: unknown, ctx: CalendarCtx): Promise<
   if (!params.eventId) return
   const eventJson = await ctx.calendar_getEvent(params.eventId)
   const event = JSON.parse(eventJson) as EventRowShape | null
-  if (!event || event.pending_push === "none") return
+  if (!event) {
+    // The row is gone (deleted since), or not visible yet: a push queued before its write
+    // committed. Never silent: the stale-push sweep is then the only thing that pushes it.
+    ctx.log_warn(
+      "calendar push: event row not found, nothing pushed",
+      JSON.stringify({ eventId: params.eventId }),
+    )
+    return
+  }
+  if (event.pending_push === "none") return
   const authRetry = params.authRetry === true
   try {
     await pushRow(event, ctx, authRetry)
@@ -1524,10 +1533,23 @@ interface PollCalendarShape {
   id: string
 }
 
+/** The `calendar-poll-fallback` cron period (every 30 minutes, the manifest schedule), in minutes. */
+const POLL_FALLBACK_PERIOD_MINUTES = 30
+
+/**
+ * How old a calendar's last poll (or a pending push's last attempt) must be for the poll
+ * fallback to take it: a few minutes under the cron period. The run marks a calendar polled a
+ * moment after its tick, so with the period itself as the threshold the next tick finds the
+ * mark a fraction of a second short of 30 minutes, skips it, and the calendar is polled only
+ * every hour. Still above the longest push retry backoff (8 minutes), so the sweep never races
+ * a retry waiting in the queue.
+ */
+const POLL_FALLBACK_STALE_MINUTES = POLL_FALLBACK_PERIOD_MINUTES - 5
+
 /** calendarPollFallback — Task 6.1 poll cron: enqueues incremental sync for any selected
- * calendar whose lastPolledAt is older than 30 min, and marks it polled. */
+ * calendar not polled since the previous tick, and marks it polled. */
 export async function calendarPollFallback(_payload: unknown, ctx: CalendarCtx): Promise<void> {
-  const rowsJson = await ctx.calendar_findCalendarsForPollFallback(30)
+  const rowsJson = await ctx.calendar_findCalendarsForPollFallback(POLL_FALLBACK_STALE_MINUTES)
   const rows = JSON.parse(rowsJson) as PollCalendarShape[]
   for (const calendar of rows) {
     // The same job id as a push notification's: a poll and a push never sync one calendar at
@@ -1541,15 +1563,17 @@ export async function calendarPollFallback(_payload: unknown, ctx: CalendarCtx):
   }
   // Local edits still waiting for Google (a push failed and its bounded retries ran out, or
   // its job was lost): push them again, without needing another local edit.
-  const pending = JSON.parse(await ctx.calendar_findStalePendingPushes(30)) as Array<{
+  const pending = JSON.parse(
+    await ctx.calendar_findStalePendingPushes(POLL_FALLBACK_STALE_MINUTES),
+  ) as Array<{
     id: string
     liaison_sync_version: number
     push_attempts: number
   }>
-  const sweepRun = Math.floor(Date.now() / (30 * 60 * 1000))
+  const sweepRun = Math.floor(Date.now() / (POLL_FALLBACK_PERIOD_MINUTES * 60 * 1000))
   for (const row of pending) {
-    // The sweep only takes rows not tried for 30 minutes, past the longest queued retry delay,
-    // so it does not race a retry still waiting in the queue.
+    // The sweep only takes rows not tried since about the previous tick, past the longest
+    // queued retry delay, so it does not race a retry still waiting in the queue.
     await ctx.enqueueJob(
       "calendar-push",
       JSON.stringify({ eventId: row.id }),

@@ -42,7 +42,7 @@
       }
     ]
   },
-  "version": "1.12.0",
+  "version": "1.12.1",
   "description": "Calendar app: month/week UI backed by a bidirectional Google Calendar connector for org-wide and personal calendars.",
   "license": "FSL-1.1-ALv2",
   "listing": {

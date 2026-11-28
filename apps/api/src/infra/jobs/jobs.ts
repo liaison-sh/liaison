@@ -21,6 +21,7 @@
 // round trips per enqueue. Backpressure (backpressure.ts) is checked against a
 // sample, without a round trip.
 import { DelayedError, type Job, type JobsOptions, Queue, Worker } from "bullmq"
+import { afterCurrentCommitSucceeds } from "~/db/commit-hooks"
 import { withPrivilegedDb } from "~/db/privileged"
 import { poolPlan } from "~/db/process-pool-plan"
 import { INSTANCE_ID } from "~/infra/instance-id"
@@ -952,6 +953,16 @@ export type EnqueueOptions = {
    * under the same id.
    */
   dedupTtlMs?: number
+  /**
+   * Called inside a database transaction (an open withRlsContext /
+   * withPrivilegedDb scope), add the job only once that transaction has
+   * committed, and never if it rolls back: the worker reads the rows the
+   * transaction writes, and a job added before COMMIT can run first and find
+   * nothing. The checks (handler registered, app on, backpressure) still run at
+   * once and throw to the caller; a failure of the deferred add itself is
+   * logged. Outside a transaction the job is added at once, as without it.
+   */
+  afterCommit?: boolean
 }
 
 function buildJobOptions(route: { priority?: number }, opts?: EnqueueOptions): JobsOptions {
@@ -1015,11 +1026,28 @@ export async function enqueueAppJob(
   await assertAppOnForPayload(appName, payload)
   const route = resolveJobQueue(appName, jobName)
   assertEnqueueAllowed(route.queueName)
-  const [job] = await fairEnqueue(getQueue(route.queueName), [
-    { name: jobName, data: payload, opts: buildJobOptions(route, opts) },
-  ])
-  log.debug({ queue: route.queueName, jobName, jobId: opts?.jobId ?? job?.id }, "Job enqueued")
-  return opts?.jobId ?? job?.id ?? ""
+  const add = async (): Promise<string> => {
+    const [job] = await fairEnqueue(getQueue(route.queueName), [
+      { name: jobName, data: payload, opts: buildJobOptions(route, opts) },
+    ])
+    log.debug({ queue: route.queueName, jobName, jobId: opts?.jobId ?? job?.id }, "Job enqueued")
+    return opts?.jobId ?? job?.id ?? ""
+  }
+  if (
+    opts?.afterCommit &&
+    afterCurrentCommitSucceeds(() => {
+      void add().catch((err) =>
+        log.error(
+          { err, queue: route.queueName, jobName, jobId: opts.jobId },
+          "Job enqueue after commit failed",
+        ),
+      )
+    })
+  ) {
+    // Deferred: BullMQ assigns no id until the add runs, so only a caller's own id is known.
+    return opts.jobId ?? ""
+  }
+  return add()
 }
 
 /**

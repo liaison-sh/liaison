@@ -19,14 +19,17 @@ const log = rootLogger.child({ module: "db/commit-hooks" })
  * the commit is about to replace.
  */
 export interface CommitScope {
+  /** Run when the transaction ends, committed or rolled back. */
   hooks: Array<() => void>
+  /** Run only when the transaction committed (dropped on rollback). */
+  commitHooks: Array<() => void>
   settled: boolean
 }
 
 const scopes = new AsyncLocalStorage<CommitScope>()
 
 export function openCommitScope(): CommitScope {
-  return { hooks: [], settled: false }
+  return { hooks: [], commitHooks: [], settled: false }
 }
 
 /** Run `fn` (a transaction callback body) inside `scope`. */
@@ -35,15 +38,18 @@ export function withinCommitScope<T>(scope: CommitScope, fn: () => Promise<T>): 
 }
 
 /**
- * Run the scope's hooks once `txPromise` (the whole transaction) settles, on
- * commit and rollback alike: the hooks are idempotent drops, harmless when the
- * change rolled back. Attached by the wrapper before it hands the promise to
+ * Run the scope's hooks once `txPromise` (the whole transaction) settles. The
+ * `hooks` run on commit and rollback alike: they are idempotent drops, harmless
+ * when the change rolled back. The `commitHooks` run on commit only, and are
+ * dropped on rollback. Attached by the wrapper before it hands the promise to
  * its caller, so they run before the caller's code after the await.
  */
 export function runCommitHooksAfter(txPromise: Promise<unknown>, scope: CommitScope): void {
-  const run = () => {
+  const run = (committed: boolean) => {
     scope.settled = true
-    for (const hook of scope.hooks.splice(0)) {
+    const commitHooks = scope.commitHooks.splice(0)
+    const hooks = [...scope.hooks.splice(0), ...(committed ? commitHooks : [])]
+    for (const hook of hooks) {
       try {
         hook()
       } catch (err) {
@@ -51,7 +57,10 @@ export function runCommitHooksAfter(txPromise: Promise<unknown>, scope: CommitSc
       }
     }
   }
-  txPromise.then(run, run)
+  txPromise.then(
+    () => run(true),
+    () => run(false),
+  )
 }
 
 /**
@@ -63,5 +72,23 @@ export function afterCurrentCommit(hook: () => void): boolean {
   const scope = scopes.getStore()
   if (!scope || scope.settled) return false
   scope.hooks.push(hook)
+  return true
+}
+
+/**
+ * Queue `hook` to run once the current transaction has COMMITTED; it is dropped
+ * if the transaction rolls back. For side effects another process acts on, such
+ * as a queued job whose worker reads the rows this transaction writes: added
+ * before COMMIT, the worker can run first and find nothing. Answers false when
+ * the caller is not inside an open transaction scope, in which case nothing is
+ * queued and the caller runs the work itself.
+ *
+ * A savepoint shares its outer transaction's scope, so work queued inside a
+ * savepoint that later rolls back still runs when the outer transaction commits.
+ */
+export function afterCurrentCommitSucceeds(hook: () => void): boolean {
+  const scope = scopes.getStore()
+  if (!scope || scope.settled) return false
+  scope.commitHooks.push(hook)
   return true
 }

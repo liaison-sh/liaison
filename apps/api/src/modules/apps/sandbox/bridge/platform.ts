@@ -106,6 +106,9 @@ export function createAppJobEnqueuer(
     // job into its own by naming the same id.
     const jobId =
       typeof opts?.jobId === "string" && opts.jobId !== "" ? `${orgId}:${opts.jobId}` : undefined
+    // Added once the run's transaction has committed (never on a rollback): the job's worker
+    // reads on another connection, so a job added before COMMIT could run first and miss the
+    // rows this run wrote. Outside a transaction it is added at once.
     await enqueueAppJob(
       appName,
       jobName,
@@ -115,8 +118,9 @@ export function createAppJobEnqueuer(
             jobId,
             ...(delay ? { delay } : {}),
             ...(jobId && opts.dedupUntilDue && wanted > 0 ? { dedupTtlMs: wanted } : {}),
+            afterCommit: true,
           }
-        : undefined,
+        : { afterCommit: true },
     )
   }
 }

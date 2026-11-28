@@ -114,7 +114,13 @@ export function createCalendarMethods(
   deps: CalendarBridgeDeps = {},
 ): Record<string, any> {
   const { callerScopes, orgId, requireApp, txDb, userId } = ctx
-  const enqueue = deps.enqueue ?? enqueueAppJob
+  const queue = deps.enqueue ?? enqueueAppJob
+  // Every job this surface queues (push, import, sync) is read by a worker on another
+  // connection, so it is added once the run's transaction has committed, never before (and not
+  // at all on a rollback): queued inside the transaction, a push job could run before its event
+  // row was visible and push nothing.
+  const enqueue: typeof enqueueAppJob = (appName, jobName, payload, opts) =>
+    queue(appName, jobName, payload, { ...opts, afterCommit: true })
 
   /** Whether this calendar's writes reach Google (an active connection): what a write tells the
    * agent, so it never says "synced" or "invited" for a calendar kept in Liaison only. */

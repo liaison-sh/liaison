@@ -209,6 +209,22 @@ describe("calendar push handlers (core module, ctx.fetch seam)", () => {
     })
   }
 
+  it("a push whose event row is missing warns and pushes nothing", async () => {
+    const m = makeBridge({ event: makeEventRow(), fetchResponses: () => ({ status: 500 }) })
+    const warns: Array<{ msg: string; data?: string }> = []
+    m.bridge.calendar_getEvent = async () => "null"
+    m.bridge.log_warn = (msg: string, data?: string) => warns.push({ msg, data })
+    await runPush(m.bridge, { orgId: "org-1", eventId: "evt-gone" })
+    expect(m.fetches).toEqual([])
+    expect(m.enqueued).toEqual([])
+    expect(warns).toEqual([
+      {
+        msg: "calendar push: event row not found, nothing pushed",
+        data: JSON.stringify({ eventId: "evt-gone" }),
+      },
+    ])
+  })
+
   it("create: POSTs events.insert with sendUpdates=none + liaison markers, stores googleEventId/etag", async () => {
     const m = makeBridge({
       event: makeEventRow(),
@@ -1057,6 +1073,37 @@ describe("calendar push handlers (core module, ctx.fetch seam)", () => {
           payload: { eventId: "evt-local-1" },
           opts: { delay: 60_000, jobId: "calendar-push:evt-local-1:v1:a1" },
         },
+      ])
+    })
+
+    it("the periodic poll asks for rows older than a few minutes under its 30-minute period", async () => {
+      // A threshold equal to the period skips a calendar marked a moment after the previous
+      // tick (polled hourly instead); one under the longest push backoff (8 min) would race a
+      // queued retry.
+      const asked: Array<{ what: string; minutes: number }> = []
+      await runCalendar({
+        exportName: "calendarPollFallback",
+        params: {},
+        bridge: {
+          calendar_findCalendarsForPollFallback: async (minutes: number) => {
+            asked.push({ what: "poll", minutes })
+            return "[]"
+          },
+          calendar_markCalendarPolled: async () => {},
+          calendar_findStalePendingPushes: async (minutes: number) => {
+            asked.push({ what: "push", minutes })
+            return "[]"
+          },
+          enqueueJob: async () => {},
+          log_info: () => {},
+          log_warn: () => {},
+          log_error: () => {},
+        } as never,
+        timeoutMs: 15000,
+      })
+      expect(asked).toEqual([
+        { what: "poll", minutes: 25 },
+        { what: "push", minutes: 25 },
       ])
     })
 

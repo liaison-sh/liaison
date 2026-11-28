@@ -122,11 +122,15 @@ public struct ShellPointer: Codable, Equatable {
     public var pendingActive: Double = 0
     /// The server's own kill switch (`servedShell: false` in /api/shell/info), as last read.
     public var serverOff: Bool = false
+    /// Why the server's build was last refused while none of its builds is
+    /// kept (`shell=bundled:<reason>`, a Refusal raw value); cleared when a
+    /// build is accepted.
+    public var refused: String?
 
     public init() {}
 
     enum CodingKeys: String, CodingKey {
-        case current, lastGood, quarantined, pending, misses, pendingCounted, pendingActive, serverOff
+        case current, lastGood, quarantined, pending, misses, pendingCounted, pendingActive, serverOff, refused
     }
 
     /// Every field optional on disk, so a pointer written by an older build keeps its builds.
@@ -140,6 +144,7 @@ public struct ShellPointer: Codable, Equatable {
         pendingCounted = try c.decodeIfPresent(Bool.self, forKey: .pendingCounted) ?? false
         pendingActive = try c.decodeIfPresent(Double.self, forKey: .pendingActive) ?? 0
         serverOff = try c.decodeIfPresent(Bool.self, forKey: .serverOff) ?? false
+        refused = try c.decodeIfPresent(String.self, forKey: .refused)
     }
 }
 
@@ -652,6 +657,9 @@ public final class ShellStore {
                 case let .failure(refusal):
                     if reason == .noBuild || reason == .quarantined { reason = refusal }
                 }
+            }
+            if reason == .noBuild, let refused = pointer.refused.flatMap(Refusal.init(rawValue:)) {
+                return .bundled(reason: refused)
             }
             return .bundled(reason: reason)
         }

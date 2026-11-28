@@ -1,10 +1,12 @@
 import Capacitor
+import LiaisonShell
 import UIKit
 import WebKit
 
 /// The bridge controller the window is rooted in. It exists to register the
 /// app's local plugins, which no package manifest names, once the bridge is up,
-/// and to keep every native call to the main frame.
+/// to keep every native call to the main frame, and to choose which web build
+/// the page runs (the served shell, LiaisonShell package).
 class MainViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
@@ -12,6 +14,76 @@ class MainViewController: CAPBridgeViewController {
         answerTheMainFrameOnly()
         paintBehindThePage()
         watchPageLoads()
+        armShellReadyTimer()
+        ServedShellHost.shared.refreshInBackground()
+    }
+
+    // MARK: Served shell (S7, S8, D17)
+
+    /// Resolves every page request against the folder chosen now, so a server
+    /// switch or a fallback changes the build without a new web view.
+    private let shellRouter = ShellRouter()
+    private var readyTimer: Timer?
+
+    override func router() -> Router {
+        shellRouter
+    }
+
+    /// The page's folder, chosen on EVERY launch before the web view loads:
+    /// the current server's verified build, re-verified now against this
+    /// binary (signature, floor, revocations, bridge range, every file hash,
+    /// the kill switches), else the bundled `public` folder. Capacitor's own
+    /// persisted base path is never used (review O2: cleared on a new binary,
+    /// no fallback when its folder is missing).
+    override func instanceDescriptor() -> InstanceDescriptor {
+        let descriptor = super.instanceDescriptor()
+        let bundled = InstanceDescriptor().appLocation
+        switch ServedShellHost.shared.launch() {
+        case let .served(_, root): descriptor.appLocation = root
+        case .bundled: descriptor.appLocation = bundled
+        }
+        return descriptor
+    }
+
+    /// The page reported ready: no timer to run out.
+    func shellSignalledReady() {
+        if !ServedShellHost.shared.awaitingReady {
+            readyTimer?.invalidate()
+            readyTimer = nil
+        }
+    }
+
+    /// Chooses again for the server now current; the page reloads itself.
+    func reselectShell() -> Bool {
+        let changed = ServedShellHost.shared.reselect()
+        if changed { applyShellRoot() }
+        armShellReadyTimer()
+        return changed
+    }
+
+    private func applyShellRoot() {
+        let root = ServedShellHost.shared.servedRoot ?? InstanceDescriptor().appLocation
+        shellRouter.basePath = root.path
+    }
+
+    /// A served build that has not signalled ready 20 s after loading is
+    /// reloaded once; a second miss quarantines it and the page reloads on
+    /// the last good build, else the bundled one (S8, D9).
+    private func armShellReadyTimer() {
+        readyTimer?.invalidate()
+        readyTimer = nil
+        guard ServedShellHost.shared.awaitingReady, let buildId = ServedShellHost.shared.current.buildId else { return }
+        readyTimer = Timer.scheduledTimer(withTimeInterval: ShellStore.readyWithin, repeats: false) { [weak self] _ in
+            guard let self = self, ServedShellHost.shared.awaitingReady,
+                  ServedShellHost.shared.current.buildId == buildId else { return }
+            let miss = ServedShellHost.shared.missed(buildId: buildId)
+            if miss == .ignored { return }
+            self.applyShellRoot()
+            if let url = self.bridge?.config.serverURL {
+                self.webView?.load(URLRequest(url: url))
+            }
+            self.armShellReadyTimer()
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -108,5 +180,18 @@ final class MainFrameOnlyMessageHandler: NSObject, WKScriptMessageHandler {
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame else { return }
         inner?.userContentController(userContentController, didReceive: message)
+    }
+}
+
+/// Capacitor's router (a path without an extension is the SPA's index.html),
+/// over a base path the served shell can move while the app runs.
+final class ShellRouter: Router {
+    var basePath: String = ""
+
+    func route(for path: String) -> String {
+        if URL(fileURLWithPath: path).pathExtension.isEmpty {
+            return basePath + "/index.html"
+        }
+        return basePath + path
     }
 }

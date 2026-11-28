@@ -553,8 +553,8 @@
       "schema": 195
     },
     "calendar__delete_event": {
-      "desc": 436,
-      "schema": 203
+      "desc": 392,
+      "schema": 196
     },
     "calendar__list_accounts": {
       "desc": 298,
@@ -581,8 +581,8 @@
       "schema": 33
     },
     "calendar__update_event": {
-      "desc": 1213,
-      "schema": 330
+      "desc": 1083,
+      "schema": 323
     },
     "calls__calls_list": {
       "desc": 272,
@@ -3153,6 +3153,9 @@
     "C191|accepter l'invitation": "15tl",
     "C191|refuser l'invitation": "15tl",
     "C191|répondre à l'invitation": "15tl",
+    "C192|link invoice order": "5t",
+    "C192|rattacher commande shopify": "15t",
+    "C192|relier facture commande": "5t",
     "C20|affaire": "",
     "C20|create deal": "5t",
     "C20|new deal": "",

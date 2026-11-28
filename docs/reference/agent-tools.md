@@ -566,7 +566,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `documents_for_orders` | Resolve the invoicing documents linked to a set of Shopify order ids. |  | `invoicing:documents:read` |
 | `documents_get` | Get one invoicing document by id, including lines. |  | `invoicing:documents:read` |
 | `documents_issue_preview` | The issuer profiles plus the VAT status of a buyer about to be issued a document: VAT number (as given or found on an earlier document), its VIES check, or why a business buyer without one is refused. |  | `invoicing:settings:read` |
-| `documents_link_shopify_orders` | Link issued invoices and credit notes that name their Shopify order only by its number (shopify_order_number set, shopify_order_id empty: made by hand or imported) to that order, so the order's reads find them (the buyer invoices API, the order's credit notes and refunds, the duplicate check of the order webhook). | yes | `invoicing:documents:write` |
+| `documents_link_shopify_orders` | Link issued invoices and credit notes that name their Shopify order only by number (no shopify_order_id) to that order, so the order's reads find them. | yes | `invoicing:documents:write` |
 | `documents_mark_paid` | Mark a document as paid (full payment recorded). | yes | `invoicing:documents:write` |
 | `documents_preview_pdf` | Resolve a document's rendered-PDF file id + inline URL for preview. |  | `invoicing:documents:read` |
 | `documents_record_refund` | Record a refund against a document (full or partial): records only, moves no money. | yes | `invoicing:documents:write` |

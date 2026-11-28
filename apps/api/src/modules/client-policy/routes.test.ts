@@ -69,7 +69,13 @@ describe("GET /api/client-policy", () => {
     const body = (await res.json()) as { data: Record<string, unknown> }
     // A public answer: the key set is pinned so a later field is a failing test.
     expect(Object.keys(body).sort()).toEqual(["data"])
-    expect(Object.keys(body.data).sort()).toEqual(["android", "desktop", "ios", "servedShell", "settingsSchema"])
+    expect(Object.keys(body.data).sort()).toEqual([
+      "android",
+      "desktop",
+      "ios",
+      "servedShell",
+      "settingsSchema",
+    ])
     expect(body.data).toEqual({
       desktop: env.LIAISON_MIN_CLIENT_DESKTOP,
       ios: env.LIAISON_MIN_CLIENT_IOS,

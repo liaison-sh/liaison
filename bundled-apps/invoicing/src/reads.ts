@@ -1442,25 +1442,65 @@ export interface DeferredRow {
 const notLinesPark = (row: unknown) =>
   (row as { blocked_on?: { kind?: unknown } | null }).blocked_on?.kind !== LINES_PARK
 
+/** The statuses of a park that still waits for something: the only ones `deferred_list` shows. */
+export const OPEN_DEFERRED_STATUSES = [
+  "awaiting_config",
+  "awaiting_data",
+  "awaiting_dependency",
+  "render_failed",
+  "email_failed",
+] as const
+
+const payloadOrderNumber = (r: Record<string, unknown>): string | null => {
+  const n = ((r.event_payload_json ?? {}) as Record<string, unknown>).order_number
+  return typeof n === "string" && n !== "" ? n : null
+}
+
+/**
+ * The open parks, newest first. Only open ones are read: the closed (resolved, dead-lettered)
+ * rows of an org outnumber them by thousands, and a list of every park ordered by `retried_at`
+ * (NULL first in a Postgres DESC, the column every closed row leaves empty) filled the page with
+ * closed rows, so an open park on a paid order never reached the Deferred tab, its badge or the
+ * agent, and the order read as never invoiced and never parked.
+ */
 export async function deferredList(
   ctx: ReadsCtx,
   input: { limit?: number } = {},
 ): Promise<{ items: DeferredRow[] }> {
   const rows = await ctx.db.findMany("deferred_events", {
-    orderBy: { retried_at: "desc" },
+    where: { status: { in: [...OPEN_DEFERRED_STATUSES] } },
+    orderBy: { createdAt: "desc" },
     limit: clampLimit(input.limit),
   })
-  const payloadOrderNumber = (r: Record<string, unknown>): string | null => {
-    const n = ((r.event_payload_json ?? {}) as Record<string, unknown>).order_number
-    return typeof n === "string" && n !== "" ? n : null
-  }
   // A park stored before the order number was known (older event shape, no enrichment yet) reads
-  // it from any other row of the same order that has it (the refreshed survivor of the park).
+  // it from any other row of the same order that has it (the refreshed survivor of the park,
+  // open or closed).
   const numberByOrder = new Map<string, string>()
   for (const row of rows) {
     const r = row as Record<string, unknown>
     const n = payloadOrderNumber(r)
     if (n && r.event_id != null) numberByOrder.set(String(r.event_id), n)
+  }
+  const unnamed = [
+    ...new Set(
+      rows
+        .map((row) => row as Record<string, unknown>)
+        .filter((r) => r.event_id != null && r.event_id !== "" && !payloadOrderNumber(r))
+        .map((r) => String(r.event_id))
+        .filter((id) => !numberByOrder.has(id)),
+    ),
+  ]
+  if (unnamed.length > 0) {
+    const siblings = (await ctx.db.findMany("deferred_events", {
+      where: { event_id: { in: unnamed } },
+      limit: READS_MAX_LIMIT,
+    })) as Array<Record<string, unknown>>
+    for (const r of siblings) {
+      const n = payloadOrderNumber(r)
+      if (n && r.event_id != null && !numberByOrder.has(String(r.event_id))) {
+        numberByOrder.set(String(r.event_id), n)
+      }
+    }
   }
   // A park whose event IS one of the app's documents (a render owed after an interrupted issue)
   // is about that document, not an order: read the numbers to name them.
@@ -1759,10 +1799,19 @@ function toOrderInvoiceLink(shopifyOrderId: string, row: unknown): OrderInvoiceL
   }
 }
 
+/** An order with no document whose invoice waits on an open park: why, and on what. */
+export interface OrderPark {
+  shopify_order_id: string
+  deferred_id: string
+  status: string
+  reason: string | null
+  blocked_on: Record<string, unknown> | null
+}
+
 export async function documentsForOrders(
   ctx: { db: ReadsDb },
   input: { shopify_order_ids?: unknown },
-): Promise<{ links: OrderInvoiceLink[] }> {
+): Promise<{ links: OrderInvoiceLink[]; parks?: OrderPark[] }> {
   const raw = Array.isArray(input?.shopify_order_ids) ? input.shopify_order_ids : []
   // Coerce numbers (weak models pass the numeric order id unquoted) and strip a
   // gid prefix so `gid://shopify/Order/123` and 123 both resolve like "123".
@@ -1804,7 +1853,32 @@ export async function documentsForOrders(
       return []
     }),
   )
-  return { links: perId.flat() }
+  const links = perId.flat()
+  // An order with no document is either one invoicing never saw or one whose invoice waits on a
+  // park: name the park, so a paid order never reads as never invoiced while it waits.
+  const linked = new Set(links.map((l) => l.shopify_order_id))
+  const unlinked = ids.filter((id) => !linked.has(id) && /^\d+$/.test(id))
+  if (unlinked.length === 0) return { links }
+  const open = (await ctx.db.findMany("deferred_events", {
+    where: { event_id: { in: unlinked }, status: { in: [...OPEN_DEFERRED_STATUSES] } },
+    orderBy: { createdAt: "desc" },
+    limit: DOCUMENTS_FOR_ORDERS_MAX_IDS,
+  })) as Array<Record<string, unknown>>
+  const parks: OrderPark[] = []
+  const seen = new Set<string>()
+  for (const r of open) {
+    const orderId = String(r.event_id)
+    if (seen.has(orderId)) continue
+    seen.add(orderId)
+    parks.push({
+      shopify_order_id: orderId,
+      deferred_id: String(r.id),
+      status: String(r.status ?? ""),
+      reason: (r.reason as string | null) ?? null,
+      blocked_on: (r.blocked_on as Record<string, unknown> | null) ?? null,
+    })
+  }
+  return parks.length > 0 ? { links, parks } : { links }
 }
 
 // ── Data-export handler (kernel `export` tool / Admin "Data Export") — BL-188 ─────────────────────

@@ -6984,14 +6984,7 @@
       "requiredScopes": [
         "invoicing:documents:write"
       ],
-      "searchKeywords": [
-        "relier commande",
-        "rattacher commande shopify",
-        "anciennes factures",
-        "facture sans commande",
-        "link order",
-        "order id"
-      ],
+      "searchKeywords": ["rattacher", "relier", "lier", "commande"],
       "handler": "documentsLinkShopifyOrdersHandler",
       "gated": true,
       "approvalImpact": "internal",

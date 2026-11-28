@@ -1734,7 +1734,9 @@ async function documentPdfRef(ctx: ReadsCtx, id: string | undefined): Promise<Pd
   const chosen = await deliveryFileId(ctx.db, r)
   const fileId = chosen.file_id
   let xmlId: string | null = null
-  if (chosen.legal_original) {
+  if (chosen.correction) {
+    xmlId = chosen.correction.facturx_xml_file_id
+  } else if (chosen.legal_original) {
     const xml = (await ctx.db.findMany("facturx_files", {
       where: { document_id: r.id },
       limit: 1,
@@ -1799,6 +1801,21 @@ function toOrderInvoiceLink(shopifyOrderId: string, row: unknown): OrderInvoiceL
   }
 }
 
+/**
+ * The order of an order's documents: its live invoice first (the one a replacement made, when an
+ * earlier invoice was cancelled or credited), then the other invoices, then the credit notes and
+ * the rest. Stable within a rank, so the store's own order is kept otherwise.
+ */
+function orderLinkRank(l: OrderInvoiceLink): number {
+  const dead =
+    l.status === "voided" ||
+    l.status === "cancelled" ||
+    l.status === "draft" ||
+    l.payment_status === "credited"
+  if (l.type === "invoice") return dead ? 1 : 0
+  return l.type === "credit_note" ? 2 : 3
+}
+
 /** An order with no document whose invoice waits on an open park: why, and on what. */
 export interface OrderPark {
   shopify_order_id: string
@@ -1853,7 +1870,7 @@ export async function documentsForOrders(
       return []
     }),
   )
-  const links = perId.flat()
+  const links = perId.flat().sort((a, b) => orderLinkRank(a) - orderLinkRank(b))
   // An order with no document is either one invoicing never saw or one whose invoice waits on a
   // park: name the park, so a paid order never reads as never invoiced while it waits.
   const linked = new Set(links.map((l) => l.shopify_order_id))

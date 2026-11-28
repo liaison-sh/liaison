@@ -4557,6 +4557,38 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
     void db
   })
 
+  test("a FULFILLED invoice (paid, its Shopify order shipped) is a valid original for a credit note", async () => {
+    const { ctx, db } = makeCtx()
+    const inv = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    if (inv.status !== "completed") throw new Error("unreachable")
+    await db.update("documents", inv.document_id, { status: "fulfilled", payment_status: "paid" })
+    const cn = await creditNoteCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: [
+        {
+          position: 1,
+          description: "Widget returned",
+          quantity: "1",
+          unit_price_minor: -5000n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
+      original_document_id: inv.document_id,
+      reason: "refund",
+    })
+    expect(cn.status).toBe("completed")
+  })
+
   test("valid original_document_id appends a credit_note_issued lifecycle entry to the ORIGINAL invoice", async () => {
     const { ctx, db } = makeCtx()
     const inv = await invoiceCreateAndIssue(ctx, {

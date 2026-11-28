@@ -11,6 +11,7 @@
 
 import type { CrossAppExecuteTool } from "./cross-app"
 import { milestoneDraftCreate, stepState } from "./mutations/billing-plan"
+import { ISSUED_INVOICE_STATUSES } from "./mutations/credit-coverage"
 
 type Row = Record<string, unknown>
 
@@ -34,7 +35,7 @@ export interface BillingStepsSweepResult {
   settled: number
 }
 
-const ISSUED = new Set(["issued", "paid", "overdue", "refunded"])
+const ISSUED = ISSUED_INVOICE_STATUSES
 
 export async function billingStepsSweep(
   ctx: BillingStepsSweepCtx,

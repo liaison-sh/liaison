@@ -89,7 +89,15 @@ export async function creditedTotalMinor(
 // `status !== "draft"` (the old check) let a `pending_approval` invoice through, so a caller could
 // credit-note a document nobody had actually sent yet. Shared by creditNoteCreateAndIssue (below)
 // and onShopifyOrderCancelled so no caller can issue a credit note against a non-issued document.
-export const ISSUED_INVOICE_STATUSES = new Set(["issued", "paid", "overdue", "refunded"])
+// `fulfilled` is an issued, paid Shopify invoice whose order shipped (reconcile-shopify-payments.ts):
+// it is credited, cancelled and reissued like a paid one.
+export const ISSUED_INVOICE_STATUSES: ReadonlySet<string> = new Set([
+  "issued",
+  "fulfilled",
+  "paid",
+  "overdue",
+  "refunded",
+])
 
 /** True once `invoiceRow`'s issued credit notes (lifecycle_log union back-link, see
  *  `creditedTotalMinor`) cover its full grand total (absolute value). */

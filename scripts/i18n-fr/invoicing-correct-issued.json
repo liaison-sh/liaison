@@ -1,0 +1,6 @@
+{
+  "key": {
+    "kernel.approvalActions.invoicing.documents_correct_issued": "corriger sur place un document émis",
+    "kernel.approvalActions.invoicing.deferred_dismiss": "écarter une commande en attente"
+  }
+}

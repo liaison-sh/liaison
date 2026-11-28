@@ -570,7 +570,8 @@ export async function lookupBuyerLink(token: string, now = Date.now()): Promise<
   }
 }
 
-/** The file a link serves: the document's legal original (the render fixed at issue), else its
+/** The file a link serves: the latest in-place correction's file when the document was corrected,
+ *  else the document's legal original (the render fixed at issue), else its
  *  current PDF for a document issued before legal originals existed. Null when the document left
  *  the issuer profile or has no PDF. */
 export async function buyerDocumentFile(link: {
@@ -583,6 +584,9 @@ export async function buyerDocumentFile(link: {
       await tx.execute(sql`
         SELECT d.number,
                COALESCE(
+                 (SELECT c.file_id FROM app_invoicing.document_corrections c
+                   WHERE c.org_id = d.org_id AND c.id = d.current_correction_id
+                     AND c.file_id IS NOT NULL AND c.sha256 IS NOT NULL),
                  (SELECT lo.file_id FROM app_invoicing.legal_originals lo
                    WHERE lo.org_id = d.org_id AND lo.id = d.legal_original_id
                      AND lo.file_id IS NOT NULL AND lo.sha256 IS NOT NULL),

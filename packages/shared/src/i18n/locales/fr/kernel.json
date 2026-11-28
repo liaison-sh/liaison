@@ -4079,7 +4079,9 @@
       "einvoicing_settings_set": "modifier les réglages de facturation électronique",
       "einvoicing_backfill_identities": "compléter les identités des tiers",
       "einvoicing_backfill_legacy_originals": "compléter les originaux anciens",
-      "documents_link_shopify_orders": "relier des documents à leurs commandes Shopify"
+      "documents_link_shopify_orders": "relier des documents à leurs commandes Shopify",
+      "documents_correct_issued": "corriger sur place un document émis",
+      "deferred_dismiss": "écarter une commande en attente"
     },
     "mcp-manager": {
       "add_connection": "connecter un serveur MCP"

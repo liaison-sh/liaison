@@ -309,6 +309,12 @@ export async function sendFacts(
       null)
     : null
   const noOriginal = !lo || lo.kind !== "facturx" || !str(lo.file_id) || !str(lo.sha256)
+  // A document corrected in place after issue: its file of record is the correction's, and this
+  // path would send the legal original. It is never sent with content that is no longer its own.
+  if (str(doc.current_correction_id))
+    reasons.push(
+      "it was corrected in place after issue (documents_correct_issued), so the platform would receive the uncorrected original",
+    )
   if (noOriginal) reasons.push("its e-invoice file (Factur-X) was never made: retry its PDF first")
   else if (str(doc.legal_original_sha256) && lo.sha256 !== doc.legal_original_sha256)
     reasons.push("its legal original fingerprint does not match the document")

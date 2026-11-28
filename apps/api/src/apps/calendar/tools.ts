@@ -145,6 +145,8 @@ export interface CalendarEventDto {
   pushError: string | null
   /** Why a delete Google refused brought this event back; else null. */
   pushNotice: string | null
+  /** Google's per-event colour id ("1".."11"); null when the event uses its calendar's. */
+  colorId: string | null
   /** Google's busy/free: "transparent" (free), "opaque" (busy), null when not synced yet. */
   transparency: string | null
   /** Google's eventType (default, outOfOffice, focusTime, workingLocation, ...), else null. */
@@ -204,6 +206,7 @@ export interface RawEventRow {
   guests_can_modify?: boolean | null
   push_error?: string | null
   push_notice?: string | null
+  event_color?: string | null
   transparency?: string | null
   event_type?: string | null
 }
@@ -324,6 +327,7 @@ function rowToDto(row: RawEventRow): CalendarEventDto {
     attendeesEditable: row.organizer_self !== false || row.guests_can_modify === true,
     pushError: row.push_error ?? null,
     pushNotice: row.push_notice ?? null,
+    colorId: row.event_color ?? null,
     transparency: row.transparency ?? null,
     eventType: row.event_type ?? null,
   }
@@ -339,7 +343,7 @@ const UNTIL_DATE_PATTERN = "UNTIL=([0-9]{8})"
 
 const EVENT_COLUMNS = `id, calendar_id, google_event_id, title, description, location, start, "end", all_day,
   recurrence, recurring_event_id, original_start_time, status, hangout_link, attendees,
-  organizer_self, guests_can_modify, push_error, push_notice, transparency, event_type`
+  organizer_self, guests_can_modify, push_error, push_notice, event_color, transparency, event_type`
 
 /**
  * listEventsForCaller — the RAW rows the window needs, with their full field set: plain events
@@ -577,6 +581,37 @@ export function conferenceLinkOf(item: {
     if (e?.entryPointType === "video" && typeof e.uri === "string" && e.uri) return e.uri
   }
   return null
+}
+
+/**
+ * getEventForCaller — one event as `list_events` returns it, by its local id or, for a recurring
+ * series, the Google id `list_events` gives it as `eventId`. Null when it does not exist, was
+ * deleted, its calendar is deselected, or the caller cannot see it (RLS). The event tab reads it when the calendar window
+ * does not hold the event (a tab reopened after a reload).
+ */
+export async function getEventForCaller(
+  db: RlsClient,
+  orgId: string,
+  eventId: string,
+): Promise<CalendarEventDto | null> {
+  const { sql } = await import("drizzle-orm")
+  const schema = CALENDAR_SCHEMA()
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)
+  const match = isUuid
+    ? sql`(id = ${eventId}::uuid OR google_event_id = ${eventId})`
+    : sql`google_event_id = ${eventId} AND recurring_event_id IS NULL`
+  const result = (await db.execute(sql`
+    SELECT ${sql.raw(EVENT_COLUMNS)}
+    FROM ${sql.raw(schema)}.events
+    WHERE org_id = ${orgId}::uuid AND ${match} AND deleted_at IS NULL AND status != 'cancelled'
+      AND calendar_id NOT IN (
+        SELECT id FROM ${sql.raw(schema)}.calendars WHERE org_id = ${orgId}::uuid AND selected = false
+      )
+    ORDER BY (id::text = ${eventId}) DESC
+    LIMIT 1
+  `)) as unknown as { rows?: RawEventRow[] } | RawEventRow[]
+  const rows = Array.isArray(result) ? result : (result.rows ?? [])
+  return rows[0] ? rowToDto(rows[0]) : null
 }
 
 /** What `find_free_slots` reads of the caller's own calendars. */

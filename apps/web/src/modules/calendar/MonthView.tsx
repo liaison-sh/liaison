@@ -5,8 +5,10 @@
 import { type Component, createMemo, For, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { isSameDay, monthGridDays, weekdayLabels, weekStartsOn } from "./date-utils"
+import { occurrenceColor } from "./event-colors"
 import { isSpanning, layoutWeekSegments, occStartDate, type WeekSegment } from "./layout"
 import type { CalendarEventPoint, ExpandedOccurrence } from "./rrule-expand"
+import { createToday } from "./today"
 
 export interface MonthViewProps {
   year: number
@@ -61,7 +63,7 @@ export const MonthView: Component<MonthViewProps> = (props) => {
     for (let w = 0; w < 6; w++) rows.push(all.slice(w * 7, w * 7 + 7))
     return rows
   })
-  const today = new Date()
+  const today = createToday()
 
   const spanning = createMemo(() => props.occurrences.filter((o) => isSpanning(o)))
   const timedByDay = createMemo(() => {
@@ -113,7 +115,7 @@ export const MonthView: Component<MonthViewProps> = (props) => {
                 <For each={weekRow}>
                   {(day, col) => {
                     const inMonth = day.getMonth() === props.month
-                    const isToday = isSameDay(day, today)
+                    const isToday = () => isSameDay(day, today())
                     const timed = createMemo(() => timedByDay().get(day.toDateString()) ?? [])
                     const hiddenCount = createMemo(
                       () =>
@@ -143,13 +145,25 @@ export const MonthView: Component<MonthViewProps> = (props) => {
                           const r = e.currentTarget.getBoundingClientRect()
                           props.onSelectDay?.(new Date(day), { x: r.left, y: r.top })
                         }}
-                        role="button"
-                        tabIndex={0}
+                        // Not a button itself (it holds the event buttons): the day number is the
+                        // keyboard way in, and "c" creates an event from anywhere.
+                        role="presentation"
                       >
                         <div class="flex justify-end pt-1">
-                          <span
-                            class={`flex h-6 w-6 items-center justify-center rounded-full text-xs tabular-nums ${
-                              isToday
+                          <button
+                            type="button"
+                            aria-label={day.toLocaleDateString(i18n.locale(), {
+                              weekday: "long",
+                              day: "numeric",
+                              month: "long",
+                            })}
+                            data-testid="calendar-day-number"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              props.onFocusDay?.(day)
+                            }}
+                            class={`flex h-6 w-6 items-center justify-center rounded-full text-xs tabular-nums hover:ring-1 hover:ring-border ${
+                              isToday()
                                 ? "bg-accent font-semibold text-accent-foreground"
                                 : inMonth
                                   ? "text-text"
@@ -157,13 +171,13 @@ export const MonthView: Component<MonthViewProps> = (props) => {
                             }`}
                           >
                             {day.getDate()}
-                          </span>
+                          </button>
                         </div>
                         {/* spacer reserving room for the spanning lanes overlay */}
                         <div style={{ height: `${MAX_LANES * 22}px` }} class="shrink-0" />
                         <For each={timed().slice(0, MAX_TIMED)}>
                           {(occ) => {
-                            const color = props.calendarColors[occ.calendarId] ?? "#2563eb"
+                            const color = occurrenceColor(occ, props.calendarColors)
                             return (
                               <button
                                 type="button"
@@ -191,7 +205,10 @@ export const MonthView: Component<MonthViewProps> = (props) => {
                                 <span class="shrink-0 tabular-nums text-text-tertiary">
                                   {timeLabel(occ, i18n.locale())}
                                 </span>
-                                <span class="truncate text-text">
+                                <span
+                                  class="truncate text-text"
+                                  classList={{ "line-through": occ.declined === true }}
+                                >
                                   {occ.title ?? i18n.t("calendar.untitledEvent")}
                                 </span>
                               </button>
@@ -222,7 +239,7 @@ export const MonthView: Component<MonthViewProps> = (props) => {
                 >
                   <For each={visibleSegments()}>
                     {(seg: WeekSegment) => {
-                      const color = props.calendarColors[seg.occ.calendarId] ?? "#2563eb"
+                      const color = occurrenceColor(seg.occ, props.calendarColors)
                       return (
                         <button
                           type="button"

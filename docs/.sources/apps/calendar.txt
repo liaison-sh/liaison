@@ -66,6 +66,20 @@ Notice naming the field and the replaced value -> apps/api/src/apps/calendar/syn
 Quiet item on Home after a conflict -> apps/api/src/apps/calendar/app.manifest.json:687
 Times sent with the calendar's time zone -> apps/api/src/apps/calendar/handlers.ts:689
 Read-only calendars refuse new events and edits -> apps/api/src/modules/apps/sandbox/bridge/calendar.ts:70
+Zone named above the hour column -> apps/web/src/modules/calendar/TimeGridView.tsx:324
+Second time zone picker in the sidebar, kept in this browser -> apps/web/src/modules/calendar/CalendarSidebar.tsx:72
+Second time zone stored per browser -> apps/web/src/modules/calendar/time-zones.ts:77
+Event zone differs note -> apps/web/src/modules/calendar/CalendarEventTab.tsx:392
+Per-event colour else calendar colour -> apps/web/src/modules/calendar/event-colors.ts:22
+Declined faded and struck through -> apps/web/src/modules/calendar/TimeGridView.tsx:533
++N more in the all-day band opens the day -> apps/web/src/modules/calendar/TimeGridView.tsx:407
+Overnight shorter than a day stays in the grid -> apps/web/src/modules/calendar/layout.ts:58
+Mini month follows the view and marks recurring days -> apps/web/src/modules/calendar/MiniMonth.tsx:21
+Today moves at midnight -> apps/web/src/modules/calendar/today.ts:16
+Shortcut keys -> apps/web/src/modules/calendar/shortcuts.ts:16
+Shortcuts ignored while typing -> apps/web/src/modules/calendar/shortcuts.ts:41
+Del asks to delete the open event -> apps/web/src/modules/calendar/CalendarEventTab.tsx:110
+Shortcut sheet labels -> packages/shared/src/i18n/locales/en/calendar.json:108
 Free/busy scope calendar.freebusy is optional, asked on first use -> apps/api/src/apps/calendar/app.manifest.json:30
 Optional scope added only when the flow asks or the grant holds it -> apps/api/src/modules/apps/connections/protected-scopes.ts:142
 Google guide lists optional scopes with the others -> apps/api/src/modules/connection-guides/google.ts:291

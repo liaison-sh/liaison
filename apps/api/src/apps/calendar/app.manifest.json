@@ -1,7 +1,7 @@
 {
   "name": "calendar",
   "agentInstructions": "Calendar is a bidirectional Google Calendar connector — events created/edited here sync to Google and vice versa. Reach for it to list a user's schedule, search events, or create/update/delete events. INVITATIONS: by default no email reaches the guests (sendUpdates omitted = \"none\"). When the user asks to invite, notify or tell the guests, pass sendUpdates: \"all\": that write, and every delete_event, waits for a human approval before anything happens, so report it as pending, never as done. To answer an invitation the user received (yes, no, maybe), call respond_to_invitation. Key handles: calendar id, event id. Personal connections are private to their owner; org connections are visible to all org members. Writes to org calendars are permission-gated by app role. Recurring events store the master row plus exception rows for edited/cancelled occurrences; editing recurrence is limited to none/daily/weekly/monthly — a complex inbound RRULE is preserved but not editable here. VIDEO MEETINGS: when the user asks for a Google Meet, a video call, a visio or an online meeting, call create_event with conference: \"google_meet\" — Google then creates a real Meet link. Never put a conferencing product name (\"Google Meet\", \"Meet\", \"Hangouts\") in location: location is for a physical place or a link the user gave you. After creating, give the user the meetLink from the result (if it is not there yet, say the link is being created and read it from list_events hangoutLink shortly after). Only Google accounts are connected, so the only video link these tools can create is Google Meet: for Microsoft Teams or Zoom, say plainly that Calendar cannot create that link and offer a Google Meet, or put a link the user provides in the description. EDITING MEETINGS: to change an existing meeting (time, title, description, location, guests, or adding/removing its Google Meet), find it with search_events or list_events, then call update_event with its eventId — conference: \"google_meet\" adds a Meet link, conference: \"none\" removes it. Never tell the user to do it themselves in Google Calendar when update_event can do it; if Google refuses a change (for example the user is not the organizer), say what was refused and why. RECURRING MEETINGS: list_events returns a recurring series once (its eventId, first start and repeat rule) plus any occurrence already edited (recurringEventId set). Before changing one, know whether the user means only this occurrence, this and the following ones, or the whole series; if the request does not say, ask. Then call update_event with scope: \"occurrence\" or \"following\" and occurrenceStart (the original start of that occurrence), or scope: \"series\". \"following\" splits the series like Google's \"this and following events\": the old series ends before that occurrence and a new series with the change starts there (the result's eventId is the new series). update_event refuses a recurring meeting without a scope. delete_event takes the same scope: \"occurrence\" (with occurrenceStart) cancels only that occurrence on Google, \"following\" ends the series before it, \"series\" deletes the whole series; ask the user which when it is not clear. FINDING A TIME: to schedule with people (\"find 30 min with A and B next week\"), resolve each person's email (users_search for teammates), call find_free_slots with durationMinutes, attendees and the window, offer the user two or three of the returned slots, and once they pick one call create_event with that start and end and the attendees. Busy/free: events marked free in Google, declined meetings and all-day events without a busy mark never block. If the result has consent.needed, say the slots only cover the user's own calendar and tell them to allow free/busy once from Calendar (new event, Find a time, Allow); an attendee with status unknown is outside what Google lets this account see: say so.",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Calendar app: month/week UI backed by a bidirectional Google Calendar connector for org-wide and personal calendars.",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -228,6 +228,11 @@
           "required": false,
           "description": "Google's eventType, as sent and nothing else (default, outOfOffice, focusTime, ...). Also added by migration 0267 where the table already exists; NULL until the next sync."
         },
+        "eventColor": {
+          "type": "string",
+          "required": false,
+          "description": "Google's per-event colour id (\"1\"..\"11\") as sent; NULL when the event uses its calendar's colour, or until the next sync."
+        },
         "transparency": {
           "type": "string",
           "required": false,
@@ -378,6 +383,23 @@
           }
         },
         "required": ["timeMin", "timeMax"]
+      }
+    },
+    "get_event": {
+      "taintSource": true,
+      "description": "Read the details of one meeting by the eventId list_events or search_events gave: times, description, location, guests and their answers, Meet link, recurrence.",
+      "readOnly": true,
+      "agentVisible": false,
+      "useInstead": "search_events",
+      "requiredScopes": ["calendar:events:read"],
+      "trustBoundary": "user",
+      "handler": "calendarGetEvent",
+      "params": {
+        "type": "object",
+        "properties": {
+          "eventId": { "type": "string" }
+        },
+        "required": ["eventId"]
       }
     },
     "search_events": {

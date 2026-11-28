@@ -7,20 +7,17 @@ Date d'émission :
 Échéance :
  
 14/06/2026
-Incoterm :
- 
-DAP
 ÉMETTEUR
 Exemple Conseil et Réalisation de Projets Numériques SAS
 1 Example Street, Example Town
-FR
+France
 TVA : FR12345678901
 SIREN 123 456 789
 SAS au capital de 10 000 €
 CLIENT
 Example Client SARL
 2 Client Avenue, 69001 Lyon
-FR
+France
 TVA : FR98765432109
 #
  

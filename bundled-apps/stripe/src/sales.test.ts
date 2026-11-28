@@ -243,6 +243,69 @@ describe("saleFromSession", () => {
     expect(sale?.lines[0]?.tax?.amount_minor).toBe("174")
   })
 
+  it("a jurisdiction Stripe reports but collects nothing for is no tax: rate 0", () => {
+    // Stripe Tax lists the Swiss rate with amount 0 (not registered there): nothing was charged.
+    const sale = saleFromSession(
+      session(
+        {
+          amount_total: 2793,
+          total_details: { amount_tax: 0 },
+          customer_details: {
+            email: "c@example.ch",
+            name: "Carla",
+            address: { country: "CH" },
+            tax_exempt: "none",
+            tax_ids: [],
+          },
+        },
+        {
+          amount_subtotal: 2793,
+          amount_tax: 0,
+          amount_total: 2793,
+          price: { id: "price_1", unit_amount: 2793, tax_behavior: "inclusive" },
+          taxes: [
+            {
+              amount: 0,
+              taxability_reason: "not_collecting",
+              rate: { percentage: 8.1, country: "CH", inclusive: true },
+            },
+          ],
+        },
+      ),
+      [],
+    )
+    expect(sale?.lines[0]).toMatchObject({
+      unit_price_minor: "2793",
+      tax: { rate_bp: 0, amount_minor: "0", jurisdiction: null },
+    })
+  })
+
+  it("an inclusive line keeps Stripe's own tax: the net is the total less it", () => {
+    const sale = saleFromSession(
+      session(
+        {
+          amount_subtotal: 990,
+          amount_total: 99,
+          total_details: { amount_tax: 17, amount_discount: 891 },
+        },
+        {
+          amount_subtotal: 990,
+          amount_discount: 891,
+          amount_tax: 17,
+          amount_total: 99,
+          price: { id: "price_1", unit_amount: 990, tax_behavior: "inclusive" },
+          taxes: [{ amount: 17, rate: { percentage: 20, country: "FR", inclusive: true } }],
+        },
+      ),
+      [],
+    )
+    const line = sale?.lines[0]
+    const net = BigInt(line?.unit_price_minor ?? "0") - BigInt(line?.discount_minor ?? "0")
+    expect(net).toBe(82n)
+    expect(line?.tax).toMatchObject({ rate_bp: 2000, amount_minor: "17" })
+    expect(sale?.totals).toEqual({ total_minor: "99", subtotal_minor: "82", tax_minor: "17" })
+  })
+
   it("a subscription invoice or a non-payment session is not a sale", () => {
     expect(saleFromSession(session({ invoice: "in_1" }), [])).toBeNull()
     expect(saleFromSession(session({ mode: "subscription" }), [])).toBeNull()

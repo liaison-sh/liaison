@@ -167,6 +167,27 @@ export interface LineRollupInput {
   subtotal_minor: bigint
   /** Basis points: 2000 = 20%, 0 = tax-exempt. */
   tax_rate_bp: number
+  /** The line's tax as its source charged it (`sourceLineTax`), used as is instead of re-derived. */
+  tax_minor_fixed?: bigint | null
+}
+
+/**
+ * The tax a source charged on a line, when it may stand for the line's tax: within one minor unit
+ * of the line at its rate. A tax-inclusive price is split by the source (Stripe: the gross less
+ * the gross over 1 + rate, rounded), so its net at the rate can recompute one unit off, and no net
+ * in whole units may reproduce the gross (0.99 at 20 %: 0.82 gives 0.98, 0.83 gives 1.00). Its own
+ * tax keeps the document equal to what was paid. Further off, null: the line is not this tax.
+ */
+export function sourceLineTax(
+  subtotal_minor: bigint,
+  tax_rate_bp: number,
+  source_tax_minor: bigint | null | undefined,
+): bigint | null {
+  if (source_tax_minor == null || tax_rate_bp <= 0) return null
+  const computed = lineTax({ subtotal_minor, tax_rate_bp })
+  const diff =
+    computed > source_tax_minor ? computed - source_tax_minor : source_tax_minor - computed
+  return diff <= 1n ? source_tax_minor : null
 }
 
 export interface DocumentRollupResult {
@@ -188,7 +209,9 @@ export function documentRollup(lines: LineRollupInput[]): DocumentRollupResult {
   let tax = 0n
   for (const ln of lines) {
     subtotal += ln.subtotal_minor
-    tax += lineTax({ subtotal_minor: ln.subtotal_minor, tax_rate_bp: ln.tax_rate_bp })
+    tax +=
+      ln.tax_minor_fixed ??
+      lineTax({ subtotal_minor: ln.subtotal_minor, tax_rate_bp: ln.tax_rate_bp })
   }
   return {
     subtotal_minor: subtotal,

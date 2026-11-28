@@ -36,16 +36,22 @@ const isoOfUnix = (v: unknown): string | null =>
 /** Stripe's tax id types that are VAT numbers of a business buyer. */
 const VAT_TYPES = new Set(["eu_vat", "gb_vat", "ch_vat", "no_vat", "eu_oss_vat"])
 
+/**
+ * The rate Stripe charged on a line: the sum of its tax entries that collected an amount. An entry
+ * of amount 0 (`taxability_reason` not_collecting, not_subject_to_tax, reverse_charge, ...) is a
+ * jurisdiction Stripe reports and charges nothing for: no tax, whatever rate it names.
+ */
 function rateBpOf(taxes: unknown): { rate_bp: number; jurisdiction: string | null } | null {
   if (!Array.isArray(taxes) || taxes.length === 0) return null
   let bp = 0
   let jurisdiction: string | null = null
   for (const t of taxes as Obj[]) {
+    if (!(num(t.amount) > 0)) continue
     const rate = (t.rate ?? {}) as Obj
     bp += Math.round(num(rate.percentage) * 100)
     jurisdiction ??= str(rate.country) ?? str(rate.jurisdiction)
   }
-  return { rate_bp: bp, jurisdiction }
+  return bp > 0 ? { rate_bp: bp, jurisdiction } : null
 }
 
 /** `a * n / d`, half-up, for non-negative amounts. */
@@ -98,7 +104,7 @@ function lineOf(item: Obj, kind: SaleLine["kind"]): SaleLine {
       ? {
           rate_bp: rate.rate_bp,
           amount_minor: tax.toString(),
-          line_count: taxes?.length ?? 1,
+          line_count: taxes?.filter((t) => num(t.amount) > 0).length || 1,
           jurisdiction: rate.jurisdiction,
           reported_by_source: true,
         }

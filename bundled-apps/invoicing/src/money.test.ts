@@ -11,6 +11,7 @@ import {
   lineTotal,
   netOfIncludedTax,
   parseMoneyMajorToMinor,
+  sourceLineTax,
 } from "./money"
 
 describe("lineSubtotal (integer minor units)", () => {
@@ -308,5 +309,20 @@ describe("formatMinorAsMajorInput (minor-unit storage -> major-unit input text)"
     expect(formatMinorAsMajorInput(10000n, "EUR")).toBe("100.00")
     expect(formatMinorAsMajorInput(100n, "JPY")).toBe("100")
     expect(formatMinorAsMajorInput(-2550n, "EUR")).toBe("-25.50")
+  })
+})
+
+describe("sourceLineTax", () => {
+  test("a source's tax within one unit of the line at its rate stands; further off it does not", () => {
+    // 0.99 including 20 %: Stripe's tax 0.17 on a net of 0.82 (0.82 at 20 % is 0.164).
+    expect(sourceLineTax(82n, 2000, 17n)).toBe(17n)
+    expect(sourceLineTax(82n, 2000, 19n)).toBeNull()
+    expect(sourceLineTax(82n, 0, 0n)).toBeNull()
+    expect(sourceLineTax(82n, 2000, null)).toBeNull()
+  })
+  test("the rollup sums a fixed line tax as is", () => {
+    expect(
+      documentRollup([{ subtotal_minor: 82n, tax_rate_bp: 2000, tax_minor_fixed: 17n }]),
+    ).toEqual({ subtotal_minor: 82n, tax_total_minor: 17n, grand_total_minor: 99n })
   })
 })

@@ -567,7 +567,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `documents_for_orders` | Resolve the invoicing documents linked to a set of Shopify order ids. |  | `invoicing:documents:read` |
 | `documents_get` | Get one invoicing document by id, including lines. |  | `invoicing:documents:read` |
 | `documents_issue_preview` | The issuer profiles plus the VAT status of a buyer about to be issued a document: VAT number (as given or found on an earlier document), its VIES check, or why a business buyer without one is refused. |  | `invoicing:settings:read` |
-| `documents_link_shopify_orders` | Link issued invoices and credit notes that name their Shopify order only by number (no shopify_order_id) to that order, so the order's reads find them. | yes | `invoicing:documents:write` |
+| `documents_link_shopify_orders` | Link issued invoices and credit notes that name their Shopify order only by number to that order, so the order's reads find them. | yes | `invoicing:documents:write` |
 | `documents_mark_paid` | Mark a document as paid (full payment recorded). | yes | `invoicing:documents:write` |
 | `documents_preview_pdf` | Resolve a document's rendered-PDF file id + inline URL for preview. |  | `invoicing:documents:read` |
 | `documents_record_refund` | Record a refund against a document (full or partial): records only, moves no money. | yes | `invoicing:documents:write` |
@@ -644,7 +644,8 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `revenue_stream_sale_issue` | Issue the invoice of one sale of a bound revenue stream (the sale is read again from its app). | yes | `invoicing:documents:write` |
 | `revenue_streams_list` | List the revenue streams: the sales apps whose sales this organization invoices automatically (provider app, issuer profile, mode auto/review/off, issue_from, mail), and the installed apps that could be bound. |  | `invoicing:settings:read` |
 | `sales_catch_up` | Invoice the sales a bound revenue stream's app took between paidFrom and paidTo that have no invoice yet: oldest first, one number each, issued today, then a credit note for each refund. | yes | `invoicing:documents:write` |
-| `sales_catch_up_preview` | Read only: every sale a bound revenue stream's app took between paidFrom and paidTo, oldest first, as the catch-up would invoice it: buyer, country, tax treatment, lines, tax as computed against the tax the source charged, totals, refunds, blockers (address, VAT number to validate, FX rate, tax gap) and the document it already has. |  | `invoicing:documents:read`, `invoicing:settings:read` |
+| `sales_catch_up_preview` | Read only: every sale a bound revenue stream's app took between paidFrom and paidTo, oldest first, as the catch-up would invoice it: buyer, country, tax treatment, lines, tax as computed against the tax the source charged, totals, refunds, blockers (address, VAT number to validate, a rate that is not the treatment's, tax gap), the ECB rate a foreign currency would use and the document it already has. |  | `invoicing:documents:read`, `invoicing:settings:read` |
+| `sales_preview_pdfs` | Render the sales of a bound revenue stream that have no invoice yet as the documents they would become: each runs through the issue path with nothing written, and is rendered unnumbered with a PREVIEW, not an invoice watermark (same lines, rates, VAT mentions and totals as the issue). |  | `invoicing:documents:write`, `invoicing:settings:read` |
 | `settings_hs_code_list` | List the org's HS-code library entries. |  | `invoicing:settings:read` |
 | `settings_issuer_profile_create` | Create an issuer profile. | yes | `invoicing:settings:write` |
 | `settings_issuer_profile_delete` | Delete an issuer profile by id. | yes | `invoicing:settings:write` |

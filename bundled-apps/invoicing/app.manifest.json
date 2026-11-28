@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.44.1",
+  "version": "0.44.2",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -7000,7 +7000,7 @@
       }
     },
     "documents_link_shopify_orders": {
-      "description": "Link issued invoices and credit notes that name their Shopify order only by number (no shopify_order_id) to that order, so the order's reads find them. Links only when the issuer profile's shop holds exactly one order with that name and the order's email is the document's buyer email (or its contact's), with no conflicting customer id and no other document on the order. Every other document is reported with its reason. Writes only the order link. dry_run (default true) writes nothing; continue with next_cursor. Gated.",
+      "description": "Link issued invoices and credit notes that name their Shopify order only by number to that order, so the order's reads find them. The name is the document's order number or, for an imported document with no order number, its all-digits number as \"#<number>\" (basis number_as_order_name). Links only when the issuer's shop holds exactly one order with that name, its email is the buyer's, no customer id conflicts and no other document has the order. Every other document is reported with its reason. dry_run defaults to true; continue with next_cursor. Gated.",
       "requiredScopes": [
         "invoicing:documents:write"
       ],

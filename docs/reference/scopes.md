@@ -221,12 +221,12 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `invoicing:contacts:read` | manifest scopes; tools contact_relationships_get, counterparty_identity_get, counterparty_identity_lookup, vat_lookup, vat_validate |  |
 | `invoicing:contacts:write` | manifest scopes; tools contact_relationships_set, counterparty_identity_set, counterparty_territory_set, einvoicing_backfill_identities |  |
 | `invoicing:documents:read` | manifest scopes; entities document, recurring_run, recurring_schedule; tools activity_read, approval_route_read, billing_plan_get, client_action_view_get, customer_history, deferred_list and 23 more |  |
-| `invoicing:documents:write` | manifest scopes; tools advance_draft_create, advance_refund_prepare, billing_plan_set, billing_step_add, credit_note_create_and_issue, credit_note_from_reconcile and 47 more |  |
+| `invoicing:documents:write` | manifest scopes; tools advance_draft_create, advance_refund_prepare, billing_plan_set, billing_step_add, credit_note_create_and_issue, credit_note_from_reconcile and 48 more |  |
 | `invoicing:internal` | manifest scopes; tool card_stream_issuer |  |
 | `invoicing:issuer:admin` | manifest scopes |  |
 | `invoicing:received:read` | manifest scopes; entity received_einvoice; tools received_einvoices_get, received_einvoices_list |  |
 | `invoicing:received:write` | manifest scopes; tools received_einvoice_action_request, received_einvoice_set_status, received_einvoices_refresh |  |
-| `invoicing:settings:read` | manifest scopes; settings sections hs-codes, issuers, shop-mappings, tax-regimes; tools documents_issue_preview, einvoicing_provider_options, einvoicing_settings_get, einvoicing_settings_values, issuer_stream_get, revenue_streams_list and 5 more |  |
+| `invoicing:settings:read` | manifest scopes; settings sections hs-codes, issuers, shop-mappings, tax-regimes; tools documents_issue_preview, einvoicing_provider_options, einvoicing_settings_get, einvoicing_settings_values, issuer_stream_get, revenue_streams_list and 6 more |  |
 | `invoicing:settings:write` | manifest scopes; settings section einvoicing; tools einvoice_standing_off, einvoicing_settings_set, hs_codes_library_delete, hs_codes_library_upsert, issuer_emails_confirm, issuer_stream_set and 4 more |  |
 
 ## knowledge

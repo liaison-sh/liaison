@@ -5,6 +5,12 @@
 // numeric id (`shopify_order_id`), the key every order-aware read uses: the buyer invoices API, the
 // order's credit notes and refunds, the duplicate-invoice check of the order webhook.
 //
+// The order name comes from `shopify_order_number` (basis `order_number`). A document imported from
+// an earlier tool (`external_refs.import_source`) with its legal original recorded and no order
+// number may instead use its own all-digits number as the name "#<number>" (basis
+// `number_as_order_name`); an imported number with anything but digits is reported `not_eligible`.
+// On that basis a link also records the order's name in `shopify_order_number`.
+//
 // A link is written only when it is proven, never guessed:
 //   - the document's issuer profile is mapped to a shop (`issuer_profiles.shopify_shop_id`) and the
 //     connected shop the order was read from IS that shop;
@@ -16,7 +22,8 @@
 //     same order in the same run are linked together).
 // Anything else is reported with its reason and left as it is.
 //
-// What it writes: `shopify_order_id` and one `shopify_order_linked` lifecycle entry, nothing else.
+// What it writes: `shopify_order_id` (and, on the number basis, `shopify_order_number`) and one
+// `shopify_order_linked` lifecycle entry, nothing else.
 // The column is a link, not part of the legal document: it is outside the issued-document freeze
 // (documents_update's frozen fields and the legal-original locked fields), the PDF is not
 // re-rendered, and the number, buyer, lines and totals are untouched.
@@ -79,11 +86,17 @@ export type LinkOutcome =
   | "email_mismatch"
   | "contact_unreadable"
   | "customer_mismatch"
+  | "not_eligible"
+
+/** How the order name was found: the document's recorded order number, or (an imported legacy
+ *  document with no order number) its own all-digits number read as the order name "#<number>". */
+export type LinkBasis = "order_number" | "number_as_order_name"
 
 export interface LinkResultRow {
   document_id: string
   number: string | null
-  order_name: string
+  order_name: string | null
+  basis: LinkBasis
   outcome: LinkOutcome
   shopify_order_id?: string
   detail?: string
@@ -93,6 +106,25 @@ function str(v: unknown): string | null {
   if (typeof v !== "string") return null
   const t = v.trim()
   return t === "" ? null : t
+}
+
+function refsOf(v: unknown): Row {
+  if (v && typeof v === "object" && !Array.isArray(v)) return v as Row
+  if (typeof v === "string") {
+    try {
+      const p = JSON.parse(v) as unknown
+      if (p && typeof p === "object" && !Array.isArray(p)) return p as Row
+    } catch {
+      // not JSON
+    }
+  }
+  return {}
+}
+
+/** Imported from an earlier tool (`external_refs.import_source`) with its legal original recorded:
+ *  the only documents whose own number may stand for their Shopify order's name. */
+function importedLegacy(d: Row): boolean {
+  return str(d.legal_original_id) !== null && str(refsOf(d.external_refs).import_source) !== null
 }
 
 const lowerEmail = (v: unknown): string | null => str(v)?.toLowerCase() ?? null
@@ -205,7 +237,7 @@ export async function linkShopifyOrders(
         !NOT_LINKABLE_STATUSES.has(String(d.status)) &&
         str(d.number) !== null &&
         str(d.shopify_order_id) === null &&
-        str(d.shopify_order_number) !== null,
+        (str(d.shopify_order_number) !== null || importedLegacy(d)),
     )
     .sort((a, b) => (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0))
     .filter((d) => !cursor || String(d.id) > cursor)
@@ -243,10 +275,18 @@ export async function linkShopifyOrders(
 
   for (const d of batch) {
     const id = String(d.id)
-    const orderNumber = str(d.shopify_order_number) as string
-    const base = { document_id: id, number: str(d.number), order_name: orderNumber }
+    const recorded = str(d.shopify_order_number)
+    const number = str(d.number) as string
+    const basis: LinkBasis = recorded ? "order_number" : "number_as_order_name"
+    // Only a plain all-digits number reads as an order name; "1001-2" or "Repair 12" never do.
+    const orderNumber = recorded ?? (/^\d+$/.test(number) ? `#${number}` : null)
+    const base = { document_id: id, number, order_name: orderNumber, basis }
     const report = (outcome: LinkOutcome, extra: Partial<LinkResultRow> = {}) =>
       results.push({ ...base, outcome, ...extra })
+    if (!orderNumber) {
+      report("not_eligible")
+      continue
+    }
 
     const shop = shopOf.get(String(d.issuer_profile_id)) ?? null
     if (!shop) {
@@ -335,6 +375,8 @@ export async function linkShopifyOrders(
       const log = Array.isArray(d.lifecycle_log) ? (d.lifecycle_log as Row[]) : []
       await ctx.db.update("documents", id, {
         shopify_order_id: orderId,
+        // The number basis also records the order's name, which the document lacked.
+        ...(recorded ? {} : { shopify_order_number: order.name }),
         lifecycle_log: [
           ...log,
           {
@@ -343,6 +385,7 @@ export async function linkShopifyOrders(
             shopify_order_id: orderId,
             order_name: order.name,
             matched_on: "email",
+            basis,
           },
         ],
       })

@@ -253,8 +253,9 @@ pub enum Refusal {
     MalformedStatement,
     UnknownKey,
     BadSignature,
-    Mode,
-    BuildId,
+    /// Not the mode and build id asked for (shell-statement.ts
+    /// `verifyShellStatementFor`: `wrong_build`).
+    WrongBuild,
     BelowFloor,
     Revoked,
     Bridge,
@@ -274,8 +275,7 @@ impl Refusal {
             Refusal::MalformedStatement => "malformed_statement",
             Refusal::UnknownKey => "unknown_key",
             Refusal::BadSignature => "bad_signature",
-            Refusal::Mode => "mode",
-            Refusal::BuildId => "build_id",
+            Refusal::WrongBuild => "wrong_build",
             Refusal::BelowFloor => "below_floor",
             Refusal::Revoked => "revoked",
             Refusal::Bridge => "bridge",
@@ -319,10 +319,10 @@ pub fn verify_shell_statement(
         return Err(Refusal::BadSignature);
     }
     if statement.mode != MODE {
-        return Err(Refusal::Mode);
+        return Err(Refusal::WrongBuild);
     }
     if statement.build_id != build_id {
-        return Err(Refusal::BuildId);
+        return Err(Refusal::WrongBuild);
     }
     if app_signing::below_shell_floor(trust.floor, MODE, statement.seq) {
         return Err(Refusal::BelowFloor);
@@ -943,7 +943,7 @@ pub async fn fetch_build<F: Fetcher>(
     trust: Trust<'_>,
 ) -> Result<ShellStatement, Refusal> {
     if !is_hex(build_id, 16) {
-        return Err(Refusal::BuildId);
+        return Err(Refusal::WrongBuild);
     }
     let url = statement_url(downloads, build_id);
     let statement = fetcher

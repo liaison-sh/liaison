@@ -142,7 +142,14 @@ pub fn parse_key_file(text: &str) -> (Vec<PinnedKey>, Vec<RevocationEntry>) {
         .unwrap_or_default();
     let floor = value["revocationFloor"]
         .as_array()
-        .map(|list| list.iter().filter_map(parse_entry).collect())
+        .map(|list| {
+            list.iter()
+                .filter_map(|value| match parse_entry(value)? {
+                    Entry::Kept(entry) => Some(entry),
+                    Entry::Ignored => None,
+                })
+                .collect()
+        })
         .unwrap_or_default();
     (keys, floor)
 }
@@ -289,8 +296,23 @@ pub fn verify_statement(
     Ok(statement)
 }
 
-fn parse_entry(value: &Value) -> Option<RevocationEntry> {
+/// One parsed entry: kept, ignored (a shell entry for a mode this release
+/// does not know), or None when malformed (which refuses the whole list).
+enum Entry {
+    Kept(RevocationEntry),
+    Ignored,
+}
+
+fn parse_entry(value: &Value) -> Option<Entry> {
     let map = value.as_object()?;
+    // revocations.ts: `shell:<anything else>` is IGNORED whatever its fields,
+    // so a later release can add a mode or a floor shape without this one
+    // refusing the whole list (and with it every app revocation).
+    if let Some(name) = value["name"].as_str() {
+        if name.starts_with("shell:") && !matches!(name, "shell:desktop" | "shell:native") {
+            return Some(Entry::Ignored);
+        }
+    }
     if map
         .keys()
         .any(|k| !matches!(k.as_str(), "name" | "below" | "versions"))
@@ -313,22 +335,21 @@ fn parse_entry(value: &Value) -> Option<RevocationEntry> {
     if below.is_none() && !map.contains_key("versions") {
         return None;
     }
-    // A shell floor (served_shell.rs, revocations.ts `isShellEntry`): exactly
-    // `{name: "shell:desktop" | "shell:native", below: "<decimal seq>"}`. A
-    // malformed one refuses the whole list, as the shared parser does.
-    if name.starts_with("shell:") && !is_shell_entry(&name, below.as_deref(), map) {
+    // A known shell floor (served_shell.rs, revocations.ts `isShellEntry`):
+    // exactly `{name, below: "<decimal seq>"}`. A malformed one refuses the
+    // whole list, as the shared parser does.
+    if name.starts_with("shell:") && !is_shell_entry(below.as_deref(), map) {
         return None;
     }
-    Some(RevocationEntry {
+    Some(Entry::Kept(RevocationEntry {
         name,
         below,
         versions,
-    })
+    }))
 }
 
-fn is_shell_entry(name: &str, below: Option<&str>, map: &serde_json::Map<String, Value>) -> bool {
-    matches!(name, "shell:desktop" | "shell:native")
-        && !map.contains_key("versions")
+fn is_shell_entry(below: Option<&str>, map: &serde_json::Map<String, Value>) -> bool {
+    !map.contains_key("versions")
         && below
             .is_some_and(|b| (1..=15).contains(&b.len()) && b.bytes().all(|c| c.is_ascii_digit()))
 }
@@ -361,7 +382,13 @@ pub fn parse_revocation_list(bytes: &[u8]) -> Option<RevocationList> {
         .as_array()?
         .iter()
         .map(parse_entry)
-        .collect::<Option<Vec<_>>>()?;
+        .collect::<Option<Vec<_>>>()?
+        .into_iter()
+        .filter_map(|entry| match entry {
+            Entry::Kept(entry) => Some(entry),
+            Entry::Ignored => None,
+        })
+        .collect();
     Some(RevocationList { seq, entries })
 }
 

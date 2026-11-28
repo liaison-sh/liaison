@@ -323,7 +323,7 @@ fn an_app_statement_or_another_mode_never_passes_as_a_desktop_shell() {
         let want = if field == "kind" {
             Refusal::MalformedStatement
         } else {
-            Refusal::Mode
+            Refusal::WrongBuild
         };
         assert_refused(&f, &fake, trust(&f.key), want);
     }
@@ -331,7 +331,7 @@ fn an_app_statement_or_another_mode_never_passes_as_a_desktop_shell() {
     let mut value = statement_value(&f.key, &f.files);
     value["buildId"] = Value::String("fedcba9876543210".into());
     let fake = Fake::serving(&f, &value);
-    assert_refused(&f, &fake, trust(&f.key), Refusal::BuildId);
+    assert_refused(&f, &fake, trust(&f.key), Refusal::WrongBuild);
 }
 
 #[test]
@@ -600,6 +600,21 @@ fn fleet_flags_verify_keep_and_never_go_back() {
 }
 
 #[test]
+fn a_shell_entry_for_an_unknown_mode_is_dropped_whatever_its_fields() {
+    let list = canonical_json(&serde_json::json!({
+        "v": 1, "seq": 1, "issuedAt": "2026-11-28T00:00:00.000Z",
+        "entries": [
+            { "name": "shell:web", "below": "1" },
+            { "name": "shell:watch", "floor": 3, "extra": true },
+            { "name": "shell:desktop", "below": "1764300000" },
+        ],
+    }));
+    let parsed = app_signing::parse_revocation_list(list.as_bytes()).expect("the list parses");
+    assert_eq!(parsed.entries.len(), 1);
+    assert_eq!(parsed.entries[0].name, "shell:desktop");
+}
+
+#[test]
 fn a_malformed_shell_floor_refuses_the_whole_list_like_the_shared_parser() {
     let list = |entries: Value| {
         canonical_json(&serde_json::json!({
@@ -609,7 +624,6 @@ fn a_malformed_shell_floor_refuses_the_whole_list_like_the_shared_parser() {
     let good = list(serde_json::json!([{ "name": "shell:desktop", "below": "1764300000" }]));
     assert!(app_signing::parse_revocation_list(good.as_bytes()).is_some());
     for bad in [
-        serde_json::json!([{ "name": "shell:web", "below": "1" }]),
         serde_json::json!([{ "name": "shell:desktop", "below": "1.0.0" }]),
         serde_json::json!([{ "name": "shell:desktop", "below": "1234567890123456" }]),
         serde_json::json!([{ "name": "shell:desktop", "versions": ["1"] }]),

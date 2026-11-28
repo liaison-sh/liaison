@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// GENERATED ONCE by apps/mobile/scripts/gen-shell-fixtures.ts --signed: canonical
+// JSON (base64) signed by a throwaway TEST key with packages/shared's own code.
+
+enum SignedFixtures {
+    static let keyId = "test-key"
+    static let publicKey = "bz5CoBW22HRvIlqJ5di4wjIzDSDr8Qe5YqxlUnn5/oo="
+    static let statement = "eyJicmlkZ2UiOnsiYW5kcm9pZCI6Il4xIiwiZGVza3RvcCI6Il4xIiwiaW9zIjoiXjEifSwiYnVpbGRJZCI6IjAxMjM0NTY3ODlhYmNkZWYiLCJjb21taXQiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3IiwiZmlsZXMiOnsiYXNzZXRzL8OpIGIuanMiOiJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiIiwiaW5kZXguaHRtbCI6ImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEifSwiaXNzdWVkQXQiOiIyMDI2LTExLTI4VDEyOjAwOjAwLjAwMFoiLCJrZXlJZCI6InRlc3Qta2V5Iiwia2luZCI6InNoZWxsIiwibGlhaXNvblZlcnNpb24iOiJuaWdodGx5LTIwMjYxMTI4IiwibW9kZSI6Im5hdGl2ZSIsInNlcSI6MTc2NDMyMDAwMCwic2V0dGluZ3NTY2hlbWEiOjMsInYiOjF9"
+    static let statementSig = "PNqTdHUv9OqhqnRQd9DDBbsWupV5HAa7RCUl0ClS+qUUkuOD/nEtnj3sfsehdCx1FdGhA1zLNSyQximEk1xaCg=="
+    static let list = "eyJlbnRyaWVzIjpbeyJiZWxvdyI6IjE3NjQzMTAwMDAiLCJuYW1lIjoic2hlbGw6bmF0aXZlIn0seyJiZWxvdyI6NSwibmFtZSI6InNoZWxsOndhdGNoIn0seyJuYW1lIjoiaW52b2ljaW5nIiwidmVyc2lvbnMiOlsiMC4xLjAiXX1dLCJpc3N1ZWRBdCI6IjIwMjYtMTEtMjhUMTI6MDA6MDAuMDAwWiIsInNlcSI6NywidiI6MX0="
+    static let listSig = "XHN53j40FdPIYnmxQAk4rRXbBHveLvGnoKA9SXFFL0pSW+jqaiesINa5Fe1miUtojbl4ng5LE1px4vC3IBfDDg=="
+    static let flags = "eyJpc3N1ZWRBdCI6IjIwMjYtMTEtMjhUMTI6MDA6MDAuMDAwWiIsInNlcSI6Miwic2VydmVkU2hlbGwiOnsiZGVza3RvcCI6dHJ1ZSwibmF0aXZlIjpmYWxzZX0sInYiOjF9"
+    static let flagsSig = "a2zaDVbe1OUv8jwdZaIvYRL4EfpNJRoG4XegTzXrB6rF+AFQeg6el32u7qrX68lpGB54UwY3XqsSu3T2UA2kCg=="
+}

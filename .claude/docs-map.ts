@@ -264,6 +264,8 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "packages/shared/src/notifications/**", pages: ["notifications"] },
   { glob: "apps/web/src/app-frame/**", pages: ["app-sandbox"] },
   { glob: "apps/web/scripts/build-app-frame.ts", pages: ["app-sandbox"] },
+  // The web build id, which names a signed web shell statement.
+  { glob: "apps/web/scripts/stamp-build-id.ts", pages: ["app-package-format"] },
 ]
 
 /**
@@ -347,6 +349,10 @@ export const DOCS_EXEMPT: { glob: string; reason: string }[] = [
   {
     glob: "apps/web/vitest.config.ts",
     reason: "the web unit-test runner's config; no user, admin or self-host surface",
+  },
+  {
+    glob: "apps/web/index.html",
+    reason: "the web app's page skeleton (meta tags, boot scripts); its effects are documented with the code that reads them",
   },
   {
     glob: "apps/web/vite.config.ts",

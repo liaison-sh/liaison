@@ -14,14 +14,16 @@ const TEAM = "team0001@group.calendar.google.com"
 
 let orgId: string
 let userId: string
+let userEmail: string
 
 beforeAll(async () => {
   await acquireAppSchemaJsLock("app_calendar")
   const slug = `cal-invitations-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
   orgId = await seedOrgRow({ name: "Calendar Invitations Org", slug })
+  userEmail = `owner-${slug}@x.test`
   userId = await seedUserRow({
     orgId,
-    email: `owner-${slug}@x.test`,
+    email: userEmail,
     name: "Owner",
     status: "active",
     passwordHash: "h",
@@ -174,6 +176,37 @@ describe("G12: RSVP", () => {
     expect(attendees.find((a) => a.email === "boss@partner.test")?.responseStatus).toBe("accepted")
     const after = await h.event(OWNER, invite.id)
     expect(after?.rsvp_request).toBeNull()
+  })
+
+  it("the signed-in person's own entry reads as self and can be answered without Google's flag", async () => {
+    const { h, teamId } = await connected()
+    const created = (await h.tool("create_event", {
+      calendarId: teamId,
+      title: "Preamp launch",
+      start: "2026-12-04T09:00:00.000Z",
+      end: "2026-12-04T10:00:00.000Z",
+      attendees: [userEmail, "guest.one@partner.test"],
+    })) as { eventId: string }
+    const shown = (await h.tool("get_event", { eventId: created.eventId })) as {
+      attendees: Array<{ email: string; self?: boolean }>
+    }
+    expect(shown.attendees.find((a) => a.email === userEmail)?.self).toBe(true)
+    expect(shown.attendees.find((a) => a.email === "guest.one@partner.test")?.self).toBeUndefined()
+    const answered = (await h.tool("respond_to_invitation", {
+      eventId: created.eventId,
+      response: "tentative",
+    })) as { response: string }
+    expect(answered.response).toBe("tentative")
+    const rows = await h.events(TEAM)
+    const stored = (rows.find((r) => r.id === created.eventId)?.attendees ?? []) as Array<{
+      email: string
+      self?: boolean
+      responseStatus?: string
+    }>
+    const mine = stored.find((a) => a.email === userEmail)
+    expect(mine?.responseStatus).toBe("tentative")
+    // Not stored as the account's own entry: another viewer does not see it as theirs.
+    expect(mine?.self).toBeUndefined()
   })
 
   it("an event the account is not a guest of cannot be answered", async () => {

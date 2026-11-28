@@ -305,6 +305,12 @@ export function attendeeFilter(value: unknown): Set<string> | null {
  * with no google_event_id yet (local-born, un-pushed) falls back to its local UUID — such a
  * master has no Google-authored exceptions to join against anyway.
  */
+/** The key a series' occurrence rows carry in `recurringEventId`: the master's Google id, or for
+ * a series not on Google yet its uuid without dashes (the id its create gives it). */
+export function seriesKeyOfDto(master: { eventId: string; googleEventId: string | null }): string {
+  return master.googleEventId ?? master.eventId.replace(/-/g, "").toLowerCase()
+}
+
 function rowToDto(row: RawEventRow): CalendarEventDto {
   const isRecurringMaster =
     row.recurring_event_id === null && Array.isArray(row.recurrence) && row.recurrence.length > 0
@@ -621,6 +627,40 @@ export async function getEventForCaller(
   return rows[0] ? rowToDto(rows[0]) : null
 }
 
+/**
+ * teammateBusyEventsForCaller — for each address, the events Liaison already holds that it
+ * attends, among those the caller can see (RLS scopes the read: never a calendar the caller has
+ * no access to), with the occurrence rows of those series. `find_free_slots` turns them into busy
+ * intervals only; no title or detail leaves the handler.
+ */
+export async function teammateBusyEventsForCaller(
+  db: RlsClient,
+  orgId: string,
+  window: { timeMin: string; timeMax: string },
+  emails: readonly string[],
+): Promise<Array<{ email: string; events: CalendarEventDto[] }>> {
+  if (emails.length === 0) return []
+  const all = await listEventsForCaller(db, orgId, window)
+  return emails.map((raw) => {
+    const email = raw.trim().toLowerCase()
+    const attends = (e: CalendarEventDto) =>
+      e.attendees.some((a) => a.email.trim().toLowerCase() === email)
+    const series = new Set(
+      all
+        .filter((e) => !e.recurringEventId && attends(e))
+        .flatMap((e) => [e.eventId, seriesKeyOfDto(e)]),
+    )
+    // Google's `self` marks the calendar account's entry, not this teammate's: dropped, so the
+    // teammate's own answer (declined or not) is what decides.
+    const events = all
+      .filter((e) =>
+        e.recurringEventId ? series.has(e.recurringEventId) || attends(e) : attends(e),
+      )
+      .map((e) => ({ ...e, attendees: e.attendees.map(({ self: _self, ...a }) => a) }))
+    return { email, events }
+  })
+}
+
 /** What `find_free_slots` reads of the caller's own calendars. */
 export interface OwnBusyEvents {
   /** The caller's synced events over the window that may block them (see below). */
@@ -690,7 +730,9 @@ export async function ownBusyEventsForCaller(
   // An exception row goes with its series: a cancelled occurrence carries no guest list, and
   // dropping it would bring that occurrence back when the series expands.
   const keptSeries = new Set(
-    all.filter((e) => !e.recurringEventId && mine(e)).map((e) => e.eventId),
+    all
+      .filter((e) => !e.recurringEventId && mine(e))
+      .flatMap((e) => [e.eventId, seriesKeyOfDto(e)]),
   )
   const events = all.filter((e) =>
     e.recurringEventId ? keptSeries.has(e.recurringEventId) || mine(e) : mine(e),

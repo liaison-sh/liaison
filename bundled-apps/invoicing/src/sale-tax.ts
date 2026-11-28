@@ -23,7 +23,8 @@
 import type { OperationCategory } from "./einvoicing/classify-operation"
 import { DEFAULT_ZONE, type TimeSurface } from "./issue-date"
 import { lineTax } from "./money"
-import { EU_STANDARD_RATE_BP, isEuCountry, type TaxTreatment } from "./tax"
+import { classify, EU_STANDARD_RATE_BP, isEuCountry, type TaxTreatment } from "./tax"
+import { vatTerritoryOf } from "./vat-territory"
 
 export type SaleLineKind = "goods" | "software" | "service" | "shipping"
 
@@ -41,6 +42,8 @@ export interface SaleTaxInput {
     kind: "individual" | "company" | null
     /** The tax destination: the billing country (or the delivery country for goods). */
     country: string | null
+    /** Its postcode: FR with an overseas postcode (FR 97411) is that territory (RE). */
+    postcode?: string | null
     vat_id: string | null
     /** The VAT number's check against VIES before issue: true valid, false invalid, null not run. */
     vat_id_valid: boolean | null
@@ -171,8 +174,14 @@ function mismatches(
 
 export function classifySaleTax(input: SaleTaxInput): SaleTaxResult {
   const seller = cc(input.issuer_country)
-  const country = cc(input.buyer.country)
-  const evidence = input.buyer.tax_evidence ?? {}
+  const rawCountry = cc(input.buyer.country)
+  const country = rawCountry ? vatTerritoryOf(rawCountry, input.buyer.postcode) : ""
+  const rawEvidence = input.buyer.tax_evidence ?? {}
+  // The billing address is the one the postcode belongs to: FR 97411 is evidence for RE.
+  const evidence: SaleTaxEvidence =
+    country !== rawCountry && cc(rawEvidence.billing_country) === rawCountry
+      ? { ...rawEvidence, billing_country: country }
+      : rawEvidence
   const category = saleOperationCategory(input.lines.map((l) => l.kind))
   if (!isEuCountry(seller)) {
     return {
@@ -247,6 +256,59 @@ export function classifySaleTax(input: SaleTaxInput): SaleTaxResult {
   }
   const all = (bp: number) => input.lines.map(() => bp)
   const domesticBp = EU_STANDARD_RATE_BP[seller] ?? 0
+
+  // French overseas territories and Monaco (docs/apps/invoicing.md, "Overseas France"): goods
+  // are exported to a department, its services taxed there at its own rate (CGI art. 259-1°,
+  // 259 D, 294, 296; BOI-TVA-GEO-20-40), Guyane and Mayotte have no VAT.
+  const overseas = classify({
+    issuer_country: seller,
+    counterparty_country: country,
+    has_vat_id: business,
+    line_kinds: input.lines.map((l) => l.kind),
+  })
+  if (overseas.rate_bp_by_kind) {
+    const byKind = overseas.rate_bp_by_kind
+    if (overseas.treatment === "unconfigured") {
+      return {
+        ok: false,
+        park: "service_place_of_supply_review",
+        message: `A sale from ${seller} to ${country} is not classified by the overseas rules: a person decides.`,
+      }
+    }
+    if (!business && input.lines.some((l) => l.kind === "service")) {
+      return {
+        ok: false,
+        park: "service_place_of_supply_review",
+        message:
+          "A service that is not electronically supplied, sold to a consumer overseas: its place of supply depends on the service.",
+      }
+    }
+    const electronic = input.lines.some((l) => l.kind === "software")
+    if (!business && electronic) {
+      const agreeing = evidenceFor(country, evidence)
+      const needed = input.single_evidence_allowed ? 1 : 2
+      if (agreeing.length < needed) {
+        return {
+          ok: false,
+          park: "place_of_supply_evidence",
+          message: `Only ${agreeing.length} piece(s) of location evidence point at ${country} (${needed} needed): ${evidenceCountries(evidence).join(", ") || "none"}.`,
+          details: { country, evidence, agreeing },
+        }
+      }
+    }
+    return done(
+      overseas.treatment,
+      input.lines.map((l) => byKind[l.kind]),
+      {
+        country,
+        rule: business
+          ? "customer_establishment"
+          : electronic
+            ? "consumer_residence"
+            : "goods_arrival",
+      },
+    )
+  }
 
   if (business) {
     if (country === seller) {

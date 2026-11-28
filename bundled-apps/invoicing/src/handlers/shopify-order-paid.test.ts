@@ -91,6 +91,7 @@ function issuerProfileToRow(
     sale_thanks_enabled: profile.sale_thanks_enabled ?? false,
     sale_thanks_sender: profile.sale_thanks_sender ?? "mailbox",
     reply_to_email: profile.reply_to_email ?? null,
+    ...(profile.prices_include_tax ? { prices_include_tax: true } : {}),
     logo_file_id: profile.logo_file_id ?? null,
     mail_account_id: profile.mail_account_id ?? null,
     timezone: profile.timezone ?? null,
@@ -4098,5 +4099,139 @@ describe("tax included Shopify orders total what the buyer paid, to the cent", (
     )
     expect(r.status).toBe("ok")
     expect(totals(db)).toMatchObject({ grand: 1199n, tax: 200n })
+  })
+})
+
+describe("French overseas VAT on a paid order (DOM-TOM)", () => {
+  const reunionConsumer = (
+    over: Partial<NonNullable<OrderPaidPayload["customer"]>> = {},
+  ): NonNullable<OrderPaidPayload["customer"]> => ({
+    ...basePayload().customer!,
+    country: "RE",
+    legal_name: "Marie Hoarau",
+    vat_id: null,
+    kind: "individual",
+    address: "5 rue de Paris, 97400 Saint-Denis",
+    billing: {
+      company: null,
+      line1: "5 rue de Paris",
+      line2: null,
+      postcode: "97400",
+      city: "Saint-Denis",
+      country_code: "RE",
+    },
+    ...over,
+  })
+  const digital = (rate?: number): OrderPaidPayload["line_items"] => [
+    {
+      id: "sku-plugin",
+      description: "Plugin licence",
+      quantity: "1",
+      unit_price_minor: 10850n,
+      line_kind: "software",
+      ...(rate === undefined ? {} : { tax_rate_bp: rate }),
+    },
+  ]
+  const inclusiveIssuer = { ...issuerFR, prices_include_tax: true }
+
+  test("a Réunion consumer's digital order charged 0 % on a tax-inclusive price issues at 8.5 %, total unchanged", async () => {
+    for (const customer of [
+      reunionConsumer(),
+      reunionConsumer({
+        country: "FR",
+        billing: { ...reunionConsumer().billing!, country_code: "FR" },
+      }),
+    ]) {
+      const { ctx, db } = makeCtx({
+        issuerProfiles: [{ profile: inclusiveIssuer, shopify_shop_id: "shop-1" }],
+        noDefaultIdentity: true,
+      })
+      const result = await onShopifyOrderPaid(
+        basePayload({
+          id: `order-re-${customer.country}`,
+          total_price_minor: 10850n,
+          customer,
+          line_items: digital(0),
+        }),
+        ctx,
+      )
+      expect(result.status).toBe("ok")
+      const doc = db.__all("documents")[0] as Record<string, unknown>
+      expect(doc.tax_treatment).toBe("eu_domestic")
+      expect(String(doc.subtotal_minor)).toBe("10000")
+      expect(String(doc.tax_total_minor)).toBe("850")
+      expect(String(doc.grand_total_minor)).toBe("10850")
+      const line = db.__all("document_lines")[0] as Record<string, unknown>
+      expect(Number(line.tax_rate_bp)).toBe(850)
+      expect(db.__all("deferred_events")).toHaveLength(0)
+    }
+  })
+
+  test("Monaco: the French 20 % is extracted from the gross", async () => {
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: inclusiveIssuer, shopify_shop_id: "shop-1" }],
+      noDefaultIdentity: true,
+    })
+    const result = await onShopifyOrderPaid(
+      basePayload({
+        id: "order-mc",
+        total_price_minor: 12000n,
+        customer: reunionConsumer({
+          country: "MC",
+          billing: { ...reunionConsumer().billing!, postcode: "98000", country_code: "MC" },
+        }),
+        line_items: [{ ...digital(0)[0]!, unit_price_minor: 12000n }],
+      }),
+      ctx,
+    )
+    expect(result.status).toBe("ok")
+    const doc = db.__all("documents")[0] as Record<string, unknown>
+    expect(String(doc.tax_total_minor)).toBe("2000")
+    expect(String(doc.grand_total_minor)).toBe("12000")
+  })
+
+  test("a tax-exclusive shop charged 0 to a Réunion consumer parks (overseas_tax_not_collected)", async () => {
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+      noDefaultIdentity: true,
+    })
+    const result = await onShopifyOrderPaid(
+      basePayload({ id: "order-re-ex", customer: reunionConsumer(), line_items: digital(0) }),
+      ctx,
+    )
+    expect(result.status).toBe("deferred")
+    expect(db.__all("documents")).toHaveLength(0)
+    const park = db.__all("deferred_events")[0] as Record<string, unknown>
+    expect(park.reason).toBe("overseas_tax_not_collected")
+    expect(String((park.blocked_on as { detail: string }).detail)).toContain("8.5%")
+  })
+
+  test("goods to La Réunion stay an export at 0 %", async () => {
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: inclusiveIssuer, shopify_shop_id: "shop-1" }],
+      noDefaultIdentity: true,
+    })
+    const result = await onShopifyOrderPaid(
+      basePayload({
+        id: "order-re-goods",
+        total_price_minor: 10000n,
+        customer: reunionConsumer(),
+        line_items: [
+          {
+            id: "sku-hw",
+            description: "Controller",
+            quantity: "1",
+            unit_price_minor: 10000n,
+            tax_rate_bp: 0,
+            line_kind: "goods",
+          },
+        ],
+      }),
+      ctx,
+    )
+    expect(result.status).toBe("ok")
+    const doc = db.__all("documents")[0] as Record<string, unknown>
+    expect(doc.tax_treatment).toBe("eu_export_non_eu")
+    expect(String(doc.grand_total_minor)).toBe("10000")
   })
 })

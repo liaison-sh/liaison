@@ -583,3 +583,72 @@ describe("onSaleEvent", () => {
     )
   })
 })
+
+describe("French overseas VAT on a revenue-stream sale (DOM-TOM)", () => {
+  const reunion = (over: Partial<Sale> = {}) =>
+    sale({
+      buyer: {
+        email: "marie@example.re",
+        name: "Marie Hoarau",
+        kind: "individual",
+        billing: { line1: "5 rue de Paris", postcode: "97400", city: "Saint-Denis", country: "RE" },
+        tax_evidence: { billing_country: "RE", ip_country: "RE" },
+      },
+      // Stripe Tax computes nothing for La Réunion: the line carries no tax.
+      lines: [
+        { description: "Sound pack", quantity: "1", unit_price_minor: "10850", kind: "service" },
+      ],
+      totals: { total_minor: "10850", subtotal_minor: "10850", tax_minor: "0" },
+      ...over,
+    })
+
+  test("a Réunion consumer's untaxed digital sale, tax-inclusive prices: 8.5 % extracted, total = what was paid", async () => {
+    const { ctx, db } = makeCtx({
+      streams: [stream()],
+      sales: { "hubshop:pi_1": reunion() },
+      issuer: { prices_include_tax: true },
+    })
+    expect(await onSaleEvent(event("hubshop", "pi_1"), ctx)).toMatchObject({ status: "ok" })
+    const [doc] = await docs(db)
+    expect(doc).toMatchObject({ tax_treatment: "eu_domestic" })
+    expect(String(doc?.subtotal_minor)).toBe("10000")
+    expect(String(doc?.tax_total_minor)).toBe("850")
+    expect(String(doc?.grand_total_minor)).toBe("10850")
+  })
+
+  test("the same sale with tax-exclusive prices parks: the buyer paid no VAT on top", async () => {
+    const { ctx, db } = makeCtx({ streams: [stream()], sales: { "hubshop:pi_1": reunion() } })
+    expect(await onSaleEvent(event("hubshop", "pi_1"), ctx)).toMatchObject({ status: "deferred" })
+    const parks = (await db.findMany("deferred_events", { limit: 5 })) as Array<
+      Record<string, unknown>
+    >
+    expect(parks[0]).toMatchObject({ reason: "overseas_tax_not_collected" })
+    expect(await docs(db)).toEqual([])
+  })
+
+  test("a source that charged another rate to La Réunion parks as a mismatch", async () => {
+    const { ctx, db } = makeCtx({
+      streams: [stream()],
+      sales: {
+        "hubshop:pi_1": reunion({
+          lines: [
+            {
+              description: "Sound pack",
+              quantity: "1",
+              unit_price_minor: "10000",
+              kind: "service",
+              tax: { rate_bp: 2000, amount_minor: "2000", reported_by_source: true },
+            },
+          ],
+          totals: { total_minor: "12000", subtotal_minor: "10000", tax_minor: "2000" },
+        }),
+      },
+      issuer: { prices_include_tax: true },
+    })
+    expect(await onSaleEvent(event("hubshop", "pi_1"), ctx)).toMatchObject({ status: "deferred" })
+    const parks = (await db.findMany("deferred_events", { limit: 5 })) as Array<
+      Record<string, unknown>
+    >
+    expect(parks[0]).toMatchObject({ reason: "overseas_tax_mismatch" })
+  })
+})

@@ -1848,6 +1848,60 @@ function isRecurringMaster(row: EventRow): boolean {
   )
 }
 
+/** The id a series' occurrence rows carry in `recurring_event_id`: the master's Google id, or,
+ * for a series not on Google yet, the id its create will give it (its uuid hex), so an
+ * occurrence edited before the series reaches Google (or on a calendar with no Google account)
+ * is already keyed the way Google will key it and needs no rewrite later. */
+export function seriesKeyOf(master: { id: string; google_event_id: string | null }): string {
+  return master.google_event_id ?? googleIdForLocalEvent(master.id)
+}
+
+/** The local uuid behind a series key that is a local row's uuid hex, else null. */
+export function localIdOfSeriesKey(key: string): string | null {
+  if (!/^[0-9a-f]{32}$/.test(key)) return null
+  return `${key.slice(0, 8)}-${key.slice(8, 12)}-${key.slice(12, 16)}-${key.slice(16, 20)}-${key.slice(20)}`
+}
+
+/** The master row of an occurrence row's series: by Google id, or a local series not on Google
+ * yet by the uuid its key encodes. */
+async function getSeriesMaster(
+  db: RlsClient,
+  orgId: string,
+  calendarId: string,
+  key: string,
+): Promise<EventRow | undefined> {
+  const byGoogle = await getEventByGoogleId(db, orgId, calendarId, key)
+  if (byGoogle) return byGoogle
+  const localId = localIdOfSeriesKey(key)
+  if (!localId) return undefined
+  const row = await getEventById(db, orgId, localId)
+  return row && row.calendar_id === calendarId && !row.google_event_id ? row : undefined
+}
+
+/** The occurrence rows of a series (by its master's id) with a change waiting for Google, with
+ * their row versions; empty when the row is no series or is not on Google yet. */
+export async function pendingOccurrencesOf(
+  db: RlsClient,
+  orgId: string,
+  masterId: string,
+): Promise<Array<{ id: string; version: number }>> {
+  const master = await getEventById(db, orgId, masterId)
+  if (!master?.google_event_id || !isRecurringMaster(master)) return []
+  const { sql } = await import("drizzle-orm")
+  const schema = CALENDAR_SCHEMA()
+  const rows = (await db.execute(sql`
+    SELECT id, liaison_sync_version FROM ${sql.raw(schema)}.events
+    WHERE org_id = ${orgId}::uuid AND calendar_id = ${master.calendar_id}::uuid
+      AND recurring_event_id = ${master.google_event_id} AND pending_push <> 'none'
+  `)) as unknown as
+    | { rows?: Array<{ id: string; liaison_sync_version: number }> }
+    | Array<{ id: string; liaison_sync_version: number }>
+  return (Array.isArray(rows) ? rows : (rows.rows ?? [])).map((r) => ({
+    id: r.id,
+    version: Number(r.liaison_sync_version),
+  }))
+}
+
 /** Google's id for one instance of a recurring event: `<master>_<YYYYMMDDTHHMMSSZ>` for a timed
  * series (the original start in UTC), `<master>_<YYYYMMDD>` for an all-day one. */
 export function googleInstanceId(
@@ -1970,7 +2024,7 @@ export async function resolveUpdateTarget(
 
   if (isException) {
     if (params.scope === "occurrence") return { eventId: row.id, scope: "occurrence" }
-    const master = await getEventByGoogleId(db, orgId, row.calendar_id, row.recurring_event_id!)
+    const master = await getSeriesMaster(db, orgId, row.calendar_id, row.recurring_event_id!)
     if (!master) {
       throw invalidParams(
         `The series of ${title} is not on this calendar here, so it cannot be changed as a whole; change this occurrence with scope: "occurrence".`,
@@ -2004,17 +2058,16 @@ export async function resolveUpdateTarget(
     }
     return { eventId: row.id, scope: "following", splitAt: occurrence }
   }
-  if (!row.google_event_id) {
+  if (!row.google_event_id && tool === "delete_event") {
     // A series not on Google yet has no instance to cancel: the occurrence leaves its rule.
-    if (tool === "delete_event") {
-      await probeOccurrence(row, occurrence, title, params.occurrenceStart)
-      return { eventId: row.id, scope: "occurrence", exdate: occurrence }
-    }
-    throw invalidParams(
-      `${title} has not reached Google yet; its occurrences can be changed once it has (try again in a minute).`,
-    )
+    await probeOccurrence(row, occurrence, title, params.occurrenceStart)
+    return { eventId: row.id, scope: "occurrence", exdate: occurrence }
   }
-  const instanceId = googleInstanceId(row.google_event_id, occurrence, row.all_day)
+  // A series not on Google yet (still being created, or on a calendar with no Google account)
+  // takes the occurrence edit too: it is stored here under the instance id Google will give it,
+  // and its push waits until the series is on Google (handlers.ts pushRow).
+  const seriesKey = seriesKeyOf(row)
+  const instanceId = googleInstanceId(seriesKey, occurrence, row.all_day)
   const { sql } = await import("drizzle-orm")
   const schema = CALENDAR_SCHEMA()
   const existingRows = (await db.execute(sql`
@@ -2069,7 +2122,7 @@ export async function resolveUpdateTarget(
       (gen_random_uuid(), ${orgId}::uuid, ${row.calendar_id}::uuid, ${instanceId}, ${row.title},
        ${row.description}, ${row.location}, ${JSON.stringify(start)}::jsonb,
        ${JSON.stringify(end)}::jsonb, ${row.all_day}, 'confirmed',
-       ${JSON.stringify(row.attendees ?? null)}::jsonb, NULL, ${row.google_event_id},
+       ${JSON.stringify(row.attendees ?? null)}::jsonb, NULL, ${seriesKey},
        ${JSON.stringify(start)}::jsonb, ${row.hangout_link}, ${row.organizer_self ?? null}::boolean,
        ${row.guests_can_modify ?? null}::boolean, 0, 'none', ${row.calaccess})
     RETURNING id
@@ -2124,22 +2177,20 @@ export async function splitSeriesAt(
   const { splitRecurrence } = await import("@liaison/shared")
 
   // The old series' exceptions from the split on.
-  const exceptionRows = master.google_event_id
-    ? ((await db.execute(sql`
+  const exceptionRows = (await db.execute(sql`
         SELECT id, status, deleted_at, original_start_time FROM ${sql.raw(schema)}.events
         WHERE org_id = ${orgId}::uuid AND calendar_id = ${master.calendar_id}::uuid
-          AND recurring_event_id = ${master.google_event_id}
+          AND recurring_event_id = ${seriesKeyOf(master)}
       `)) as unknown as
-        | {
-            rows?: Array<{
-              id: string
-              status: string
-              deleted_at: unknown
-              original_start_time: unknown
-            }>
-          }
-        | Array<{ id: string; status: string; deleted_at: unknown; original_start_time: unknown }>)
-    : []
+    | {
+        rows?: Array<{
+          id: string
+          status: string
+          deleted_at: unknown
+          original_start_time: unknown
+        }>
+      }
+    | Array<{ id: string; status: string; deleted_at: unknown; original_start_time: unknown }>
   const exceptions = (Array.isArray(exceptionRows) ? exceptionRows : (exceptionRows.rows ?? []))
     .map((r) => ({ ...r, original: pointInstant(r.original_start_time) }))
     .filter((r) => r.original !== null && r.original.getTime() >= at.getTime())
@@ -2391,6 +2442,15 @@ export async function deleteLocalEvent(
     (existing.pending_push === "create" ? googleIdForLocalEvent(existing.id) : null)
   const { sql } = await import("drizzle-orm")
   const schema = CALENDAR_SCHEMA()
+  if (isRecurringMaster(existing)) {
+    // The whole series goes: its edited or cancelled occurrences go with it (Google drops its
+    // instances with the master), so none is left showing on its own.
+    await db.execute(sql`
+      DELETE FROM ${sql.raw(schema)}.events
+      WHERE org_id = ${orgId}::uuid AND calendar_id = ${existing.calendar_id}::uuid
+        AND recurring_event_id = ${seriesKeyOf(existing)}
+    `)
+  }
   if (googleEventId === null) {
     await db.execute(sql`
       DELETE FROM ${sql.raw(schema)}.events WHERE org_id = ${orgId}::uuid AND id = ${eventId}::uuid

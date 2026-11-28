@@ -22,11 +22,10 @@ describe("buyerTerritory", () => {
     })
     expect(t("FR", "98000")).toMatchObject({ territory: "needs_review", code: "monaco" })
   })
-  test("DOM with VAT", () => {
-    for (const c of ["GP", "MQ", "RE"])
-      expect(t(c)).toMatchObject({ territory: "needs_review", code: "dom" })
+  test("DOM with VAT are French VAT territory: FR", () => {
+    for (const c of ["GP", "MQ", "RE"]) expect(t(c)).toMatchObject({ territory: "FR", code: "dom" })
     for (const p of ["97100", "97200", "97400"]) {
-      expect(t("FR", p)).toMatchObject({ territory: "needs_review", code: "dom" })
+      expect(t("FR", p)).toMatchObject({ territory: "FR", code: "dom" })
     }
   })
   test("DOM without VAT", () => {
@@ -40,7 +39,7 @@ describe("buyerTerritory", () => {
     for (const c of ["PM", "BL", "MF", "WF", "PF", "NC", "TF"]) {
       expect(t(c)).toMatchObject({ territory: "needs_review", code: "com" })
     }
-    for (const p of ["97500", "97700", "97800", "98600", "98700", "98800"]) {
+    for (const p of ["97133", "97150", "97500", "97700", "97800", "98600", "98700", "98800"]) {
       expect(t("FR", p)).toMatchObject({ territory: "needs_review", code: "com" })
     }
   })

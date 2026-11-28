@@ -181,21 +181,24 @@ describe("classifyRegime, matrix rows", () => {
     expect(r.regime).toBe("needs_review")
     expect(r.reasons.map((x) => x.code)).toContain("monaco")
   })
-  test("25 RE / GF / PF -> needs_review", () => {
-    for (const billingCountry of ["RE", "GF", "PF"]) {
+  test("25 GF / YT / PF -> needs_review; RE / GP / MQ are French VAT territory", () => {
+    for (const billingCountry of ["GF", "YT", "PF"]) {
       expect(c({ billingCountry, billingPostcode: null }).regime).toBe("needs_review")
+    }
+    for (const billingCountry of ["RE", "GP", "MQ"]) {
+      expect(c({ billingCountry, billingPostcode: null }).regime).toBe("e_invoice")
     }
   })
   test("26 needs_review with territory treatment", () => {
-    expect(c({ billingCountry: "RE", territoryTreatment: "as_fr" }).regime).toBe("e_invoice")
+    expect(c({ billingCountry: "GF", territoryTreatment: "as_fr" }).regime).toBe("e_invoice")
     expect(
-      c({ billingCountry: "RE", territoryTreatment: "as_foreign", buyerSiren: null }).regime,
+      c({ billingCountry: "GF", territoryTreatment: "as_foreign", buyerSiren: null }).regime,
     ).toBe("e_reporting")
     expect(c({ vatId: "DE123456789", territoryTreatment: "as_fr" }).regime).toBe("e_invoice")
   })
   test("as_fr then goes through the FR rules (still needs a kind / siren)", () => {
     expect(
-      c({ billingCountry: "RE", territoryTreatment: "as_fr", buyerSiren: null }),
+      c({ billingCountry: "GF", territoryTreatment: "as_fr", buyerSiren: null }),
     ).toMatchObject({
       error: { code: "einvoice_data_missing" },
     })

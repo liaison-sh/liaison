@@ -426,6 +426,25 @@ export interface IssuerProfileInput {
   identity?: { siren: string; line1: string; postcode: string; city: string; countryCode: string }
   /** The mailbox its documents are sent from (Settings, Invoicing). */
   mailAccountId?: string | null
+  /** The identity mentions a French company's invoices print (legal form, share capital, RCS
+   *  city). A French profile without them issues nothing: the defaults keep a seeded one whole. */
+  mentions?: { legalForm: string; shareCapital: string | null; rcsCity: string | null }
+}
+
+/** A seeded French profile's identity mentions: the given ones, else fictional defaults. */
+function issuerMentions(p: IssuerProfileInput): Record<string, string | null> {
+  if (p.mentions)
+    return {
+      legal_form: p.mentions.legalForm,
+      share_capital: p.mentions.shareCapital,
+      rcs_city: p.mentions.rcsCity,
+    }
+  if (p.country.toUpperCase() !== "FR") return {}
+  return {
+    legal_form: /\bSARL\b/.test(p.legalName) ? "SARL" : "SAS",
+    share_capital: "10 000",
+    rcs_city: p.identity?.city ?? "Paris",
+  }
 }
 
 export function issuerProfileId(ctx: SeedContext, key: string): string {
@@ -473,6 +492,7 @@ async function upsertIssuerProfile(
           country_code: p.identity.countryCode,
         }
       : {}),
+    ...issuerMentions(p),
     ...(p.mailAccountId ? { mail_account_id: p.mailAccountId } : {}),
     email_templates: jsonCell({}),
     created_at: iso(shiftTime(ctx.now, -365)),

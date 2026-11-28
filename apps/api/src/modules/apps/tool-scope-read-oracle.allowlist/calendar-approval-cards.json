@@ -3,5 +3,10 @@
     "apps/api/src/apps/calendar/summarizers.ts",
     "return typeof p.scope === \"string\" ? p.scope : null",
     "a recurring calendar write's scope on its approval card: one occurrence, this and the following ones, or the series (not a tool's scopes)"
+  ],
+  [
+    "apps/api/src/apps/calendar/summarizers.ts",
+    "return typeof p.scope === \"string\" ? p.scope : null",
+    "the same line's second read of that calendar edit scope"
   ]
 ]

@@ -3,6 +3,7 @@
 // Test harness: an invoice draft from a planned vs done card, through the real draft, issue and
 // send code, on the mock database, with the PDF renders, mails and approvals it raises recorded.
 
+import { FR_LEGAL_MENTIONS } from "../einvoicing/test-fixtures"
 import { invoiceIssue, type MutationsCtx } from "../mutations"
 import { draftFromReconcile } from "../mutations/from-reconcile"
 import { createMockDb, type MockDb } from "../test-db"
@@ -11,11 +12,11 @@ import { testTime } from "../test-time"
 export type Row = Record<string, unknown>
 
 const ISSUER = {
+  ...FR_LEGAL_MENTIONS,
   id: "iss-1",
   legal_name: "Maison Studio SAS",
   country: "FR",
   vat_id: "FR12345678901",
-  siren: "345678901",
   address: "1 rue Test, 75001 Paris",
   address_line1: "1 rue Test",
   postcode: "75001",

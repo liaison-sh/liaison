@@ -11,7 +11,11 @@
 import { describe, expect, setSystemTime, test } from "bun:test"
 import type { CrossAppEnvelope } from "../cross-app"
 import { bt23 } from "../einvoicing/classify-operation"
-import { FR_SELLER_IDENTITY, seedConfirmedIdentity } from "../einvoicing/test-fixtures"
+import {
+  FR_LEGAL_MENTIONS,
+  FR_SELLER_IDENTITY,
+  seedConfirmedIdentity,
+} from "../einvoicing/test-fixtures"
 import { onShopifyOrderUpdated } from "../handlers"
 import { creditNoteCreateAndIssue, documentsSendToCustomer, type MutationsCtx } from "../mutations"
 import { deferredList } from "../reads"
@@ -65,6 +69,7 @@ function issuerProfileToRow(
   shopifyShopId: string | null,
 ): Record<string, unknown> {
   return {
+    ...FR_LEGAL_MENTIONS,
     id: profile.id,
     legal_name: profile.legal_name,
     country: profile.country,
@@ -3518,6 +3523,29 @@ describe("order-paid e-invoicing gate", () => {
     })
   }
 
+  test("any mode: a French issuer without its legal form, capital or RCS city parks the order with a reason naming them", async () => {
+    const { ctx, db, emits } = gated()
+    await db.update("issuer_profiles", "issuer-1", {
+      legal_form: null,
+      share_capital: null,
+      rcs_city: null,
+    })
+    await setMode(db, "warn")
+    await confirmedBuyer(db)
+    const r = await onShopifyOrderCreated(fireEvent({ buyerTaxId: "FR68900000001" }), ctx)
+    expect(r).toMatchObject({ status: "deferred", reason: "awaiting_dependency" })
+    expect(db.__all("documents")).toHaveLength(0)
+    expect(db.__all("deferred_events")[0]).toMatchObject({
+      reason: "issuer_incomplete",
+      blocked_on: {
+        kind: "issuer_incomplete",
+        missing_fields: ["legal_form", "share_capital", "rcs_city"],
+      },
+    })
+    const text = String((issuerEmits(emits)[0]?.data as { text?: string } | undefined)?.text)
+    expect(text).toContain("legal form, share capital and RCS registration city are missing")
+  })
+
   test("enforce mode: an issuer without SIREN or street line parks the order on the issuer, raises one item for the issuer, and the retry issues it once Settings is completed", async () => {
     const { ctx, db, emits } = gated({ issuer: issuerNoSeller })
     await setMode(db, "enforce")
@@ -3619,7 +3647,9 @@ describe("order-paid e-invoicing gate", () => {
   })
 
   test("warn mode: the same issuer issues the order with a plain PDF, parks nothing and raises nothing", async () => {
-    const { ctx, db, emits } = gated({ issuer: issuerNoSeller })
+    // Warn mode relaxes only the Factur-X seller fields (the street line here); a missing SIREN
+    // still blocks in every mode, so this issuer keeps its SIREN.
+    const { ctx, db, emits } = gated({ issuer: { ...issuerFR, address_line1: null } })
     await setMode(db, "warn")
     await confirmedBuyer(db)
     const r = await onShopifyOrderCreated(fireEvent({ buyerTaxId: "FR68900000001" }), ctx)

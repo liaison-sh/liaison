@@ -20,7 +20,7 @@ import {
   sameFullAddress,
 } from "./buyer-vat"
 import type { CrossAppEnvelope, CrossAppExecuteTool } from "./cross-app"
-import { FICTIONAL_SIRENS, FR_SELLER_IDENTITY } from "./einvoicing/test-fixtures"
+import { FICTIONAL_SIRENS, FR_LEGAL_MENTIONS, FR_SELLER_IDENTITY } from "./einvoicing/test-fixtures"
 import {
   draftsCreatePreflightHandler,
   draftsUpdatePreflightHandler,
@@ -200,6 +200,7 @@ function seedIssuer(
   },
 ): Record<string, unknown> {
   return {
+    ...FR_LEGAL_MENTIONS,
     id: issuer.id,
     legal_name: issuer.legal_name,
     country: issuer.country,
@@ -9411,6 +9412,174 @@ describe("issuer profile changes, full refund bound, send recipient", () => {
     )
   })
 
+  test("the French identity mentions need only invoicing:settings:write", async () => {
+    const { ctx, db } = makeCtx({ scopes: ["invoicing:settings:write"] })
+    const r = await settingsIssuerProfileUpdate(ctx, {
+      id: "iss-1",
+      siren: "902 000 009",
+      siret: "902 000 009 00016",
+      legal_form: " SAS ",
+      share_capital: "10 000",
+      rcs_city: "Paris",
+    })
+    expect(r.status).toBe("completed")
+    expect(db.__all("issuer_profiles").find((x) => x.id === "iss-1")).toMatchObject({
+      siren: "902000009",
+      siret: "90200000900016",
+      legal_form: "SAS",
+      share_capital: "10 000",
+      rcs_city: "Paris",
+    })
+  })
+
+  test("a SIRET must pass its check digit and start with the company's SIREN", async () => {
+    const { ctx } = makeCtx({ scopes: ["invoicing:settings:write"] })
+    const bad = await settingsIssuerProfileUpdate(ctx, { id: "iss-1", siret: "90200000900017" })
+    expect(bad.status === "error" && bad.error.code).toBe("invalid_params")
+    const other = await settingsIssuerProfileUpdate(ctx, {
+      id: "iss-1",
+      siren: FICTIONAL_SIRENS[0],
+      siret: "90200000900016",
+    })
+    expect(other.status === "error" && other.error.message).toContain("does not start with")
+  })
+
+  for (const mode of ["enforce", "warn"] as const) {
+    test(`a French issuer without its legal form or capital issues no invoice (${mode} mode)`, async () => {
+      const { ctx, db } = makeCtx({
+        issuerThresholdMinor: null,
+        seed: { einvoicing_settings: [{ gate_mode: mode, gate_mode_source: "config" }] },
+      })
+      await db.update("issuer_profiles", "iss-1", { legal_form: null, share_capital: "" })
+      const r = await invoiceCreateAndIssue(ctx, {
+        operation_category: "goods",
+        counterparty: defaultCounterparty,
+        issuer_profile_id: "iss-1",
+        currency: "EUR",
+        items: sampleDraftItems,
+      })
+      expect(r.status).toBe("error")
+      if (r.status === "error") {
+        expect(r.error.code).toBe("issuer_incomplete")
+        expect(r.error.message).toContain("legal form and share capital")
+      }
+      expect(issuedDocs(db)).toEqual([])
+    })
+  }
+
+  test("an issuer outside France is not asked for the French mentions", async () => {
+    const { ctx, db } = makeCtx({ issuerThresholdMinor: null })
+    await db.update("issuer_profiles", "iss-1", {
+      country: "DE",
+      country_code: "DE",
+      vat_id: "DE123456789",
+      siren: null,
+      legal_form: null,
+      share_capital: null,
+      rcs_city: null,
+    })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: {
+        ...defaultCounterparty,
+        country: "DE",
+        vat_id: null,
+        customer_kind: "individual",
+      },
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("completed")
+  })
+
+  test("the PDF carries the seller mentions, and a buyer in France gets a French document", async () => {
+    const { ctx, db, extras } = makeCtx({
+      issuerThresholdMinor: null,
+      issuer: { default_language: "en" },
+    })
+    await db.update("issuer_profiles", "iss-1", { siret: "90200000900016" })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("completed")
+    expect(issuedDocs(db)[0]?.language).toBe("fr")
+    const data = extras.renderCalls.at(-1)?.data as {
+      document: { language: string }
+      issuer: Record<string, unknown>
+    }
+    expect(data.document.language).toBe("fr")
+    expect(data.issuer).toMatchObject({
+      siren: FR_LEGAL_MENTIONS.siren,
+      siret: "90200000900016",
+      legal_form: "SAS",
+      share_capital: "10 000",
+      rcs_city: "Paris",
+    })
+  })
+
+  test("a buyer outside France gets the issuer's default language", async () => {
+    const { ctx, db } = makeCtx({ issuerThresholdMinor: null, issuer: { default_language: "en" } })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: {
+        ...defaultCounterparty,
+        country: "US",
+        vat_id: null,
+        customer_kind: "individual",
+      },
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("completed")
+    expect(issuedDocs(db)[0]?.language).toBe("en")
+  })
+
+  test("a USD invoice with VAT prints its VAT in EUR at the cached ECB rate, and waits without one", async () => {
+    const { ctx, db, extras } = makeCtx({
+      issuerThresholdMinor: null,
+      seed: {
+        fx_rates: [usdRateToday()],
+        einvoicing_settings: [{ gate_mode: "warn", gate_mode_source: "config" }],
+      },
+    })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "USD",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("completed")
+    const rendered = extras.renderCalls.at(-1)?.data as
+      | { document: { fx?: Record<string, string> } }
+      | undefined
+    const fx = rendered?.document.fx
+    expect(fx?.rate).toBe(usdRateToday().rate)
+    expect(fx?.rate_date).toBe(usdRateToday().rate_date)
+    expect(BigInt(fx?.tax_total_eur_minor ?? "0")).toBeGreaterThan(0n)
+    // No rate cached and the ECB unreachable: nothing issues, whatever the regime.
+    const { ctx: noRate, db: db2 } = makeCtx({
+      issuerThresholdMinor: null,
+      seed: { einvoicing_settings: [{ gate_mode: "warn", gate_mode_source: "config" }] },
+    })
+    const refused = await invoiceCreateAndIssue(noRate, {
+      operation_category: "goods",
+      counterparty: { ...defaultCounterparty, customer_kind: "individual" },
+      issuer_profile_id: "iss-1",
+      currency: "USD",
+      items: sampleDraftItems,
+    })
+    expect(refused.status === "error" && refused.error.code).toBe("fx_rate_unavailable")
+    expect(issuedDocs(db2)).toEqual([])
+    expect(db.__all("documents").length).toBeGreaterThan(0)
+  })
+
   test("a member edits the other fields, resending the unchanged bank details the form carries", async () => {
     const { ctx, db } = makeCtx({ scopes: ["invoicing:settings:write"] })
     const row = db.__all("issuer_profiles").find((r) => r.id === "iss-1")!
@@ -11438,7 +11607,10 @@ describe("an e-invoice whose issuer profile cannot sign its legal original", () 
   })
 
   test("a buyer outside e-invoicing still issues with the same issuer profile", async () => {
-    const { ctx } = makeCtx({ issuer: noSeller, issuerThresholdMinor: null })
+    const { ctx } = makeCtx({
+      issuer: { ...noSeller, siren: FR_LEGAL_MENTIONS.siren },
+      issuerThresholdMinor: null,
+    })
     const r = await invoiceCreateAndIssue(ctx, {
       operation_category: "goods",
       counterparty: {

@@ -4,7 +4,9 @@
 // A sale is the unit a buyer reads its documents by (the buyer invoices API matches a request to
 // sales, never to a document directly): its invoices carry `documents.sale_id`, and its credit
 // notes are found through the invoice they correct. A sale paid but not invoiced yet (a review, a
-// catch-up, an approval) is a `pending` row with no document.
+// catch-up, an approval) is a `pending` row with no document. A sale a person decided not to
+// invoice (a catch-up's `exclude`) is an `excluded` row with the reason: no run and no event
+// invoices it until a person includes it again.
 //
 // The identity is written once, from the source, at the moment of the sale: an email (trimmed,
 // lower case, nothing else folded) and the strong ids the source holds (a Shopify customer id for
@@ -13,7 +15,7 @@
 
 import type { IssueDb } from "./issue"
 
-export type SaleState = "pending" | "issued" | "void"
+export type SaleState = "pending" | "issued" | "void" | "excluded"
 
 export interface SaleRecord {
   issuer_profile_id: string
@@ -113,4 +115,57 @@ export async function attachDocumentsToSale(
 ): Promise<void> {
   for (const id of documentIds) await db.update("documents", id, { sale_id: saleId })
   await db.update("sales", saleId, { state: "issued" })
+}
+
+type LedgerKey = { issuer_profile_id: string; stream: string; external_id: string }
+
+/** The exclusion a person recorded on a sale, else null. */
+export async function saleExclusion(
+  db: Pick<IssueDb, "findMany">,
+  key: LedgerKey,
+): Promise<{ sale_id: string; reason: string | null } | null> {
+  const rows = (await db.findMany("sales", { where: key, limit: 1 })) as Array<
+    Record<string, unknown>
+  >
+  const row = rows[0]
+  if (!row || row.state !== "excluded") return null
+  return {
+    sale_id: String(row.id),
+    reason: typeof row.excluded_reason === "string" ? row.excluded_reason : null,
+  }
+}
+
+/** Mark a recorded sale excluded, with who decided it and why. An issued sale is never excluded. */
+export async function excludeRecordedSale(
+  db: Pick<IssueDb, "findMany" | "update">,
+  saleId: string,
+  input: { reason: string; by: string | null; at: string },
+): Promise<boolean> {
+  const rows = (await db.findMany("sales", { where: { id: saleId }, limit: 1 })) as Array<
+    Record<string, unknown>
+  >
+  if (!rows[0] || rows[0].state === "issued") return false
+  await db.update("sales", saleId, {
+    state: "excluded",
+    excluded_reason: input.reason,
+    excluded_by: input.by,
+    excluded_at: input.at,
+  })
+  return true
+}
+
+/** Lift a sale's exclusion: it is pending again, and the next run or retry invoices it. */
+export async function reincludeSale(
+  db: Pick<IssueDb, "findMany" | "update">,
+  key: LedgerKey,
+): Promise<boolean> {
+  const excluded = await saleExclusion(db, key)
+  if (!excluded) return false
+  await db.update("sales", excluded.sale_id, {
+    state: "pending",
+    excluded_reason: null,
+    excluded_by: null,
+    excluded_at: null,
+  })
+  return true
 }

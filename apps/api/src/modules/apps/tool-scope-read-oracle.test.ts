@@ -1284,6 +1284,11 @@ const SCOPE_READ_ALLOWLIST_LITERAL: ReadonlyArray<
   ],
   [
     "bundled-apps/invoicing/src/handlers/shopify-order-paid.ts",
+    "parent: ctx.preview.parent?.(split.scope) ?? null,",
+    REASONS.DOC,
+  ],
+  [
+    "bundled-apps/invoicing/src/handlers/shopify-order-paid.ts",
     "const existingScopes = new Set(existingDocs.map((d) => d.scope))",
     REASONS.DOC,
   ],

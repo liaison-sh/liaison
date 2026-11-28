@@ -1528,6 +1528,15 @@ export function summarizeRevenueStreamBind(
   })
 }
 
+/** One card line per sale the person excludes from the catch-up, with the reason. */
+function excludedLines(exclude: unknown): string[] {
+  if (!Array.isArray(exclude)) return []
+  return exclude.map((e) => {
+    const r = (e ?? {}) as { externalId?: unknown; reason?: unknown }
+    return `Not invoiced, recorded as excluded: ${String(r.externalId ?? "")} (${String(r.reason ?? "")})`
+  })
+}
+
 export function summarizeRevenueStreamCatchUp(
   params: Record<string, unknown>,
 ): Promise<ApprovalSummaryShape> {
@@ -1539,7 +1548,11 @@ export function summarizeRevenueStreamCatchUp(
     subtitle: "Legal invoices, numbered in sale-date order; they cannot be deleted, only credited",
     lines: [
       "Each sale without an invoice gets one, issued today, oldest sale first; then a credit note for each of its refunds.",
-      "The run stops at the first sale it cannot issue; later sales stay unissued so the numbers keep their order.",
+      "A sale held by its own data (buyer, VAT number, tax) waits and the run goes on; a shared cause (issuer profile, settings, exchange rate) stops the run and leaves the later sales unissued.",
+      ...excludedLines(params.exclude),
+      ...(Array.isArray(params.reinclude) && params.reinclude.length > 0
+        ? [`Invoiced again after an exclusion: ${params.reinclude.map(String).join(", ")}`]
+        : []),
       "Check the list of sales_catch_up_preview (and your accountant) before approving.",
     ],
   })

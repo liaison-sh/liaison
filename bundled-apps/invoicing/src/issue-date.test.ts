@@ -345,7 +345,7 @@ describe("guard: one door for the issue date", () => {
         ? [path.slice(SRC.length + 1)]
         : []
     })
-    expect(readers).toEqual(["mutations/fx-issue.ts"])
+    expect(readers).toEqual([])
   })
 })
 

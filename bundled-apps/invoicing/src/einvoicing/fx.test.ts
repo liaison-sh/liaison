@@ -4,7 +4,7 @@
 // answers (no live network). Rates are foreign units per 1 EUR; EUR = amount / rate, half-up.
 import { describe, expect, test } from "bun:test"
 import { createMockDb } from "../test-db"
-import { cachedRate, eurMinor, fetchEcbRate, parseEcbCsv, warmFxRate } from "./fx"
+import { cachedRate, eurMinor, fetchEcbRate, fxRateDate, parseEcbCsv, warmFxRate } from "./fx"
 import { ECB_EMPTY_200, ECB_USD_CSV } from "./fx.fixtures"
 
 const NOW = new Date("2026-10-02T09:00:00Z")
@@ -203,5 +203,22 @@ describe("warmFxRate", () => {
     const { fetch, calls } = okFetch()
     await warmFxRate({ db, fetch }, "EUR", "2026-10-03", NOW)
     expect(calls).toHaveLength(0)
+  })
+})
+
+describe("fxRateDate: the day the tax became chargeable", () => {
+  test("a stated earlier sale date wins over the issue date", () => {
+    expect(
+      fxRateDate({ issued_at: "2026-11-28T09:00:00.000Z", source: { supply_date: "2026-11-25" } }),
+    ).toBe("2026-11-25")
+  })
+  test("no sale date, or one not before the issue date: the issue date", () => {
+    expect(fxRateDate({ issued_at: "2026-11-28T09:00:00.000Z" })).toBe("2026-11-28")
+    expect(
+      fxRateDate({ issued_at: "2026-11-28T09:00:00.000Z", source: { supply_date: "2026-11-29" } }),
+    ).toBe("2026-11-28")
+    expect(
+      fxRateDate({ issued_at: "2026-11-28T09:00:00.000Z", source: { supply_date: "bad" } }),
+    ).toBe("2026-11-28")
   })
 })

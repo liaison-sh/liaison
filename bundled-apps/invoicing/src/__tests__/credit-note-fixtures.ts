@@ -5,11 +5,13 @@
 // shopify-refund-credit-note.test.ts): they run the ACTUAL
 // creditNoteCreateAndIssue pipeline against the in-memory mock db.
 
+import { FR_LEGAL_MENTIONS } from "../einvoicing/test-fixtures"
 import type { MutationsCtx } from "../mutations"
 import type { MockDb } from "../test-db"
 import { testTime } from "../test-time"
 
 export const ISSUER_ROW = {
+  ...FR_LEGAL_MENTIONS,
   id: "iss-1",
   legal_name: "Acme SAS",
   country: "FR",
@@ -29,6 +31,14 @@ export const ISSUER_ROW = {
   require_two_eyes: false,
   mail_account_id: null,
 }
+
+/** A cached ECB rate for today: a euro-area issuer prints the VAT of a USD document in EUR. */
+export const usdRateToday = () => ({
+  currency: "USD",
+  rate_date: new Date().toISOString().slice(0, 10),
+  rate: "1.1225",
+  fetched_at: new Date(),
+})
 
 /** An issued, unpaid USD export invoice for Shopify order ORD-1; `over` replaces any field. */
 export function invoiceRow(over: Record<string, unknown>): Record<string, unknown> {

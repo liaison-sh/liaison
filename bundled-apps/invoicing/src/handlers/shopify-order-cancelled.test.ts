@@ -10,6 +10,7 @@ import {
   invoiceRow,
   issuePipelineCtx,
   lineRow,
+  usdRateToday,
 } from "../__tests__/credit-note-fixtures"
 import { createMockDb, type MockDb } from "../test-db"
 import { type OrderCancelledCtx, onShopifyOrderCancelled } from "./shopify-order-cancelled"
@@ -31,6 +32,7 @@ describe("onShopifyOrderCancelled auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({
             id: "00000000-0000-4000-8000-000000000901",
@@ -86,6 +88,7 @@ describe("onShopifyOrderCancelled auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({
             id: "00000000-0000-4000-8000-000000000902",
@@ -113,6 +116,7 @@ describe("onShopifyOrderCancelled auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           // The invoice's OWN lifecycle_log carries NO "credit_note_issued" marker
           // (e.g. lost/crashed between issuing the credit note and writing the
@@ -170,6 +174,7 @@ describe("onShopifyOrderCancelled auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({
             id: "00000000-0000-4000-8000-000000000906",
@@ -197,6 +202,7 @@ describe("onShopifyOrderCancelled auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           // A prior Shopify partial refund of 30 EUR already auto-issued a 30 EUR adjustment
           // credit note (the partial branch of shopify-refund-created.ts). The invoice `status`
@@ -269,6 +275,7 @@ describe("onShopifyOrderCancelled auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({
             id: INVOICE_ID,
@@ -327,6 +334,7 @@ describe("onShopifyOrderCancelled auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({
             id: "00000000-0000-4000-8000-000000000903",
@@ -385,6 +393,7 @@ describe("onShopifyOrderCancelled auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({
             id: INVOICE_ID,
@@ -440,6 +449,7 @@ describe("onShopifyOrderCancelled auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({
             id: INVOICE_ID,
@@ -514,6 +524,7 @@ describe("onShopifyOrderCancelled auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({
             id: INVOICE_ID,
@@ -567,6 +578,7 @@ describe("onShopifyOrderCancelled auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
+        fx_rates: [usdRateToday()],
         documents: [
           invoiceRow({
             id: INVOICE_ID,

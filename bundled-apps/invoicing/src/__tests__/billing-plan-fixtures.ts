@@ -4,6 +4,7 @@
 // 12,800.00, three milestones and a final of 16,000.00 each, and projects' milestone read stubbed
 // with what it returns (done state only).
 
+import { FR_LEGAL_MENTIONS } from "../einvoicing/test-fixtures"
 import { invoiceIssue, type MutationsCtx } from "../mutations"
 import { advanceDraftCreate } from "../mutations/advances"
 import { billingPlanGet, billingPlanSet } from "../mutations/billing-plan"
@@ -13,6 +14,7 @@ import { testTime } from "../test-time"
 type Row = Record<string, unknown>
 
 export const ISSUER = {
+  ...FR_LEGAL_MENTIONS,
   id: "iss-1",
   legal_name: "Maison Studio SAS",
   country: "FR",

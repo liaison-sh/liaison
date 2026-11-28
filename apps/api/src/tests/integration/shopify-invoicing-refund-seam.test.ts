@@ -84,9 +84,9 @@ async function insertIssuerProfile(): Promise<string> {
   const id = randomUUID()
   await sql`INSERT INTO app_invoicing.issuer_profiles
     (id, org_id, legal_name, country, vat_id, default_currency,
-     siren, address_line1, postcode, city, country_code)
+     siren, address_line1, postcode, city, country_code, legal_form, share_capital, rcs_city)
     VALUES (${id}, ${ORG}, 'Seam Issuer SAS', 'FR', 'FR68900000001', 'EUR',
-     '900000001', '1 rue de Test', '75001', 'Paris', 'FR')`
+     '900000001', '1 rue de Test', '75001', 'Paris', 'FR', 'SAS', '10 000', 'Paris')`
   return id
 }
 

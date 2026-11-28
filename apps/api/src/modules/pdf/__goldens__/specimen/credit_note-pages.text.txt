@@ -1,680 +1,680 @@
 Exemple Conseil et Réalisation de Projets Numériques SAS
-CREDIT NOTE
+AVOIR
 DOC-2026-0060
-Issued:
+Date d'émission :
  
-2026-05-15
-Due:
+15/05/2026
+Échéance :
  
-2026-06-14
-Incoterm:
+14/06/2026
+Incoterm :
  
 DAP
-Credit note for invoice DOC-2026-0001 of 2026-05-01
-Reason: Refund
-FROM
+Avoir sur la facture DOC-2026-0001 du 01/05/2026
+Motif : Refund
+ÉMETTEUR
 Exemple Conseil et Réalisation de Projets Numériques SAS
 1 Example Street, Example Town
 FR
-VAT: FR12345678901
+TVA : FR12345678901
 SIREN 123 456 789
 SAS au capital de 10 000 €
-BILL TO
+CLIENT
 Example Client SARL
 2 Client Avenue, 69001 Lyon
 FR
-VAT: FR98765432109
+TVA : FR98765432109
 #
  
-Description
+Désignation
  
-Qty
+Qté
  
-Unit price
+Prix unitaire
  
-Tax %
+TVA %
  
-Amount excl. VAT
+Montant HT
 1
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 1 of the agreed scope
 2
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 2 of the agreed scope
 3
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 3 of the agreed scope
 4
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 4 of the agreed scope
 5
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 5 of the agreed scope
 6
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 6 of the agreed scope
 7
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 7 of the agreed scope
 8
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 8 of the agreed scope
 9
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 9 of the agreed scope
 10
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 10 of the agreed scope
 11
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 11 of the agreed scope
 12
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 12 of the agreed scope
 13
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 13 of the agreed scope
 14
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 14 of the agreed scope
 15
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 15 of the agreed scope
 16
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 16 of the agreed scope
-Exemple Conseil et Réalisation de Projets Numériques SAS · SAS au capital de 10 000 € · RCS Paris 123 456 789 · VAT
+Exemple Conseil et Réalisation de Projets Numériques SAS · SAS au capital de 10 000 € · RCS Paris 123 456 789 · TVA
 FR12345678901
  
-Page 1 of 3
+Page 1 sur 3
 #
  
-Description
+Désignation
  
-Qty
+Qté
  
-Unit price
+Prix unitaire
  
-Tax %
+TVA %
  
-Amount excl. VAT
+Montant HT
 17
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 17 of the agreed scope
 18
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 18 of the agreed scope
 19
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 19 of the agreed scope
 20
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 20 of the agreed scope
 21
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 21 of the agreed scope
 22
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 22 of the agreed scope
 23
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 23 of the agreed scope
 24
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 24 of the agreed scope
 25
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 25 of the agreed scope
 26
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 26 of the agreed scope
 27
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 27 of the agreed scope
 28
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 28 of the agreed scope
 29
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 29 of the agreed scope
 30
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 30 of the agreed scope
 31
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 31 of the agreed scope
 32
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 32 of the agreed scope
 33
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 33 of the agreed scope
 34
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 34 of the agreed scope
 35
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 35 of the agreed scope
 36
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 36 of the agreed scope
 37
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 37 of the agreed scope
 38
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 38 of the agreed scope
 39
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 39 of the agreed scope
-Exemple Conseil et Réalisation de Projets Numériques SAS · SAS au capital de 10 000 € · RCS Paris 123 456 789 · VAT
+Exemple Conseil et Réalisation de Projets Numériques SAS · SAS au capital de 10 000 € · RCS Paris 123 456 789 · TVA
 FR12345678901
  
-Page 2 of 3
+Page 2 sur 3
 #
  
-Description
+Désignation
  
-Qty
+Qté
  
-Unit price
+Prix unitaire
  
-Tax %
+TVA %
  
-Amount excl. VAT
+Montant HT
 40
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 40 of the agreed scope
 41
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 41 of the agreed scope
 42
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 42 of the agreed scope
 43
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 43 of the agreed scope
 44
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 44 of the agreed scope
 45
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 45 of the agreed scope
 46
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 46 of the agreed scope
 47
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 47 of the agreed scope
 48
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 48 of the agreed scope
 49
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 49 of the agreed scope
 50
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 50 of the agreed scope
 51
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 51 of the agreed scope
 52
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 52 of the agreed scope
 53
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 53 of the agreed scope
 54
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 54 of the agreed scope
 55
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 55 of the agreed scope
 56
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 56 of the agreed scope
 57
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 57 of the agreed scope
 58
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 58 of the agreed scope
 59
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 59 of the agreed scope
 60
  
 1
  
-100.00
+100,00
  
-20.00%
+20,00 %
  
-100.00
+100,00
 Design and build work, part 60 of the agreed scope
-Subtotal
+Total HT
  
-6000.00 EUR
-Tax (20.00%)
+6 000,00 €
+TVA (20,00 %)
  
-1200.00 EUR
-Total due
+1 200,00 €
+Net à payer
  
-7200.00 EUR
-Exemple Conseil et Réalisation de Projets Numériques SAS · SAS au capital de 10 000 € · RCS Paris 123 456 789 · VAT
+7 200,00 €
+Exemple Conseil et Réalisation de Projets Numériques SAS · SAS au capital de 10 000 € · RCS Paris 123 456 789 · TVA
 FR12345678901
  
-Page 3 of 3
+Page 3 sur 3

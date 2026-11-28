@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.44.3",
+  "version": "0.45.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -384,6 +384,18 @@
         "tableName": "documents",
         "schemaRef": "app_invoicing",
         "joinOn": "pdf_file_id",
+        "readScope": "invoicing:documents:read",
+        "writeScope": "invoicing:documents:write"
+      }
+    },
+    "sale_preview": {
+      "labelField": "external_id",
+      "searchable": false,
+      "tableName": "sale_previews",
+      "fileParent": {
+        "tableName": "sale_previews",
+        "schemaRef": "app_invoicing",
+        "joinOn": "id",
         "readScope": "invoicing:documents:read",
         "writeScope": "invoicing:documents:write"
       }
@@ -1123,6 +1135,7 @@
           "service_period_end": "day?",
           "latest_issue_on": "day?",
           "supply_date": "day?",
+          "language": { "type": "string", "enum": ["en", "fr", "de"], "required": false },
           "sale_id": "uuid?"
       },
       "constraints": {
@@ -1613,10 +1626,25 @@
         "hub_user_id": "text?",
         "total_minor": "bigint?",
         "currency": "text?",
-        "state": { "type": "string", "enum": ["pending", "issued", "void"], "default": "pending" }
+        "state": { "type": "string", "enum": ["pending", "issued", "void", "excluded"], "default": "pending" },
+        "excluded_reason": "text?",
+        "excluded_by": "text?",
+        "excluded_at": "date?"
       },
       "constraints": { "unique": [["issuer_profile_id", "stream", "external_id"]] },
       "indexes": [["buyer_email"], ["shopify_customer_id"], ["hub_user_id"]]
+    },
+    "sale_previews": {
+      "rlsScope": "settings",
+      "internalWriteScope": "invoicing:documents:write",
+      "fields": {
+        "stream_id": "text",
+        "external_id": "text",
+        "scope": "text",
+        "pdf_file_id": "uuid?",
+        "rendered_at": "date"
+      },
+      "indexes": [["stream_id", "external_id"], ["rendered_at"]]
     },
     "stripe_sales": {
       "rlsScope": "internal",
@@ -2037,7 +2065,7 @@
       "params": { "type": "object", "properties": {}, "additionalProperties": false }
     },
     "sales_catch_up_preview": {
-      "description": "Read only: every sale a bound revenue stream's app took between paidFrom and paidTo, oldest first, as the catch-up would invoice it: buyer, country, tax treatment, lines, tax as computed against the tax the source charged, totals, refunds, blockers (address, VAT number to validate, a rate that is not the treatment's, tax gap), the ECB rate a foreign currency would use and the document it already has. Nothing is written. Hand the list to a person before sales_catch_up.",
+      "description": "Read only: every sale a bound revenue stream's app took between paidFrom and paidTo, oldest first, as the catch-up would invoice it: buyer, country, tax treatment, lines, computed vs charged tax, totals, refunds, blockers (every reason the issue path would park or refuse it) with run_effect (issues, held, stops_run, excluded), the ECB rate of the sale date, and any document it has. Nothing is written. Hand the list to a person before sales_catch_up.",
       "searchKeywords": ["rattrapage", "catch-up", "backfill", "antérieures"],
       "deferLoading": true,
       "requiredScopes": ["invoicing:documents:read", "invoicing:settings:read"],
@@ -2056,7 +2084,7 @@
       }
     },
     "sales_preview_pdfs": {
-      "description": "Render the sales of a bound revenue stream that have no invoice yet as the documents they would become: each runs through the issue path with nothing written, and is rendered unnumbered with a PREVIEW, not an invoice watermark (same lines, rates, VAT mentions and totals as the issue). The PDFs are internal files, never sent or shown to a buyer; a sale that would park says why. Up to 8 per call: pass externalIds (from sales_catch_up_preview) for the rest.",
+      "description": "Render the sales of a bound revenue stream that have no invoice yet as the documents they would become: each runs through the issue path with nothing written, and is rendered unnumbered with a PREVIEW, not an invoice watermark (same lines, rates, VAT mentions and totals as the issue). Internal files, never sent to a buyer, readable with documents read and settings read; a sale's new preview replaces its old one, kept 7 days. A sale that would park says why. Up to 8 per call: pass externalIds (from sales_catch_up_preview) for the rest.",
       "searchKeywords": ["aperçu", "preview", "pdf", "rattrapage", "catch-up"],
       "deferLoading": true,
       "requiredScopes": ["invoicing:documents:write", "invoicing:settings:read"],
@@ -2077,7 +2105,7 @@
     },
     "sales_catch_up": {
       "summarizer": "summarizeRevenueStreamCatchUp",
-      "description": "Invoice the sales a bound revenue stream's app took between paidFrom and paidTo that have no invoice yet: oldest first, one number each, issued today, then a credit note for each refund. Stops at the first sale that cannot be issued and leaves the later ones unissued, so the numbers keep sale-date order. Legal invoices cannot be undone: run sales_catch_up_preview first. A person approves; never automatic.",
+      "description": "Invoice a bound revenue stream's sales paid between paidFrom and paidTo with no invoice yet: oldest first, one number each, issued today, then a credit note per refund. A sale held by its own data waits and the run goes on; a shared cause (issuer profile, settings, rate, approval) stops it, leaving later sales unissued. exclude: sales a person decided not to invoice, each with a reason, recorded and skipped until reinclude names them. Run sales_catch_up_preview first. A person approves; never automatic.",
       "searchKeywords": ["rattrapage", "catch-up", "backfill", "antérieures"],
       "deferLoading": true,
       "requiredScopes": ["invoicing:documents:write"],
@@ -2092,7 +2120,24 @@
         "properties": {
           "streamId": { "type": "string" },
           "paidFrom": { "type": "string" },
-          "paidTo": { "type": "string" }
+          "paidTo": { "type": "string" },
+          "exclude": {
+            "type": "array",
+            "maxItems": 100,
+            "description": "Sales not to invoice, by the externalId sales_catch_up_preview lists, each with the person's reason (at least 5 characters).",
+            "items": {
+              "type": "object",
+              "properties": { "externalId": { "type": "string" }, "reason": { "type": "string" } },
+              "required": ["externalId", "reason"],
+              "additionalProperties": false
+            }
+          },
+          "reinclude": {
+            "type": "array",
+            "maxItems": 100,
+            "items": { "type": "string" },
+            "description": "Sales excluded by an earlier run to invoice again, by externalId."
+          }
         },
         "required": ["streamId", "paidFrom", "paidTo"],
         "additionalProperties": false
@@ -6192,7 +6237,11 @@
           "timezone": { "type": "string", "description": "IANA time zone of this issuer's issue dates and number years, e.g. Europe/Paris. An unknown name is refused (issuer_timezone_invalid). UTC chosen on purpose is stored as Etc/UTC. Left unset, dates follow the organization's time zone, then UTC." },
           "email_templates": { "type": ["object", "null"], "additionalProperties": true },
           "shopify_shop_id": { "type": ["string", "null"] },
-          "siren": { "type": ["string", "null"], "description": "The company's 9-digit SIREN. A French e-invoice cannot be issued without it." },
+          "siren": { "type": ["string", "null"], "description": "9-digit SIREN, printed on every document. Required to issue in France." },
+          "siret": { "type": ["string", "null"], "description": "14-digit SIRET, optional." },
+          "legal_form": { "type": ["string", "null"], "description": "SAS, SARL, EI... Required in France." },
+          "share_capital": { "type": ["string", "null"], "description": "e.g. 10 000. Required in France except EI." },
+          "rcs_city": { "type": ["string", "null"], "description": "RCS city. Required in France except EI." },
           "address_line1": { "type": ["string", "null"], "description": "Street address of the company, as a French e-invoice states it." },
           "address_line2": { "type": ["string", "null"] },
           "postcode": { "type": ["string", "null"] },
@@ -6253,7 +6302,11 @@
           "timezone": { "type": "string", "description": "IANA time zone of this issuer's issue dates and number years, e.g. Europe/Paris. An unknown name is refused (issuer_timezone_invalid). UTC chosen on purpose is stored as Etc/UTC. Left unset, dates follow the organization's time zone, then UTC." },
           "email_templates": { "type": ["object", "null"], "additionalProperties": true },
           "shopify_shop_id": { "type": ["string", "null"] },
-          "siren": { "type": ["string", "null"], "description": "The company's 9-digit SIREN. A French e-invoice cannot be issued without it." },
+          "siren": { "type": ["string", "null"], "description": "9-digit SIREN, printed on every document. Required to issue in France." },
+          "siret": { "type": ["string", "null"], "description": "14-digit SIRET, optional." },
+          "legal_form": { "type": ["string", "null"], "description": "SAS, SARL, EI... Required in France." },
+          "share_capital": { "type": ["string", "null"], "description": "e.g. 10 000. Required in France except EI." },
+          "rcs_city": { "type": ["string", "null"], "description": "RCS city. Required in France except EI." },
           "address_line1": { "type": ["string", "null"], "description": "Street address of the company, as a French e-invoice states it." },
           "address_line2": { "type": ["string", "null"] },
           "postcode": { "type": ["string", "null"] },
@@ -7240,6 +7293,8 @@
       "stripe_invoice:many_need_person",
       "stripe_invoice:issued_late_period",
       "stripe_sale:decided",
+      "sale:excluded",
+      "sale:reincluded",
       "stripe_invoice:payment_failed",
       "stripe_invoice:voided",
       "stripe_invoice:uncollectible",

@@ -90,9 +90,9 @@ async function seedParent(): Promise<void> {
     await withSystemDb("cross-app-attach-parent", async (tx) =>
       tx.execute(drizzleSql`
         INSERT INTO app_invoicing.issuer_profiles
-          (id, org_id, legal_name, country, vat_id, address, default_currency, default_language)
+          (id, org_id, legal_name, country, vat_id, address, default_currency, default_language, legal_form, share_capital, rcs_city)
         VALUES (gen_random_uuid(), ${orgId}, 'Fictive Issuer SAS', 'FR', 'FR60902000009',
-          '2 rue Test, 75001 Paris', 'EUR', 'fr')
+          '2 rue Test, 75001 Paris', 'EUR', 'fr', 'SAS', '10 000', 'Paris')
         RETURNING id::text AS id`),
     ),
   )[0]!.id

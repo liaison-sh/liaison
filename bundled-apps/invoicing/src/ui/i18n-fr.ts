@@ -18,8 +18,8 @@ export const FR: Record<string, string> = {
     "Son PDF n'a pas été produit à l'émission : il est produit à nouveau",
   "Waiting for the day's exchange rate": "En attente du taux de change du jour",
   "Waiting for the customs data": "En attente des données douanières",
-  "Waiting for your company's SIREN and address in Settings":
-    "En attente du SIREN et de l'adresse de votre société dans les Réglages",
+  "Waiting for your company's legal details (SIREN, legal form, capital, RCS, address) in Settings":
+    "En attente des mentions légales de votre société (SIREN, forme juridique, capital, RCS, adresse) dans les Réglages",
   Ready: "Prêt",
   "Ready (archival metadata absent)": "Prêt (métadonnées d'archivage absentes)",
   "Render failed": "Échec de la génération",
@@ -428,6 +428,13 @@ export const FR: Record<string, string> = {
   "(ceased)": "(cessée)",
   SIREN: "SIREN",
   "9 digits": "9 chiffres",
+  SIRET: "SIRET",
+  "Legal form": "Forme juridique",
+  "SAS, SARL, EI...": "SAS, SARL, EI...",
+  "Share capital": "Capital social",
+  "10 000": "10 000",
+  "RCS city": "Ville du RCS",
+  Paris: "Paris",
   "SIRET (optional)": "SIRET (facultatif)",
   "14 digits": "14 chiffres",
   "A SIREN the registry does not confirm under this customer's name goes to a person first.":

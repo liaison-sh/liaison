@@ -190,11 +190,11 @@ describe("Factur-X legal original at issue (real Postgres, sandbox, kernel rende
     issuerId = randomUUID()
     await sql`INSERT INTO app_invoicing.issuer_profiles
       (id, org_id, legal_name, country, vat_id, address, default_currency, default_language, iban, swift_bic,
-       siren, routing_address, address_line1, postcode, city, country_code)
+       siren, routing_address, address_line1, postcode, city, country_code, legal_form, share_capital, rcs_city)
       VALUES (${issuerId}, ${ORG}, 'Maison Exemple SAS', 'FR', 'FR40902000009', '1 rue de Test, 75011 Paris',
        'EUR', 'fr', 'FR7630006000011234567890189', 'AGRIFRPP',
-       '902000009', '902000009', '1 rue de Test', '75011', 'Paris', 'FR')
-      ON CONFLICT (org_id, legal_name) DO UPDATE SET siren = EXCLUDED.siren`
+       '902000009', '902000009', '1 rue de Test', '75011', 'Paris', 'FR', 'SAS', '10 000', 'Paris')
+      ON CONFLICT (org_id, legal_name) DO UPDATE SET siren = EXCLUDED.siren, legal_form = EXCLUDED.legal_form, share_capital = EXCLUDED.share_capital, rcs_city = EXCLUDED.rcs_city`
     // Re-runnable: the org's rows persist (legal originals are retained by design).
     const [iss] = await sql<
       Array<{ id: string }>

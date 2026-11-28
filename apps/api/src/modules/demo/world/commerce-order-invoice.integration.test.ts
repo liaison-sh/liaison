@@ -175,9 +175,9 @@ describe("the commerce scenario's live order (walk D37)", () => {
     // approval threshold of EUR 5,000, and mapped to the demo store.
     await sql`INSERT INTO app_invoicing.issuer_profiles
       (id, org_id, legal_name, country, vat_id, default_currency, shopify_shop_id,
-       invoice_approval_threshold_minor)
+       invoice_approval_threshold_minor, legal_form, share_capital, rcs_city)
       VALUES (gen_random_uuid(), ${ORG}, 'Resonant Audio Labs SAS', 'FR', 'FR41903000008', 'EUR',
-              ${DEMO_SHOP_DOMAIN}, 500000)`
+              ${DEMO_SHOP_DOMAIN}, 500000, 'SAS', '10 000', 'Paris')`
   }, 120_000)
 
   afterAll(async () => {

@@ -199,6 +199,11 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   "app_invoicing.received_einvoices": { exempt: "sync", reason: "e-invoicing and FX sync state" },
   "app_invoicing.received_retry": { exempt: "sync", reason: "e-invoicing and FX sync state" },
   "app_invoicing.received_sync_state": { exempt: "sync", reason: "e-invoicing and FX sync state" },
+  "app_invoicing.sale_previews": {
+    exempt: "derived",
+    reason:
+      "watermarked preview PDFs of sales not invoiced yet, replaced by each preview and removed after 7 days; never imported",
+  },
   "app_invoicing.sales": {
     exempt: "derived",
     reason:

@@ -199,6 +199,10 @@ describe("an organization's own sales app reports its sales to invoicing (revenu
     const created = await tool("invoicing:settings_issuer_profile_create", {
       legal_name: "Atelier Test SARL",
       country: "FR",
+      legal_form: "SAS",
+      share_capital: "10 000",
+      rcs_city: "Paris",
+      siren: "902000009",
       vat_id: "FR40902000009",
       address: "1 rue de Test, 75011 Paris",
       default_currency: "EUR",

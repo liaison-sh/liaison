@@ -7,7 +7,7 @@ import { batchPreconditionFailure } from "@liaison/app-sdk"
 import {
   type FxFetchCtx,
   FxRateUnavailableError,
-  fxIssueDate,
+  fxRateDate,
   fxRateUnavailableEnvelope,
   warmFxRate,
 } from "../einvoicing/fx"
@@ -28,11 +28,7 @@ export async function issueWithFxRate(
   input: IssueInput,
   opts: Parameters<typeof issueDocument>[2] = {},
 ): Promise<{ ok: true; result: IssueResult } | { ok: false; error: ErrorEnvelope }> {
-  await warmFxRate(
-    ctx as MutationsCtx & FxFetchCtx,
-    input.draft.currency,
-    fxIssueDate(input.draft.issued_at),
-  )
+  await warmFxRate(ctx as MutationsCtx & FxFetchCtx, input.draft.currency, fxRateDate(input.draft))
   try {
     return { ok: true, result: await issueDocument(ctx, input, opts) }
   } catch (err) {
@@ -82,7 +78,7 @@ export async function issueTogetherWithFxRate<N extends string>(
     await warmFxRate(
       ctx as MutationsCtx & FxFetchCtx,
       input.draft.currency,
-      fxIssueDate(input.draft.issued_at),
+      fxRateDate(input.draft),
     )
   }
   try {

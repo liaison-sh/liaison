@@ -3,7 +3,8 @@
 // The catch-up of a Stripe revenue stream: the preview lists every sale of the window oldest first,
 // with what it would become, and writes nothing; the run needs a person's approval, issues in
 // sale-date order (numbers follow the sale dates), credits each refund, skips what is already
-// invoiced, and stops at the first sale it cannot issue, leaving the later ones unissued.
+// invoiced, holds a sale whose own data blocks it and goes on, stops at a cause every sale
+// shares, and skips the sales a person excluded until they are included again.
 import { describe, expect, test } from "bun:test"
 import type { Sale } from "@liaison/app-sdk/contracts"
 import { ISSUER_ROW } from "../__tests__/credit-note-fixtures"
@@ -22,6 +23,7 @@ import {
   revenueStreamCatchUpPreview,
   revenueStreamPreviewPdfs,
 } from "./catch-up"
+import { rerunStreamSale } from "./issue-sale"
 
 const STREAM = {
   id: "stream-hub",
@@ -327,12 +329,12 @@ describe("revenue stream catch-up", () => {
     expect(creditNotes(db)).toHaveLength(1)
   })
 
-  test("the run stops at the first sale it cannot issue and leaves the later ones unissued", async () => {
+  test("a sale held by its own data waits in its park and the run goes on, numbers in sale-date order", async () => {
     const db = await seeded()
     const sales = [
       sale(1, "2026-11-05T10:00:00.000Z"),
       sale(2, "2026-11-12T10:00:00.000Z", {
-        // A company with no postal address: its invoice cannot issue.
+        // A company with no postal address: its own data holds it.
         buyer: {
           email: "noaddress@example.de",
           name: "No Address",
@@ -343,17 +345,252 @@ describe("revenue stream catch-up", () => {
       }),
       sale(3, "2026-11-20T10:00:00.000Z"),
     ]
+    const preview = (await revenueStreamCatchUpPreview(ctxOf(db, sales, false), WINDOW)) as {
+      counts: { held: number; stopsRun: number }
+      sales: Array<{ external_id: string; run_effect: string; blockers: string[] }>
+    }
+    expect(preview.sales.map((r) => r.run_effect)).toEqual(["issues", "held", "issues"])
+    expect(preview.counts).toMatchObject({ held: 1, stopsRun: 0 })
+    const out = (await revenueStreamCatchUp(ctxOf(db, sales, true), WINDOW)) as {
+      stopped: boolean
+      notIssued: string[]
+      held: string[]
+      steps: Array<Record<string, unknown>>
+    }
+    expect(out.stopped).toBe(false)
+    expect(out.steps.map((s) => [s.external_id, s.outcome])).toEqual([
+      ["pi_1", "issued"],
+      ["pi_2", "held"],
+      ["pi_3", "issued"],
+    ])
+    expect(out.held).toEqual(["pi_2"])
+    expect(out.notIssued).toEqual([])
+    const inv = invoices(db).sort((a, b) => Number(a.number_int) - Number(b.number_int))
+    expect(inv.map((d) => d.external_ref)).toEqual(["stripe:pi_1:software", "stripe:pi_3:software"])
+    expect(Number(inv[1]?.number_int)).toBe(Number(inv[0]?.number_int) + 1)
+    expect(parks(db).some((p) => p.event_id === "rs:stream-hub:pi_2")).toBe(true)
+  })
+
+  test("a cause every sale shares (the issuer's legal mentions) stops the run; the preview says so", async () => {
+    const db = stripeDb("liaison", { legal_form: null, share_capital: null })
+    await db.insert("revenue_streams", STREAM)
+    const sales = [sale(1, "2026-11-05T10:00:00.000Z"), sale(2, "2026-11-12T10:00:00.000Z")]
+    const preview = (await revenueStreamCatchUpPreview(ctxOf(db, sales, false), WINDOW)) as {
+      counts: { blocked: number; stopsRun: number }
+      sales: Array<{ run_effect: string; blockers: string[] }>
+    }
+    expect(preview.counts).toMatchObject({ blocked: 2, stopsRun: 2 })
+    expect(preview.sales[0]?.blockers.join(" ")).toContain("issuer_incomplete")
+    expect(preview.sales[0]?.blockers.join(" ")).toContain("legal_form, share_capital")
+    expect(parks(db)).toEqual([])
     const out = (await revenueStreamCatchUp(ctxOf(db, sales, true), WINDOW)) as {
       stopped: boolean
       notIssued: string[]
       steps: Array<Record<string, unknown>>
     }
     expect(out.stopped).toBe(true)
+    expect(out.steps.map((s) => [s.external_id, s.outcome, s.reason])).toEqual([
+      ["pi_1", "stopped", "parked: issuer_incomplete"],
+    ])
+    expect(out.notIssued).toEqual(["pi_2"])
+    expect(invoices(db)).toEqual([])
+  })
+
+  test("an excluded sale is recorded with its reason, skipped by every later run until reincluded", async () => {
+    const db = await seeded()
+    const sales = [
+      sale(1, "2026-11-05T10:00:00.000Z"),
+      sale(2, "2026-11-12T10:00:00.000Z"),
+      sale(3, "2026-11-20T10:00:00.000Z"),
+    ]
+    const ctx = ctxOf(db, sales, true) as CatchUpCtx & {
+      emitted: Array<{ entity: string; action: string; data?: unknown }>
+    }
+    const out = (await revenueStreamCatchUp(ctx, {
+      ...WINDOW,
+      exclude: [{ externalId: "pi_2", reason: "staff test purchase" }],
+    })) as { steps: Array<Record<string, unknown>>; excluded: string[] }
     expect(out.steps.map((s) => [s.external_id, s.outcome])).toEqual([
       ["pi_1", "issued"],
-      ["pi_2", "stopped"],
+      ["pi_2", "excluded"],
+      ["pi_3", "issued"],
     ])
-    expect(out.notIssued).toEqual(["pi_3"])
-    expect(invoices(db).map((d) => d.external_ref)).toEqual(["stripe:pi_1:software"])
+    expect(out.excluded).toEqual(["pi_2"])
+    const row = db.__all("sales").find((r) => r.external_id === "pi_2")
+    expect(row).toMatchObject({
+      state: "excluded",
+      excluded_reason: "staff test purchase",
+      excluded_by: "owner-1",
+    })
+    expect(
+      ctx.emitted.find((e) => e.entity === "sale" && e.action === "excluded")?.data,
+    ).toMatchObject({
+      external_id: "pi_2",
+      reason: "staff test purchase",
+    })
+    // A later run, the preview and a park retry leave it alone.
+    const again = (await revenueStreamCatchUp(ctxOf(db, sales, true), WINDOW)) as {
+      steps: Array<Record<string, unknown>>
+    }
+    expect(again.steps.map((s) => s.outcome)).toEqual([
+      "already_invoiced",
+      "excluded",
+      "already_invoiced",
+    ])
+    const preview = (await revenueStreamCatchUpPreview(ctxOf(db, sales, false), WINDOW)) as {
+      sales: Array<{ external_id: string; run_effect: string; excluded: unknown }>
+    }
+    expect(preview.sales[1]).toMatchObject({
+      run_effect: "excluded",
+      excluded: { reason: "staff test purchase" },
+    })
+    expect(
+      await rerunStreamSale({ stream_id: STREAM.id, external_id: "pi_2" }, ctxOf(db, sales, true)),
+    ).toEqual({ status: "skipped", reason: "sale_excluded" })
+    expect(invoices(db)).toHaveLength(2)
+    // Reincluded: the next run invoices it.
+    const back = (await revenueStreamCatchUp(ctxOf(db, sales, true), {
+      ...WINDOW,
+      reinclude: ["pi_2"],
+    })) as { steps: Array<Record<string, unknown>>; reincluded: string[] }
+    expect(back.reincluded).toEqual(["pi_2"])
+    expect(back.steps.map((s) => s.outcome)).toEqual([
+      "already_invoiced",
+      "issued",
+      "already_invoiced",
+    ])
+  })
+
+  test("an exclusion needs a reason", async () => {
+    const db = await seeded()
+    const out = await revenueStreamCatchUp(ctxOf(db, [sale(1, "2026-11-05T10:00:00.000Z")], true), {
+      ...WINDOW,
+      exclude: [{ externalId: "pi_1", reason: "no" }],
+    })
+    expect(out).toMatchObject({ status: "error", error: { code: "invalid_params" } })
+    expect(invoices(db)).toEqual([])
+  })
+
+  test("the preview prices a foreign currency at the ECB rate of the sale date, not today", async () => {
+    const db = await seeded()
+    await db.insert("fx_rates", { currency: "USD", rate_date: "2026-11-19", rate: "1.0500" })
+    await db.insert("fx_rates", { currency: "USD", rate_date: "2026-11-20", rate: "1.0600" })
+    const today = new Date().toISOString().slice(0, 10)
+    await db.insert("fx_rates", { currency: "USD", rate_date: today, rate: "1.0900" })
+    const usd = sale(3, "2026-11-20T10:00:00.000Z", {
+      currency: "USD",
+      buyer: {
+        email: "al@example.com",
+        name: "Al",
+        billing: { line1: "1 Main St", postcode: "10001", city: "New York", country: "US" },
+      },
+      lines: [
+        {
+          description: "Sound pack",
+          quantity: "1",
+          unit_price_minor: "2000",
+          kind: "service",
+          tax: { rate_bp: 0, amount_minor: "0", reported_by_source: true },
+        },
+      ],
+      totals: { total_minor: "2000", subtotal_minor: "2000", tax_minor: "0" },
+    })
+    const out = (await revenueStreamCatchUpPreview(ctxOf(db, [usd], false), WINDOW)) as {
+      sales: Array<{ fx: unknown }>
+    }
+    expect(out.sales[0]?.fx).toEqual({ currency: "USD", rate: "1.0600", rate_date: "2026-11-20" })
+  })
+
+  test("preview PDFs are filed under a preview row; a sale's new preview replaces its old one, and old ones expire", async () => {
+    const db = await seeded()
+    const old = new Date(Date.now() - 8 * 86_400_000).toISOString()
+    await db.insert("sale_previews", {
+      stream_id: STREAM.id,
+      external_id: "pi_9",
+      scope: "software",
+      pdf_file_id: null,
+      rendered_at: old,
+    })
+    await db.insert("sale_previews", {
+      stream_id: STREAM.id,
+      external_id: "pi_1",
+      scope: "software",
+      pdf_file_id: null,
+      rendered_at: new Date().toISOString(),
+    })
+    const parents: unknown[] = []
+    const ctx = ctxOf(db, [sale(1, "2026-11-05T10:00:00.000Z")], false)
+    ctx.pdf = {
+      async render(input: { parent?: unknown }) {
+        parents.push(input.parent)
+        return { file_id: "file-1", byte_size: 1, page_count: 1 }
+      },
+    } as unknown as CatchUpCtx["pdf"]
+    await revenueStreamPreviewPdfs(ctx, WINDOW)
+    expect(db.__all("sale_previews")).toEqual([])
+    expect(parents).toHaveLength(1)
+    expect(parents[0]).toMatchObject({
+      entityType: "sale_preview",
+      commitRow: {
+        values: { stream_id: STREAM.id, external_id: "pi_1", scope: "software" },
+        fileIdColumn: "pdf_file_id",
+      },
+    })
+  })
+
+  test("a USD sale invoiced later stores the ECB rate of its sale date; a buyer in France gets French", async () => {
+    const db = stripeDb("liaison", { default_language: "en" })
+    await db.insert("revenue_streams", STREAM)
+    await db.insert("fx_rates", { currency: "USD", rate_date: "2026-11-20", rate: "1.0600" })
+    const today = new Date().toISOString().slice(0, 10)
+    await db.insert("fx_rates", { currency: "USD", rate_date: today, rate: "1.0900" })
+    const pl = sale(1, "2026-11-20T10:00:00.000Z", {
+      currency: "USD",
+      buyer: {
+        email: "buyer@example.pl",
+        name: "Buyer PL",
+        kind: "individual",
+        billing: { line1: "ul. Testowa 1", postcode: "00-001", city: "Warszawa", country: "PL" },
+        tax_evidence: { billing_country: "PL", card_country: "PL" },
+      },
+      lines: [
+        {
+          description: "Sound pack",
+          quantity: "1",
+          unit_price_minor: "2000",
+          kind: "service",
+          tax: { rate_bp: 2300, amount_minor: "460", reported_by_source: true },
+        },
+      ],
+      totals: { total_minor: "2460", subtotal_minor: "2000", tax_minor: "460" },
+    })
+    const fr = sale(2, "2026-11-21T10:00:00.000Z", {
+      buyer: {
+        email: "a@example.fr",
+        name: "Alice",
+        kind: "individual",
+        billing: { country: "FR" },
+        tax_evidence: { billing_country: "FR", card_country: "FR" },
+      },
+      lines: [
+        {
+          description: "Sound pack",
+          quantity: "1",
+          unit_price_minor: "2000",
+          kind: "service",
+          tax: { rate_bp: 2000, amount_minor: "400", reported_by_source: true },
+        },
+      ],
+      totals: { total_minor: "2400", subtotal_minor: "2000", tax_minor: "400" },
+    })
+    const out = (await revenueStreamCatchUp(ctxOf(db, [pl, fr], true), WINDOW)) as {
+      steps: Array<Record<string, unknown>>
+    }
+    expect(out.steps.map((s) => s.outcome)).toEqual(["issued", "issued"])
+    const [usd, eur] = invoices(db).sort((a, b) => Number(a.number_int) - Number(b.number_int))
+    expect(usd).toMatchObject({ fx_rate: "1.0600", fx_rate_date: "2026-11-20", language: "en" })
+    // 4.60 USD / 1.06 = 4.34 EUR.
+    expect(String(usd?.tax_total_eur_minor)).toBe("434")
+    expect(eur?.language).toBe("fr")
   })
 })

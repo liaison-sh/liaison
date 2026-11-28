@@ -7,12 +7,26 @@
 //     the provider, each one as `sale_get` would answer), with its buyer, country, tax treatment,
 //     lines, tax as computed against the tax the source reported, totals, refunds, blockers, and
 //     the document it already has. Nothing is written.
+//     Each sale still to invoice also runs through the issue path itself on a context that writes
+//     nothing and renders nothing (`previewSale`, render off), so its blockers name every reason
+//     the issue would park or refuse it, and `run_effect` says what the run would do with it.
 //   sales_catch_up          gated, never auto-approved: a person approves the run. It
 //     sorts the window's sales by sale date (oldest first), issues each one through `issueSale`
 //     (one number each, today's issue date, the sale date on the document's references), then a
-//     credit note for each refund of it, and STOPS at the first sale it cannot issue (parked,
-//     refused, unreadable): the later sales stay unissued, so numbers keep sale-date order. The
-//     run can be approved again once the cause is fixed: sales already invoiced are skipped.
+//     credit note for each refund of it. The rule when a sale cannot issue:
+//       - parked on its OWN data (the park waits `awaiting_data`: buyer address or email, VAT
+//         number, identity, tax or totals of that sale): the sale is HELD (it waits in its park
+//         for the fix) and the run goes on with the next sale;
+//       - any other cause (the issuer profile, a configuration, an exchange rate, an approval, a
+//         refused issue, an unreadable sale, a refused credit note) is shared by the sales after it:
+//         the run STOPS there and leaves the later sales unissued.
+//     The sales that do issue are numbered strictly in sale-date order within the run, and every
+//     one is issued today, so the series stays chronological by issue date; a held sale is issued
+//     by its park's retry or a later run, with a later number and that day's issue date.
+//     `exclude` (each with a person's reason) skips sales and records them as excluded in the
+//     sales ledger, with a `sale:excluded` audit event: no later run, event or park retry invoices
+//     them until `reinclude` names them. The run can be approved again once a cause is fixed:
+//     sales already invoiced are skipped.
 //
 // The run is the person's decision for each sale it issues (the approval re-enters with
 // `ctx.approval`), so a review stream asks nothing more and `issue_from` does not apply.
@@ -23,17 +37,20 @@ import {
   type Sale,
   saleProblems,
 } from "@liaison/app-sdk/contracts"
+import { resolveOpenParks } from "../deferred"
 import { cachedRate, type FxFetchCtx, fetchEcbRate } from "../einvoicing/fx"
 import {
   findIssuerById,
   streamLineSourceTax,
   streamRateMismatches,
 } from "../handlers/shopify-order-paid"
-import { counterpartyCompletenessError } from "../issue"
+import { counterpartyCompletenessError, type PreviewParent } from "../issue"
 import { lineSubtotal, lineTax } from "../money"
 import type { MutationsCtx } from "../mutations/shared"
+import { supplyDateOf } from "../sale-tax"
+import { excludeRecordedSale, recordSale, reincludeSale, saleExclusion } from "../sales-ledger"
 import { classify, isUntaxedIntraEuSaleWithoutVat } from "../tax"
-import { issueSale, type SaleCtx, streamSource, totalsMismatch } from "./issue-sale"
+import { issueSale, type SaleCtx, streamParkId, streamSource, totalsMismatch } from "./issue-sale"
 import { creditSaleRefund } from "./refunds"
 import { orderPaidPayloadFromSale } from "./sale-payload"
 import { previewSale, type SalePreview } from "./sale-preview"
@@ -55,6 +72,30 @@ export interface CatchUpInput {
   streamId?: string
   paidFrom?: string
   paidTo?: string
+}
+
+export interface CatchUpRunInput extends CatchUpInput {
+  /** Sales a person decided not to invoice, each with the reason. */
+  exclude?: Array<{ externalId?: unknown; reason?: unknown }>
+  /** Sales excluded earlier, to invoice again. */
+  reinclude?: unknown[]
+}
+
+/** How long a preview PDF stays readable before its row is removed. */
+export const PREVIEW_TTL_DAYS = 7
+
+/** The ledger key of a stream's sale. */
+function ledgerKey(stream: RevenueStream, externalId: string) {
+  return {
+    issuer_profile_id: stream.issuer_profile_id ?? "",
+    stream: stream.provider_app,
+    external_id: externalId,
+  }
+}
+
+/** What the run does with a sale the issue path would park: hold it (its own data) or stop. */
+export function parkEffect(status: string | null | undefined): "held" | "stops_run" {
+  return status === "awaiting_data" ? "held" : "stops_run"
 }
 
 async function salesOf(
@@ -124,7 +165,7 @@ async function previewOne(
   stream: RevenueStream,
   issuerCountry: string,
   sale: Sale,
-  fxOf: (currency: string) => Promise<FxPreview>,
+  fxOf: (currency: string, soldAt: string) => Promise<FxPreview>,
 ) {
   const problems = saleProblems(sale)
   if (problems.length > 0) {
@@ -194,9 +235,37 @@ async function previewOne(
     )
   // A foreign currency is priced in EUR at issue (the issue flow warms the ECB rate of the issue
   // date; an e-invoice the ECB cannot price waits for it): shown, never a blocker here.
-  const fx = sale.currency !== "EUR" ? await fxOf(sale.currency) : null
+  const fx = sale.currency !== "EUR" ? await fxOf(sale.currency, sale.sold_at) : null
   const existing = await streamSource(stream, sale).existingDocuments(ctx)
   const invoiced = existing.find((d) => d.type !== "credit_note") ?? null
+  const excluded = stream.issuer_profile_id
+    ? await saleExclusion(ctx.db, ledgerKey(stream, sale.external_id))
+    : null
+  // The issue path itself, writing and rendering nothing: what it would park or refuse.
+  let runEffect: "issues" | "held" | "stops_run" | "excluded" | "already_invoiced" = invoiced
+    ? "already_invoiced"
+    : excluded
+      ? "excluded"
+      : "issues"
+  if (runEffect === "issues") {
+    const dry = await previewSale(stream, sale, ctx, { render: false })
+    if (dry.outcome === "would_park") {
+      const b = (dry.blocked_on ?? {}) as { missing_fields?: unknown }
+      const missing = Array.isArray(b.missing_fields) ? ` (${b.missing_fields.join(", ")})` : ""
+      runEffect = parkEffect(dry.status)
+      blockers.push(
+        `the issue would park: ${dry.reason}${missing}; ${runEffect === "held" ? "the run holds this sale and goes on" : "the run stops here"}`,
+      )
+    } else if (dry.outcome === "refused") {
+      runEffect = "stops_run"
+      blockers.push(`the issue would be refused: ${dry.error}; the run stops here`)
+    } else if (dry.outcome === "not_issued" && dry.status !== "skipped") {
+      runEffect = "stops_run"
+      blockers.push(
+        `the issue would not complete (${dry.status}${dry.reason ? `: ${dry.reason}` : ""}); the run stops here`,
+      )
+    }
+  }
   return {
     external_id: sale.external_id,
     sold_at: sale.sold_at,
@@ -227,6 +296,8 @@ async function previewOne(
       at: r.at,
     })),
     already_invoiced: invoiced ? String(invoiced.number ?? invoiced.id) : null,
+    excluded: excluded ? { reason: excluded.reason } : null,
+    run_effect: runEffect,
     blockers,
   }
 }
@@ -247,17 +318,22 @@ export async function revenueStreamCatchUpPreview(ctx: SaleCtx, input: CatchUpIn
   const read = await salesOf(ctx, stream, window.from, window.to)
   if (!read.ok) return fail(read.code, `The provider did not list its sales: ${read.message}`)
   const rows: Array<Awaited<ReturnType<typeof previewOne>>> = []
-  const today = new Date().toISOString().slice(0, 10)
+  // The rate of each sale's own date (the day its tax became chargeable), as the issue takes it.
   const rates = new Map<string, Promise<FxPreview>>()
-  const fxOf = (cur: string) => {
-    const known = rates.get(cur)
+  const fxOf = async (cur: string, soldAt: string) => {
+    const day = await supplyDateOf(ctx, issuer, soldAt).catch(() => soldAt.slice(0, 10))
+    const key = `${cur}:${day}`
+    const known = rates.get(key)
     if (known) return known
-    const p = fxPreview(ctx, cur, today)
-    rates.set(cur, p)
+    const p = fxPreview(ctx, cur, day)
+    rates.set(key, p)
     return p
   }
   for (const s of read.sales) rows.push(await previewOne(ctx, stream, issuer.country, s, fxOf))
-  const toIssue = rows.filter((r) => !("already_invoiced" in r && r.already_invoiced))
+  const toIssue = rows.filter(
+    (r) => !("already_invoiced" in r && r.already_invoiced) && !("excluded" in r && r.excluded),
+  )
+  const effect = (e: string) => rows.filter((r) => "run_effect" in r && r.run_effect === e).length
   return {
     status: "completed" as const,
     dryRun: true,
@@ -268,13 +344,16 @@ export async function revenueStreamCatchUpPreview(ctx: SaleCtx, input: CatchUpIn
       alreadyInvoiced: rows.length - toIssue.length,
       toIssue: toIssue.length,
       blocked: toIssue.filter((r) => r.blockers.length > 0).length,
+      held: effect("held"),
+      stopsRun: effect("stops_run"),
+      excluded: effect("excluded"),
       refunds: rows.reduce((n, r) => n + ("refunds" in r && r.refunds ? r.refunds.length : 0), 0),
     },
     sales: rows,
     summary:
       `${rows.length} sale(s) of ${stream.label ?? stream.provider_app} paid between ${window.from} and ${window.to}: ` +
       `${toIssue.length} to invoice in sale-date order, ${rows.length - toIssue.length} already invoiced, ` +
-      `${toIssue.filter((r) => r.blockers.length > 0).length} with a blocker. Nothing was written.`,
+      `${toIssue.filter((r) => r.blockers.length > 0).length} with a blocker (${effect("held")} the run would hold, ${effect("stops_run")} that would stop it), ${effect("excluded")} excluded. Nothing was written.`,
   }
 }
 
@@ -292,7 +371,7 @@ export interface PreviewPdfsInput extends CatchUpInput {
  * become, watermarked "PREVIEW, not an invoice" (sales/sale-preview.ts). The PDFs are internal
  * files: never mailed, never linked to a buyer. A sale that would park says why instead.
  */
-export async function revenueStreamPreviewPdfs(ctx: SaleCtx, input: PreviewPdfsInput) {
+export async function revenueStreamPreviewPdfs(ctx: CatchUpCtx, input: PreviewPdfsInput) {
   const stream = await streamOf(ctx, input)
   if (!stream) return fail("stream_not_found", "streamId names no revenue stream.")
   if (stream.provider_app === SHOPIFY)
@@ -308,6 +387,7 @@ export async function revenueStreamPreviewPdfs(ctx: SaleCtx, input: PreviewPdfsI
     ? new Set(input.externalIds.filter((x): x is string => typeof x === "string"))
     : null
   const chosen = read.sales.filter((s) => !wanted || wanted.has(s.external_id))
+  await dropPreviews(ctx, (r) => expired(r, Date.now()))
   const rows: Array<{
     external_id: string
     sold_at: string
@@ -348,10 +428,26 @@ export async function revenueStreamPreviewPdfs(ctx: SaleCtx, input: PreviewPdfsI
       continue
     }
     rendered++
+    // A sale's new preview replaces its previous ones.
+    await dropPreviews(ctx, (r) => r.stream_id === stream.id && r.external_id === sale.external_id)
+    const renderedAt = new Date().toISOString()
     rows.push({
       external_id: sale.external_id,
       sold_at: sale.sold_at,
-      preview: await previewSale(stream, sale, ctx),
+      preview: await previewSale(stream, sale, ctx, {
+        parent: (scope): PreviewParent => ({
+          entityType: "sale_preview",
+          commitRow: {
+            values: {
+              stream_id: stream.id,
+              external_id: sale.external_id,
+              scope,
+              rendered_at: renderedAt,
+            },
+            fileIdColumn: "pdf_file_id",
+          },
+        }),
+      }),
     })
   }
   return {
@@ -366,6 +462,23 @@ export async function revenueStreamPreviewPdfs(ctx: SaleCtx, input: PreviewPdfsI
   }
 }
 
+/** True when a preview row is older than PREVIEW_TTL_DAYS. */
+function expired(row: Row, now: number): boolean {
+  const at = Date.parse(String(row.rendered_at ?? ""))
+  return Number.isNaN(at) || now - at > PREVIEW_TTL_DAYS * 86_400_000
+}
+
+/** Remove the preview rows `which` selects: their files are no longer readable by anyone. */
+async function dropPreviews(ctx: CatchUpCtx, which: (row: Row) => boolean): Promise<number> {
+  const rows = (await ctx.db.findMany("sale_previews", { limit: 500 })) as Row[]
+  let n = 0
+  for (const r of rows.filter(which)) {
+    await ctx.db.delete("sale_previews", String(r.id))
+    n++
+  }
+  return n
+}
+
 export type CatchUpStep =
   | {
       external_id: string
@@ -376,9 +489,85 @@ export type CatchUpStep =
     }
   | { external_id: string; sold_at: string; outcome: "already_invoiced"; credit_notes: string[] }
   | { external_id: string; sold_at: string; outcome: "stopped"; reason: string }
+  | { external_id: string; sold_at: string; outcome: "held"; reason: string }
+  | { external_id: string; sold_at: string; outcome: "excluded"; reason: string | null }
+  | { external_id: string; sold_at: string; outcome: "skipped"; reason: string }
+
+type Exclusion = { externalId: string; reason: string }
+
+/** The run's exclusions, each with a reason a person wrote; an error names the bad entry. */
+function exclusionsOf(
+  input: CatchUpRunInput,
+): { ok: true; list: Exclusion[] } | { ok: false; message: string } {
+  const list: Exclusion[] = []
+  for (const e of input.exclude ?? []) {
+    const externalId = typeof e?.externalId === "string" ? e.externalId.trim() : ""
+    const reason = typeof e?.reason === "string" ? e.reason.trim() : ""
+    if (!externalId) return { ok: false, message: "Each exclude entry names a sale by externalId." }
+    if (reason.length < 5)
+      return {
+        ok: false,
+        message: `Excluding ${externalId} needs the reason a person decided it (at least 5 characters).`,
+      }
+    list.push({ externalId, reason })
+  }
+  return { ok: true, list }
+}
+
+/** Record a sale a person excluded: ledger row `excluded` with the reason, its open park closed,
+ *  and the `sale:excluded` audit event. False when the sale already has its invoice. */
+async function excludeSale(
+  ctx: CatchUpCtx,
+  stream: RevenueStream,
+  sale: Sale,
+  reason: string,
+  timezone: string | null,
+): Promise<boolean> {
+  if (!stream.issuer_profile_id) return false
+  const by = ctx.approval?.approvalDeciderId ?? null
+  const { sale_id } = await recordSale(ctx.db, {
+    issuer_profile_id: stream.issuer_profile_id,
+    stream: stream.provider_app,
+    external_id: sale.external_id,
+    source_ref: sale.refs?.checkout_session_id ?? sale.external_id,
+    source_name: sale.refs?.order_name ?? null,
+    sold_on: await supplyDateOf(ctx, { timezone }, sale.sold_at).catch(() =>
+      sale.sold_at.slice(0, 10),
+    ),
+    buyer: {
+      email: sale.buyer?.email ?? null,
+      shopify_customer_id: sale.buyer?.ids?.shopify_customer_id ?? null,
+      hub_user_id: sale.buyer?.ids?.hub_user_id ?? null,
+    },
+    total_minor: sale.totals?.total_minor ?? null,
+    currency: sale.currency,
+  })
+  const at = new Date().toISOString()
+  if (!(await excludeRecordedSale(ctx.db, sale_id, { reason, by, at }))) return false
+  await resolveOpenParks(
+    { db: ctx.db, emit: ctx.emit },
+    streamParkId(stream, sale.external_id),
+    "sale_excluded",
+  )
+  await ctx.emit?.({
+    entity: "sale",
+    action: "excluded",
+    entityId: sale_id,
+    data: {
+      sale_id,
+      stream_id: stream.id,
+      provider_app: stream.provider_app,
+      external_id: sale.external_id,
+      reason,
+      excluded_by: by,
+      approval_request_id: ctx.approval?.approvalRequestId ?? null,
+    },
+  })
+  return true
+}
 
 /** `sales_catch_up`: the approved run (see the header). */
-export async function revenueStreamCatchUp(ctx: CatchUpCtx, input: CatchUpInput) {
+export async function revenueStreamCatchUp(ctx: CatchUpCtx, input: CatchUpRunInput) {
   if (!ctx.approval)
     return fail(
       "approval_required",
@@ -394,6 +583,28 @@ export async function revenueStreamCatchUp(ctx: CatchUpCtx, input: CatchUpInput)
   if (stream.mode === "off") return fail("stream_off", "The stream is off: nothing is invoiced.")
   const window = windowOf(input)
   if (!window) return fail("invalid_window", "paidFrom and paidTo are ISO dates, paidFrom first.")
+  const exclusions = exclusionsOf(input)
+  if (!exclusions.ok) return fail("invalid_params", exclusions.message)
+  const excludeNow = new Map(exclusions.list.map((e) => [e.externalId, e.reason]))
+  const issuerTz = (await findIssuerById(ctx.db, stream.issuer_profile_id ?? ""))?.timezone ?? null
+  const reincluded: string[] = []
+  for (const id of input.reinclude ?? []) {
+    if (typeof id !== "string" || id.trim() === "" || excludeNow.has(id.trim())) continue
+    if (await reincludeSale(ctx.db, ledgerKey(stream, id.trim()))) {
+      reincluded.push(id.trim())
+      await ctx.emit?.({
+        entity: "sale",
+        action: "reincluded",
+        entityId: id.trim(),
+        data: {
+          stream_id: stream.id,
+          external_id: id.trim(),
+          by: ctx.approval.approvalDeciderId ?? null,
+          approval_request_id: ctx.approval.approvalRequestId ?? null,
+        },
+      })
+    }
+  }
   const read = await salesOf(ctx, stream, window.from, window.to)
   if (!read.ok) return fail(read.code, `The provider did not list its sales: ${read.message}`)
   const steps: CatchUpStep[] = []
@@ -422,16 +633,69 @@ export async function revenueStreamCatchUp(ctx: CatchUpCtx, input: CatchUpInput)
     }
     const before = await streamSource(stream, sale).existingDocuments(ctx)
     const had = before.filter((d) => d.type !== "credit_note")
+    const toExclude = excludeNow.get(sale.external_id)
+    if (had.length === 0 && toExclude !== undefined) {
+      await excludeSale(ctx, stream, sale, toExclude, issuerTz)
+      steps.push({
+        external_id: sale.external_id,
+        sold_at: sale.sold_at,
+        outcome: "excluded",
+        reason: toExclude,
+      })
+      continue
+    }
+    if (had.length === 0 && stream.issuer_profile_id) {
+      const excluded = await saleExclusion(ctx.db, ledgerKey(stream, sale.external_id))
+      if (excluded) {
+        steps.push({
+          external_id: sale.external_id,
+          sold_at: sale.sold_at,
+          outcome: "excluded",
+          reason: excluded.reason,
+        })
+        continue
+      }
+    }
     let numbers: string[] = []
     if (had.length === 0) {
       const r = await issueSale(stream, sale, ctx)
+      if (r.status === "skipped") {
+        // Nothing to invoice (a cancelled sale, a zero total): the next sale goes on.
+        steps.push({
+          external_id: sale.external_id,
+          sold_at: sale.sold_at,
+          outcome: "skipped",
+          reason: r.reason,
+        })
+        continue
+      }
+      if (r.status === "deferred") {
+        const park = (await ctx.db.findOne("deferred_events", r.deferred_id)) as Row | null
+        const why = String(park?.reason ?? r.reason)
+        if (parkEffect(typeof park?.status === "string" ? park.status : null) === "held") {
+          // The sale's own data: it waits in its park for the fix; the later sales go on.
+          steps.push({
+            external_id: sale.external_id,
+            sold_at: sale.sold_at,
+            outcome: "held",
+            reason: `parked: ${why}`,
+          })
+          continue
+        }
+        steps.push({
+          external_id: sale.external_id,
+          sold_at: sale.sold_at,
+          outcome: "stopped",
+          reason: `parked: ${why}`,
+        })
+        stoppedAt = i
+        break
+      }
       if (r.status !== "ok") {
         const reason =
-          r.status === "deferred"
-            ? `parked: ${r.reason}`
-            : r.status === "pending_approval"
-              ? "waits for an approval"
-              : `${r.status}: ${"reason" in r ? r.reason : ""}`
+          r.status === "pending_approval"
+            ? "waits for an approval"
+            : `${r.status}: ${"reason" in r ? r.reason : ""}`
         steps.push({
           external_id: sale.external_id,
           sold_at: sale.sold_at,
@@ -487,6 +751,14 @@ export async function revenueStreamCatchUp(ctx: CatchUpCtx, input: CatchUpInput)
   }
   const left = stoppedAt === null ? [] : read.sales.slice(stoppedAt + 1).map((s) => s.external_id)
   const issued = steps.filter((s) => s.outcome === "issued").length
+  const held = steps.filter((s) => s.outcome === "held").map((s) => s.external_id)
+  const excluded = steps.filter((s) => s.outcome === "excluded").map((s) => s.external_id)
+  const tail =
+    (held.length > 0
+      ? ` ${held.length} held on their own data (${held.join(", ")}): each waits in its park.`
+      : "") +
+    (excluded.length > 0 ? ` ${excluded.length} excluded, not invoiced.` : "") +
+    (reincluded.length > 0 ? ` Included again: ${reincluded.join(", ")}.` : "")
   return {
     status: "completed" as const,
     dryRun: false,
@@ -495,10 +767,14 @@ export async function revenueStreamCatchUp(ctx: CatchUpCtx, input: CatchUpInput)
     steps,
     stopped: stoppedAt !== null,
     notIssued: left,
+    held,
+    excluded,
+    reincluded,
     summary:
-      stoppedAt === null
-        ? `${issued} sale(s) invoiced in sale-date order; ${steps.length - issued} already had their invoice.`
-        : `Stopped at ${read.sales[stoppedAt]?.external_id} (${(steps[steps.length - 1] as { reason?: string }).reason}); ${issued} invoiced before it, ${left.length} later sale(s) left unissued so the numbers keep sale-date order. Fix the cause and approve the run again.`,
+      (stoppedAt === null
+        ? `${issued} sale(s) invoiced in sale-date order; ${steps.filter((s) => s.outcome === "already_invoiced").length} already had their invoice.`
+        : `Stopped at ${read.sales[stoppedAt]?.external_id} (${(steps[steps.length - 1] as { reason?: string }).reason}): a cause the later sales share. ${issued} invoiced before it, ${left.length} later sale(s) left unissued so the numbers keep sale-date order. Fix the cause and approve the run again.`) +
+      tail,
   }
 }
 

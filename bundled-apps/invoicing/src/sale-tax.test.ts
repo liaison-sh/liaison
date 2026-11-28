@@ -351,6 +351,77 @@ describe("the mention of digital services to a consumer outside the EU", () => {
   })
 })
 
+// The services invoice of a split order carries the digital lines and the carriage of the goods
+// shipped on the other invoice. Its mention follows each line's nature, never the art. 146
+// export of goods mention the goods invoice prints.
+describe("the mention of a services invoice that carries the carriage of exported goods", () => {
+  const consumer = {
+    category: "services" as const,
+    customerKind: "individual",
+    issueDate: "2026-11-28",
+  }
+  test("download + carriage to a consumer outside the EU: 259 B and the transport exemption", () => {
+    const en = resolveLegalMention("eu_export_non_eu", "en", {
+      ...consumer,
+      lineKinds: ["software", "shipping"],
+    })
+    expect(en).toContain("art. 259 B of the French Tax Code")
+    expect(en).toContain("art. 262 I 1°")
+    expect(en).not.toContain("146")
+    const fr = resolveLegalMention("eu_export_non_eu", "fr", {
+      ...consumer,
+      lineKinds: ["software", "shipping"],
+    })
+    expect(fr).toBe(
+      "TVA non applicable, art. 259 B du CGI. Exonération de TVA, transport lié à l'exportation (article 262 I 1° du CGI)",
+    )
+  })
+  test("carriage alone (an order of goods only): the transport exemption alone", () => {
+    for (const category of ["goods", "services"] as const) {
+      const fr = resolveLegalMention("eu_export_non_eu", "fr", {
+        ...consumer,
+        category,
+        lineKinds: ["shipping"],
+      })
+      expect(fr).toBe("Exonération de TVA, transport lié à l'exportation (article 262 I 1° du CGI)")
+    }
+  })
+  test("a business buyer: the B2B services wording and the transport exemption", () => {
+    const fr = resolveLegalMention("eu_export_non_eu", "fr", {
+      ...consumer,
+      customerKind: "business",
+      lineKinds: ["software", "shipping"],
+    })
+    expect(fr).toContain("259-1")
+    expect(fr).toContain("262 I 1°")
+    expect(fr).not.toContain("259 B")
+  })
+  test("an EU consumer: OSS covers the download and the carriage", () => {
+    expect(
+      resolveLegalMention("eu_b2c_oss", "en", { ...consumer, lineKinds: ["software", "shipping"] }),
+    ).toBe("VAT collected under the EU One-Stop-Shop (OSS) scheme.")
+  })
+  test("a goods invoice with its carriage keeps the export of goods mention", () => {
+    expect(
+      resolveLegalMention("eu_export_non_eu", "en", {
+        ...consumer,
+        category: "goods",
+        lineKinds: ["goods", "shipping"],
+      }),
+    ).toContain("Article 146")
+  })
+  test("documents issued before keep their wording", () => {
+    expect(
+      resolveLegalMention("eu_export_non_eu", "fr", {
+        ...consumer,
+        category: "goods",
+        issueDate: "2026-11-27",
+        lineKinds: ["shipping"],
+      }),
+    ).toBe("Exportation hors Union européenne : exonération de TVA (article 262 I du CGI)")
+  })
+})
+
 describe("supplyDateOf", () => {
   const ctx = {
     time: {

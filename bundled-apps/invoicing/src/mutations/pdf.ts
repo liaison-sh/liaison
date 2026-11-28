@@ -185,6 +185,8 @@ export async function ensureDocumentPdf(
       issuerTerritory: issuerTerritoryOf(
         issuer as { country?: string | null; postcode?: string | null },
       ),
+      // The stored lines' kinds: the services invoice of a split order is worded per line.
+      lineKinds: lines.map((l) => l.line_kind),
     },
   )
   if (firstRender) {

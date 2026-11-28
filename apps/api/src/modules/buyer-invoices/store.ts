@@ -242,7 +242,7 @@ async function matchingSales(key: BuyerKey, who: BuyerIdentity): Promise<Candida
                     LIMIT 1) END,
                  s.stream) AS stream,
                -- The sale's own id (a Shopify order id, a PaymentIntent): never a Checkout
-               -- Session, which older Stripe stream sales recorded as their source_ref.
+               -- Session, which older card payment sales recorded as their source_ref.
                s.external_id AS ref, s.source_name AS name, s.sold_on::text AS sold_on,
                s.total_minor::text AS total_minor, s.currency, s.state,
                s.buyer_email AS email, s.shopify_customer_id, s.hub_user_id

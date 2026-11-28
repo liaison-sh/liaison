@@ -626,7 +626,7 @@ describe("invoicing provisioner", () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     await installInvoicing(ctx)
     const inv = drizzleSql.raw(`${schemaRef("app_invoicing")}.revenue_streams`)
-    const cfg = (buyerSourceKey: string | null, providerApp = "stripe"): ProvisioningConfig => ({
+    const cfg = (buyerSourceKey: string | null, providerApp = "cardpay"): ProvisioningConfig => ({
       org: { slug: "x", name: "X" },
       invoicing: { revenueStreams: [{ providerApp, buyerSourceKey }] },
     })
@@ -637,27 +637,27 @@ describe("invoicing provisioner", () => {
     await withPrivilegedDb(orgId, "t", (tx) =>
       tx.execute(drizzleSql`
         INSERT INTO ${inv} (id, org_id, provider_app, mode, mail)
-        VALUES (${crypto.randomUUID()}::uuid, ${orgId}::uuid, 'stripe', 'auto', 'none')`),
+        VALUES (${crypto.randomUUID()}::uuid, ${orgId}::uuid, 'cardpay', 'auto', 'none')`),
     )
     const keyOf = async () =>
       extractRows<{ k: string | null }>(
         await withPrivilegedDb(orgId, "t", (tx) =>
           tx.execute(drizzleSql`
             SELECT buyer_source_key AS k FROM ${inv}
-             WHERE org_id = ${orgId}::uuid AND provider_app = 'stripe'`),
+             WHERE org_id = ${orgId}::uuid AND provider_app = 'cardpay'`),
         ),
       )[0]?.k
     const plan = await invoicingProvisioner.plan(ctx, cfg("hub"))
     expect(plan.actions.join("\n")).toContain(
-      "buyer source key of the stripe revenue stream to hub",
+      "buyer source key of the cardpay revenue stream to hub",
     )
     const r1 = await invoicingProvisioner.apply(ctx, { actions: [] }, cfg("hub"))
-    expect(r1.changed).toContain("invoicing.revenueStreams.stripe")
+    expect(r1.changed).toContain("invoicing.revenueStreams.cardpay")
     expect(await keyOf()).toBe("hub")
     const r2 = await invoicingProvisioner.apply(ctx, { actions: [] }, cfg("hub"))
-    expect(r2.unchanged).toContain("invoicing.revenueStreams.stripe")
+    expect(r2.unchanged).toContain("invoicing.revenueStreams.cardpay")
     const r3 = await invoicingProvisioner.apply(ctx, { actions: [] }, cfg(null))
-    expect(r3.changed).toContain("invoicing.revenueStreams.stripe")
+    expect(r3.changed).toContain("invoicing.revenueStreams.cardpay")
     expect(await keyOf()).toBeNull()
     await expect(
       invoicingProvisioner.apply(ctx, { actions: [] }, cfg("hub", "shopify")),

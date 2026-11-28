@@ -1427,3 +1427,21 @@ fn the_ready_window_covers_the_pages_bounded_session_restore() {
         .unwrap();
     assert!(READY_WITHIN >= Duration::from_millis(ms) + Duration::from_secs(10));
 }
+
+// Walk W1 (2026-11-28): the release start path built its `tokio::time::timeout`
+// outside the runtime `block_on` enters, so every release app with a server
+// panicked at start ("there is no reactor running"). The start read runs on the
+// main thread, outside any runtime, exactly as here.
+#[test]
+fn the_start_read_runs_its_deadline_inside_the_runtime() {
+    assert_eq!(
+        block_on_within(Duration::from_secs(1), async { 7 }),
+        Some(7)
+    );
+    assert_eq!(
+        block_on_within(Duration::from_millis(20), async {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }),
+        None
+    );
+}

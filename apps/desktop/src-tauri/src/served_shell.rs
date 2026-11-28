@@ -1867,11 +1867,8 @@ pub fn on_start<R: Runtime>(app: &AppHandle<R>) {
     if enabled() {
         if let Some(address) = address.as_deref() {
             let started = std::time::Instant::now();
-            let read = tauri::async_runtime::block_on(tokio::time::timeout(
-                START_DEADLINE,
-                read_lists_and_server(app, address),
-            ));
-            if read.is_err() {
+            let read = block_on_within(START_DEADLINE, read_lists_and_server(app, address));
+            if read.is_none() {
                 eprintln!(
                     "liaison: shell lists not read within {} ms: the kept copies decide",
                     started.elapsed().as_millis()
@@ -1887,6 +1884,13 @@ pub fn on_start<R: Runtime>(app: &AppHandle<R>) {
         spawn_refresh(app.clone(), address);
     }
     spawn_periodic_refresh(app.clone());
+}
+
+/// Runs `future` to its end or `deadline` from a thread outside any runtime
+/// (the start path). The timer is made INSIDE the runtime `block_on` enters:
+/// made outside it, tokio panics ("there is no reactor running").
+pub fn block_on_within<T>(deadline: Duration, future: impl Future<Output = T>) -> Option<T> {
+    tauri::async_runtime::block_on(async move { tokio::time::timeout(deadline, future).await.ok() })
 }
 
 /// The fleet flags, the revocation list and `address`'s kill switch, read

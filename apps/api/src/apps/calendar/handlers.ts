@@ -108,6 +108,7 @@ export interface CalendarMethods {
   calendar_markCalendarPolled: (calendarId: string) => Promise<void>
   calendar_claimSyncPending: (calendarId: string) => Promise<string>
   calendar_findAccountsForListRefresh: () => Promise<string>
+  calendar_purgeLongDeselectedEvents: () => Promise<string>
   calendar_recordSyncFailure: (
     calendarId: string,
     operation: string,
@@ -247,11 +248,14 @@ export async function calendarImport(payload: unknown, ctx: CalendarCtx): Promis
  * account's calendar list, so a calendar added in Google appears (unselected unless the account
  * can write to it), a renamed or recoloured one is updated, and one removed in Google goes with
  * its events and channel. A calendar already synced keeps its sync token (no full re-list).
+ * The events of a calendar deselected more than 30 days ago are purged here too.
  */
 export async function calendarListRefresh(_payload: unknown, ctx: CalendarCtx): Promise<void> {
   const accounts = JSON.parse(await ctx.calendar_findAccountsForListRefresh()) as Array<{
     id: string
   }>
+  // A calendar deselected long ago lets its kept (hidden) events go.
+  await ctx.calendar_purgeLongDeselectedEvents()
   const day = new Date().toISOString().slice(0, 10)
   for (const account of accounts) {
     await ctx.enqueueJob(

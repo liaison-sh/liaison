@@ -50,8 +50,11 @@ export async function calendarActivityRows(
   const attends = drizzleSql`EXISTS (
     SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.attendees) = 'array' THEN e.attendees ELSE '[]'::jsonb END) a
      WHERE lower(COALESCE(a->>'email', a#>>'{}')) IN (SELECT jsonb_array_elements_text(${emails}::jsonb)))`
+  // A deselected calendar's events are kept (hidden) for a while: they are not activity.
   const live = drizzleSql`e.org_id = ${orgId}::uuid AND e.deleted_at IS NULL AND e.status <> 'cancelled'
-    AND e.recurring_event_id IS NULL AND ${attends}`
+    AND e.recurring_event_id IS NULL AND ${attends}
+    AND e.calendar_id NOT IN (SELECT id FROM ${tableRef("app_calendar", "calendars")}
+                               WHERE org_id = ${orgId}::uuid AND selected = false)`
   const recurring = drizzleSql`COALESCE(jsonb_typeof(e.recurrence) = 'array' AND jsonb_array_length(e.recurrence) > 0, false)`
   const plain = extractRows<RawEventRow>(
     await db.execute(drizzleSql`

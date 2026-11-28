@@ -368,3 +368,4 @@ files_read fences the text as outside content -> apps/api/src/modules/agent/tool
 A non-UTF-8 file named as text is refused -> apps/api/src/modules/files/text-read.ts:150 ; apps/api/src/modules/agent/tools/file-tools.ts:211
 Encrypted or private mailbox attachments keep the download link -> apps/api/src/modules/agent/tools/file-tools.ts:196
 A generic-typed upload counts as text by its extension -> apps/api/src/modules/files/text-read.ts:139
+A write back into the app the conversation read (calendar after its own reads) does not wait, unless it emails someone -> apps/api/src/modules/agent/scopes/scope-taint.ts (rule 6l, returnsToOwnApp) ; apps/api/src/modules/apps/execute-tool.ts (executeToolCore)

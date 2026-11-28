@@ -116,6 +116,16 @@ export function createCalendarMethods(
   const { callerScopes, orgId, requireApp, txDb, userId } = ctx
   const enqueue = deps.enqueue ?? enqueueAppJob
 
+  /** Whether this calendar's writes reach Google (an active connection): what a write tells the
+   * agent, so it never says "synced" or "invited" for a calendar kept in Liaison only. */
+  async function reachesGoogle(calendarId: string): Promise<boolean> {
+    const { calendarReachesGoogle } = await import("~/apps/calendar/sync")
+    const { withPrivilegedDb } = await import("~/db/privileged")
+    return withPrivilegedDb(orgId, "calendar-reaches-google", (tx) =>
+      calendarReachesGoogle(tx, orgId, calendarId),
+    )
+  }
+
   /**
    * Tells the open calendar views that a calendar's events changed (a sync page, a push result,
    * a write by an agent), so a visible week refetches instead of waiting for a navigation. One
@@ -695,7 +705,11 @@ export function createCalendarMethods(
         },
       )
       await announceEventsChanged({ eventId })
-      return JSON.stringify({ eventId, conference: conference ?? null })
+      return JSON.stringify({
+        eventId,
+        conference: conference ?? null,
+        google: (await reachesGoogle(calendar.id)) ? "syncing" : "not_connected",
+      })
     },
 
     calendar_updateEvent: async (paramsJson: string): Promise<string> => {
@@ -780,6 +794,9 @@ export function createCalendarMethods(
             scope: "following",
             previousSeriesId: split.oldEventId,
             conference: conference ?? null,
+            ...(calendar
+              ? { google: (await reachesGoogle(calendar.id)) ? "syncing" : "not_connected" }
+              : {}),
           })
         }
         scope = "series"
@@ -800,6 +817,9 @@ export function createCalendarMethods(
         eventId,
         ...(scope ? { scope } : {}),
         conference: conference ?? null,
+        ...(calendar
+          ? { google: (await reachesGoogle(calendar.id)) ? "syncing" : "not_connected" }
+          : {}),
       })
     },
 

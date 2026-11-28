@@ -133,6 +133,24 @@
 //      j. a write whose readers are those of one shared resource (`sinkReadersResource`:
 //         tables_rows_write, whose rows follow the dashboard table's sharing) is judged by them:
 //         its owner, everyone when the whole org sees it, the people and role members granted.
+//      l. A write of first-party app A, on a turn whose EVERY taint scope is a read scope of A's
+//         own namespace (`A:<resource>:read`), that the tool declares as returning to its own app
+//         (`taintReturnsToOwnApp`) and that is not outward for this call (no `outwardWhen` value
+//         matches its arguments), is not judged (returnsToOwnApp, 2026-11-28). It is rule 6g for
+//         an app: what the turn read came from A, and the call writes it back into A, through the
+//         requester's own write access to A, so no reader outside A's own readers is added. The
+//         calendar's create/update/delete_event after the agent's own list_events parked every time,
+//         and the card said approving "shares" data that went back into the calendar it came from.
+//         Only a vouched app (core or the image's catalog artifact) may declare it (contract.ts);
+//         a call that sends anything outward (the calendar's `sendUpdates: "all"`, which emails
+//         the guests) is judged as before, and so is a turn holding any other scope (mail,
+//         tickets, finance, another app, the unknown sentinel, a wildcard): one foreign scope and
+//         its data could ride the write into A and out through A's own sync. Residual, accepted:
+//         the taint is per app, not per row, so data from one of A's records may land in another
+//         record of A the requester can write (a personal calendar's event copied onto the team
+//         calendar), as the requester could do by hand in the app; rule 15 still judges a
+//         restricted resource the turn read, and the app's own gates (an invitation, a delete)
+//         still park.
 //   7. The refusal names the missing scope(s) and HOW MANY of the people who would see the
 //      write lack them, never who. It names the only remedies (a person holding the scopes
 //      acts in the app, or an admin adjusts scopes) and says a new conversation is not
@@ -1057,7 +1075,10 @@ export type ToolTaintDeclaration = {
   contentParams?: readonly string[]
   /** Never judged by the scope taint (kernel code only): a write the product never gates, a
    *  bug report about Liaison itself (see the header). */
-  taintUnjudgedWrite?: boolean
+  taintUnjudgedWrite?: boolean /** The write goes back into its own app (rule 6l): not judged on a turn whose every taint is a
+   *  read scope of that app, unless one of `outwardWhen`'s parameters holds one of its values
+   *  (the call sends something out of the app, an invitation email). First-party apps only. */
+  taintReturnsToOwnApp?: { outwardWhen?: Readonly<Record<string, readonly unknown[]>> }
 }
 
 /**
@@ -1100,6 +1121,40 @@ export function returnsToOwnMcpServer(toolName: string, turnTaintScopes: unknown
   return turnTaintScopes.every(
     (s) => typeof s === "string" && (s === namespace || s.startsWith(`${namespace}:`)),
   )
+}
+
+/**
+ * True when this write goes back into the app the turn's every taint came from (rule 6l). The
+ * tool must declare `taintReturnsToOwnApp` (copied by runtime.ts for a vouched app alone), every
+ * taint scope must be a read scope inside `<appName>:` (no wildcard, no other app, no kernel
+ * scope, no unknown sentinel), and no `outwardWhen` parameter may hold one of its outward values
+ * in this call. An empty, missing or unreadable taint is false, and so are unreadable arguments
+ * when the tool names outward parameters: fail closed. It answers only the scope taint; rule 15,
+ * the outside-content hold and the app's own gates still apply.
+ */
+export function returnsToOwnApp(
+  appName: string,
+  toolDef: Pick<ToolTaintDeclaration, "taintReturnsToOwnApp">,
+  turnTaintScopes: unknown,
+  args: unknown,
+): boolean {
+  const decl = toolDef.taintReturnsToOwnApp
+  if (decl === undefined || appName === "" || appName.includes(":")) return false
+  if (!Array.isArray(turnTaintScopes) || turnTaintScopes.length === 0) return false
+  const ownRead = (s: unknown): boolean =>
+    typeof s === "string" &&
+    s.startsWith(`${appName}:`) &&
+    s.split(":").length >= 3 &&
+    s.endsWith(":read") &&
+    !s.split(":").includes("*")
+  if (!turnTaintScopes.every(ownRead)) return false
+  const outward = Object.entries(decl.outwardWhen ?? {})
+  if (outward.length === 0) return true
+  if (args === null || typeof args !== "object" || Array.isArray(args)) {
+    return args === undefined
+  }
+  const record = args as Record<string, unknown>
+  return outward.every(([param, values]) => !values.some((v) => record[param] === v))
 }
 
 /**

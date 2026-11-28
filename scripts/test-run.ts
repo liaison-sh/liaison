@@ -509,6 +509,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // reader of notify_user, and the contact group tools: all driven through
             // the real chat seam, no module replaced.
             "src/tests/integration/scope-taint-audience-readers.test.ts",
+            // Rule 6l: a first-party app's write back into the app the turn read.
+            "src/tests/integration/scope-taint-own-app.test.ts",
             "src/tests/integration/contacts-write-taint.test.ts",
             "src/tests/integration/notify-user-self-reader-taint.test.ts",
             "src/tests/integration/contact-groups-agent-tools.test.ts",

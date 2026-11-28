@@ -11,7 +11,7 @@
     {
       "method": "fetch",
       "args": [
-        "https://api.stripe.com/v1/checkout/sessions?payment_intent=pi_contract_1&limit=1&expand%5B0%5D=data.line_items&expand%5B1%5D=data.payment_intent.latest_charge",
+        "https://api.stripe.com/v1/checkout/sessions?payment_intent=pi_contract_1&limit=1&expand%5B0%5D=data.line_items&expand%5B1%5D=data.line_items.data.taxes&expand%5B2%5D=data.payment_intent.latest_charge",
         "{\"method\":\"GET\",\"headers\":{\"Stripe-Version\":\"2026-10-28.endive\"},\"auth\":{\"connection\":\"stripe\",\"scheme\":\"bearer\",\"fields\":[\"restrictedKey\"]}}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"object\\\":\\\"list\\\",\\\"data\\\":[],\\\"has_more\\\":false}\"}"

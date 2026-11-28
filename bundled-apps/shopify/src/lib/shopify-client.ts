@@ -112,6 +112,11 @@ export class ShopifyClient {
     this.onThrottle = opts.onThrottle
   }
 
+  /** The shop's myshopify domain (`<shop>.myshopify.com`), the one its connection names. */
+  get shopDomain(): string {
+    return `${this.shop}.myshopify.com`
+  }
+
   /** Run a GraphQL query/mutation against the shop's Admin API. */
   async query<T = unknown>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
     const base = this.baseUrlOverride ?? `https://${this.shop}.myshopify.com`

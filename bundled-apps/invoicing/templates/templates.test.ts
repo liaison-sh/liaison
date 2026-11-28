@@ -1268,3 +1268,15 @@ describe("S25 identity blocks and mentions", () => {
     expect(all(cmds)).toContain("Credit note for invoice FA-2025-0042 of 2025-11-03")
   })
 })
+
+describe("preview watermark", () => {
+  test("a preview prints its watermark on every page; an issued document never does", () => {
+    const long = longInput()
+    const cmds = invoiceTemplate({ ...long, preview: "PREVIEW, not an invoice" })
+    const marks = textCmds(cmds).filter((t) => t.text === "PREVIEW, not an invoice")
+    const pages = pageCount(cmds)
+    expect(pages).toBeGreaterThan(1)
+    expect(new Set(marks.map((m) => m.page)).size).toBe(pages)
+    expect(texts(invoiceTemplate(long))).not.toContain("PREVIEW, not an invoice")
+  })
+})

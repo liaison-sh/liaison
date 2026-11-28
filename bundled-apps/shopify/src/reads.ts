@@ -681,6 +681,7 @@ export async function orders_search(
   dateFilterNotice?: string
   dateWindowNotice?: string
   accessWindowNotice?: string
+  shopDomain?: string
 }> {
   const limit = clampLimit(params.limit)
   const client = await getShopifyClient(ctx, clientDeadline(params.timeout_ms))
@@ -752,6 +753,9 @@ export async function orders_search(
     // round-trip as the page (a sibling root field), so paging stays one call per page. Counts the
     // effectiveQuery (incl. any processed_at date bounds), so the count matches the filtered page set.
     totalCount: data.ordersCount?.count ?? edges.length,
+    // The shop these orders were read from, so a caller holding a shop mapping (invoicing's issuer
+    // profile) can check the orders are that shop's before it links anything to them.
+    ...(typeof client.shopDomain === "string" ? { shopDomain: client.shopDomain } : {}),
     ...(dateFilterNotice ? { dateFilterNotice } : {}),
     ...(dateWindowNotice ? { dateWindowNotice } : {}),
     ...(accessWindowNotice ? { accessWindowNotice } : {}),

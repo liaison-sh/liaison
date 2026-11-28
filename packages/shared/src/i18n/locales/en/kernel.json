@@ -4081,7 +4081,8 @@
       "counterparty_territory_set": "set counterparty territory",
       "einvoicing_settings_set": "change e-invoicing settings",
       "einvoicing_backfill_identities": "backfill counterparty identities",
-      "einvoicing_backfill_legacy_originals": "backfill legacy originals"
+      "einvoicing_backfill_legacy_originals": "backfill legacy originals",
+      "documents_link_shopify_orders": "link documents to their Shopify orders"
     },
     "mcp-manager": {
       "add_connection": "connect MCP server"

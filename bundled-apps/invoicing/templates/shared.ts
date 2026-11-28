@@ -154,6 +154,11 @@ export interface DocumentRenderInput {
    * the footer changes.
    */
   specimen?: Partial<Record<string, string>> | null
+  /**
+   * Set only by a preview render (invoicing's `previewDocument`): the watermark of a document
+   * that was never issued, printed across every page. Absent on every issued document.
+   */
+  preview?: string | null
 }
 
 // ── Currency exponents (ISO 4217 minor-unit digits) ──────────────────────
@@ -1583,6 +1588,23 @@ function drawFooters(state: LayoutState, input: DocumentRenderInput): void {
       size: 7.5,
       color: GRAY_LABEL,
     })
+    const preview = typeof input.preview === "string" ? input.preview.trim() : ""
+    if (preview) {
+      // Across the page top and its middle, over the content: no one can mistake it for an invoice.
+      for (const [y, size] of [
+        [PAGE_HEIGHT - 26, 16],
+        [PAGE_HEIGHT / 2, 30],
+      ] as const) {
+        const w = textWidth(preview, size, true)
+        draw({ ...ctx, cursor: { y } }, preview, {
+          x: (PAGE_WIDTH - w) / 2,
+          y,
+          size,
+          bold: true,
+          color: [0.85, 0.2, 0.2],
+        })
+      }
+    }
     if (specimen) {
       draw({ ...ctx, cursor: { y: SPECIMEN_Y } }, specimen, {
         x: MARGIN_X,

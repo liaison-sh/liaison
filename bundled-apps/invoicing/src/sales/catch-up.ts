@@ -23,7 +23,8 @@ import {
   type Sale,
   saleProblems,
 } from "@liaison/app-sdk/contracts"
-import { findIssuerById } from "../handlers/shopify-order-paid"
+import { cachedRate, type FxFetchCtx, fetchEcbRate } from "../einvoicing/fx"
+import { findIssuerById, streamRateMismatches } from "../handlers/shopify-order-paid"
 import { counterpartyCompletenessError } from "../issue"
 import { lineSubtotal, lineTax } from "../money"
 import type { MutationsCtx } from "../mutations/shared"
@@ -31,6 +32,7 @@ import { classify, isUntaxedIntraEuSaleWithoutVat } from "../tax"
 import { issueSale, type SaleCtx, streamSource, totalsMismatch } from "./issue-sale"
 import { creditSaleRefund } from "./refunds"
 import { orderPaidPayloadFromSale } from "./sale-payload"
+import { previewSale, type SalePreview } from "./sale-preview"
 import { type RevenueStream, SHOPIFY, streamById } from "./streams"
 
 type Row = Record<string, unknown>
@@ -101,7 +103,25 @@ async function streamOf(ctx: SaleCtx, input: CatchUpInput) {
 }
 
 /** What one sale would become, read only. */
-async function previewOne(ctx: SaleCtx, stream: RevenueStream, issuerCountry: string, sale: Sale) {
+type FxPreview = { currency: string; rate: string | null; rate_date: string | null }
+
+/** The ECB rate an issue today would use (the cache, else the ECB), read only: nothing cached. */
+async function fxPreview(ctx: SaleCtx, currency: string, today: string): Promise<FxPreview> {
+  const hit = await cachedRate(ctx.db, currency, today).catch(() => null)
+  if (hit) return { currency, ...hit }
+  const res = await fetchEcbRate(ctx as SaleCtx & FxFetchCtx, currency, today)
+  return res.ok
+    ? { currency, rate: res.rate, rate_date: res.rate_date }
+    : { currency, rate: null, rate_date: null }
+}
+
+async function previewOne(
+  ctx: SaleCtx,
+  stream: RevenueStream,
+  issuerCountry: string,
+  sale: Sale,
+  fxOf: (currency: string) => Promise<FxPreview>,
+) {
   const problems = saleProblems(sale)
   if (problems.length > 0) {
     return {
@@ -135,12 +155,17 @@ async function previewOne(ctx: SaleCtx, stream: RevenueStream, issuerCountry: st
   const blockers: string[] = []
   if (!c?.email) blockers.push("buyer email missing")
   const incomplete = c
-    ? counterpartyCompletenessError({
-        legal_name: c.legal_name ?? c.email ?? "",
-        country: c.country ?? counterpartyCountry,
-        address: c.address ?? null,
-        email: c.email ?? null,
-      })
+    ? counterpartyCompletenessError(
+        {
+          legal_name: c.legal_name ?? c.email ?? "",
+          country: c.country ?? counterpartyCountry,
+          address: c.address ?? null,
+          email: c.email ?? null,
+          customer_kind: c.kind === "individual" ? "individual" : null,
+          vat_id: c.vat_id ?? null,
+        },
+        payload.line_items,
+      )
     : { message: "no buyer" }
   if (incomplete) blockers.push(`buyer incomplete: ${incomplete.message}`)
   if (classification.treatment === "unconfigured") blockers.push("tax regime not configured")
@@ -150,6 +175,10 @@ async function previewOne(ctx: SaleCtx, stream: RevenueStream, issuerCountry: st
     payload.line_items.length > 0 && payload.line_items.every((li) => li.tax_rate_bp === 0)
   if (isUntaxedIntraEuSaleWithoutVat(classification.treatment, chargesNoTax))
     blockers.push("EU buyer charged no VAT and gave no VAT number")
+  for (const m of streamRateMismatches(payload.line_items, classification))
+    blockers.push(
+      `"${m.description}" charged at ${m.tax_rate_bp} bp, ${classification.treatment} is ${classification.default_rate_bp} bp`,
+    )
   const diff = computedTax > reportedTax ? computedTax - reportedTax : reportedTax - computedTax
   if (diff > BigInt(Math.max(1, payload.line_items.length)))
     blockers.push(`tax computed ${computedTax} differs from the source's ${reportedTax}`)
@@ -158,8 +187,9 @@ async function previewOne(ctx: SaleCtx, stream: RevenueStream, issuerCountry: st
     blockers.push(
       `lines (${totals.lines_minor} + ${totals.tax_minor}) do not add up to ${totals.total_minor}`,
     )
-  if (sale.currency !== "EUR")
-    blockers.push(`${sale.currency}: the EUR VAT total needs the ECB rate of the issue date`)
+  // A foreign currency is priced in EUR at issue (the issue flow warms the ECB rate of the issue
+  // date; an e-invoice the ECB cannot price waits for it): shown, never a blocker here.
+  const fx = sale.currency !== "EUR" ? await fxOf(sale.currency) : null
   const existing = await streamSource(stream, sale).existingDocuments(ctx)
   const invoiced = existing.find((d) => d.type !== "credit_note") ?? null
   return {
@@ -178,12 +208,14 @@ async function previewOne(ctx: SaleCtx, stream: RevenueStream, issuerCountry: st
       description: l.description,
       quantity: l.quantity,
       unit_price_minor: l.unit_price_minor,
+      discount_minor: l.discount_minor ?? "0",
       rate_bp: l.tax?.rate_bp ?? null,
     })),
     net_minor: net.toString(),
     tax_minor: computedTax.toString(),
     source_tax_minor: reportedTax.toString(),
     total_minor: sale.totals.total_minor,
+    fx,
     refunds: (sale.refunds ?? []).map((r) => ({
       refund_id: r.refund_id,
       amount_minor: r.amount_minor,
@@ -210,7 +242,16 @@ export async function revenueStreamCatchUpPreview(ctx: SaleCtx, input: CatchUpIn
   const read = await salesOf(ctx, stream, window.from, window.to)
   if (!read.ok) return fail(read.code, `The provider did not list its sales: ${read.message}`)
   const rows: Array<Awaited<ReturnType<typeof previewOne>>> = []
-  for (const s of read.sales) rows.push(await previewOne(ctx, stream, issuer.country, s))
+  const today = new Date().toISOString().slice(0, 10)
+  const rates = new Map<string, Promise<FxPreview>>()
+  const fxOf = (cur: string) => {
+    const known = rates.get(cur)
+    if (known) return known
+    const p = fxPreview(ctx, cur, today)
+    rates.set(cur, p)
+    return p
+  }
+  for (const s of read.sales) rows.push(await previewOne(ctx, stream, issuer.country, s, fxOf))
   const toIssue = rows.filter((r) => !("already_invoiced" in r && r.already_invoiced))
   return {
     status: "completed" as const,
@@ -229,6 +270,94 @@ export async function revenueStreamCatchUpPreview(ctx: SaleCtx, input: CatchUpIn
       `${rows.length} sale(s) of ${stream.label ?? stream.provider_app} paid between ${window.from} and ${window.to}: ` +
       `${toIssue.length} to invoice in sale-date order, ${rows.length - toIssue.length} already invoiced, ` +
       `${toIssue.filter((r) => r.blockers.length > 0).length} with a blocker. Nothing was written.`,
+  }
+}
+
+/** Most sales one `sales_preview_pdfs` call renders (each is a PDF render). */
+export const PREVIEW_PDF_MAX = 8
+
+export interface PreviewPdfsInput extends CatchUpInput {
+  /** The sales to render (payment ids as the preview lists them); else the window's first ones. */
+  externalIds?: string[]
+}
+
+/**
+ * `sales_preview_pdfs`: each listed sale of the window that has no invoice yet, run through the
+ * issue path on a context that writes nothing, and rendered as the unnumbered document it would
+ * become, watermarked "PREVIEW, not an invoice" (sales/sale-preview.ts). The PDFs are internal
+ * files: never mailed, never linked to a buyer. A sale that would park says why instead.
+ */
+export async function revenueStreamPreviewPdfs(ctx: SaleCtx, input: PreviewPdfsInput) {
+  const stream = await streamOf(ctx, input)
+  if (!stream) return fail("stream_not_found", "streamId names no revenue stream.")
+  if (stream.provider_app === SHOPIFY)
+    return fail(
+      "shop_catch_up_elsewhere",
+      "The shop's missed orders are caught up by its own order updates.",
+    )
+  const window = windowOf(input)
+  if (!window) return fail("invalid_window", "paidFrom and paidTo are ISO dates, paidFrom first.")
+  const read = await salesOf(ctx, stream, window.from, window.to)
+  if (!read.ok) return fail(read.code, `The provider did not list its sales: ${read.message}`)
+  const wanted = Array.isArray(input.externalIds)
+    ? new Set(input.externalIds.filter((x): x is string => typeof x === "string"))
+    : null
+  const chosen = read.sales.filter((s) => !wanted || wanted.has(s.external_id))
+  const rows: Array<{
+    external_id: string
+    sold_at: string
+    already_invoiced?: string
+    preview?: SalePreview
+    unreadable?: true
+  }> = []
+  let rendered = 0
+  let more = 0
+  for (const listed of chosen) {
+    if (rendered >= PREVIEW_PDF_MAX) {
+      more++
+      continue
+    }
+    const env = ctx.contracts
+      ? await ctx.contracts.call<{ found?: boolean; sale?: Sale }>(
+          REVENUE_STREAM,
+          "sale_get",
+          { external_id: listed.external_id },
+          { provider: stream.provider_app },
+        )
+      : null
+    const sale =
+      env?.status === "completed" && env.result?.found && env.result.sale ? env.result.sale : null
+    if (!sale) {
+      rows.push({ external_id: listed.external_id, sold_at: listed.sold_at, unreadable: true })
+      continue
+    }
+    const existing = (await streamSource(stream, sale).existingDocuments(ctx)).find(
+      (d) => d.type !== "credit_note",
+    )
+    if (existing) {
+      rows.push({
+        external_id: sale.external_id,
+        sold_at: sale.sold_at,
+        already_invoiced: String(existing.number ?? existing.id),
+      })
+      continue
+    }
+    rendered++
+    rows.push({
+      external_id: sale.external_id,
+      sold_at: sale.sold_at,
+      preview: await previewSale(stream, sale, ctx),
+    })
+  }
+  return {
+    status: "completed" as const,
+    stream: { streamId: stream.id, providerApp: stream.provider_app },
+    window,
+    sales: rows,
+    notRendered: more,
+    summary:
+      `${rendered} sale(s) rendered as unnumbered previews (watermarked, nothing issued or sent)` +
+      (more > 0 ? `; ${more} more: call again with their externalIds.` : "."),
   }
 }
 

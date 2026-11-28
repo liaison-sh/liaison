@@ -1176,6 +1176,24 @@ export function summarizeBackfillIdentities(params: {
   })
 }
 
+export function summarizeLinkShopifyOrders(params: {
+  dry_run?: boolean | null
+  limit?: number | null
+}): Promise<ApprovalSummaryShape> {
+  const dry = params.dry_run !== false
+  return done({
+    kind: "documents_link_shopify_orders",
+    title: dry
+      ? "Preview which documents would be linked to their Shopify order (dry run, nothing saved)"
+      : "Link documents to their Shopify order",
+    lines: [
+      `Dry run: ${dry ? "yes, only a report" : "no, the order link is saved on each matching document"}`,
+      "Only documents whose Shopify order has the buyer's email, in the issuer's own shop",
+      ...(params.limit ? [`At most ${params.limit} documents this run`] : []),
+    ],
+  })
+}
+
 export function summarizeBackfillLegacyOriginals(params: {
   dry_run?: boolean | null
   limit?: number | null

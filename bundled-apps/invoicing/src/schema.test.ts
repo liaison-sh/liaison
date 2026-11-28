@@ -89,7 +89,7 @@ describe("Invoicing app schema (manifest.schema block)", () => {
     it("payment_status is separated from status (per spec §6 refund flow)", () => {
       const t = loadSchema().documents
       const f = t?.fields.payment_status as { enum?: string[]; default?: string }
-      expect(f?.enum).toEqual(["unpaid", "partial", "paid", "refunded"])
+      expect(f?.enum).toEqual(["unpaid", "partial", "paid", "refunded", "credited"])
       expect(f?.default).toBe("unpaid")
     })
 

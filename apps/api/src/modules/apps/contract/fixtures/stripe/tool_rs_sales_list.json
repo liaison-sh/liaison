@@ -13,7 +13,7 @@
     {
       "method": "fetch",
       "args": [
-        "https://api.stripe.com/v1/checkout/sessions?status=complete&created%5Bgte%5D=1793491200&created%5Blt%5D=1793577600&limit=100&expand%5B0%5D=data.line_items&expand%5B1%5D=data.payment_intent.latest_charge",
+        "https://api.stripe.com/v1/checkout/sessions?status=complete&created%5Bgte%5D=1793491200&created%5Blt%5D=1793577600&limit=100&expand%5B0%5D=data.line_items&expand%5B1%5D=data.line_items.data.taxes&expand%5B2%5D=data.payment_intent.latest_charge",
         "{\"method\":\"GET\",\"headers\":{\"Stripe-Version\":\"2026-10-28.endive\"},\"auth\":{\"connection\":\"stripe\",\"scheme\":\"bearer\",\"fields\":[\"restrictedKey\"]}}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"object\\\":\\\"list\\\",\\\"data\\\":[],\\\"has_more\\\":false}\"}"

@@ -5,9 +5,10 @@
 // The desktop and phone shells are installed software: an old copy keeps
 // talking to a server that has moved on. This route publishes the oldest shell
 // version per platform the server still supports, so a shell below it can show
-// its own update notice. It carries the three minimums and `servedShell`, the
-// operator's switch that asks the apps to keep their bundled web shell
-// (LIAISON_SERVED_SHELL, shell-info-routes.ts), and nothing else.
+// its own update notice. It carries the three minimums, the settings page
+// format the server's apps are drawn from (SETTINGS_SCHEMA_VERSION) and
+// `servedShell`, the operator's switch that asks the apps to keep their bundled
+// web shell (LIAISON_SERVED_SHELL, shell-info-routes.ts), and nothing else.
 //
 // THE HEADER. A shell that got an answer here sends `X-Liaison-Client:
 // <desktop|ios|android>/<semver>` on its later calls. The header is in the CORS
@@ -15,6 +16,7 @@
 // preflight that does not allow it fails every call of that shell. It is
 // logged at debug level for diagnosis and NEVER used for an access decision:
 // anyone can send any value.
+import { SETTINGS_SCHEMA_VERSION } from "@liaison/app-sdk"
 import type { MiddlewareHandler } from "hono"
 import { Hono } from "hono"
 import type { AppEnv } from "~/app"
@@ -28,6 +30,8 @@ export interface ClientPolicy {
   desktop: string
   ios: string
   android: string
+  /** The settings page format this server's manifests use. */
+  settingsSchema: number
   servedShell: boolean
 }
 
@@ -38,6 +42,7 @@ clientPolicyRoutes.get("/", (c) => {
     desktop: env.LIAISON_MIN_CLIENT_DESKTOP,
     ios: env.LIAISON_MIN_CLIENT_IOS,
     android: env.LIAISON_MIN_CLIENT_ANDROID,
+    settingsSchema: SETTINGS_SCHEMA_VERSION,
     servedShell: env.LIAISON_SERVED_SHELL,
   }
   c.header("Cache-Control", "public, max-age=300")

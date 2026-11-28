@@ -55,7 +55,7 @@ import {
   pendingDomains,
   resolveGrantedDomains,
 } from "~/modules/apps/egress-grants"
-import { assertHostApiCompatible } from "~/modules/apps/host-api"
+import { assertHostApiCompatible, assertSettingsSchemaCompatible } from "~/modules/apps/host-api"
 import { resetInstallTrustCache } from "~/modules/apps/install-trust"
 import { KNOWN_CAPABILITIES } from "~/modules/apps/manifest-schema"
 import {
@@ -864,6 +864,7 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
     // `packageManifestSchema` refuses a manifest that carries `trusted`.
 
     assertHostApiCompatible(manifest)
+    assertSettingsSchemaCompatible(manifest)
     assertIconClean(manifest)
     await assertNotBundled(manifest.name)
     const ownerOrgId = ownOption(opts, "ownerOrgId") ?? null
@@ -1211,6 +1212,7 @@ export async function applyUpgrade(opts: ApplyUpgradeOptions): Promise<InstallRe
       throw new Error(`Upgrade package is for '${manifest.name}', not '${opts.name}'`)
     }
     assertHostApiCompatible(manifest)
+    assertSettingsSchemaCompatible(manifest)
     assertIconClean(manifest)
     await assertNotBundled(manifest.name)
     // An org's custom app upgrades under the same rules and stays that org's.

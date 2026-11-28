@@ -7178,7 +7178,7 @@
       }
     },
     "documents_correct_issued": {
-      "description": "Correct an ISSUED invoice or credit note IN PLACE after a TOOL error: same number and date, no new document, no credit note, no mail. Changes lines, VAT rates, tax treatment (its legal mention follows) and, only when passed, the buyer's name, VAT number, country, address or kind. The corrected file prints the legal mention in force on the correction's date; refresh_legal_mention alone corrects only the wording. A changed grand total needs total_change_reason. The previous file stays archived with a correction record. Refused once sent to the e-invoicing platform. Only a person holding invoicing:issuer:admin decides it. GATED: report it as pending.",
+      "description": "Correct an ISSUED invoice or credit note IN PLACE after a TOOL error: same number and date, no new document, no credit note, no mail. Changes lines, VAT rates, tax treatment (its legal mention follows) and, only when passed, the buyer's name, VAT id, country, address or kind. refresh_legal_mention alone fixes only the legal mention (today's wording). A changed grand total needs total_change_reason. The previous file stays archived with a correction record. Refused once sent to the e-invoicing platform. Only a person holding invoicing:issuer:admin decides it. GATED: report it as pending.",
       "searchKeywords": [
         "corriger",
         "rectifier",

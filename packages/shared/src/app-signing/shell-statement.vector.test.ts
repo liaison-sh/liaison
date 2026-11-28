@@ -45,7 +45,7 @@ function testKey() {
   }
 }
 
-const FILES: Record<string, string> = {
+const FILES = {
   "index.html": '<!doctype html><script>console.log("vector")</script>',
   "assets/app.js": "export const vector = 1\n",
 }

@@ -13,10 +13,16 @@
 // Covered (knowable before the order exists, cheap): the buyer email the invoice is addressed to,
 // the postal address the recipient needs, an intra-EU sale that charges no VAT without the buyer's
 // VAT number, and (once Shopify computed the draft's tax) VAT charged on an exempt treatment.
+// Also covered: a buyer whose territory the French e-invoicing gate cannot place on its own (an
+// overseas department such as Réunion, Monaco, a VAT number of another country), which parks the
+// order until a person records the territory treatment (`counterparty_territory_set`): the order
+// is not refused, the answer says it will wait so the wait is never a surprise.
 // Not covered: the issuer's own configuration (tax regime, time zone), Shopify's per-line tax
-// reproduction, and the French e-invoicing identity of the buyer (registry lookups); those are
+// reproduction, and the rest of the buyer's e-invoicing identity (registry lookups); those are
 // settings or post-order facts, not something the order's author can fix on the draft.
 
+import { resolveGateMode } from "./einvoicing/gate"
+import { buyerTerritory } from "./einvoicing/territory"
 import { findIssuerByShopId, formatEventAddress } from "./handlers/shopify-order-paid"
 import { counterpartyCompletenessError } from "./issue"
 import { classify, EXEMPT_TREATMENTS, isUntaxedIntraEuSaleWithoutVat } from "./tax"
@@ -95,7 +101,8 @@ function amount(v: unknown): number | null {
  */
 export function invoiceabilityProblems(
   facts: ProspectiveOrderFacts,
-  issuer: { country: string | null | undefined },
+  issuer: { country: string | null | undefined; vat_id?: string | null },
+  opts: { gateMode?: "warn" | "enforce" | null } = {},
 ): InvoiceabilityProblem[] {
   const total = amount(facts.total_price)
   if (total === 0) return []
@@ -173,6 +180,31 @@ export function invoiceabilityProblems(
         `exemption so Shopify charges ${counterpartyCountry} VAT`,
     })
   }
+  // The French e-invoicing gate (enforce mode, a French VAT registered seller) parks a buyer whose
+  // territory it cannot place by itself: an overseas department (Réunion, Guadeloupe, ...), a
+  // collectivity, Monaco, a VAT number of another country. Such an order used to read as
+  // invoiceable here and then wait unseen.
+  const territory = buyerTerritory({
+    billingCountry: billingCountry ?? counterpartyCountry,
+    billingPostcode: str((billing ?? shipping ?? fallback)?.zip),
+    vatId,
+  })
+  if (
+    opts.gateMode === "enforce" &&
+    upper(issuer.country) === "FR" &&
+    !blank(issuer.vat_id) &&
+    territory.territory === "needs_review"
+  ) {
+    problems.push({
+      reason: "einvoice_needs_review",
+      field: "territory_treatment",
+      message:
+        `the buyer's billing territory (${territory.country ?? "unknown"}${territory.code ? `, ${territory.code}` : ""}) ` +
+        "needs a decision before French e-invoicing can classify the invoice: the order would wait in " +
+        "the deferred list (einvoice_needs_review) until a person records it with invoicing " +
+        "counterparty_territory_set on the buyer's contact (as_fr or as_foreign)",
+    })
+  }
   if (
     EXEMPT_TREATMENTS.has(classification.treatment) &&
     facts.tax_exempt !== true &&
@@ -201,7 +233,8 @@ export async function ordersInvoiceabilityCheck(
   if (!shopId) return { applies: false, problems: [] }
   const issuer = await findIssuerByShopId(ctx.db, shopId)
   if (!issuer) return { applies: false, problems: [] }
-  const problems = invoiceabilityProblems(input, issuer)
+  const gateMode = await resolveGateMode(ctx.db, { materialise: false })
+  const problems = invoiceabilityProblems(input, issuer, { gateMode })
   return {
     applies: true,
     issuer_profile_id: issuer.id,

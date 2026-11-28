@@ -14,12 +14,12 @@ DAP
 FROM
 Example Works Ltd
 1 Example Street, Example Town
-GB
+United Kingdom
 VAT: GB123456789
 VENDOR
 Example Client SARL
 2 Client Avenue, 69001 Lyon
-FR
+France
 VAT: FR98765432109
 #
  
@@ -29,7 +29,7 @@ Qty
  
 Unit price
  
-Tax %
+VAT %
  
 Amount excl. VAT
 1
@@ -45,7 +45,7 @@ Design and build work, part 1 of the agreed scope
 Subtotal
  
 100.00 EUR
-Tax (20.00%)
+VAT (20.00%)
  
 20.00 EUR
 Total due

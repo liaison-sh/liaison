@@ -34,11 +34,13 @@ describe("operationCategory", () => {
         authoritative: true,
       }).category,
     ).toBe("mixed")
+  })
+  test("carriage follows what it carries: a download plus a shipping charge is services, not mixed", () => {
     expect(
       operationCategory([{ line_kind: "software" }, { line_kind: "shipping" }], {
         authoritative: true,
       }).category,
-    ).toBe("mixed")
+    ).toBe("services")
   })
   test("empty -> null", () => {
     expect(operationCategory([], { authoritative: true })).toEqual({
@@ -67,7 +69,7 @@ describe("service lines", () => {
     expect(
       operationCategory([{ line_kind: "service" }, { line_kind: "shipping" }], authoritative)
         .category,
-    ).toBe("mixed")
+    ).toBe("services")
     expect(operationCategory([{ line_kind: "goods" }], authoritative).category).toBe("goods")
 
     // The booking data of a stored document reads each line's kind: a document issued before the

@@ -251,6 +251,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "packages/app-sdk/**", pages: ["app-development", "app-package-format"] },
   { glob: "packages/shared/src/app-signing/**", pages: ["app-package-format"] },
   { glob: "scripts/app-signing/**", pages: ["app-package-format"] },
+  { glob: "scripts/shell-signing/**", pages: ["app-package-format"] },
   { glob: "packages/host-sdk/**", pages: ["app-development"] },
   { glob: "packages/app-ui/**", pages: ["app-development"] },
   // The platform-held SQL connections: `ctx.sql` and the database connector's transports.

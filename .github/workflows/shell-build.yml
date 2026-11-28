@@ -1,0 +1,162 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# One of the two independent builds behind a signed web shell
+# (packages/shared/src/app-signing/shell-statement.ts). For a commit it builds
+# apps/web in both modes from a source archive of that commit, exactly as the
+# image does (`bun run build`, `bun run build:native`, no VITE_* settings), and
+# publishes the two file manifests (scripts/shell-signing/build-manifest.ts):
+# as the `shell-manifests` artifact of the run, and on the GitHub release of the
+# tag when there is one. A signer builds a statement only when this build and a
+# second one made elsewhere agree byte for byte; it never trusts either alone.
+#
+# No secret and no write permission in the build job. The attach job holds
+# `contents: write` to add two JSON files to an existing release, and installs
+# and runs nothing.
+#
+# Runs for every `vX.Y.Z` tag pushed, after every nightly run (a nightly tag is
+# created by nightly.yml with the workflow token, which starts no workflow), and
+# by hand for any ref: `gh workflow run shell-build.yml -f ref=<ref>`.
+name: shell-build
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_run:
+    workflows: [nightly]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Ref to build (a tag, a branch or a sha)"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shell-build-${{ github.event_name }}-${{ inputs.ref || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    if: >-
+      ${{ github.repository == 'liaison-sh/liaison' &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.pick.outputs.sha }}
+      seq: ${{ steps.pick.outputs.seq }}
+      version: ${{ steps.pick.outputs.version }}
+      release: ${{ steps.pick.outputs.release }}
+    steps:
+      - name: What to build
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          INPUT_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          case "$GITHUB_EVENT_NAME" in
+            push) ref="$GITHUB_REF_NAME" ;;
+            workflow_run)
+              # The newest nightly pre-release: the one this nightly run published.
+              ref=$(gh api "repos/$GH_REPO/releases?per_page=30" \
+                --jq '[.[] | select(.tag_name | startswith("nightly-"))][0].tag_name // ""')
+              [ -n "$ref" ] || { echo "::error::no nightly release"; exit 1; }
+              ;;
+            *)
+              ref="$INPUT_REF"
+              case "$ref" in
+                refs/pull/* | pull/* | */merge | */head) echo "::error::refusing ref $ref"; exit 1 ;;
+              esac
+              ;;
+          esac
+          commit=$(gh api "repos/$GH_REPO/commits/$ref")
+          sha=$(jq -r .sha <<<"$commit")
+          committed=$(jq -r .commit.committer.date <<<"$commit")
+          seq=$(date -u -d "$committed" +%s)
+          case "$ref" in
+            nightly-* | v[0-9]*) version="$ref" ;;
+            *) version="main-${sha:0:12}" ;;
+          esac
+          release=""
+          if gh release view "$ref" -R "$GH_REPO" >/dev/null 2>&1; then release="$ref"; fi
+          {
+            echo "sha=$sha"
+            echo "seq=$seq"
+            echo "version=$version"
+            echo "release=$release"
+          } >> "$GITHUB_OUTPUT"
+          echo "building $ref = $sha (seq $seq, version $version, release '${release}')"
+
+  build:
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+          path: checkout
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - name: Build both modes from a source archive
+        env:
+          SHA: ${{ needs.resolve.outputs.sha }}
+          SEQ: ${{ needs.resolve.outputs.seq }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/src"
+          out="$RUNNER_TEMP/shell-manifests"
+          mkdir -p "$src" "$out"
+          git -C checkout archive --format=tar "$SHA" | tar -x -C "$src"
+          cd "$src"
+          bun install --frozen-lockfile --ignore-scripts
+          (cd apps/web && env -u LIAISON_CLOUD_DOMAIN bun run build && env -u LIAISON_CLOUD_DOMAIN bun run build:native)
+          for mode in desktop native; do
+            dist=apps/web/dist; [ "$mode" = native ] && dist=apps/web/dist-native
+            bun scripts/shell-signing/build-manifest.ts "$mode" "$dist" \
+              --commit "$SHA" --seq "$SEQ" --liaison-version "$VERSION" \
+              --out "$out/shell-manifest-$mode.json"
+            echo "$mode: $(cat "$dist/build-id.txt")"
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: shell-manifests
+          path: ${{ runner.temp }}/shell-manifests
+          if-no-files-found: error
+          retention-days: 30
+
+  attach:
+    needs: [resolve, build]
+    if: ${{ needs.resolve.outputs.release != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: shell-manifests
+          path: ${{ runner.temp }}/shell-manifests
+      - name: Add the manifests to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE: ${{ needs.resolve.outputs.release }}
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE" -R "$GH_REPO" --clobber \
+            "$RUNNER_TEMP/shell-manifests/shell-manifest-desktop.json" \
+            "$RUNNER_TEMP/shell-manifests/shell-manifest-native.json"

@@ -829,3 +829,26 @@ describe("manifest schema: where a call may run", () => {
     expect(ownsTransactionsHolds({}, true)).toBe(false)
   })
 })
+
+describe("manifest schema: requires", () => {
+  const minimal = { name: "acme", version: "0.1.0" }
+
+  it("accepts requires.settingsSchema as a positive integer, or an empty requires", () => {
+    expect(validateAppManifest({ ...minimal, requires: { settingsSchema: 1 } }).success).toBe(true)
+    expect(validateAppManifest({ ...minimal, requires: { settingsSchema: 7 } }).success).toBe(true)
+    expect(validateAppManifest({ ...minimal, requires: {} }).success).toBe(true)
+  })
+
+  it("refuses settingsSchema 0, a fraction, a string, and unknown keys under requires", () => {
+    for (const requires of [
+      { settingsSchema: 0 },
+      { settingsSchema: 1.5 },
+      { settingsSchema: "2" },
+      { settingsSchema: 1, liaison: "^2" },
+      "settingsSchema",
+    ]) {
+      const r = validateAppManifest({ ...minimal, requires })
+      expect({ requires, ok: r.success }).toEqual({ requires, ok: false })
+    }
+  })
+})

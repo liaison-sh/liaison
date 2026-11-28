@@ -71,6 +71,7 @@ my-app-1.0.0.liaisonapp.cosign.bundle   (detached cosign signature — sibling f
 | `iconSvg` | no | the app's icon as SVG markup, at most 8 KB of plain drawing elements; see "App icon" below |
 | `iconName` | no | the app's icon as the name of an icon in Liaison's icon set; see "App icon" below |
 | `host` | no | semver range of the host API the app needs, e.g. `"^1"` (the default when absent) — see "Host API version" below |
+| `requires` | no | `{ settingsSchema?: integer >= 1 }`: the settings page format the app needs — see "Settings schema" below |
 | `noRollback` | no | `true` marks a first-party security release: once it runs, a rollback never goes below it (ignored on other packages) — see "Versions on the server" below |
 | `updateUrl` | no | release-channel URL — see below |
 | `connections` | no | OAuth2 / credential connections the app declares |
@@ -128,6 +129,23 @@ server supports: `{ "data": { "majors": [1] } }`.
 
 `sdkVersion` and `minLiaisonVersion` are ignored. Older packages that carry them
 still parse.
+
+## Settings schema (`requires.settingsSchema`)
+
+The settings page format has its own version, an integer
+(`SETTINGS_SCHEMA_VERSION` in `@liaison/app-sdk`), raised when a settings block
+kind or field type is added. An app whose settings page uses one declares the
+version it needs as `requires: { "settingsSchema": N }`. The server refuses to
+install or upgrade an app that needs a newer one than it provides, and does not
+load such an app, with the reason:
+
+```
+my-app 2.0.0 needs settings schema 2; this server provides 1. Update Liaison first.
+```
+
+`GET /api/client-policy` (public) answers the server's version as
+`settingsSchema`. For desktop and phone apps older than the server, give new
+blocks a `fallback` (see [Building a Liaison App](app-development.md)).
 
 ## Versions on the server
 

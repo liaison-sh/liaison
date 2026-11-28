@@ -126,7 +126,7 @@ import {
   validateIdentifier,
 } from "~/modules/apps/ddl"
 import { APP_DDL_STAMP_PREFIX } from "~/modules/apps/ddl-stamp"
-import { hostApiIncompatibility } from "~/modules/apps/host-api"
+import { hostApiIncompatibility, settingsSchemaIncompatibility } from "~/modules/apps/host-api"
 import { resolveOperatorOrgId } from "~/modules/apps/operator-org"
 import { isAppActiveForOrgAsync, noteAppRegistered } from "~/modules/apps/org-apps"
 import {
@@ -809,6 +809,23 @@ async function validateForRegistration(
       "App needs a newer host API",
     )
     const problem: AppProblem = { code: "manifest_invalid", message: hostProblem }
+    await persistAppErrorState(orgId, desc.name, String(desc.version ?? ""), problem)
+    return { ok: false, problem }
+  }
+  // Nor one whose settings page needs a newer settings schema (S10).
+  const needsSettingsSchema: unknown = manifestOnly?.requires?.settingsSchema
+  const settingsProblem = settingsSchemaIncompatibility({
+    name: desc.name,
+    version: String(desc.version ?? ""),
+    requires:
+      typeof needsSettingsSchema === "number" ? { settingsSchema: needsSettingsSchema } : undefined,
+  })
+  if (settingsProblem) {
+    log.error(
+      { app: desc.name, version: desc.version, error: settingsProblem },
+      "App needs a newer settings schema",
+    )
+    const problem: AppProblem = { code: "manifest_invalid", message: settingsProblem }
     await persistAppErrorState(orgId, desc.name, String(desc.version ?? ""), problem)
     return { ok: false, problem }
   }

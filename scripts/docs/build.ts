@@ -47,6 +47,14 @@ export interface RenderOptions {
    * the file on disk: the generated reference pages, rendered fresh from the source.
    */
   pageOverrides?: ReadonlyMap<string, string>
+  /**
+   * App bundle: a link out of docs/ to a repo file becomes its GitHub URL without checking that
+   * the file is in this checkout. The image builds the web app from a Docker context that leaves
+   * some tracked files out (.dockerignore drops `.claude/`), and the bundle must be the same bytes
+   * wherever it is built: the web build id, and a signed shell, cover it. The site build keeps the
+   * check, so a dead link still fails `check:docs`.
+   */
+  trustRepoLinks?: boolean
 }
 
 export interface BuildOptions extends RenderOptions {
@@ -336,7 +344,8 @@ export function renderDocs(opts: RenderOptions): RenderedDocs {
     const fromDir = pageDir(page.nav)
     if (target.startsWith("../")) {
       const repoPath = posix.normalize(posix.join("docs", target))
-      if (repoPath.startsWith("../") || !existsSync(join(repoRoot, repoPath))) return fail()
+      if (repoPath.startsWith("../")) return fail()
+      if (!opts.trustRepoLinks && !existsSync(join(repoRoot, repoPath))) return fail()
       return `${BLOB_BASE}${repoPath}${frag ? `#${frag}` : ""}`
     }
     if (target.endsWith(".md")) {

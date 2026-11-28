@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import type { NavPage, NavSection } from "../../docs/nav"
-import { buildDocs, DocsBuildError } from "./build"
+import { buildDocs, DocsBuildError, renderDocs } from "./build"
 
 const LANDING: NavPage = { id: "index", url: "" }
 
@@ -137,6 +137,33 @@ describe("docs build", () => {
     const broken = (err as DocsBuildError).broken
     expect(broken).toEqual([{ file: "guides/two.md", link: "../nope.md" }])
     expect((err as Error).message).toContain("guides/two.md: ../nope.md")
+  })
+
+  it("links a repo file to GitHub, and fails when the checkout lacks it unless told to trust it", async () => {
+    // A web build in a Docker context that leaves the file out (.dockerignore drops .claude/)
+    // must render the same link as a full checkout: the app bundle trusts repo links.
+    const page =
+      "---\ntitle: Two\ndescription: d\n---\n\nSee [skill](../../.claude/skills/x/SKILL.md).\n"
+    const { docsDir, out } = fixture({ "guides/two.md": page })
+    const err = await buildDocs({ docsDir, out, nav: { landing: LANDING, sections: NAV } }).catch(
+      (e: unknown) => e,
+    )
+    expect((err as DocsBuildError).broken).toEqual([
+      { file: "guides/two.md", link: "../../.claude/skills/x/SKILL.md" },
+    ])
+    const trusted = renderDocs({
+      docsDir,
+      nav: { landing: LANDING, sections: NAV },
+      trustRepoLinks: true,
+    })
+    const html = trusted.rendered.find((r) => r.page.nav.id === "guides/two")?.html ?? ""
+    expect(html).toContain(
+      'href="https://github.com/liaison-sh/liaison/blob/main/.claude/skills/x/SKILL.md"',
+    )
+    mkdirSync(join(dirname(docsDir), ".claude/skills/x"), { recursive: true })
+    writeFileSync(join(dirname(docsDir), ".claude/skills/x/SKILL.md"), "x")
+    const checked = renderDocs({ docsDir, nav: { landing: LANDING, sections: NAV } })
+    expect(checked.rendered.find((r) => r.page.nav.id === "guides/two")?.html).toBe(html)
   })
 
   it("fails on a missing #fragment on a known page", async () => {

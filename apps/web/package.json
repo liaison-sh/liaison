@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && bun scripts/build-app-frame.ts && bun scripts/stamp-build-id.ts",
-    "build:native": "vite build --mode native && bun scripts/build-app-frame.ts --native && bun scripts/stamp-build-id.ts --native",
+    "build": "bun --bun vite build && bun scripts/build-app-frame.ts && bun scripts/stamp-build-id.ts",
+    "build:native": "bun --bun vite build --mode native && bun scripts/build-app-frame.ts --native && bun scripts/stamp-build-id.ts --native",
     "preview": "vite preview",
     "test": "vitest run src/App.test.tsx src/framework/ src/modules/ src/primitives/ src/lib/ src/ui/",
     "test:watch": "vitest",

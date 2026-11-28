@@ -1900,7 +1900,15 @@ async fn read_lists_and_server<R: Runtime>(app: &AppHandle<R>, address: &str) {
         return;
     };
     let (keys, _) = app_signing::pinned();
-    read_lists_then_server(&fetcher, &store, &cache, keys, DOWNLOADS, address).await;
+    read_lists_then_server(
+        &fetcher,
+        &store,
+        &cache,
+        keys,
+        &crate::walk_seam::downloads(),
+        address,
+    )
+    .await;
 }
 
 /// `refresh_lists`, then the server's shell info (its kill switch kept on its
@@ -1919,7 +1927,7 @@ pub async fn read_lists_then_server<F: Fetcher>(
         cache,
         keys,
         downloads,
-        crate::verified_apps::REVOCATIONS_URL,
+        &crate::walk_seam::revocations_url(),
     )
     .await;
     let _ = read_server_shell(fetcher, store, server).await;
@@ -2051,13 +2059,14 @@ async fn refresh<R: Runtime>(app: &AppHandle<R>, address: &str) -> Option<String
     let cache = crate::verified_apps::cache_for(app)?;
     let fetcher = HttpFetcher::new()?;
     let (keys, floor) = app_signing::pinned();
+    let downloads = crate::walk_seam::downloads();
     refresh_lists(
         &fetcher,
         &store,
         &cache,
         keys,
-        DOWNLOADS,
-        crate::verified_apps::REVOCATIONS_URL,
+        &downloads,
+        &crate::walk_seam::revocations_url(),
     )
     .await;
     let list = cache.stored_revocations(keys).ok();
@@ -2068,7 +2077,7 @@ async fn refresh<R: Runtime>(app: &AppHandle<R>, address: &str) -> Option<String
         list: list.as_ref(),
         bridge_version: DESKTOP_BRIDGE_VERSION,
     });
-    if let Err(refusal) = refresh_pointer(&fetcher, &store, DOWNLOADS, address, trust).await {
+    if let Err(refusal) = refresh_pointer(&fetcher, &store, &downloads, address, trust).await {
         eprintln!(
             "liaison: shell for {}: refresh refused ({})",
             crate::servers::host_of(address),

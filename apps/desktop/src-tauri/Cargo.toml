@@ -5,6 +5,13 @@ description = "Liaison desktop shell"
 edition = "2021"
 rust-version = "1.77.2"
 
+[features]
+# A WALK build only (walk_seam.rs): the served shell reads its downloads host
+# and extra pinned keys from the environment, so an edge-case walk can sign
+# revoked, killed or broken shells with a throwaway key. No release workflow
+# builds it (a test below, walk_seam.rs, pins that).
+walk = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

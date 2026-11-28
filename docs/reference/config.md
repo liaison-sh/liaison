@@ -281,6 +281,10 @@ Type `object`, optional.
 | `invoicing.einvoicing.cutoverDate` | `string` | no |  |  |
 | `invoicing.einvoicing.sendEnabled` | `boolean` | no |  |  |
 | `invoicing.einvoicing.bookEnabled` | `boolean` | no |  |  |
+| `invoicing.revenueStreams` | `object[]` | no |  | A bound revenue stream's buyer source key: the `source.stream` the buyer invoices API lists its sales under (the name the shop's website gives it, e.g. "hub"). Binding a stream stays a person's decision (revenue_stream_bind): this only names an already-bound stream, found by provider app (and its account, sourceRef). null: back to the provider app's name. Never the shop's stream, which is always "shopify". |
+| `invoicing.revenueStreams[].providerApp` | `string` | yes |  |  |
+| `invoicing.revenueStreams[].sourceRef` | `string \| null` | no |  |  |
+| `invoicing.revenueStreams[].buyerSourceKey` | `string \| null` | yes |  |  |
 
 ## limits
 

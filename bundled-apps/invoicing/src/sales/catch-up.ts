@@ -562,7 +562,7 @@ async function excludeSale(
     issuer_profile_id: stream.issuer_profile_id,
     stream: stream.provider_app,
     external_id: sale.external_id,
-    source_ref: sale.refs?.checkout_session_id ?? sale.external_id,
+    source_ref: sale.external_id,
     source_name: sale.refs?.order_name ?? null,
     sold_on: await supplyDateOf(ctx, { timezone }, sale.sold_at).catch(() =>
       sale.sold_at.slice(0, 10),

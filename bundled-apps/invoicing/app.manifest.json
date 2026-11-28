@@ -332,7 +332,7 @@
       }
     ]
   },
-  "version": "0.48.1",
+  "version": "0.48.2",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -526,6 +526,7 @@
           "enum": ["thanks", "invoice_only", "none"],
           "default": "none"
         },
+        "buyer_source_key": "string?",
         "decided_by": { "type": "uuid", "userRef": true, "onErase": "anonymize", "required": false },
         "decided_at": "date?"
       },
@@ -2253,7 +2254,7 @@
     },
     "revenue_stream_bind": {
       "summarizer": "summarizeRevenueStreamBind",
-      "description": "Bind a sales app (one implementing revenue-stream@1) so each of its sales gets its invoice, under an issuer profile; or change a bound stream (streamId: mode auto/review/off, mail, label, issuer). Mode auto issues each paid sale and sends its mail with no approval card (a paid sale is a business event); review asks a person for every sale and is meant for agents and testing, not as the default; off issues nothing. A person decides. A new stream issues the sales paid from the moment it is bound; older sales go through sales_catch_up.",
+      "description": "Bind a sales app (one implementing revenue-stream@1) so each of its sales gets its invoice, under an issuer profile; or change a bound stream (streamId: mode, mail, label, issuer, buyerSourceKey: the stream name the website reads, e.g. hub). Mode auto issues each paid sale and sends its mail with no approval card (a paid sale is a business event); review asks a person for every sale and is meant for agents and testing, not as the default; off issues nothing. A person decides. A new stream issues the sales paid from the moment it is bound; older sales go through sales_catch_up.",
       "searchKeywords": ["ventes", "flux", "revenue", "stream", "bind", "checkout"],
       "deferLoading": true,
       "requiredScopes": ["invoicing:settings:write"],
@@ -2272,7 +2273,8 @@
           "sourceRef": { "type": ["string", "null"] },
           "label": { "type": ["string", "null"] },
           "mode": { "type": "string", "enum": ["auto", "review", "off"] },
-          "mail": { "type": "string", "enum": ["thanks", "invoice_only", "none"] }
+          "mail": { "type": "string", "enum": ["thanks", "invoice_only", "none"] },
+          "buyerSourceKey": { "type": ["string", "null"] }
         },
         "additionalProperties": false
       },

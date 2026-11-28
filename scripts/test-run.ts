@@ -1565,6 +1565,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/sales/issue-sale.test.ts",
             "src/sales/shopify-sale.golden.test.ts",
             "src/sales/catch-up.test.ts",
+            // A bound stream's buyer source key through revenue_stream_bind (pure, mock db).
+            "src/sales/stream-tools.test.ts",
             // Quotes ARE Shopify draft orders: the four draft_order:* handlers, mock-driven
             // (createMockDb + stubbed executeTool). Pins the one-quote-per-draft-order
             // idempotency across BOTH event producers (the fat webhook payload and the thin

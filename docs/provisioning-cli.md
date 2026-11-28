@@ -963,6 +963,11 @@ it fails with an actionable error when the app is not enabled.
   re-upload; a bad file is reported as `logoError` on that profile without
   failing the run.
 - `taxRegimes` key on `(issuerCountry, treatment)`; `hsCodes` key on `code`.
+- `revenueStreams` names the `source.stream` the buyer invoices API lists a bound
+  stream's sales under (`providerApp`, optional `sourceRef`, `buyerSourceKey`, for
+  example `hub`; `null` goes back to the app's name). It never binds a stream: a
+  stream not bound yet (`revenue_stream_bind`) is an error, and so is `shopify`,
+  whose sales are always listed as `shopify`.
 
 ### `limits`
 

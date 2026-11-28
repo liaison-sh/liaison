@@ -527,6 +527,9 @@ describe("onSaleEvent", () => {
     >
     expect(claims.map((c) => c.key).sort()).toEqual(["stripe:ch_1", "stripe:cs_1", "stripe:pi_1"])
     expect(claims.every((c) => c.document_id === doc?.id)).toBe(true)
+    // The buyer's side knows the sale by its PaymentIntent, never by the Checkout Session.
+    const ledger = (await db.findMany("sales", { limit: 5 })) as Array<Record<string, unknown>>
+    expect(ledger[0]).toMatchObject({ stream: "stripe", external_id: "pi_1", source_ref: "pi_1" })
   })
 
   test("a Stripe sale already invoiced under its charge (by hand) is not invoiced again", async () => {

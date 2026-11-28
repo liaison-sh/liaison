@@ -8,6 +8,7 @@
 import { REVENUE_STREAM } from "@liaison/app-sdk/contracts"
 import type { MutationsCtx } from "../mutations/shared"
 import {
+  BUYER_SOURCE_KEY,
   type RevenueStream,
   SHOPIFY,
   STREAMS,
@@ -52,6 +53,7 @@ function view(s: RevenueStream) {
     mode: s.mode,
     issueFrom: s.issue_from,
     mail: s.mail,
+    buyerSourceKey: s.buyer_source_key,
     decidedAt: s.decided_at,
   }
 }
@@ -78,6 +80,9 @@ export interface BindInput {
   label?: string | null
   mode?: string
   mail?: string
+  /** The `source.stream` the buyer invoices API lists the stream's sales under; null: the
+   *  provider app's name. */
+  buyerSourceKey?: string | null
 }
 
 /**
@@ -89,6 +94,12 @@ export async function revenueStreamBind(ctx: StreamToolsCtx, input: BindInput) {
   const mail = input.mail ?? "none"
   if (!MODES.has(mode)) return fail("invalid_input", "mode is one of auto, review, off")
   if (!MAILS.has(mail)) return fail("invalid_input", "mail is one of thanks, invoice_only, none")
+  const sourceKey = input.buyerSourceKey
+  if (sourceKey !== undefined && sourceKey !== null && !BUYER_SOURCE_KEY.test(sourceKey))
+    return fail(
+      "invalid_input",
+      "buyerSourceKey is a short lower-case name (letters, digits, - and _, at most 40), or null for the provider app's name",
+    )
   const by = ctx.approval?.approvalDeciderId ?? (await ctx.getUserId())
   const now = new Date().toISOString()
   const issuerOk = async (id: string | undefined) => {
@@ -107,11 +118,17 @@ export async function revenueStreamBind(ctx: StreamToolsCtx, input: BindInput) {
         "issuer_from_shop_mapping",
         "The shop's issuer is chosen per shop by the shop mapping (settings_shop_mapping_list), not on its stream.",
       )
+    if (current.provider_app === SHOPIFY && sourceKey !== undefined)
+      return fail(
+        "shop_source_key_fixed",
+        "The shop's sales are always listed to buyers as shopify; buyerSourceKey is for the other streams.",
+      )
     await ctx.db.update(STREAMS, current.id, {
       ...(input.mode !== undefined ? { mode: mode as StreamMode } : {}),
       ...(input.mail !== undefined ? { mail: mail as StreamMail } : {}),
       ...(input.label !== undefined ? { label: input.label } : {}),
       ...(input.issuerProfileId !== undefined ? { issuer_profile_id: input.issuerProfileId } : {}),
+      ...(sourceKey !== undefined ? { buyer_source_key: sourceKey } : {}),
       decided_by: by,
       decided_at: now,
     })
@@ -153,6 +170,7 @@ export async function revenueStreamBind(ctx: StreamToolsCtx, input: BindInput) {
     // From the moment of binding: older sales issue only through the catch-up.
     issue_from: now,
     mail,
+    buyer_source_key: sourceKey ?? null,
     decided_by: by,
     decided_at: now,
   })

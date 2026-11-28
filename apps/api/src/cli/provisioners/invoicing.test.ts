@@ -622,6 +622,48 @@ describe("invoicing provisioner", () => {
     expect(await audits()).toHaveLength(1)
   })
 
+  test("revenueStreams: names a bound stream's buyer source key, idempotent; unbound or shop refused", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
+    await installInvoicing(ctx)
+    const inv = drizzleSql.raw(`${schemaRef("app_invoicing")}.revenue_streams`)
+    const cfg = (buyerSourceKey: string | null, providerApp = "stripe"): ProvisioningConfig => ({
+      org: { slug: "x", name: "X" },
+      invoicing: { revenueStreams: [{ providerApp, buyerSourceKey }] },
+    })
+    // Not bound yet: config never binds a stream, a person does.
+    await expect(invoicingProvisioner.apply(ctx, { actions: [] }, cfg("hub"))).rejects.toThrow(
+      /revenue_stream_bind/,
+    )
+    await withPrivilegedDb(orgId, "t", (tx) =>
+      tx.execute(drizzleSql`
+        INSERT INTO ${inv} (id, org_id, provider_app, mode, mail)
+        VALUES (${crypto.randomUUID()}::uuid, ${orgId}::uuid, 'stripe', 'auto', 'none')`),
+    )
+    const keyOf = async () =>
+      extractRows<{ k: string | null }>(
+        await withPrivilegedDb(orgId, "t", (tx) =>
+          tx.execute(drizzleSql`
+            SELECT buyer_source_key AS k FROM ${inv}
+             WHERE org_id = ${orgId}::uuid AND provider_app = 'stripe'`),
+        ),
+      )[0]?.k
+    const plan = await invoicingProvisioner.plan(ctx, cfg("hub"))
+    expect(plan.actions.join("\n")).toContain(
+      "buyer source key of the stripe revenue stream to hub",
+    )
+    const r1 = await invoicingProvisioner.apply(ctx, { actions: [] }, cfg("hub"))
+    expect(r1.changed).toContain("invoicing.revenueStreams.stripe")
+    expect(await keyOf()).toBe("hub")
+    const r2 = await invoicingProvisioner.apply(ctx, { actions: [] }, cfg("hub"))
+    expect(r2.unchanged).toContain("invoicing.revenueStreams.stripe")
+    const r3 = await invoicingProvisioner.apply(ctx, { actions: [] }, cfg(null))
+    expect(r3.changed).toContain("invoicing.revenueStreams.stripe")
+    expect(await keyOf()).toBeNull()
+    await expect(
+      invoicingProvisioner.apply(ctx, { actions: [] }, cfg("hub", "shopify")),
+    ).rejects.toThrow(/always listed to buyers as shopify/)
+  })
+
   test("tax regime: fresh insert then idempotent re-run", async () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     await installInvoicing(ctx)

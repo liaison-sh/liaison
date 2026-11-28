@@ -265,6 +265,48 @@ beforeAll(async () => {
   })
   ids.otherOrgInvoice = await doc(w.otherOrgId, otherProfile, { number: "O-1", sale_id: other })
 
+  // A Stripe stream sale bound under profile A, whose website names the stream "hub". Recorded
+  // the way older sales were: its source_ref is the Checkout Session, its external id the
+  // PaymentIntent. The same provider's sale under profile B has no key of its own.
+  await insert("app_invoicing.revenue_streams", {
+    id: crypto.randomUUID(),
+    org_id: w.orgId,
+    provider_app: "stripe",
+    issuer_profile_id: profileA,
+    mode: "auto",
+    mail: "none",
+    buyer_source_key: "hub",
+  })
+  const stripeSale = await sale(w.orgId, profileA, {
+    stream: "stripe",
+    external_id: "pi_stripe_1",
+    source_ref: "cs_live_stripe_1",
+    buyer_email: "fio@example.com",
+    hub_user_id: "6f1c2a9e-0000-4000-8000-000000000002",
+  })
+  ids.stripeInvoice = await doc(w.orgId, profileA, {
+    number: "INV-2026-0110",
+    sale_id: stripeSale,
+    external_ref: "stripe:pi_stripe_1:software",
+  })
+  await sale(w.orgId, profileA, {
+    stream: "stripe",
+    external_id: "pi_stripe_2",
+    source_ref: "cs_live_stripe_2",
+    buyer_email: "fio@example.com",
+    hub_user_id: "6f1c2a9e-0000-4000-8000-000000000002",
+    state: "pending",
+    total_minor: 4900,
+    currency: "eur",
+  })
+  const stripeB = await sale(w.orgId, profileB, {
+    stream: "stripe",
+    external_id: "pi_stripe_b",
+    source_ref: "cs_live_stripe_b",
+    buyer_email: "fio@example.com",
+  })
+  await doc(w.orgId, profileB, { number: "B-2026-0010", sale_id: stripeB })
+
   // Paid Shopify orders whose invoice is parked: profile A is the shop's issuer.
   await sql.unsafe(
     `UPDATE app_invoicing.issuer_profiles SET shopify_shop_id = 'atelier-a.example' WHERE id = '${profileA}'`,
@@ -353,6 +395,7 @@ afterAll(async () => {
       "app_invoicing.documents",
       "app_invoicing.sales",
       "app_invoicing.deferred_events",
+      "app_invoicing.revenue_streams",
       "app_invoicing.issuer_profiles",
     ]) {
       await sql.unsafe(`DELETE FROM ${t} WHERE org_id = '${org}'`)
@@ -454,6 +497,27 @@ describe("POST /api/buyer-invoices/list", () => {
     })
     // Newest sale date first.
     expect(docs[0]?.state).toBe("pending")
+  })
+
+  it("a Stripe stream sale lists under its stream's buyer source key and its PaymentIntent", async () => {
+    const docs = await listOf({
+      email: "fio@example.com",
+      hubUserId: "6f1c2a9e-0000-4000-8000-000000000002",
+    })
+    expect(docs.map((d) => [d.state, d.number, d.source])).toEqual([
+      ["pending", null, { stream: "hub", ref: "pi_stripe_2", name: null }],
+      ["issued", "INV-2026-0110", { stream: "hub", ref: "pi_stripe_1", name: null }],
+    ])
+    expect(JSON.stringify(docs)).not.toContain("cs_live")
+    // The matching rule still holds: the email alone does not reach a sale with a strong id,
+    // nor does a forged id next to it.
+    expect(await listOf({ email: "fio@example.com" })).toEqual([])
+    expect(
+      await listOf({ email: "fio@example.com", hubUserId: "6f1c2a9e-0000-4000-8000-0000000000ff" }),
+    ).toEqual([])
+    // The same provider under another issuer profile, with no key of its own: the provider name.
+    const inB = await listOf({ email: "fio@example.com" }, otherKey)
+    expect(inB.map((d) => d.source)).toEqual([{ stream: "stripe", ref: "pi_stripe_b", name: null }])
   })
 
   it("an email alone reaches only sales with no strong id", async () => {

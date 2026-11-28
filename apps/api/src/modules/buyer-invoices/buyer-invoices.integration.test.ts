@@ -296,6 +296,7 @@ beforeAll(async () => {
     buyer_email: "fio@example.com",
     hub_user_id: "6f1c2a9e-0000-4000-8000-000000000002",
     state: "pending",
+    sold_on: "2026-11-21",
     total_minor: 4900,
     currency: "eur",
   })

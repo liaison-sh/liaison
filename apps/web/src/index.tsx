@@ -19,10 +19,12 @@ import * as solidWeb from "solid-js/web"
 
 import { render } from "solid-js/web"
 import App from "~/App"
+import { clearCompatMode } from "~/framework/compat-mode"
 import { buildHostServices } from "~/framework/host-services"
 import { spaNavigate } from "~/framework/spa-navigate"
+import { getDesktopBridge } from "~/lib/desktop-shell-contract"
 import { signalNativeReady } from "~/lib/native-bridge"
-import { signalShellReady } from "~/lib/served-shell"
+import { loadShellStatus, signalShellReady } from "~/lib/served-shell"
 import { reloadWhenOnline } from "~/lib/stale-chunk"
 import "~/index.css"
 import type { EnsureFreshTokenOptions } from "~/lib/auth-refresh"
@@ -34,7 +36,7 @@ import { startExternalLinkRouting } from "~/modules/desktop/external-links"
 import { startNotificationRouteCapture } from "~/modules/notifications/open-route"
 import { startThemeSync } from "~/modules/shell/theme-store"
 import { addToast } from "~/modules/shell/toast-store"
-import { startWebBuildWatch } from "~/modules/shell/web-update"
+import { startServedShellWatch, startWebBuildWatch } from "~/modules/shell/web-update"
 import { startKeyboardInset } from "~/primitives/keyboardInset"
 import { completeRuntimeInit, initializeAuth, isPublicPagePath } from "~/startup"
 
@@ -136,5 +138,13 @@ signalNativeReady()
 // The desktop's served shell (lib/served-shell.ts): the page rendered, so a
 // served build is marked good; then the page learns what runs.
 signalShellReady()
+void loadShellStatus().then((status) => {
+  if (status?.served !== true) return
+  // A served build is the server's own: every app it ships is covered, so
+  // nothing runs in compatibility mode (S2), and a newer deploy is followed.
+  clearCompatMode()
+  const bridge = getDesktopBridge()
+  if (bridge !== null) startServedShellWatch(bridge)
+})
 
 void completeRuntimeInit()

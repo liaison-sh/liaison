@@ -425,6 +425,10 @@ services:
       # Organisations' own custom apps and the app builder: on|off. Empty = on in
       # the managed edition, off on a self-hosted server (docs/reference/env.md).
       LIAISON_CUSTOM_APPS: ${LIAISON_CUSTOM_APPS:-}
+      # The desktop and phone apps run this server's own signed web build
+      # (docs/getting-started/desktop-and-phone.md); false keeps them on the
+      # build compiled into the app. On unless set.
+      LIAISON_SERVED_SHELL: ${LIAISON_SERVED_SHELL:-true}
       # Workers app executor (every sandboxed app on a remote V8 isolate loader,
       # when the three loader variables are set). All empty by default: every
       # app runs on the local sandbox (docs/reference/env.md).

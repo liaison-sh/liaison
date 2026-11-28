@@ -302,7 +302,8 @@ const OPEN_PARK_STATUSES = [
   "render_failed",
   "email_failed",
 ] as const
-const OPEN_PARK_SQL = sql.raw(OPEN_PARK_STATUSES.map((s) => `'${s}'`).join(", "))
+/** A Postgres text array literal, bound as a parameter. */
+const OPEN_PARK_ARR = `{${OPEN_PARK_STATUSES.join(",")}}`
 
 /**
  * The paid Shopify orders of this key's issuer profile (the shop it is mapped to) whose invoice
@@ -324,12 +325,12 @@ async function parkedOrders(key: BuyerKey, who: BuyerIdentity): Promise<ParkedSa
            AND p.shopify_shop_id IS NOT NULL
            AND p.shopify_shop_id = e.event_payload_json ->> 'shop_id'
          WHERE e.org_id = ${key.orgId}::uuid
-           AND e.status IN (${OPEN_PARK_SQL})
+           AND e.status = ANY(${OPEN_PARK_ARR}::text[])
            AND e.event_id ~ '^[0-9]{1,20}$'
            AND e.event_id IN (
              SELECT m.event_id FROM app_invoicing.deferred_events m
               WHERE m.org_id = ${key.orgId}::uuid
-                AND m.status IN (${OPEN_PARK_SQL})
+                AND m.status = ANY(${OPEN_PARK_ARR}::text[])
                 AND ((${email} <> ''
                       AND lower(btrim(m.event_payload_json -> 'customer' ->> 'email')) = ${email})
                   OR (${shopify} <> ''
